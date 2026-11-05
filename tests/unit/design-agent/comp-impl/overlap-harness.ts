@@ -21,6 +21,39 @@ const POC = join(REPO, "design-library/research/quality-pipeline/poc");
 // ---------------------------------------------------------------- the render check (in the page)
 
 /**
+ * The text nodes that hold part of a protected string (plain JavaScript; call with the whitespace-free strings). A fact
+ * can be split over elements — `<p>電話 000-0000-<span>0712</span></p>` — and a part's own element text ("0712") neither
+ * holds the fact nor is 6+ characters of it (DEV-175 re-review 4 H1). So: text nodes are grouped by their nearest
+ * ancestor that is not inline (inline-blocks are parts of a line too), each group's whitespace-free text is joined with
+ * the offsets of every node, every occurrence of each protected string is found in it, and every node whose span
+ * overlaps an occurrence is returned. Only adds protection (shared by phase-d-harness.ts).
+ */
+export const FACT_NODES_JS = String.raw`(protect) => {
+  const flat = (s) => (s || "").replace(/\s+/g, "");
+  const inline = (el) => { const d = getComputedStyle(el).display; return d.startsWith("inline") || d === "contents"; };
+  const blockOf = (n) => { let e = n.parentElement; while (e && e !== document.body && inline(e)) e = e.parentElement; return e || document.body; };
+  const groups = new Map();
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (!flat(n.data) || !n.parentElement) continue;
+    const b = blockOf(n);
+    if (!groups.has(b)) groups.set(b, []);
+    groups.get(b).push(n);
+  }
+  const touched = new Set();
+  for (const nodes of groups.values()) {
+    let text = "";
+    const spans = [];
+    for (const n of nodes) { const f = flat(n.data); spans.push([n, text.length, text.length + f.length]); text += f; }
+    for (const f of protect) {
+      if (!f) continue;
+      for (let i = text.indexOf(f); i >= 0; i = text.indexOf(f, i + 1)) for (const [n, a, b] of spans) if (a < i + f.length && b > i) touched.add(n);
+    }
+  }
+  return touched;
+}`;
+
+/**
  * The phase C check at the current viewport (plain JavaScript, like lib/design-agent/comp-impl/layers.ts; the caller
  * appends its JSON argument). Argument: { protect (whitespace-free strings: required facts and the name), protectSel
  * (elements whose text is protected whatever it says: dt, dd, h1, the disclosure), ordinary ("plate" | "allow": whether
@@ -105,6 +138,8 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
   const note = (code, t, p) => { if (arg.detail && found.length < 40) found.push({ code, text: flat(t.el.textContent).slice(0, 16), painter: p ? (p.el.tagName.toLowerCase() + (p.el.getAttribute("class") ? "." + p.el.getAttribute("class").split(/\s+/).join(".") : "") + ":" + p.kind) : "" }); };
 
   // ------------------------------------------------------------ text and glyph boxes
+  // a text node in a protected occurrence split over elements (DEV-175 re-review 4 H1)
+  const factNodes = (${FACT_NODES_JS})(arg.protect);
   const protectedEl = (el) => {
     if (el.closest(arg.protectSel)) return true;
     const whole = flat(el.textContent);
@@ -122,7 +157,7 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     const range = document.createRange();
     range.selectNodeContents(n);
     const lines = Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5).map(doc);
-    const prot = protectedEl(el);
+    const prot = protectedEl(el) || factNodes.has(n);
     const t = { el, node: n, prot, lines, g: null, fs: parseFloat(s.fontSize) || 16, vertical: s.writingMode !== "horizontal-tb", font: [s.fontStyle, s.fontWeight, s.fontSize, s.fontFamily].join(" ") };
     // canvas measureText draws the default glyph of each character alone: OpenType features (tabular figures,
     // alternates, East Asian forms) and combining marks are drawn otherwise in the page (DEV-173 re-review M1), and a
@@ -646,13 +681,14 @@ export async function pixelPass(page: Page, plan: OverlapPlan): Promise<PixelRes
   await page.evaluate(UNMATERIALIZE);
   await page.evaluate(`((sel, protect) => {
     const flat = (s) => (s || "").replace(/\\s+/g, "");
+    const factNodes = (${FACT_NODES_JS})(protect);
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       if (!flat(n.data) || !n.parentElement) continue;
       const el = n.parentElement;
       el.setAttribute("data-ov-text", "");
       const whole = flat(el.textContent);
-      if (el.closest(sel) || protect.some((f) => whole.includes(f) || (whole.length >= 6 && f.includes(whole)))) el.setAttribute("data-ov-prot", "");
+      if (el.closest(sel) || factNodes.has(n) || protect.some((f) => whole.includes(f) || (whole.length >= 6 && f.includes(whole)))) el.setAttribute("data-ov-prot", "");
     }
   })(${JSON.stringify(plan.protectSel ?? PROTECT_SEL)}, ${JSON.stringify(plan.protect.map((s) => s.replace(/\s+/g, "")))})`);
   const a1 = await shot(page, TEXT_INK("#000"));

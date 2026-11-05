@@ -5,7 +5,7 @@ import sharp from "sharp";
 import type { CompPage } from "@/lib/design-agent/comp-impl/page";
 import { pageCssProblems, type PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
 import { REPO, SHOPS, shopFacts, type ShopKey } from "./nowrap-harness";
-import { overlapPage, PROTECT_SEL } from "./overlap-harness";
+import { FACT_NODES_JS, overlapPage, PROTECT_SEL } from "./overlap-harness";
 
 // DEV-175 (Issue #193 comment 6628165899): the research harness for phase D — vertical writing, small rotation and
 // outlined type, each a separate capability. TEST-ONLY PROTOTYPE, NOT ENABLED. Nothing in lib/ changes: this file
@@ -182,19 +182,26 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     return out;
   };
   const textEls = all.filter((el) => ownNodes(el).length > 0 && el.getClientRects().length > 0);
+  // text nodes inside an occurrence of a protected string that is split over elements (re-review 4 H1: the "0712" of
+  // <p>電話 000-0000-<span>0712</span></p> was ordinary text): range-mapped over each line's text (FACT_NODES_JS)
+  const protNodes = (${FACT_NODES_JS})(arg.protect);
+  const textNodesIn = (el) => { const out = []; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) out.push(n); return out; };
   const isProt = (el) => {
     if (el.closest(arg.protectSel)) return true;
     const w = flat(el.textContent);
-    return w.length > 0 && arg.protect.some((f) => w.includes(f) || (w.length >= 6 && f.includes(w)));
+    if (w.length > 0 && arg.protect.some((f) => w.includes(f) || (w.length >= 6 && f.includes(w)))) return true;
+    return textNodesIn(el).some((n) => protNodes.has(n));
   };
   // the name role: the element's whole text is the shop's name (full or short) — an h1 alone is not enough (Fresh Review M1)
   const isName = (el) => arg.names.includes(flat(el.textContent));
   // protected as a fact (not as the name): the protect selector but h1, or a protected string that is not a name
   const facts = arg.protect.filter((f) => !arg.names.includes(f));
+  const factNodes = (${FACT_NODES_JS})(facts);
   const isFactProt = (el) => {
     if (el.closest(arg.protectSel.split(",").map((x) => x.trim()).filter((x) => x !== "h1").join(", "))) return true;
     const w = flat(el.textContent);
-    return w.length > 0 && facts.some((f) => w.includes(f) || (w.length >= 6 && f.includes(w)));
+    if (w.length > 0 && facts.some((f) => w.includes(f) || (w.length >= 6 && f.includes(w)))) return true;
+    return textNodesIn(el).some((n) => factNodes.has(n));
   };
   const fs = (el) => parseFloat(st(el).fontSize) || 16;
   const textsIn = (root) => textEls.filter((t) => root === t || root.contains(t));

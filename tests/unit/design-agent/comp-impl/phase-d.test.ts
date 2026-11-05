@@ -53,6 +53,8 @@ const SHOP_KEYS = Object.keys(SHOPS) as ShopKey[];
 const ALL_B: PageCssOptions = { verticalName: true, displayScale: true, displayNowrap: true, colourSyntax: true, gradientGround: true, translucentDecoration: true };
 const FACT = "000-0000-0712";
 const NAME = "架空の店";
+/** A second fact for the split-fact probes (re-review 4 H1). */
+const CLOSED = "水曜・木曜";
 const ALL: PhaseDFeatures = { vertical: true, rotation: true, outline: true };
 const plan = (features: PhaseDFeatures, protect: readonly string[] = [FACT, NAME]): PhaseDPlan => ({ protect, names: [NAME], features });
 const CHECKED = [1440, 1280, 1024, 768, 601, 600, 480, 390, 375, 360, 340, 320] as const;
@@ -258,6 +260,7 @@ const MUST_FAIL: Probe[] = [
   { name: "the name and a fact in one vertical h1 (the fact wins)", body: `<div class="wrap"><h1 class="v">${NAME}水曜定休</h1></div>`, css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL", protect: [FACT, NAME, "水曜定休"] },
   { name: "an h1 that is neither the name nor a fact set vertically (protected as an h1; not the name role)", body: '<div class="wrap"><h1 class="v">見出しの語</h1></div>', css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
   { name: "the name as a dd set vertically (dt/dd stay horizontal: the fact role wins over the name role)", body: `<div class="wrap"><dl><dt>店名</dt><dd class="v">${NAME}</dd></dl></div>`, css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
+  { name: "part of a fact set vertically (the second half of 水曜・木曜 in its own span)", body: '<div class="wrap"><p>定休日 水曜・<span class="v">木曜</span></p></div>', css: ".v { writing-mode: vertical-rl; font-size: 32px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL", protect: [FACT, NAME, CLOSED], grammar: { verticalText: true } },
   { name: "a dd set vertically", body: '<div class="wrap"><dl><dt>定休日</dt><dd class="v">水曜</dd></dl></div>', css: ".v { writing-mode: vertical-rl; font-size: 24px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
   { name: "a vertical container (blocks become right-to-left columns)", body: '<div class="wrap"><div class="v"><h2>見出し</h2><p>本文の段落</p></div></div>', css: ".v { writing-mode: vertical-rl; font-size: 24px; }", features: F_V, code: "PHASE_D_VERTICAL_CONTAINER" },
   { name: "a vertical body", body: '<div class="wrap"><p>見出し</p></div>', css: "body { writing-mode: vertical-rl; }", features: F_V, code: "PHASE_D_VERTICAL_CONTAINER" },
@@ -291,6 +294,7 @@ const MUST_FAIL: Probe[] = [
   // small_rotation
   { name: "a fact rotated 2°", body: `<div class="wrap"><p class="r">${FACT}</p></div>`, css: ".r { width: max-content; transform: rotate(2deg); }", features: F_R, code: "PHASE_D_PROTECTED_ROTATED" },
   { name: "a card holding the fact rotated 2°", body: `<div class="wrap"><div class="r"><p>電話</p><p>${FACT}</p></div></div>`, css: ".r { width: 300px; transform: rotate(2deg); }", features: F_R, code: "PHASE_D_PROTECTED_ROTATED" },
+  { name: "part of a fact rotated (木曜 of 水曜・木曜, an inline-block)", body: '<div class="wrap"><p>定休日 水曜・<span class="r">木曜</span></p></div>', css: ".r { display: inline-block; font-size: 32px; transform: rotate(4deg); }", features: F_R, code: "PHASE_D_PROTECTED_ROTATED", protect: [FACT, NAME, CLOSED], grammar: { smallRotation: true } },
   { name: "the name rotated (protected too)", body: `<div class="wrap"><h1 class="r">${NAME}</h1></div>`, css: ".r { width: max-content; font-size: 48px; transform: rotate(3deg); }", features: F_R, code: "PHASE_D_PROTECTED_ROTATED" },
   { name: "a paragraph rotated 2° (readable text, not a word)", body: '<div class="wrap"><p class="r">割れた器を漆でつなぎ、継ぎ目に金を蒔いて仕上げます。</p></div>', css: ".r { width: 600px; transform: rotate(2deg); }", features: F_R, code: "PHASE_D_ROTATED_TEXT" },
   { name: "a 12° rotation (past the bound)", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 80px; height: 80px; background: #c79a45; transform: rotate(12deg); }", features: F_R, code: "PHASE_D_ROTATION_ANGLE" },
@@ -346,6 +350,7 @@ const MUST_FAIL: Probe[] = [
   { name: "rotation with the flag off", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 80px; height: 80px; background: #c79a45; transform: rotate(3deg); }", features: { vertical: true, outline: true }, code: "PHASE_D_ROTATION_NOT_ENABLED" },
   // outlined_type
   { name: "a fact stroked", body: `<div class="wrap"><p class="o">${FACT}</p></div>`, css: ".o { font-size: 40px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED" },
+  { name: "part of a fact stroked (the last digits of the phone number in a span)", body: `<div class="wrap"><p>電話 000-0000-<span class="o">0712</span></p></div>`, css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", grammar: { outlinedType: true } },
   { name: "a stroke on a container reaches the fact (it inherits)", body: `<div class="wrap o"><p class="w">継ぐ</p><p>${FACT}</p></div>`, css: ".o { -webkit-text-stroke: 1px #c79a45; } .w { font-size: 64px; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED" },
   { name: "a paragraph stroked (readable text, not a word)", body: '<div class="wrap"><p class="o">割れた器を漆でつなぎ、継ぎ目に金を蒔いて仕上げます。</p></div>', css: ".o { font-size: 28px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_STROKE_ON_TEXT" },
   { name: "small text stroked", body: '<div class="wrap"><p class="o">小さな語</p></div>', css: ".o { font-size: 16px; -webkit-text-stroke: 0.5px #c79a45; }", features: F_O, code: "PHASE_D_STROKE_ON_TEXT" },
@@ -462,6 +467,22 @@ const MUST_PASS: Array<Omit<Probe, "code"> & { sweep: boolean }> = [
     sweep: true,
   },
   {
+    name: "a decorative word right after a fact, outside it, vertical and stroked (the split-fact rule is range-mapped: no PROTECTED_*)",
+    protect: [FACT, NAME, CLOSED],
+    body: '<div class="wrap"><p>定休日 水曜・木曜<span class="w">休む</span></p></div>',
+    css: ".w { writing-mode: vertical-rl; font-size: 32px; -webkit-text-stroke: 1px #c79a45; paint-order: stroke fill; }",
+    features: ALL,
+    sweep: true,
+  },
+  {
+    name: "the same word also rotated 3° (pixels: no PROTECTED_*; on geometry alone its ink next to the fact's line fails closed, INK_UNPROVEN)",
+    protect: [FACT, NAME, CLOSED],
+    body: '<div class="wrap"><p>定休日 水曜・木曜<span class="w">休む</span></p></div>',
+    css: ".w { display: inline-block; writing-mode: vertical-rl; font-size: 32px; -webkit-text-stroke: 1px #c79a45; paint-order: stroke fill; transform: rotate(3deg); }",
+    features: ALL,
+    sweep: false,
+  },
+  {
     name: "a rotated word with one glyph stroked (its own word's glyphs are not other text: no INK_UNPROVEN at any width)",
     body: '<div class="wrap"><p class="r">継<span class="o">ぐ</span>手</p><p class="n">本文。</p></div>',
     css: ".r { width: max-content; max-width: 100%; font-size: 72px; line-height: 1; transform: rotate(2deg); } .o { -webkit-text-stroke: 2px #c79a45; paint-order: stroke fill; } .n { margin-top: 32px; }",
@@ -497,11 +518,11 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
     for (const p of MUST_PASS) {
       const opts: PhaseDOptions = { verticalText: p.features.vertical, smallRotation: p.features.rotation, outlinedType: p.features.outline };
       expect(phaseDCssProblems(`${BASE}\n${p.css}`, opts), p.name).toEqual([]);
-      const got = await full(p.body, p.css, p.features);
+      const got = await full(p.body, p.css, p.features, 800, p.protect);
       table.push(`PASS | ${p.name} | ${got.join(", ") || "-"}`);
       expect(got, p.name).toEqual([]);
       // a probe swept at every width also passes on geometry alone (no fail-closed ink target) here
-      if (p.sweep) expect(await geometry(p.body, p.css, p.features), `${p.name} (geometry)`).toEqual([]);
+      if (p.sweep) expect(await geometry(p.body, p.css, p.features, 800, p.protect), `${p.name} (geometry)`).toEqual([]);
     }
   });
 
@@ -540,7 +561,7 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
   it("the must-pass probes pass at every width 320–1920 (1px sweep, geometry: no sideways scroll, no overflow, order kept)", async () => {
     for (const p of MUST_PASS.filter((x) => x.sweep)) {
       await load(p.body, p.css, 1920);
-      const s = await phaseDSweep(tab, plan(p.features), 320, 1920);
+      const s = await phaseDSweep(tab, plan(p.features, p.protect), 320, 1920);
       expect(s.measured).toBe(1601);
       expect(phaseDRanges(s), p.name).toEqual({});
     }
@@ -548,7 +569,7 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
 
   it("the must-pass probes pass in the pixel pass at the checked widths", async () => {
     for (const p of MUST_PASS.filter((x) => x.sweep))
-      for (const w of CHECKED) expect(await full(p.body, p.css, p.features, w), `${p.name} @${w}`).toEqual([]);
+      for (const w of CHECKED) expect(await full(p.body, p.css, p.features, w, p.protect), `${p.name} @${w}`).toEqual([]);
   });
 
   it("outline contrast is measured from pixels: the same hollow word passes or fails by its stroke colour against the ground under it", async () => {
