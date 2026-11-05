@@ -1,7 +1,7 @@
 /* DEV-183 — ゆげ湯 の C d1-v8-opt-hot-comp: オーナーが選ぶための別案 (研究専用、本番用ではない、オーナーの判断ではない)。
    元は ../d1-v7 (カンプ comps/d1-heat-descent-v6 の実装) で、そのまま残す。変えたのは末尾の「別案」の規則だけ (HTML と copy.json は前の版と同じバイト)。
    601〜860 の別案: d1-v7 は文を名前 ゆげ湯 の下の左の列へ移した (カンプと違う)。この案はカンプと同じく文を名前の右の列に置き、
-   下に揃える。文の列を細くして (見出し 26〜36px、リード 16px・13字幅)、右に湯気の列を残し、湯気は湯船の板の上の端から 熱い まで立つ。 */
+   下に揃える。文の列を細くして (見出し 24〜34px、リード 16px・13字幅)、右に湯気の列を残し、湯気は湯船の板の上の端から 熱い まで立つ。 */
 :root {
   --shu: #b8432c;
   --dai: #dd8a3e;
@@ -317,14 +317,16 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
 
 /* DEV-183 別案, 601–860: as on the comp (and on PC), the copy stands in its own column right of the vertical name, at the foot
    of the hot section. The name's column narrows to 140px (the name is 110px: its 1.3em glyph box still ends 11px before the
-   copy), the copy column is only as wide as its lines (the heading 26–36px, the lead 16px and 13 characters wide), and the
-   steam keeps the right: it rises from the tub board's top edge up into 熱い, as at 861 and above (111px wide at 601). */
+   copy), the copy column is only as wide as its lines (the heading 24–34px, the lead 16px and 13 characters wide), and the
+   steam keeps the right: it rises from the tub board's top edge up into 熱い, as at 861 and above (91px wide at 601, 206px at 768). */
 @media (min-width: 601px) and (max-width: 860px) {
   .hot-in { grid-template-columns: 140px max-content; }
   .hot-copy { max-width: none; }
   /* the shop's full name stays on one line over the narrower column (it ends far left of 熱い) */
   .name-full { white-space: nowrap; }
-  .tagline { font-size: clamp(26px, 4.6vw, 36px); }
+  .tagline { font-size: clamp(24px, 4.2vw, 34px); }
   .lead { font-size: 16px; max-width: 13em; }
-  .wisps { right: 34px; bottom: 104px; width: min(300px, calc(100vw - 490px)); height: 560px; }
+  /* the steam starts 48px right of the tagline's end (its lines are 7 characters: 7.42em with the letter spacing; the copy
+     column starts at 240px), so neither the strokes nor their blur reach the heading (a fixed calc(100vw - 490px) did at 684–860) */
+  .wisps { right: 34px; bottom: 104px; width: min(300px, calc(100vw - 322px - 7.42 * clamp(24px, 4.2vw, 34px))); height: 560px; }
 }

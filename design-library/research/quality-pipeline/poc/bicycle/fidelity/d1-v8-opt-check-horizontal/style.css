@@ -282,10 +282,11 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 }
 
 /* DEV-183 横書き案: the fact runs horizontally; only the heading (creative, not a fact) stays vertical.
-   PC (1000 and up): the fact sits in the column between the bench and the heading, at the foot of the bench.
+   PC (1000 and up): the fact sits in the column between the bench and the heading, at the foot of the bench, 32px clear of the
+   tilted board's shadow (with no margin the shadow reached 修 at 1000–1002).
    999 and below: the fact goes under the bench across the row, and the heading stays vertical at the right. */
 .check-grid { grid-template-columns: 52.8vw minmax(0, 1fr) auto; }
-.check-fact { grid-column: 2; grid-row: 1; align-self: end; writing-mode: horizontal-tb; max-height: none; max-width: 15em; margin: 0 0 3.2vw; font-size: clamp(18px, 1.6vw, 23px); line-height: 1.75; letter-spacing: .06em; border-top: 4px solid var(--yellow); padding-top: 14px; }
+.check-fact { grid-column: 2; grid-row: 1; align-self: end; writing-mode: horizontal-tb; max-height: none; max-width: 15em; margin: 0 0 3.2vw 32px; font-size: clamp(18px, 1.6vw, 23px); line-height: 1.75; letter-spacing: .06em; border-top: 4px solid var(--yellow); padding-top: 14px; }
 .check-h { grid-column: 3; grid-row: 1; }
 @media (max-width: 999px) {
   .check-grid { grid-template-columns: 52.8vw minmax(0, 1fr) auto; }
