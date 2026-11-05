@@ -8382,7 +8382,7 @@
       "human_approval_triggers": [
         "写真の提供と権利の確認"
       ],
-      "note": "合成の PNG (コードで作った雑音、commit なし) で CLI の通し試験: d1-v3 は 6枠・3区切りの切り抜き・PC/SP の描画まで通り、拒む場合 10 件はどれも --out を残さない。最新の C (d1-v8) は一覧が無く PAGE_NOT_INVENTORIED、変換も BOARD_NOT_FOUND (継ぎ目の絵と <wbr>) で止まる: テストで固定し、直しは scripts/・design-library/ を変えるので HOLD。d1-v8 では ph-kake の目標が 1370×1028 に上がるので、オーナー向けチェックリストはその大きさ。写真は1枚も無い。"
+      "note": "合成の PNG (コードで作った雑音、commit なし) で CLI の通し試験: d1-v3 は 6枠・3区切りの切り抜き・PC/SP の描画まで通り、成功 4 件、拒む 8 件はどれも --out を残さない。最新の C (d1-v8) は一覧が無く PAGE_NOT_INVENTORIED、変換も BOARD_NOT_FOUND (継ぎ目の絵と <wbr>) で止まる: テストで固定し、直しは scripts/・design-library/ を変えるので HOLD。d1-v8 では ph-kake の目標が 1370×1028 に上がるので、オーナー向けチェックリストはその大きさ。写真は1枚も無い。"
     },
     {
       "id": "DEV-183",

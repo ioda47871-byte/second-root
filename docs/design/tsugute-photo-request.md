@@ -129,6 +129,8 @@ npx tsx scripts/design-artifact/photo-swap.ts \
 
 ## 3. オーナーへの依頼文 (つぐ手、6枚)
 
+> **DEV-182 (2026-11-05): ph-kake は今 1370×1028 以上 (下限 1030×773) を頼む** (最新の C d1-v8 のタブレットの板が大きいため)。下の依頼文と表は d1-v3 の数のまま残す。今送るのは `tsugute-photo-owner-checklist.md`。理由は §7.2。
+
 そのまま写して送れる形にした。`<渡し方>` だけ埋める。
 
 ```
@@ -261,19 +263,22 @@ Issue #193 コメント `6654178698` の A.4。**写真は今も1枚も無い。
 
 ### 7.1 通し試験 (CLI、d1-v3、Chromium 1194)
 
-`npx tsx scripts/design-artifact/photo-swap.ts --page …/fidelity/d1-v3 --manifest .intake/<記録>.json --out <リポジトリの外>`。
+`npx tsx scripts/design-artifact/photo-swap.ts --page design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v3 --manifest design-library/research/quality-pipeline/.intake/<記録>.json --out <リポジトリの外>`。
+
+成功 4 件・拒む 8 件 (下の表。1行に3件を書いた行がある):
 
 | 場合 | 結果 |
 |---|---|
 | 6枠すべて目標の大きさ (ph-dry は PC 2:3 と SP 4:3 の2枚) | 終了 0。切り抜き 18 枚 (6枠 × 3区切り)、`renders/` に PC 1440・SP 390、`swap-summary.json` に権利者・同意・置き場なし、`rights.private.json` は 0600 |
 | ph-dry を正方形1枚 | 終了 0 |
 | ph-kake を古い依頼の大きさ (1230×923) | 終了 0 (d1-v3 では2倍。下の 7.2 を参照) |
-| ph-desk を 1.7倍、例外の記録なし / あり | 終了 2 `SCALE_EXCEPTION_REQUIRED` / 終了 0 |
-| 同意の記録の欠け (+ 偽の SHA) | 終了 2 `RIGHTS_MISSING_CONSENT` (形の誤りが先。SHA はまだ照らさない) |
-| 偽の SHA・違う幅 (形は正しい) | 終了 2 `HASH_MISMATCH`・`DIMENSION_MISMATCH` |
-| ph-dry の縦の写真だけ (SP 用なし) | 終了 2 `PHOTO_BELOW_MIN_SCALE`・`SCALE_EXCEPTION_REQUIRED` |
-| 最新の C (d1-v8) | 終了 2 `PAGE_NOT_INVENTORIED` |
-| `--out` がリポジトリの中 / すでにある、手渡しの記録が `.intake/` 以外のリポジトリの中 | 終了 2 `OUT_INSIDE_REPO` / `OUT_EXISTS` / `MANIFEST_IN_REPO` |
+| ph-desk を 1.7倍、例外の記録あり (成功) | 終了 0 |
+| ph-desk を 1.7倍、例外の記録なし (拒む 1) | 終了 2 `SCALE_EXCEPTION_REQUIRED` |
+| 同意の記録の欠け (+ 偽の SHA) (拒む 2) | 終了 2 `RIGHTS_MISSING_CONSENT` (形の誤りが先。SHA はまだ照らさない) |
+| 偽の SHA・違う幅 (形は正しい) (拒む 3) | 終了 2 `HASH_MISMATCH`・`DIMENSION_MISMATCH` |
+| ph-dry の縦の写真だけ (SP 用なし) (拒む 4) | 終了 2 `PHOTO_BELOW_MIN_SCALE`・`SCALE_EXCEPTION_REQUIRED` |
+| 最新の C (d1-v8) (拒む 5) | 終了 2 `PAGE_NOT_INVENTORIED` |
+| `--out` がリポジトリの中 / すでにある、手渡しの記録が `.intake/` 以外のリポジトリの中 (拒む 6・7・8) | 終了 2 `OUT_INSIDE_REPO` / `OUT_EXISTS` / `MANIFEST_IN_REPO` |
 
 拒んだ場合は、どれも `--out` も一時のディレクトリも残らなかった。
 
@@ -283,7 +288,7 @@ Issue #193 コメント `6654178698` の A.4。**写真は今も1枚も無い。
 
 - **道具が差し替えられるのは d1-v3 だけである。** 枠の一覧 (`photo-slots.json`・`photo-slot-edges.json`) は d1-v3 で測ったもので、ほかの C はすべて `PAGE_NOT_INVENTORIED` で拒む。
 - **一覧を測り直しても、今の変換は d1-v4 以降を拒む** (`BOARD_NOT_FOUND: ph-ware`)。d1-v4 以降の板は、中に金の継ぎ目の絵 (`<svg class="dmg">`) を持ち (空の `<div class="photo"></div>` ではない)、ph-dry・ph-hand・ph-desk の名札は `<wbr>` で区切られている。今は、半端に差し替えたページを作らずに止まる (fail closed)。DEV-182 でこれをテストで固定した (`photo-swap.test.ts`: ほかのすべての C は `PAGE_NOT_INVENTORIED` で何も書かない / 変換はほかの C を丸ごと替えるか止まり、`写真｜` を残さない / d1-v8 は `BOARD_NOT_FOUND: ph-ware`)。
-- **d1-v8 の板の大きさ** (リポジトリの外で `photo-slots.ts` と `--edges` で測った。commit していない): ph-ware・ph-kake・ph-hibi はタブレットで大きく (1199px の端で ph-kake 651×511、d1-v3 は 583×458)、ph-dry はタブレットで小さい。`requestFor` の目標は **ph-kake が 1370×1028 (下限 1030×773)** に上がり、ほかは d1-v3 の依頼の大きさ以下。だから、オーナー向けのチェックリスト (`tsugute-photo-owner-checklist.md`) は ph-kake を 1370×1028 にした (2つのページの大きいほう。テストが、d1-v3 の一覧で2倍を通ることを固定)。§3 の依頼文と上の表は d1-v3 の数のまま残す (テストが固定している)。
+- **d1-v8 の板の大きさ** (リポジトリの外で `photo-slots.ts` と `--edges` で測った。commit していない。**リポジトリの枠の一覧にもテストにも固定されていない** — d1-v8 の一覧を置くまで、この数は再現の記録にとどまる): ph-ware・ph-kake・ph-hibi はタブレットで大きく (1199px の端で ph-kake 651×511、d1-v3 は 583×458)、ph-dry はタブレットで小さい。`requestFor` の目標は **ph-kake が 1370×1028 (下限 1030×773)** に上がり、ほかは d1-v3 の依頼の大きさ以下。だから、オーナー向けのチェックリスト (`tsugute-photo-owner-checklist.md`) は ph-kake を 1370×1028 にした (2つのページの大きいほう)。テスト (`photo-swap.test.ts` の `owner checklist`) は**チェックリストの表を読み**、どの枠の目標も d1-v3 の一覧で2倍を通り、下限は例外が要り例外があれば通ることを固定する。d1-v8 で通ることは固定していない。§3 の依頼文と上の表は d1-v3 の数のまま残す (テストが固定している)。
 - **d1-v8 へ差し替えるのに要るもの (この PR の範囲の外。`scripts/`・`design-library/` を変えるので、別の承認):**
   1. d1-v8 の一覧と端を測り直して置く (`photo-slots.ts --shop tsugute --page …/d1-v8`、`--edges`)。古い一覧は残すか、店ごとに版を持つ形にするか。
   2. `transformHtml` を、`<wbr>` を挟んだ名札と、継ぎ目の絵を持つ板に広げる。**継ぎ目の絵を写真の上に残すか消すかは、デザインの判断である (オーナー)。** 残すなら、絵が主役の箱に掛からないことを確かめる検査が要る。

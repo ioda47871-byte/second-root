@@ -171,24 +171,23 @@ describe("the request text's numbers (docs/design/tsugute-photo-request.md §3)"
     expect(plan(id, fw, fh, OWNER).ok).toBe(true);
     expect(plan(id, Math.round(fw * 0.95), Math.round(fh * 0.95), OWNER).codes).toContain("PHOTO_BELOW_MIN_SCALE");
   });
-  // DEV-182: the owner checklist (docs/design/tsugute-photo-owner-checklist.md) asks for the larger of the inventoried
-  // page's request and the newest C page's (d1-v8, measured outside the repository). It must never ask for less than the
-  // inventoried page needs: each target passes at 2× here, each floor only with the owner's exception.
-  it.each([
-    ["ph-ware", 1610, 1208, 1210, 908],
-    ["ph-kake", 1370, 1028, 1030, 773],
-    ["ph-hibi", 1600, 900, 1200, 675],
-    ["ph-dry", 1300, 1300, 980, 980],
-    ["ph-hand", 1660, 1660, 1250, 1250],
-    ["ph-desk", 1030, 773, 770, 578],
-  ])("owner checklist %s: %i×%i passes at 2× on the inventoried page, the floor only with the exception", (id, w, h, fw, fh) => {
+  // DEV-182: the owner checklist (docs/design/tsugute-photo-owner-checklist.md §1) asks for the larger of the inventoried
+  // page's request and the newest C page's (d1-v8, measured outside the repository and NOT pinned here). Read from the
+  // checklist itself: it must never ask for less than the inventoried page needs — each target passes at 2× here, each
+  // floor needs the owner's exception and passes with it.
+  const CHECKLIST = readFileSync(join(REPO, "docs/design/tsugute-photo-owner-checklist.md"), "utf8");
+  const checklistRows = [...CHECKLIST.matchAll(/^\| (ph-[a-z]+)(?: \(1枚なら\))? \|[^|]*\|[^|]*\| \**(\d+)×(\d+) px\** \| \**(\d+)×(\d+) px\** \|$/gm)].map((m) => [m[1]!, +m[2]!, +m[3]!, +m[4]!, +m[5]!] as const);
+  it("the owner checklist names every slot once, with a target and a floor", () => {
+    expect(checklistRows.map((r) => r[0]).sort()).toEqual(INV.slots.map((s) => s.slot_id).sort());
+  });
+  it.each(checklistRows)("owner checklist %s: %i×%i passes at 2× on the inventoried page; the floor %i×%i only with the exception", (id, w, h, fw, fh) => {
     const r = requestFor(slot(id), { edges: edges(id) });
     if (!r.ok) throw new Error(id);
     expect(w).toBeGreaterThanOrEqual(r.min_width_px);
     expect(h).toBeGreaterThanOrEqual(r.min_height_px);
     expect(plan(id, w, h).ok).toBe(true);
+    expect(plan(id, fw, fh).codes).toContain("SCALE_EXCEPTION_REQUIRED");
     expect(plan(id, fw, fh, OWNER).ok).toBe(true);
-    if (fw < r.min_width_px) expect(plan(id, fw, fh).codes).toContain("SCALE_EXCEPTION_REQUIRED");
   });
   it("ph-dry in one square photo: a subject within 60% of the width and 70% of the height fits PC and SP", () => {
     expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.15, w: 0.6, h: 0.7 })).toMatchObject({ ok: true, needs_sp_photo: false });
