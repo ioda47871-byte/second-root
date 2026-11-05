@@ -8,7 +8,9 @@
  * is not changed. Nothing is written inside the repository.
  *
  * Refuses (exit 2, --out not created) unless:
- *  - the page is the one the slot inventory was measured on (HTML, CSS and copy hashes);
+ *  - the page is one a slot inventory was measured on (HTML, CSS and copy hashes). A shop keeps one inventory per
+ *    measured page: photo-slots.json (+ photo-slot-edges.json) and, from DEV-184, photo-slots-<page>.json (+
+ *    photo-slot-edges-<page>.json) beside it (つぐ手: d1-v3 and d1-v10);
  *  - --out is a new directory outside the repository whose parent exists;
  *  - the manifest is outside the repository or under the private .intake/;
  *  - every one of the 6 slots has a photo, and each photo opens from .intake/photos/ (no link) and passes
@@ -40,7 +42,7 @@
  */
 import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { chromium, type Browser } from "playwright";
 import { z } from "zod";
 import { checkPhotoRights, loadForbiddenSha256, resolvePrivatePhoto, toPublicPhotoRecord, type PhotoBytesInfo, type PhotoRights } from "../../lib/design-agent/quality-pipeline/photo-rights";
@@ -166,20 +168,52 @@ export function checkManifestPath(file: string): string | null {
 }
 
 /**
- * The pinned slot inventory of a shop and its range edges, and a refusal unless the page is exactly the page both
- * were measured on.
+ * The pinned slot inventories of a shop, one per measured page: photo-slots.json with photo-slot-edges.json, and
+ * photo-slots-<page>.json with photo-slot-edges-<page>.json (DEV-184). Each inventory names its page (page_dir) and
+ * carries that page's hashes.
+ */
+export const INVENTORY_FILE = /^photo-slots(-[a-z0-9][a-z0-9-]{0,40})?\.json$/;
+export function inventoryFiles(shop: string): Array<{ slots: string; edges: string }> {
+  const shopDir = join(REPO, `design-library/research/quality-pipeline/poc/${shop}`);
+  return readdirSync(shopDir)
+    .sort()
+    .flatMap((f) => {
+      const m = INVENTORY_FILE.exec(f);
+      return m ? [{ slots: join(shopDir, f), edges: join(shopDir, `photo-slot-edges${m[1] ?? ""}.json`) }] : [];
+    });
+}
+
+/**
+ * The slot inventory of a shop measured on this page and its range edges, and a refusal unless the page is exactly
+ * the page both were measured on. Two inventories naming one page are refused.
  */
 export function loadInventory(shop: string, pageDir: string): { ok: true; inv: PhotoSlotInventory; edges: Map<string, EdgeVariant[]>; dir: string } | { ok: false; code: string } {
-  const inv = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, `design-library/research/quality-pipeline/poc/${shop}/photo-slots.json`), "utf8")));
-  const edges = edgesFor(inv, PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, `design-library/research/quality-pipeline/poc/${shop}/photo-slot-edges.json`), "utf8"))));
-  if (!edges) return { ok: false, code: "EDGES_STALE" };
   let dir: string;
   try {
     dir = realpathSync(resolve(REPO, pageDir));
   } catch {
     return { ok: false, code: "PAGE_NOT_FOUND" };
   }
-  if (dir !== realpathSync(join(REPO, inv.page_dir))) return { ok: false, code: "PAGE_NOT_INVENTORIED" };
+  const matches: PhotoSlotInventory[] = [];
+  const edgeFiles: string[] = [];
+  for (const f of inventoryFiles(shop)) {
+    const one = PhotoSlotInventory.parse(JSON.parse(readFileSync(f.slots, "utf8")));
+    let at: string;
+    try {
+      at = realpathSync(join(REPO, one.page_dir));
+    } catch {
+      continue;
+    }
+    if (at !== dir) continue;
+    matches.push(one);
+    edgeFiles.push(f.edges);
+  }
+  if (matches.length === 0) return { ok: false, code: "PAGE_NOT_INVENTORIED" };
+  if (matches.length > 1) return { ok: false, code: "INVENTORY_AMBIGUOUS" };
+  const inv = matches[0]!;
+  if (!existsSync(edgeFiles[0]!)) return { ok: false, code: "EDGES_STALE" };
+  const edges = edgesFor(inv, PhotoSlotEdges.parse(JSON.parse(readFileSync(edgeFiles[0]!, "utf8"))));
+  if (!edges) return { ok: false, code: "EDGES_STALE" };
   const hash = (f: string) => sha(readFileSync(join(dir, f)));
   if (hash("index.html") !== inv.html_sha256 || hash("style.css") !== inv.css_sha256 || hash("copy.json") !== inv.copy_sha256) return { ok: false, code: "PAGE_CHANGED" };
   return { ok: true, inv, edges, dir };
@@ -189,12 +223,18 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
  * The page's HTML with each slot's 写真｜ caption taken out of the visible text and its board filled with a <picture>
  * whose <img> carries the alt text. Throws if a caption or board is not where the pinned page has it, or if any
  * 写真｜ text is left.
+ *
+ * DEV-184 (d1-v10): a caption may carry <wbr> between its letters (a line-break hint, no text). A board is what its
+ * slot's placeholder says it is, nothing else: "css_board" is an empty <div class="photo"></div>; "css_board_with_svg"
+ * is a <div class="photo"> holding only drawn seams (<svg class="dmg …" aria-hidden="true">…</svg>, one or more) and
+ * white space. The picture goes in first and the seams stay after it, so the design's gold seams are drawn above the
+ * photo. A board of the other kind, or with anything else in it, is BOARD_NOT_FOUND.
  */
 export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSlot; alt: string; files: Record<"desktop" | "tablet" | "mobile", string>; size: { width: number; height: number } }>): string {
   let out = html;
   for (const { slot, alt, files, size } of slots) {
     const caption = `${CAPTION_PREFIX}${slot.role}`;
-    const re = new RegExp(`[ \\t]*<(figcaption|span)( class="ph-label")?>${escapeRe(caption)}</\\1>(\\n?)`, "g");
+    const re = new RegExp(`[ \\t]*<(figcaption|span)( class="ph-label")?>${[...caption].map(escapeRe).join("(?:<wbr>)?")}</\\1>(\\n?)`, "g");
     const hits = [...out.matchAll(re)];
     if (hits.length !== 1) throw new Error(`CAPTION_NOT_FOUND: ${slot.slot_id}`);
     const at = hits[0]!.index!;
@@ -202,20 +242,25 @@ export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSl
     const figEnd = out.indexOf("</figure>", at);
     if (figStart < 0 || figEnd < 0) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
     const seg = out.slice(figStart, figEnd).replace(hits[0]![0], "");
-    const board = '<div class="photo"></div>';
-    if (seg.split(board).length !== 2) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+    const board = slot.placeholder === "css_board_with_svg" ? SEAM_BOARD : /<div class="photo"><\/div>/g;
+    const boards = [...seg.matchAll(board)];
+    if (boards.length !== 1 || (seg.match(/<div class="photo">/g) ?? []).length !== 1) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+    const seams = boards[0]![1] ?? "";
     const sources = RANGES.filter((r) => r.media)
       .slice()
       .reverse()
       .map((r) => `<source media="${r.media}" srcset="${escapeHtml(files[r.key])}">`)
       .join("");
-    const picture = `<div class="photo"><picture data-slot="${slot.slot_id}">${sources}<img src="${escapeHtml(files.desktop)}" alt="${escapeHtml(alt)}" width="${size.width}" height="${size.height}"></picture></div>`;
+    const picture = `<div class="photo"><picture data-slot="${slot.slot_id}">${sources}<img src="${escapeHtml(files.desktop)}" alt="${escapeHtml(alt)}" width="${size.width}" height="${size.height}"></picture>${seams}</div>`;
     // a replacer function: a replacement string would expand $&, $`, $' and $$ found in the alt text
-    out = out.slice(0, figStart) + seg.replace(board, () => picture) + out.slice(figEnd);
+    out = out.slice(0, figStart) + seg.slice(0, boards[0]!.index!) + picture + seg.slice(boards[0]!.index! + boards[0]![0].length) + out.slice(figEnd);
   }
-  if (out.includes(CAPTION_PREFIX)) throw new Error("CAPTION_LEFT: 写真｜ text remains in the page");
+  if (out.replace(/<wbr>/g, "").includes(CAPTION_PREFIX)) throw new Error("CAPTION_LEFT: 写真｜ text remains in the page");
   return out;
 }
+
+/** A board that holds only drawn seams: decorative, aria-hidden SVGs with no text element, and white space. */
+const SEAM_BOARD = /<div class="photo">((?:\s*<svg class="dmg[ a-z-]*"[^>]*\saria-hidden="true"[^>]*>(?:(?!<\/?svg\b|<text\b|<foreignObject\b)[\s\S])*<\/svg>)+\s*)<\/div>/g;
 
 /** Appended to the copy's CSS only: the picture fills the board's whole box (the board keeps its clip, tilt, shadow). */
 export const SWAP_CSS = `

@@ -14,8 +14,8 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-rights";
 import { DESKTOP_CAP_PX, edgesFor, EDGE_VIEWPORTS, MIN_SCALE_FLOOR, planSlot, PhotoSlotEdges, PhotoSlotInventory, requestFor, scaledCrop, variantOf, type FocalBox, type PhotoSlot } from "@/lib/design-agent/quality-pipeline/photo-slots";
-import { checkManifestPath, checkOut, RANGES, swapPage, transformHtml, TSUGUTE_SP_VIEWPORTS } from "../../../../scripts/design-artifact/photo-swap";
-import { deriveEdges } from "../../../../scripts/design-artifact/photo-slots";
+import { checkManifestPath, checkOut, inventoryFiles, loadInventory, RANGES, swapPage, transformHtml, TSUGUTE_SP_VIEWPORTS } from "../../../../scripts/design-artifact/photo-swap";
+import { deriveEdges, deriveSlots } from "../../../../scripts/design-artifact/photo-slots";
 
 const REPO = resolve(__dirname, "../../../..");
 const PAGE = "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v3";
@@ -24,6 +24,13 @@ const EDGES_FILE = "design-library/research/quality-pipeline/poc/tsugute/photo-s
 const EDGES = PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, EDGES_FILE), "utf8")));
 const EDGE_MAP = edgesFor(INV, EDGES)!;
 const slot = (id: string) => INV.slots.find((s) => s.slot_id === id)!;
+// DEV-184: the final つぐ手 candidate (C d1-v10 = comp d1-seam-across-v9) has its own inventory beside the d1-v3 one
+const V10_PAGE = "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v10";
+const V10 = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/tsugute/photo-slots-d1-v10.json"), "utf8")));
+const V10_EDGES = PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/tsugute/photo-slot-edges-d1-v10.json"), "utf8")));
+const V10_EDGE_MAP = edgesFor(V10, V10_EDGES)!;
+const v10slot = (id: string) => V10.slots.find((s) => s.slot_id === id)!;
+const INVENTORIED = ["d1-v10", "d1-v3"];
 const edges = (id: string) => EDGE_MAP.get(id)!;
 const FORBIDDEN = loadForbiddenSha256(REPO);
 const NOW = "2026-11-04";
@@ -189,6 +196,31 @@ describe("the request text's numbers (docs/design/tsugute-photo-request.md §3)"
     expect(plan(id, fw, fh).codes).toContain("SCALE_EXCEPTION_REQUIRED");
     expect(plan(id, fw, fh, OWNER).ok).toBe(true);
   });
+  // DEV-184: the checklist's targets are the larger of d1-v3's and the newest page's; d1-v10 is now pinned, so they must
+  // pass at 2× there too, and the floor only with the owner's exception
+  it.each(checklistRows)("owner checklist %s: %i×%i passes at 2× on d1-v10 (the final candidate); the floor %i×%i only with the exception", (id, w, h, fw, fh) => {
+    const s = v10slot(id);
+    const opts = { spViewports: TSUGUTE_SP_VIEWPORTS, edges: V10_EDGE_MAP.get(id)! };
+    const r = requestFor(s, { edges: V10_EDGE_MAP.get(id)! });
+    if (!r.ok) throw new Error(id);
+    expect(w).toBeGreaterThanOrEqual(r.min_width_px);
+    expect(h).toBeGreaterThanOrEqual(r.min_height_px);
+    expect(planSlot(s, { pc: { width: w, height: h, focal_box: CENTRE } }, opts).ok).toBe(true);
+    const floor = planSlot(s, { pc: { width: fw, height: fh, focal_box: CENTRE } }, opts);
+    // a floor sized for d1-v3 may already be 2× on d1-v10's smaller boards (ph-dry, ph-desk); where it is not, it needs the exception
+    if (!floor.ok) expect(floor.codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
+    expect(planSlot(s, { pc: { width: fw, height: fh, focal_box: CENTRE }, scale_exception: OWNER }, opts).ok).toBe(true);
+  });
+  it("d1-v10: ph-kake asks for 1370×1028 (floor 1030×773), the other five no more than d1-v3", () => {
+    expect(requestFor(v10slot("ph-kake"), { edges: V10_EDGE_MAP.get("ph-kake")! })).toMatchObject({ ok: true, min_width_px: 1370, min_height_px: 1028 });
+    expect(requestFor(v10slot("ph-kake"), { edges: V10_EDGE_MAP.get("ph-kake")!, scale: MIN_SCALE_FLOOR })).toMatchObject({ ok: true, min_width_px: 1030, min_height_px: 773 });
+    for (const s of V10.slots.filter((x) => x.slot_id !== "ph-kake")) {
+      const a = requestFor(s, { edges: V10_EDGE_MAP.get(s.slot_id)! });
+      const b = requestFor(slot(s.slot_id), { edges: edges(s.slot_id) });
+      if (!a.ok || !b.ok) throw new Error(s.slot_id);
+      expect(a.min_width_px, s.slot_id).toBeLessThanOrEqual(b.min_width_px);
+    }
+  });
   it("ph-dry in one square photo: a subject within 60% of the width and 70% of the height fits PC and SP", () => {
     expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.15, w: 0.6, h: 0.7 })).toMatchObject({ ok: true, needs_sp_photo: false });
     expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.1, w: 0.6, h: 0.8 }).codes).toEqual(["SP_PHOTO_REQUIRED"]);
@@ -258,6 +290,61 @@ describe("caption → alt text", () => {
     const page = readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v8/index.html"), "utf8");
     expect(page.match(/写真｜/g)).toHaveLength(6);
     expect(() => transformHtml(page, slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+  });
+});
+
+describe("DEV-184: the d1-v10 inventory and the transform for boards with drawn seams", () => {
+  const html = readFileSync(join(REPO, V10_PAGE, "index.html"), "utf8");
+  const slotsIn = V10.slots.map((s) => ({ slot: s, alt: s.role, files: { desktop: `photos/${s.slot_id}-desktop.png`, tablet: `photos/${s.slot_id}-tablet.png`, mobile: `photos/${s.slot_id}-mobile.png` }, size: { width: 10, height: 10 } }));
+  const dmg = (h: string) => (h.match(/<svg class="dmg /g) ?? []).length;
+  it("d1-v10 is the comp d1-seam-across-v9, byte for byte, and its inventory names it with its hashes", () => {
+    for (const f of ["index.html", "style.css", "copy.json"]) expect(readFileSync(join(REPO, V10_PAGE, f)), f).toEqual(readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/tsugute/comps/d1-seam-across-v9", f)));
+    expect(V10.page_dir).toBe(V10_PAGE);
+    expect(V10_EDGES.page_dir).toBe(V10_PAGE);
+    expect(V10_EDGE_MAP).not.toBeNull();
+    expect(V10.slots.map((s) => s.slot_id)).toEqual(["ph-ware", "ph-kake", "ph-hibi", "ph-dry", "ph-hand", "ph-desk"]);
+    expect(V10.slots.map((s) => s.placeholder)).toEqual(["css_board_with_svg", "css_board_with_svg", "css_board_with_svg", "css_board", "css_board", "css_board"]);
+    expect(createHash("sha256").update(readFileSync(join(REPO, V10_PAGE, "index.html"))).digest("hex")).toBe(V10.html_sha256);
+    const page = loadInventory("tsugute", V10_PAGE);
+    expect(page.ok && page.inv.page_dir).toBe(V10_PAGE);
+    // one inventory per measured page, and exactly these two
+    expect(inventoryFiles("tsugute").map((f) => PhotoSlotInventory.parse(JSON.parse(readFileSync(f.slots, "utf8"))).page_dir.split("/").pop()).sort()).toEqual(INVENTORIED);
+  });
+  it("fills every board, keeps both drawn seams of each damage board after the photo (drawn above it), and leaves no 写真｜", () => {
+    expect(html.match(/写真｜/g)).toHaveLength(6);
+    expect(html).toContain("<wbr>");
+    const out = transformHtml(html, slotsIn);
+    expect(out).not.toContain("写真｜");
+    expect(out.replace(/<wbr>/g, "")).not.toContain("写真｜");
+    expect(out).not.toContain('class="ph-label"');
+    expect(dmg(out)).toBe(dmg(html));
+    expect(dmg(html)).toBe(6);
+    for (const s of V10.slots) {
+      const at = out.indexOf(`<div class="photo"><picture data-slot="${s.slot_id}">`);
+      expect(at, s.slot_id).toBeGreaterThan(0);
+      const board = out.slice(at, out.indexOf("</div>", at));
+      expect(board.indexOf("</picture>"), s.slot_id).toBeGreaterThan(0);
+      // the seams come after the picture: drawn above the photo
+      expect(dmg(board), s.slot_id).toBe(s.placeholder === "css_board_with_svg" ? 2 : 0);
+      if (dmg(board)) expect(board.indexOf('<svg class="dmg '), s.slot_id).toBeGreaterThan(board.indexOf("</picture>"));
+    }
+    expect(out.match(/<div class="photo"><\/div>/g)).toBeNull();
+    // only the captions and boards changed: the rest of the page is the same text
+    const strip = (h: string) => h.replace(/<figcaption class="ph-label">[^<]*<\/figcaption>\n?|<picture[\s\S]*?<\/picture>|<span>写真｜[\s\S]*?<\/span>|\s+/g, "");
+    expect(strip(out)).toBe(strip(html));
+  });
+  it("fails closed when a seam board holds anything but drawn seams, or a board is not the kind its slot names", () => {
+    expect(() => transformHtml(html.replace('<svg class="dmg dmg-sp" viewBox="0 0 560 400"', '<p>x</p><svg class="dmg dmg-sp" viewBox="0 0 560 400"'), slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+    expect(() => transformHtml(html.replace('<path class="dmg-half"', '<text>文</text><path class="dmg-half"'), slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+    // a seam drawing that is not decorative (no aria-hidden) is not a seam board
+    expect(() => transformHtml(html.replace('<svg class="dmg dmg-pc" viewBox="0 0 560 400" preserveAspectRatio="none" aria-hidden="true"', '<svg class="dmg dmg-pc" viewBox="0 0 560 400" preserveAspectRatio="none"'), slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+    // the d1-v3 kind (an empty board) on a seam board, and the seam kind on an empty board
+    expect(() => transformHtml(html, slotsIn.map((x) => (x.slot.slot_id === "ph-ware" ? { ...x, slot: { ...x.slot, placeholder: "css_board" as const } } : x)))).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+    expect(() => transformHtml(html, slotsIn.map((x) => (x.slot.slot_id === "ph-dry" ? { ...x, slot: { ...x.slot, placeholder: "css_board_with_svg" as const } } : x)))).toThrow(/^BOARD_NOT_FOUND: ph-dry$/);
+    // a caption broken by anything but <wbr> is not the caption
+    expect(() => transformHtml(html.replace("写真｜<wbr>乾くのを", "写真｜<b></b>乾くのを"), slotsIn)).toThrow(/^CAPTION_NOT_FOUND: ph-dry$/);
+    // a placeholder left behind by a missing slot is still refused
+    expect(() => transformHtml(html, slotsIn.slice(0, 5))).toThrow(/CAPTION_LEFT/);
   });
 });
 
@@ -394,10 +481,12 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
     expect(existsSync(join(REPO, "tmp-dev166-out"))).toBe(false);
     const other = await swapPage({ pageDir: "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v2", manifest: manifest(slots), out: outDir(), pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
     expect(codesOf(other)).toContain("PAGE_NOT_INVENTORIED");
-    // DEV-182: every other つぐ手 C page — the newest (d1-v8) included — is refused before anything is read or written
+    // DEV-182: every other つぐ手 C page — the newest (d1-v8) included — is refused before anything is read or written.
+    // DEV-184: d1-v10 is inventoried too (its own photo-slots-d1-v10.json); every page that is not stays refused
     const fidelity = "design-library/research/quality-pipeline/poc/tsugute/fidelity";
-    const versions = readdirSync(join(REPO, fidelity)).filter((v) => join(fidelity, v) !== INV.page_dir);
-    expect(versions).toContain("d1-v8");
+    const versions = readdirSync(join(REPO, fidelity)).filter((v) => !INVENTORIED.includes(v));
+    expect(readdirSync(join(REPO, fidelity)).filter((v) => INVENTORIED.includes(v)).sort()).toEqual(INVENTORIED);
+    expect(versions).toEqual(expect.arrayContaining(["d1-v2", "d1-v8", "d1-v9"]));
     for (const v of versions) {
       const out = outDir();
       const res = await swapPage({ pageDir: join(fidelity, v), manifest: manifest(slots), out, pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
@@ -552,5 +641,63 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
       // nothing temporary is left beside --out
       expect(readdirSync(root).filter((f) => f.includes(".partial-"))).toEqual([]);
     }, 120_000);
+
+    // DEV-184: the final candidate d1-v10
+    it("d1-v10: the committed inventory and range edges are what the page measures now (within 2px)", async () => {
+      const inv = await deriveSlots(browser, "tsugute", V10_PAGE);
+      expect({ ...inv, slots: [] }).toEqual({ ...V10, slots: [] });
+      const now = await deriveEdges(browser, inv);
+      for (const [i, s] of inv.slots.entries()) {
+        const w = V10.slots[i]!;
+        expect([s.slot_id, s.role, s.board_selector, s.placeholder]).toEqual([w.slot_id, w.role, w.board_selector, w.placeholder]);
+        for (const [j, v] of s.variants.entries()) {
+          expect(v.viewport).toBe(w.variants[j]!.viewport);
+          expect(Math.abs(v.width_px - w.variants[j]!.width_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+          expect(Math.abs(v.height_px - w.variants[j]!.height_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+        }
+      }
+      for (const [i, s] of now.slots.entries())
+        for (const [j, v] of s.edges.entries()) {
+          const w = V10_EDGES.slots[i]!.edges[j]!;
+          expect([s.slot_id, v.viewport]).toEqual([V10_EDGES.slots[i]!.slot_id, w.viewport]);
+          expect(Math.abs(v.width_px - w.width_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+          expect(Math.abs(v.height_px - w.height_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+        }
+    }, 180_000);
+    it("d1-v10: the same rights, hash and scale checks refuse and write nothing; all six take a photo with the seams kept above it", async () => {
+      const v10Slots = async (tag: string) => {
+        const out = [];
+        for (const [i, s] of V10.slots.entries()) {
+          const r = requestFor(s, { edges: V10_EDGE_MAP.get(s.slot_id)! });
+          if (!r.ok) throw new Error(s.slot_id);
+          out.push({ slot_id: s.slot_id, pc: { rights: await photo(`t-${tag}-${s.slot_id}`, r.min_width_px, r.min_height_px, 40 * i + 31), focal_box: CENTRE } } as Record<string, unknown>);
+        }
+        return out;
+      };
+      const runV10 = (slots: unknown[], out = outDir(), b?: Browser) => swapPage({ pageDir: V10_PAGE, manifest: manifest(slots), out, pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN, browser: b });
+      const bad = await v10Slots("v10bad");
+      const pc0 = (bad[0]!.pc as { rights: Record<string, unknown> }).rights;
+      bad[0] = { ...bad[0]!, pc: { rights: { ...pc0, sha256: "0".repeat(64) }, focal_box: CENTRE } };
+      const kake = V10.slots.findIndex((s) => s.slot_id === "ph-kake");
+      // d1-v3's ph-kake request is short on d1-v10 (its tablet board is larger)
+      bad[kake] = { slot_id: "ph-kake", pc: { rights: await photo("t-v10bad-kake-old", 1230, 923, 5), focal_box: CENTRE } };
+      const badOut = outDir();
+      const refused = await runV10(bad, badOut);
+      expect(refused.ok ? [] : refused.refusals).toEqual(expect.arrayContaining([{ slot_id: "ph-ware", photo: "pc", codes: ["HASH_MISMATCH"] }, { slot_id: "ph-kake", codes: ["SCALE_EXCEPTION_REQUIRED"] }]));
+      nothingLeft(badOut);
+      expect(codesOf(await runV10(bad.slice(1)))).toContain("SLOTS_INCOMPLETE");
+
+      const out = outDir();
+      const res = await runV10(await v10Slots("v10"), out, browser);
+      if (!res.ok) throw new Error(JSON.stringify(res.refusals));
+      for (const r of res.renders) expect(r, r.viewport).toMatchObject({ images: 6, images_loaded: 6, boards_matched: 6, caption_text_left: false });
+      expect(readdirSync(join(out, "page", "photos"))).toHaveLength(18);
+      const html = readFileSync(join(out, "page", "index.html"), "utf8");
+      expect(html).not.toContain("写真｜");
+      expect((html.match(/<\/picture>\s*<svg class="dmg dmg-pc"/g) ?? []).length).toBe(3);
+      expect(res.summary).toMatchObject({ page_dir: V10_PAGE, source_hashes: { html: V10.html_sha256, css: V10.css_sha256, copy: V10.copy_sha256 } });
+      expect(createHash("sha256").update(readFileSync(join(REPO, V10_PAGE, "index.html"))).digest("hex")).toBe(V10.html_sha256);
+      expect(readdirSync(root).filter((f) => f.includes(".partial-"))).toEqual([]);
+    }, 180_000);
   });
 });
