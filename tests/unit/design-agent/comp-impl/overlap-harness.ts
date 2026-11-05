@@ -28,10 +28,18 @@ const POC = join(REPO, "design-library/research/quality-pipeline/poc");
  * original character normalised on its own (NFKD; combining marks, format characters (Cf: zero-width space, soft
  * hyphen …) and whitespace dropped: re-review 5 L1) with the node that owns every output character; each protected string
  * is normalised the same way and every occurrence in the joined text marks its owners. Matching across blocks and
- * dropping marks (が and か both read か) only add protection: the fail-closed direction. Shared by phase-d-harness.ts.
+ * dropping marks (が and か both read か) only add protection: the fail-closed direction. Confusable characters fold to one
+ * form on both sides (DEV-178, the DEV-175 review's Low): U+2010–2015, U+2212 and U+30FC to "-", U+FF5E and U+301C to 〜,
+ * one character to one character, so the owner of each output character stays the node it came from (protection only:
+ * a dash that is not the fact's hyphen may now match it). Shared by phase-d-harness.ts.
  */
 export const FACT_NODES_JS = String.raw`(protect) => {
-  const norm = (ch) => ch.normalize("NFKD").replace(/[\p{M}\p{Cf}\s]/gu, "");
+  // confusables (DEV-178): hyphen-like dashes, the minus sign and the long-vowel mark read as "-"; the full-width tilde and the
+  // wave dash read as 〜. One character to one character, applied to each character before and after NFKD (NFKD turns
+  // U+FF5E into "~", so the map must see it first), on the page's text and on the protected strings alike.
+  const CONFUSABLE = { "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-", "\u30fc": "-", "\uff5e": "\u301c", "\u301c": "\u301c" };
+  const fold = (c) => CONFUSABLE[c] || c;
+  const norm = (ch) => Array.from(fold(ch).normalize("NFKD")).map(fold).join("").replace(/[\p{M}\p{Cf}\s]/gu, "");
   const normAll = (s) => Array.from(s || "").map(norm).join("");
   // the group a text node is joined in: the whole body (one string in DOM order)
   const groupOf = (n) => document.body;
