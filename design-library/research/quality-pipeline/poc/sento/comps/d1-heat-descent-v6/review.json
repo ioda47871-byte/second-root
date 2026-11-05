@@ -1,0 +1,245 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-sento-yuge",
+  "direction_id": "d1-heat-descent-v6",
+  "comp": {
+    "html_sha256": "02798677423c3340ddff5c804184dfedd9e0f1154845be3348554d89e1daae52",
+    "css_sha256": "b3969f82d6b30e64cecc0b0dace56fddcee3b21546e193b79ce5670657e1a75c",
+    "copy_sha256": "50432f7b2cb60b0a8b7bb1c2e0b032dd1492fe4ac7257d11a0636eae083d359c"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "a21a1b3384d9e8fe045f3cc27b861b105f7942163f237a536447ef40cb1fcdb4",
+      "width": 1440,
+      "height": 4944
+    },
+    "mobile": {
+      "sha256": "7127b0796644d3c2878f2ed937acc295f961dadde6c06a18e362e60a7bd075ca",
+      "width": 390,
+      "height": 4418
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-05T04:40:00Z",
+    "how": "Read tool: C before|after hot sections at 601, 768 and 860 (0.6) and full pages at 768; PC 1440 and SP 390 renders are the same bytes as the previous version (comp-lane)"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2472
+      },
+      {
+        "x": 0,
+        "y": 2472,
+        "w": 1440,
+        "h": 2472
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1104
+      },
+      {
+        "x": 0,
+        "y": 1104,
+        "w": 390,
+        "h": 1104
+      },
+      {
+        "x": 0,
+        "y": 2208,
+        "w": 390,
+        "h": 1104
+      },
+      {
+        "x": 0,
+        "y": 3312,
+        "w": 390,
+        "h": 1106
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "PC 1440 の描画は前の版と同じバイト: 温度計の管と区画ごとの液の色",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 120,
+          "h": 4944
+        }
+      },
+      {
+        "what": "Hero: 縦の ゆげ湯 と 熱い、湯気が湯の面から 熱い へ立つ (前のまま)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 980
+        }
+      },
+      {
+        "what": "湯船の板と湯の表面の板、事実の列は前のまま",
+        "box": {
+          "x": 0,
+          "y": 980,
+          "w": 1440,
+          "h": 860
+        }
+      },
+      {
+        "what": "ぬるい・冷たい と水風呂の板は前のまま",
+        "box": {
+          "x": 0,
+          "y": 1840,
+          "w": 1440,
+          "h": 894
+        }
+      },
+      {
+        "what": "沸く と火の目盛り、15:00〜24:00 は前のまま",
+        "box": {
+          "x": 0,
+          "y": 2734,
+          "w": 1440,
+          "h": 663
+        }
+      },
+      {
+        "what": "壁の山の絵、のれん、夜の情報と朱の電話の札は前のまま",
+        "box": {
+          "x": 0,
+          "y": 3397,
+          "w": 1440,
+          "h": 1547
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP の描画は前の版と同じバイト: Hero の縦の ゆげ湯 と 熱い",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 844
+        }
+      },
+      {
+        "what": "湯船の板2枚と ぬるい・冷たい は前のまま",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1293
+        }
+      },
+      {
+        "what": "沸く と時間、目盛りは文から離れる (前のまま)",
+        "box": {
+          "x": 0,
+          "y": 2137,
+          "w": 390,
+          "h": 649
+        }
+      },
+      {
+        "what": "のれん・夜の情報は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 2786,
+          "w": 390,
+          "h": 1632
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 4889
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 2700
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "巨大な文字と写真の重なりは、SP でも縦に積んで残す",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 2200
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-002/concept.read.json",
+      "learn": "店の素材の形 (枝の弧) を、写真の枠の形と画面の区切りに使う",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 700,
+          "y": 3500,
+          "w": 700,
+          "h": 700
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "601〜860 で文が名前の右から右の端まで走り、湯気は 熱い の上に浮くだけで湯船の板に届かなかった (HOLD 4 の残り)",
+      "protect": [
+        "湯気が湯の面から 熱い へ立つ物語 (PC と 861 以上)",
+        "縦の ゆげ湯 と 熱い",
+        "温度計の管と区画の色"
+      ],
+      "changed": [
+        "601〜860 で文 (tagline と lead) を名前の下の左の列へ移した (1列の grid、lead は 300px で2行)",
+        "右の列を空け、湯気を湯船の板の上の端 (区画の下から 104px) から 熱い まで 560px 立てた (幅は min(300px, 100vw − 470px))"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真はすべて仮の板。山の絵も描いた仮の板",
+    "温度計に数は無い (事実に温度が無いので描かない)",
+    "601 では湯気の列が 131px と細い",
+    "のれんの ゆ と色は創作で、オーナーの確認が要る",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}

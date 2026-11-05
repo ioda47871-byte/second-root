@@ -1,0 +1,247 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "direction_id": "d1-wheel-hub-v6",
+  "comp": {
+    "html_sha256": "a4c94383471dd72323be7a9f5a57ea95e79f3d40fbf64867257a5f7e336afc9d",
+    "css_sha256": "f4db948294d41656a76e3b680c31153be6226a27401f625be3d247df004e0f19",
+    "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "a8a40e55f304f675c85342230fce83cad9383f121eae96184d1dbfae043ffaa9",
+      "width": 1440,
+      "height": 5292
+    },
+    "mobile": {
+      "sha256": "bc5bcf5b5711b980a5220f3da5309c460e33540f0d524830176c7d6411b518ae",
+      "width": 390,
+      "height": 5349
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-05T04:40:00Z",
+    "how": "Read tool: C before|after at 768 (0.5, full page), the spokes section at 601, 768 and 999 (0.45); PC 1440 and SP 390 renders are the same bytes as the previous version (comp-lane)"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2646
+      },
+      {
+        "x": 0,
+        "y": 2646,
+        "w": 1440,
+        "h": 2646
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1337
+      },
+      {
+        "x": 0,
+        "y": 1337,
+        "w": 390,
+        "h": 1337
+      },
+      {
+        "x": 0,
+        "y": 2674,
+        "w": 390,
+        "h": 1337
+      },
+      {
+        "x": 0,
+        "y": 4011,
+        "w": 390,
+        "h": 1338
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "PC 1440 の描画は前の版と同じバイト。Hero の大きな車輪と 輪 のハブ",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 960
+        }
+      },
+      {
+        "what": "4本の黄のスポークがハブの縁から伸び、傾いた板をピンで吊る (前のまま)",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 1180
+        }
+      },
+      {
+        "what": "まわる が暗い区画から黄の区画へまたぐ",
+        "box": {
+          "x": 0,
+          "y": 1900,
+          "w": 900,
+          "h": 400
+        }
+      },
+      {
+        "what": "一本ずつ。と 締める は前のまま",
+        "box": {
+          "x": 0,
+          "y": 2140,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "作業台と縦の事実、空気の計器は前のまま",
+        "box": {
+          "x": 0,
+          "y": 3040,
+          "w": 1440,
+          "h": 1492
+        }
+      },
+      {
+        "what": "来店: 電話を大きく、情報は2列、右に最後の車輪",
+        "box": {
+          "x": 0,
+          "y": 4532,
+          "w": 1440,
+          "h": 760
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP の描画は前の版と同じバイト: 車輪と背骨へ下りる腕",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 844
+        }
+      },
+      {
+        "what": "駅は背骨から短い腕とピンで吊られる (前のまま)",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1808
+        }
+      },
+      {
+        "what": "一本ずつ。・締める・作業台は前のまま",
+        "box": {
+          "x": 0,
+          "y": 2652,
+          "w": 390,
+          "h": 1458
+        }
+      },
+      {
+        "what": "空気・来店は前の版のまま。電話は折れない",
+        "box": {
+          "x": 0,
+          "y": 4110,
+          "w": 390,
+          "h": 1239
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 1400
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 4332
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 4400,
+          "w": 1440,
+          "h": 892
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1900
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "タブレット 601〜999 で、4つの駅が左上から右下へ一列の段に下り、車輪の下の右の中ほどが暗い地のまま広く空いていた (HOLD 4 の残り)",
+      "protect": [
+        "Hero の大きな車輪と 輪 のハブ",
+        "スポークの内の端がハブの縁から出ること",
+        "板の右上のピンでスポークに吊る作り",
+        "PC と SP の描画"
+      ],
+      "changed": [
+        "PC と同じく、振れ取り・パンクの2つの駅を左の列に、チェーン・ブレーキの2つを右の列に吊った (ピンは 768 単位で 260,40 / 284,330 / 600,360 / 720,660)",
+        "スポークは左右へ扇に開き、通る所の板と名前の右を通る",
+        "見出し スポークの先に、修理がある。 は左の パンク修理 の下、まわる は左下",
+        "区画の高さを 1180 から 1000 単位に詰めた"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま",
+    "1000 で板の大きさが跳ぶ",
+    "輪 の字の箱 (1.3em の四角) の角はハブの円の外に出て、車輪の細いスポークに掛かる。字の墨には掛からない (オーナーの判断)",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}

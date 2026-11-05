@@ -218,7 +218,7 @@
     "fidelity_c": {
       "desktop_1440": {
         "score": {
-          "motif_coverage": 0.9,
+          "motif_coverage": 0.903,
           "motif_largest_gap_px": 613,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -242,8 +242,8 @@
       },
       "mobile_390": {
         "score": {
-          "motif_coverage": 0.842,
-          "motif_largest_gap_px": 1029,
+          "motif_coverage": 0.852,
+          "motif_largest_gap_px": 951,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
           "boundaries_total": 5,
@@ -331,13 +331,13 @@
     },
     "fidelity_c": {
       "desktop_1440": {
-        "coverage": 0.985,
+        "coverage": 0.988,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1
       },
       "mobile_390": {
-        "coverage": 0.957,
+        "coverage": 0.968,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1

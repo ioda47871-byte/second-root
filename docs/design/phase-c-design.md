@@ -13,7 +13,7 @@
 - **今は何も通らない (証明した)。** 位置・オフセット・`z-index`・負の margin・`transform`・`isolation`・`pointer-events`・`overflow`・`mix-blend-mode`・`clip-path`・`filter`・`outline`・外側の影・`text-shadow`・`-webkit-text-stroke`・`will-change`・`contain`・グリッドの線の番号・疑似要素 (32 の宣言と3つの選択子) は、旗なし・`vertical_name`・段 B の旗すべて の3つの組で文法が拒む。C′ の3ページは HTML (インライン SVG: `HTML_ELEMENT`) と CSS で拒まれ、描画の側でも run の層の検査が `STACKING_CONTEXT` (と疑似要素のある2店で `PSEUDO_GEOMETRY_UNKNOWN`) で止める。
 - **提案: 能力 `layered_decoration` (旗 `layeredDecoration`、既定 OFF)。** 文字を持たない箱 (装飾) だけを位置で置き、回し、重ねる。文字を持つ箱は「`position: relative` + `z-index`」で持ち上げる (動かさない) ことだけ。負の margin はどの箱にも許し、届いた先は描画の検査が裁く。疑似要素・SVG・ビューポートの単位・ブレンド・切り抜き・フィルター・外側の影・輪郭線・`pointer-events` は入れない (§5)。
 - **描画の検査 (V2 と V4) は、文字の字形の箱に何が届くかを、描画の順で裁く (§3)。** 装飾が字形の上に描かれれば、色や透明度に依らず落ちる。守る文字 (事実・免責・dt/dd・店名) の下には、文字自身か祖先の**不透明で平らな板** (plate) が間に入らない限り、装飾は入れない。順序を証明できない描き方 (外側の影・輪郭線・フィルターのにじみ・測れない疑似要素・文字の外にあふれた文字) は落とす (fail closed)。
-- **試作はこれを示した (§6):** 46 の落ちるべき例がすべて落ち、9 の通るべき例がすべて通る (Fresh Review・CI・再レビュー4回の後。最初の版は 27)。今の run の当たり判定 (`GEOMETRY_SCRIPT` の 15 点) は、そのうち 1px の線・疑似要素・SVG・`pointer-events: none`・輪郭線・影・下に敷いた文字 を見逃す。今の V2 のモデル (`LAYER_SCRIPT`) は疑似要素・SVG・文字の上の文字を見ない。どちらも、今は許可一覧が先に拒むので穴ではないが、**段 C ではそのまま使えない**。
+- **試作はこれを示した (§6):** 48 の落ちるべき例がすべて落ち、9 の通るべき例がすべて通る (Fresh Review・CI・再レビュー4回と DEV-178 の後。最初の版は 27)。今の run の当たり判定 (`GEOMETRY_SCRIPT` の 15 点) は、そのうち 1px の線・疑似要素・SVG・`pointer-events: none`・輪郭線・影・下に敷いた文字 を見逃す。今の V2 のモデル (`LAYER_SCRIPT`) は疑似要素・SVG・文字の上の文字を見ない。どちらも、今は許可一覧が先に拒むので穴ではないが、**段 C ではそのまま使えない**。
 - **3店 (§7):** 提案の文法で strict B に層を足したページ (つぐ手: 板の上の金の割れ目と線の断面を貫く継ぎ目、輪: ハブからのスポークと境界にかかる空気入れの計器、ゆげ湯: 全ページの温度計の管・壁と夜の境にかかるのれん・熱い湯の区画に食い込む湯船の板) は、**320〜1920 の 1px の全幅で strict B と同じコードしか出ない** (strict にもともとあるタブレットのはみ出しだけ)。C′ は確かめる幅のすべてで落ちる。
 - **得は小さい。正直に言う。** C′ の見た目の大半 (曲がった継ぎ目、破片の形の板、輪郭の巨大な語、湯気、のれんの「ゆ」、板の影) は、インライン SVG・`clip-path`・フィルター・`aria-hidden` の文字・`-webkit-text-stroke`・vw の位置 に頼っていて、`layered_decoration` だけでは戻らない。戻るのは「区画の境をまたぐ」「板が隣の区画に食い込む」「装飾が画像の上や文字の間を通る」という**構図**である。曲線と形は N1 (装飾の SVG) と段 D が要る。
 
@@ -64,7 +64,7 @@
 
 ## 2. 守るもの
 
-- **守る文字 (protected):** 免責 (`[data-comp-disclosure]`、研究のページでは `.fictional`)、`dt`・`dd`、`h1` (店名)、文字の全体が事実の値 (facts pack) を含むか、6 字以上で事実の値の一部である要素、**そして要素をまたいで書かれた事実の一部** (DEV-175 の4回目の再レビュー H1: `<p>電話 000-0000-<span>0712</span></p>` の 0712 は、自分の要素の文字が事実を含まず 6 字未満なので普通の本文だった。今は、body の文字の節を DOM の順に1本につなぎ、元の1字ごとに正規化して (NFKD、結合記号・書式文字・空白を落とす)、事実の出現と重なる節を守る文字にする: `FACT_NODES_JS`。flex・grid の項目や2つの段落に分かれた事実、全角の数字、ゼロ幅スペースを挟んだ事実も守る (5回目の再レビュー)。守る文字を増やすだけで、何も緩めない)。run の `protectedOwner` (layers.ts) より広い (店名の短い形・事実の文の折り返しを含む)。
+- **守る文字 (protected):** 免責 (`[data-comp-disclosure]`、研究のページでは `.fictional`)、`dt`・`dd`、`h1` (店名)、文字の全体が事実の値 (facts pack) を含むか、6 字以上で事実の値の一部である要素、**そして要素をまたいで書かれた事実の一部** (DEV-175 の4回目の再レビュー H1: `<p>電話 000-0000-<span>0712</span></p>` の 0712 は、自分の要素の文字が事実を含まず 6 字未満なので普通の本文だった。今は、body の文字の節を DOM の順に1本につなぎ、元の1字ごとに正規化して (NFKD、結合記号・書式文字・空白を落とす)、事実の出現と重なる節を守る文字にする: `FACT_NODES_JS`。flex・grid の項目や2つの段落に分かれた事実、全角の数字、ゼロ幅スペースを挟んだ事実も守る (5回目の再レビュー)。DEV-178 で、紛らわしい字を両側で1つの形に寄せた: U+2010〜2015・U+2212・U+30FC を `-` に、U+FF5E・U+301C を `〜` に、1字を1字へ、NFKD の前と後で (段 D の設計 §4.5)。守る文字を増やすだけで、何も緩めない)。run の `protectedOwner` (layers.ts) より広い (店名の短い形・事実の文の折り返しを含む)。
 - **普通の本文 (ordinary):** それ以外のすべての文字の節。`aria-hidden` の文字も描かれるので数える (run は `TEXT_ARIA_HIDDEN` でそもそも拒む)。
 - **字形の箱 (glyph box) = 墨の箱:** 文字ごとに、要素の書体で canvas の `measureText` が返す墨の範囲 (`actualBoundingBox*`) を、Range の箱の上端 + 書体の ascent で求めた基線に置き、にじみの 1px 広げたもの。行送りにも書体の content area にも依らない。守る文字は V4 でさらに 1px 広げる (V3b と同じ決まり)。縦書きは Range の箱を字の大きさの 1.3 倍に切ったもの (縦の墨の測り方は作っていない)。
 - **なぜ墨の箱か (CI で分かったこと、§2.1)。** 最初の版は「Range の箱を縦に 1.3em に切ったもの」だった。Range の箱は書体の content area で、CI の書体 (IPA の無い ubuntu、Playwright の書体) のように content area が高い書体では、行送り 1 の大きな字 (つぐ手の店名 200px) の箱が自分の要素の箱の外へ出る。そこへ隣の要素 (器の絵) が届くと、当たり判定の束に文字が出ない点になり、**fail closed で `OVERLAP_ORDER_UNPROVEN` を出した**。strict B (重ねの無い、今のページ) が落ちたので、規則でなく測り方の誤りである (誤検知)。
@@ -206,7 +206,7 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 
 テスト: `tests/unit/design-agent/comp-impl/phase-c-overlap.test.ts`。道具: `overlap-harness.ts`。描画は Chromium 1194、JS 無効、通信遮断、deviceScaleFactor 1。
 
-**落ちるべき例 (46。最初の 27 に、Fresh Review で 5、CI と2回目の再レビューで 5、3回目の再レビューで 4、4回目の再レビューで 2、DEV-175 の4回目と5回目の再レビューで 3 を足した。画素の列はこの容器の書体での結果で、`tabular-nums` の例は書体に依る: Inter と数字の機能の無い CI では画素は覆いを見ない。テストは、書体が本当に数字を広げるとき (`tabular-nums` の有無で "1111" の幅を測って広くなるとき) は `PIXEL_COVER_PROTECTED` も求め、そうでなければ幾何の fail closed だけを求める)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
+**落ちるべき例 (48。最初の 27 に、Fresh Review で 5、CI と2回目の再レビューで 5、3回目の再レビューで 4、4回目の再レビューで 2、DEV-175 の4回目と5回目の再レビューで 3、DEV-178 で 2 を足した。画素の列はこの容器の書体での結果で、`tabular-nums` の例は書体に依る: Inter と数字の機能の無い CI では画素は覆いを見ない。テストは、書体が本当に数字を広げるとき (`tabular-nums` の有無で "1111" の幅を測って広くなるとき) は `PIXEL_COVER_PROTECTED` も求め、そうでなければ幾何の fail closed だけを求める)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
 
 | 例 | 試作 | 画素 (この容器の書体) | 今の V2 (覆い / 非 content) | 今の当たり判定 |
 |---|---|---|---|---|
@@ -254,6 +254,8 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 | a fact split over elements: its last digits (a span) covered (DEV-175 で足した) | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED` | — | — |
 | a fact split over flex items: its last digits covered (DEV-175) | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED` | — | — |
 | a fact split over two blocks: the second block covered (DEV-175) | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED` | — | — |
+| a fact written with hyphens U+2010: its last digits (a span) covered (DEV-178) | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED`, `GROUND_NOT_FLAT` | 2/0 | — |
+| a fact in full-width digits: the line covered (DEV-178) | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED`, `GROUND_NOT_FLAT` | 2/0 | — |
 | ordinary text covered | `PAINT_ABOVE_TEXT` | `PIXEL_COVER_TEXT` | 1/0 | — |
 | ordinary text over a decoration with no plate | `TEXT_ON_DECORATION` | — | 0/0 | — |
 
@@ -377,6 +379,7 @@ strict B と C′ の SHA は DEV-171・DEV-172 の記録と同じだった。
 - **M29 は生き残る。** 「別の文字の墨が自分の箱の外にあり、それが覆われ、その墨がこの文字の箱に入る」例を、fail closed の決まり (§2.3) をすり抜ける形で作れなかった (作れる形は、先に `GLYPHS_UNMEASURED` か `PIXEL_INK_OUTSIDE_GLYPHS` で落ちる)。決まりは二重の守りとして残し、テストで証明していないことを記録する。
 - 墨の箱に変えた後、M4 (守る文字の 1px) と M20 (墨の箱を Range の箱に戻す) が 0 件で生き残った。前者は「事実の墨の 1.3px 下の線は落ち、同じ線が普通の本文の下なら通る」、後者は「content area が 1.45em の書体で行送り 1 の2段落は重ならない」のテストを足して落ちるようにした。M13 は最初の版で生き残り、「原子的でない箱の地は板にならない」例を足した (前の報告)。
 - 走らせ方: `scratchpad/dev173/scripts/mutate.py` (リポジトリの外)。1つごとに道具を元に戻し、終わりに `git status` で道具に差が無いことを確かめた。3店の組 (掃引) は時間のため変異では走らせていない。
+- **DEV-178: 段 D の変異 M58・M59・M60 をこのテストでも走らせた。** 3つとも `FACT_NODES_JS` (このテストと段 D が共有する守る文字の照らし合わせ) を壊す。合成の例の組 (`-t "on synthetic probes"`、65 件) で、M58 (事実をブロックごとにしか照らさない) は 2 / 65、M59 (NFKD と書式文字の正規化をしない) は 1 / 65、M60 (紛らわしい字を寄せない) は 1 / 65 が落ちる。M59 と M60 を落とすために、全角の数字の例と U+2010 の例をこの組に足した (§6 の表の最後の2つの前)。走らせ方: `scratchpad/dev178/mutate.py` (`TARGET=c`)。 例を足した後、`phase-c-overlap.test.ts` 全体 (79 件) が、この容器の書体と `fonts-ci.conf` (`FONTCONFIG_FILE`) の両方で通った (424 秒・438 秒)。
 
 ## 10. 証明していないこと
 

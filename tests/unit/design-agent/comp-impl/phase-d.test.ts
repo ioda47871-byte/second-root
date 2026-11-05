@@ -55,6 +55,8 @@ const FACT = "000-0000-0712";
 const NAME = "架空の店";
 /** A second fact for the split-fact probes (re-review 4 H1). */
 const CLOSED = "水曜・木曜";
+/** A fact with a wave dash (U+301C), for the confusable-character probes (DEV-178). */
+const HOURS = "10:00〜16:00";
 const ALL: PhaseDFeatures = { vertical: true, rotation: true, outline: true };
 const plan = (features: PhaseDFeatures, protect: readonly string[] = [FACT, NAME]): PhaseDPlan => ({ protect, names: [NAME], features });
 const CHECKED = [1440, 1280, 1024, 768, 601, 600, 480, 390, 375, 360, 340, 320] as const;
@@ -359,6 +361,11 @@ const MUST_FAIL: Probe[] = [
   { name: "part of a fact stroked: split over two blocks", body: '<div class="wrap"><p>000-0000-</p><p class="o">0712</p></div>', css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", grammar: { outlinedType: true } },
   { name: "part of a fact stroked: full-width digits (NFKD)", body: '<div class="wrap"><p>電話 ０００-００００-<span class="o">０７１２</span></p></div>', css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", grammar: { outlinedType: true } },
   { name: "part of a fact stroked: a zero-width space inside the fact (format characters dropped)", body: '<div class="wrap"><p>電話 000-0000-07&#8203;<span class="o">12</span></p></div>', css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", grammar: { outlinedType: true } },
+  // DEV-178 (the DEV-175 review's Low): confusable characters fold on both sides — a hyphen (U+2010) for the fact's "-", a
+  // full-width tilde (U+FF5E, which NFKD turns into "~") for its wave dash 〜
+  { name: "part of a fact stroked: hyphens U+2010 for the fact's - (confusables folded)", body: '<div class="wrap"><p>電話 000\u20100000\u2010<span class="o">0712</span></p></div>', css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", grammar: { outlinedType: true } },
+  { name: "part of a fact stroked: a full-width tilde U+FF5E for the fact's 〜 (confusables folded before NFKD)", body: '<div class="wrap"><p>時間 10:00\uff5e<span class="o">16:00</span></p></div>', css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", protect: [FACT, NAME, HOURS], grammar: { outlinedType: true } },
+  { name: "part of a fact stroked: an ASCII tilde for the fact's 〜 (confusables folded; DEV-178 Fresh Review)", body: '<div class="wrap"><p>時間 10:00~<span class="o">16:00</span></p></div>', css: ".o { font-size: 32px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED", protect: [FACT, NAME, HOURS], grammar: { outlinedType: true } },
   { name: "a stroke on a container reaches the fact (it inherits)", body: `<div class="wrap o"><p class="w">継ぐ</p><p>${FACT}</p></div>`, css: ".o { -webkit-text-stroke: 1px #c79a45; } .w { font-size: 64px; }", features: F_O, code: "PHASE_D_PROTECTED_STROKED" },
   { name: "a paragraph stroked (readable text, not a word)", body: '<div class="wrap"><p class="o">割れた器を漆でつなぎ、継ぎ目に金を蒔いて仕上げます。</p></div>', css: ".o { font-size: 28px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_STROKE_ON_TEXT" },
   { name: "small text stroked", body: '<div class="wrap"><p class="o">小さな語</p></div>', css: ".o { font-size: 16px; -webkit-text-stroke: 0.5px #c79a45; }", features: F_O, code: "PHASE_D_STROKE_ON_TEXT" },
