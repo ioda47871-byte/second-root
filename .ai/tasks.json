@@ -8418,7 +8418,7 @@
       "human_approval_triggers": [
         "デザインの採否と判断事項"
       ],
-      "note": ""
+      "note": "2026-11-05: 輪 と ゆげ湯 の部分をこの branch で作った (判断ごとの別案の版 8 つ、docs/design/owner-decision-sheet.md の下書き、.ai/reviews/DEV-183.md)。つぐ手 の節は DEV-179 の後に足す。status は backlog のまま: review にすると依存の DEV-179 が done でないため tests/unit/ai-tasks.test.ts の依存の規則に反する。DEV-179 が done になったら review にする。"
     }
   ]
 }
