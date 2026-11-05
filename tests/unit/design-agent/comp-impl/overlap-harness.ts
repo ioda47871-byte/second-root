@@ -29,7 +29,8 @@ const POC = join(REPO, "design-library/research/quality-pipeline/poc");
  * hyphen …) and whitespace dropped: re-review 5 L1) with the node that owns every output character; each protected string
  * is normalised the same way and every occurrence in the joined text marks its owners. Matching across blocks and
  * dropping marks (が and か both read か) only add protection: the fail-closed direction. Confusable characters fold to one
- * form on both sides (DEV-178, the DEV-175 review's Low): U+2010–2015, U+2212 and U+30FC to "-", U+FF5E and U+301C to 〜,
+ * form on both sides (DEV-178, the DEV-175 review's Low): U+2010–2015, U+2212, U+30FC, U+2043 and U+2E3A to "-"; U+FF5E, U+301C,
+ * ASCII "~", U+223C, U+2053 and U+3030 to 〜 (the ASCII tilde and the rest added after the DEV-178 Fresh Review),
  * one character to one character, so the owner of each output character stays the node it came from (protection only:
  * a dash that is not the fact's hyphen may now match it). Shared by phase-d-harness.ts.
  */
@@ -37,7 +38,7 @@ export const FACT_NODES_JS = String.raw`(protect) => {
   // confusables (DEV-178): hyphen-like dashes, the minus sign and the long-vowel mark read as "-"; the full-width tilde and the
   // wave dash read as 〜. One character to one character, applied to each character before and after NFKD (NFKD turns
   // U+FF5E into "~", so the map must see it first), on the page's text and on the protected strings alike.
-  const CONFUSABLE = { "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-", "\u30fc": "-", "\uff5e": "\u301c", "\u301c": "\u301c" };
+  const CONFUSABLE = { "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-", "\u30fc": "-", "\u2043": "-", "\u2e3a": "-", "\uff5e": "\u301c", "\u301c": "\u301c", "~": "\u301c", "\u223c": "\u301c", "\u2053": "\u301c", "\u3030": "\u301c" };
   const fold = (c) => CONFUSABLE[c] || c;
   const norm = (ch) => Array.from(fold(ch).normalize("NFKD")).map(fold).join("").replace(/[\p{M}\p{Cf}\s]/gu, "");
   const normAll = (s) => Array.from(s || "").map(norm).join("");

@@ -319,7 +319,7 @@ Issue #193 の HOLD の一覧 (DEV-177 の merge の記録) の 5・6・7・8 �
 
 ## v-next5: HOLD 4 の残りの構図を直した (2026-11-05、DEV-178)
 
-`docs/design/three-shop-evaluation.md` が残した HOLD 4 (安くは直せないとした3つの構図の弱さ) と、つぐ手 SP の金の線を、新しい版で直した。古い版と `photo-slots.json`・`photo-slot-edges.json` は変えていない。copy.json は3店とも前の版と同じバイトである。写真・ラスター画像・Web フォント・スクリプト・通信は足していない。
+`docs/design/three-shop-evaluation.md` が残した HOLD 4 (安くは直せないとした3つの構図の弱さ) と、つぐ手 SP の金の線を、新しい版で直した。ただし、つぐ手の写真が左に2つ続く弱さは、PC (1200 以上) だけを直し、601〜1199 は間に相談の見出しを入れて緩和しただけである (板は1列のまま、HOLD。DEV-178 の Fresh Review の L3)。古い版と `photo-slots.json`・`photo-slot-edges.json` は変えていない。copy.json は3店とも前の版と同じバイトである。写真・ラスター画像・Web フォント・スクリプト・通信は足していない。
 
 - 新しいカンプ: つぐ手 `comps/d1-seam-across-v7`、輪 `comps/d1-wheel-hub-v6`、ゆげ湯 `comps/d1-heat-descent-v6`。
 - 新しい C: つぐ手 `fidelity/d1-v8`、輪 `fidelity/d1-v7`、ゆげ湯 `fidelity/d1-v7`。カンプと同じ HTML と文の記録で、描画は同じバイトである。
