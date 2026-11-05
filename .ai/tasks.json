@@ -8060,7 +8060,7 @@
     {
       "id": "DEV-176",
       "title": "3店舗の制作工程の統合検証とデザイン品質の評価",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-175"
@@ -8096,7 +8096,7 @@
         "本番への反映",
         "成功例の水準と認定すること (オーナーだけが決める)"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 研究 PR #217。評価は docs/design/three-shop-evaluation.md、HOLD 2/5/6/7/8 を修正 (輪 d1-v6、ゆげ湯 d1-v6、つぐ手 d1-v7)。成功例の水準ではない。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 研究 PR #217。評価は docs/design/three-shop-evaluation.md、HOLD 2/5/6/7/8 を修正 (輪 d1-v6、ゆげ湯 d1-v6、つぐ手 d1-v7)。成功例の水準ではない。 PR #217 で develop へ merge した (6dc4d4b)。"
     },
     {
       "id": "DEV-177",
@@ -8150,6 +8150,59 @@
         "つぐ手の SP の Hero の器を小さくした構図の確認"
       ],
       "note": "新しい C は新しいカンプと同じ HTML・文の記録を使い、描画は同じバイト。確かめた道具はリポジトリの外の使い捨て (字の箱は Range の箱を 1.3em に切ったもので、墨の箱より大きく、数は多めに出る)。HOLD: 輪 の字の箱の角 (墨では 0)、つぐ手 SP の名前の向き。成功の判定ではない。写真は仮の板のまま。 PR #215 で develop へ merge した (6bb6335)。"
+    },
+    {
+      "id": "DEV-178",
+      "title": "3店のカンプの品質 4 (HOLD 4 の残り: つぐ手の左の写真2つと SP の金の線、輪のタブレットの右下、ゆげ湯 601〜860 の湯気) と研究の道具の強化 — 研究の道、架空の店 (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-176"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-178-comp-quality-4",
+      "purpose": "three-shop-evaluation.md が残した HOLD 4 の構図の弱さ (つぐ手の左に写真が2つ続く、輪のタブレットの右下の空き、ゆげ湯 601〜860 の湯気が湯に届かない、つぐ手 SP 600 以下の金の線が結び目で止まる) を、新しい版のカンプと C で構図ごと直す。あわせて DEV-175 のレビューの Low (FACT_NODES_JS の紛らわしい字、変異を phase-c-overlap でも落とす) で研究の道具を強める。古い版は残す。",
+      "acceptance_criteria": [
+        "新しいカンプと C は変えた店だけ、前の版の次の番号 (つぐ手 comps/d1-seam-across-v7・fidelity/d1-v8、輪 comps/d1-wheel-hub-v6・fidelity/d1-v7、ゆげ湯 comps/d1-heat-descent-v6・fidelity/d1-v7)",
+        "comp-lane の所見 0 件、--check-review が ok、C の描画はカンプと同じバイト",
+        "copy.json は前の版と同じバイト。事実・写真・ラスター画像・Web フォント・スクリプト・通信を足さない",
+        "fidelity-spec.json の fidelity_c を新しい C に指し替え、fidelity-report.json を作り直す",
+        "変えた幅の範囲を 1px ごとに3つの書体の設定で掃引し、当たりの幅は1幅ずつ描き直す。解けないものは HOLD として記録する (PASS に数えない)",
+        "FACT_NODES_JS に紛らわしい字の写像 (NFKD の後、両側、1字ごと) を足し、段 D の例と変異を足す (守りを足すだけ)。変異 M58・M59 と新しい変異を phase-c-overlap.test.ts でも落とす",
+        "phase-d.test.ts と phase-c-overlap.test.ts を、この容器の書体と fonts-ci.conf の両方で全部走らせる",
+        "docs/design/comp-impl-loss-analysis.md に v-next5 の節、phase-d-design.md §4.5/§13 と phase-c-design.md に数"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
+        "npx vitest run tests/unit/design-agent/comp-impl/phase-d.test.ts",
+        "npx vitest run tests/unit/design-agent/comp-impl/phase-c-overlap.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/",
+        "docs/design/",
+        "tests/unit/design-agent/comp-impl/ (研究の道具とテストだけ)",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "photo-slots.json・photo-slot-edges.json の変更",
+        "古い版のカンプ・C の変更",
+        "comp-impl の許可一覧の変更",
+        "事実の追加 (温度の数など)",
+        "実写真・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB",
+        ".github/workflows",
+        "依存の追加",
+        "copy.json の文の変更",
+        "lib/**・app/**・package.json の変更"
+      ],
+      "human_approval_triggers": [
+        "カンプをオーナーに見せて採るかの判断",
+        "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認",
+        "つぐ手の SP の Hero の器を小さくした構図の確認"
+      ],
+      "note": "能力は OFF のまま (APPROVED_CAPABILITIES は空)。HOLD 1 (輪 の字の箱の角)・HOLD 3 (つぐ手 SP の名前)・縦の事実の文・創作の文・CTA の位置はオーナーの判断として変えない。成功の判定ではない。写真は仮の板のまま。"
     }
   ]
 }
