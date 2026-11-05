@@ -8207,7 +8207,7 @@
     {
       "id": "DEV-179",
       "title": "つぐ手 320〜1199px の左に写真が2つ続く問題と、CI に近い書体での縦の文字の重なり (縦の事実の文を横書きで成立させる案を含む) — 研究の道、架空の店",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8215,14 +8215,15 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-179-tsugute-layout",
-      "purpose": "DEV-178 で緩和・HOLD に残ったつぐ手 320〜1199 の写真の並びを直し、CI に近い書体 (IPAMincho なし) で縦の事実の文と句の字が重なる問題を、安全規則を緩めずに解く。縦の事実の文はまず横書きで成立するデザインを作る (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "DEV-178 で緩和・HOLD に残ったつぐ手 320〜1199 の写真の並びを直し、CI に近い書体 (IPAMincho なし) で縦の事実の文と句の字が重なる問題を、安全規則を緩めずに解く。縦の事実の文はまず横書きで成立するデザインを作る (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "写真が左右交互になる案と、線の核を保つ別案を、PC1440・tablet768・SP390 の前後の画像で比べる",
         "金の線が事実・説明・営業時間に重ならない。横のはみ出し 0。CI に近い書体での字の重なり 0",
         "変えた幅を 1px ごとに3つの書体の設定 (CI に近い書体を含む) で掃引する。直せなければ HOLD のまま (PASS に数えない)",
         "SP の店名は今の横書きを基準とし、縦置きを戻す案を別の画像で比べる (オーナーが選ぶまで確定しない)",
         "事実パックにある電話・営業時間・所在地への情報の導線をファーストビューか中間に置く別案 (予約・決済・在庫を作らない)",
-        "新しい版は前の版の次の番号。古い版は変えない"
+        "新しい版は前の版の次の番号。古い版は変えない",
+        "幅ごとの可読性 (行の長さ・字の大きさ・コントラスト) を確かめる"
       ],
       "required_tests": [
         "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
@@ -8252,12 +8253,12 @@
         "SP の店名の向き",
         "CTA の導線の案"
       ],
-      "note": "縦の事実の文は段 D の規則を緩めない。"
+      "note": "縦の事実の文は段 D の規則を緩めない。 縦の事実の文の横書き・SP の店名・CTA の導線は推奨 (C 節) に沿った案で、オーナーが選ぶまで確定しない。"
     },
     {
       "id": "DEV-180",
       "title": "gradient_ground と layered_decoration の安全上の未解決点の修正と、能力ごとの承認資料 (最初に ON を求める単一能力の選定)",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8265,7 +8266,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-180-capability-readiness",
-      "purpose": "研究を実用化へ近づける。DEV-172 が記録したグラデーションの境界・測定領域の穴と、段 C の見逃し (1px の線・擬似要素・SVG、守る文字以外の普通の本文への重なり) を、ON の前に塞ぐ (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "研究を実用化へ近づける。DEV-172 が記録したグラデーションの境界・測定領域の穴と、段 C の見逃し (1px の線・擬似要素・SVG、守る文字以外の普通の本文への重なり) を、ON の前に塞ぐ (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "能力ごとに『安全の未解決点 → 修正案 → 必要な本番の差分 → 画像で得る改善 → CI・レビュー → 未検証の環境』の判断資料",
         "研究の道具とテストで塞げる穴は塞ぎ、守りを足すだけにする",
@@ -8291,11 +8292,14 @@
         "main・Production・Staging・DB・worker",
         ".github/workflows",
         "依存の追加",
-        "事実の追加・copy.json の事実の変更"
+        "事実の追加・copy.json の事実の変更",
+        "研究の branch での lib/** の変更 (本番の差分は別 branch の draft PR だけ)",
+        "承認なしに APPROVED_CAPABILITIES を変える差分を merge すること"
       ],
       "human_approval_triggers": [
         "能力の ON",
-        "本番の CSS ゲートの変更"
+        "本番の CSS ゲートの変更",
+        "本番の差分の draft PR を ready にすること・merge すること (オーナーの明示の承認まで draft のまま)"
       ],
       "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。"
     },
@@ -8310,7 +8314,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-181-production-conditions",
-      "purpose": "N1 と段 D の各機能について、安全条件・オーナーの目視の記録・WebKit/Firefox など未検証の環境を列挙し、ON に要るものを機能ごとに整理する (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "N1 と段 D の各機能について、安全条件・オーナーの目視の記録・WebKit/Firefox など未検証の環境を列挙し、ON に要るものを機能ごとに整理する (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "機能ごとの ON の条件・残る BLOCKED・未検証の環境の表",
         "オーナーの目視の記録を作らない (要るものとして挙げるだけ)",
@@ -8341,7 +8345,7 @@
     {
       "id": "DEV-182",
       "title": "つぐ手の実写真 6 枠の受け取りと差し替えの準備 (非公開の受け取り・権利の記録・SHA と画素・PC/SP の切り抜き)",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P2",
       "depends_on": [
         "DEV-178"
@@ -8349,11 +8353,12 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-182-tsugute-photo-intake",
-      "purpose": "実写真が届いたらすぐ差し替えられるよう、受け取りの手順と道具の準備を続ける (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "実写真が届いたらすぐ差し替えられるよう、受け取りの手順と道具の準備を続ける (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "写真をリポジトリに置かない (公開リポジトリ)",
         "未提供の写真をスクレイピング・生成・購入しない",
-        "権利の記録・SHA・画素・CSS の区切りごとの切り抜きの手順を確かめる"
+        "権利の記録・SHA・画素・CSS の区切りごとの切り抜きの手順を確かめる",
+        "素材が無ければ枠の研究だけを進め、切り抜きの微調整を成功の判定に結びつけない"
       ],
       "required_tests": [
         "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
@@ -8382,19 +8387,20 @@
     {
       "id": "DEV-183",
       "title": "3店の最新版の PC・tablet・SP の比較画像と、オーナーがまとめて選べるデザイン判断のシート",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
-        "DEV-179"
+        "DEV-178"
       ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-183-owner-sheet",
-      "purpose": "オーナーが3店のデザインを評価し、採否・コピー・写真の優先順位・判断事項をまとめて選べるようにする (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "オーナーが3店のデザインを評価し、採否・コピー・写真の優先順位・判断事項をまとめて選べるようにする (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "問題の幅 (つぐ手 320〜1199、輪 tablet、ゆげ湯 601〜860) を含む比較画像",
         "判断事項ごとに複数の選択肢と実画像 (輪 の字の箱の角、つぐ手 SP の店名、CTA の導線、縦の事実の文の横書き案)",
-        "モチーフの位置の数を品質の採点にしない。仮写真なら placeholder_limited・成功の判定なし"
+        "モチーフの位置の数を品質の採点にしない。仮写真なら placeholder_limited・成功の判定なし",
+        "創作の文の候補 (待つ・区画のラベル・のれんの ゆ) は候補としてだけ載せ、採用済みとしない"
       ],
       "required_tests": [
         "npx vitest run tests/unit/ai-tasks.test.ts"
