@@ -346,6 +346,36 @@ describe("DEV-184: the d1-v10 inventory and the transform for boards with drawn 
     // a placeholder left behind by a missing slot is still refused
     expect(() => transformHtml(html, slotsIn.slice(0, 5))).toThrow(/CAPTION_LEFT/);
   });
+  // PR #226 review M1: the seam board is an allowlist (elements and attributes, any case), not a denylist
+  it.each([
+    ["<Text>文</Text>"],
+    ["<foreignobject><p>x</p></foreignobject>"],
+    ['<image href="https://example.invalid/x.png"/>'],
+    ["<script>alert(1)</script>"],
+    ["<style>.photo{display:none}</style>"],
+    ["<title>写真</title>"],
+    ["<TEXT>x</TEXT>"],
+    ['<use href="#x"/>'],
+    ['<path d="M0 0" onclick="x"/>'],
+    ['<path d="M0 0" style="display:none"/>'],
+    ["<!-- note -->"],
+    ["stray text"],
+    ['<svg class="dmg" aria-hidden="true"></svg>'],
+  ])("refuses a seam board with %s inside a seam drawing", (inject) => {
+    const bad = html.replace('<path class="dmg-half"', `${inject}<path class="dmg-half"`);
+    expect(bad).not.toBe(html);
+    expect(() => transformHtml(bad, slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+  });
+  it("refuses a seam board with an element beside the drawings, and takes the real seams in any tag case", () => {
+    expect(() => transformHtml(html.replace('<svg class="dmg dmg-sp" viewBox="0 0 560 400"', '<img src="x.png"><svg class="dmg dmg-sp" viewBox="0 0 560 400"'), slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
+    expect(() => transformHtml(html.replace('<path class="dmg-half"', '<PATH class="dmg-half"'), slotsIn)).not.toThrow();
+  });
+  // PR #226 review L1: any <wbr> spelling left with the placeholder prefix is still a placeholder
+  it.each([["写真｜<wbr/>"], ["写真｜<wbr >"], ["写<WBR>真｜"], ["写<Wbr />真｜"]])("CAPTION_LEFT sees through %s", (left) => {
+    const bad = html.replace("<p class=\"class-fact\">", `<p class="class-fact">${left}`);
+    expect(bad).not.toBe(html);
+    expect(() => transformHtml(bad, slotsIn)).toThrow(/CAPTION_LEFT/);
+  });
 });
 
 describe("photo-swap: the つぐ手 C page with synthetic photos", () => {

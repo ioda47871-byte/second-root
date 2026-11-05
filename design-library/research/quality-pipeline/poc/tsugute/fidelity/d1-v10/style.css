@@ -523,9 +523,15 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
      after 漆が (<wbr>): where 漆が乾くまで、 no longer fits one line at 19px or more (below about 390), the fact keeps 19px and
      breaks after 漆が (the longest piece is then 5 glyphs). 390 and up are as before.
    - 600 and below: the phrase broke 線が固まるの / を、 (overflow-wrap). The HTML breaks it only at 線が / 固まるのを、 / 待つ。
-   - the info route's facts were 14px at 601–1200 and 14.4px at 320: 16px at 601 and up, 15px at 600 and below. */
+   - the info route's facts were 14px at 601–1200 and 14.4px at 320: 16px at 601 and up, 15px at 600 and below.
+   - the info route also names the closed days 定休 水曜・木曜 (the same words and label as 来店), after 時間, so the hours
+     are not read as every day. One more row: 壊れ方 starts 70px lower at 1199 and below. */
 .info-route dd { font-size: clamp(16px, 1.18vw, 17px); }
+@media (max-width: 1199px) {
+  .damage { padding-top: 260px; }
+}
 @media (max-width: 600px) {
+  .damage { padding-top: 390px; }
   .month-fact { font-size: min(20px, max(calc((50vw - 56px) / 7.3), min(19px, calc((50vw - 56px) / 5.3)))); }
   .info-route { width: calc(50% - 32px); }
   .info-route dd { font-size: 15px; }

@@ -227,7 +227,8 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
  * DEV-184 (d1-v10): a caption may carry <wbr> between its letters (a line-break hint, no text). A board is what its
  * slot's placeholder says it is, nothing else: "css_board" is an empty <div class="photo"></div>; "css_board_with_svg"
  * is a <div class="photo"> holding only drawn seams (<svg class="dmg …" aria-hidden="true">…</svg>, one or more) and
- * white space. The picture goes in first and the seams stay after it, so the design's gold seams are drawn above the
+ * white space, checked against an ALLOWLIST (seamBoardInner): only the SVG shape elements and attributes the seams use,
+ * matched without regard to case; any other element, attribute, text, comment or stray "<" fails closed. The picture goes in first and the seams stay after it, so the design's gold seams are drawn above the
  * photo. A board of the other kind, or with anything else in it, is BOARD_NOT_FOUND.
  */
 export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSlot; alt: string; files: Record<"desktop" | "tablet" | "mobile", string>; size: { width: number; height: number } }>): string {
@@ -242,25 +243,66 @@ export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSl
     const figEnd = out.indexOf("</figure>", at);
     if (figStart < 0 || figEnd < 0) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
     const seg = out.slice(figStart, figEnd).replace(hits[0]![0], "");
-    const board = slot.placeholder === "css_board_with_svg" ? SEAM_BOARD : /<div class="photo"><\/div>/g;
-    const boards = [...seg.matchAll(board)];
-    if (boards.length !== 1 || (seg.match(/<div class="photo">/g) ?? []).length !== 1) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
-    const seams = boards[0]![1] ?? "";
+    const open = '<div class="photo">';
+    const start = seg.indexOf(open);
+    if (start < 0 || seg.indexOf(open, start + 1) >= 0) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+    const end = seg.indexOf("</div>", start);
+    if (end < 0) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+    const inner = seg.slice(start + open.length, end);
+    const seams = slot.placeholder === "css_board_with_svg" ? seamBoardInner(inner) : inner === "" ? "" : null;
+    if (seams === null) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
     const sources = RANGES.filter((r) => r.media)
       .slice()
       .reverse()
       .map((r) => `<source media="${r.media}" srcset="${escapeHtml(files[r.key])}">`)
       .join("");
     const picture = `<div class="photo"><picture data-slot="${slot.slot_id}">${sources}<img src="${escapeHtml(files.desktop)}" alt="${escapeHtml(alt)}" width="${size.width}" height="${size.height}"></picture>${seams}</div>`;
-    // a replacer function: a replacement string would expand $&, $`, $' and $$ found in the alt text
-    out = out.slice(0, figStart) + seg.slice(0, boards[0]!.index!) + picture + seg.slice(boards[0]!.index! + boards[0]![0].length) + out.slice(figEnd);
+    // plain concatenation: no replacement-string expansion of $&, $`, $' or $$ found in the alt text
+    out = out.slice(0, figStart) + seg.slice(0, start) + picture + seg.slice(end + "</div>".length) + out.slice(figEnd);
   }
-  if (out.replace(/<wbr>/g, "").includes(CAPTION_PREFIX)) throw new Error("CAPTION_LEFT: 写真｜ text remains in the page");
+  if (out.replace(/<wbr\s*\/?>/gi, "").includes(CAPTION_PREFIX)) throw new Error("CAPTION_LEFT: 写真｜ text remains in the page");
   return out;
 }
 
-/** A board that holds only drawn seams: decorative, aria-hidden SVGs with no text element, and white space. */
-const SEAM_BOARD = /<div class="photo">((?:\s*<svg class="dmg[ a-z-]*"[^>]*\saria-hidden="true"[^>]*>(?:(?!<\/?svg\b|<text\b|<foreignObject\b)[\s\S])*<\/svg>)+\s*)<\/div>/g;
+/**
+ * The inside of a board that holds only drawn seams, or null. An allowlist: one or more top-level decorative <svg> (class
+ * "dmg …", aria-hidden="true") holding only the shape elements below, each with only the attributes below, and white
+ * space between the tags. Names are compared in lower case (so <Text>, <foreignobject>, <SCRIPT> are all refused); any
+ * other element (image, use, a, text, foreignObject, script, style, title, …), any other attribute (href, style, on…),
+ * any text, comment, CDATA or stray "<" refuses the board.
+ */
+const SEAM_ELEMENTS = new Set(["svg", "path", "g", "defs", "lineargradient", "radialgradient", "stop"]);
+const SEAM_ATTRIBUTES = new Set(["class", "viewbox", "preserveaspectratio", "aria-hidden", "data-pa-role", "d", "id", "x1", "y1", "x2", "y2", "cx", "cy", "r", "fx", "fy", "offset", "stop-color", "stop-opacity", "gradientunits", "gradienttransform", "transform"]);
+export function seamBoardInner(inner: string): string | null {
+  const TAG = /<(\/?)([A-Za-z][A-Za-z0-9:-]*)((?:\s+[A-Za-z][A-Za-z0-9:-]*="[^"<>]*")*)\s*(\/?)>/g;
+  // everything that is not a well-formed tag must be white space: no text, comment, CDATA, entity or stray "<"
+  if (inner.replace(TAG, "").trim() !== "") return null;
+  let depth = 0;
+  let svgs = 0;
+  for (const m of inner.matchAll(TAG)) {
+    const [, close, rawName, attrs, selfClose] = m;
+    const name = rawName!.toLowerCase();
+    if (!SEAM_ELEMENTS.has(name)) return null;
+    if (close) {
+      if (attrs || selfClose) return null;
+      if (name === "svg" ? depth !== 1 : depth < 2) return null;
+      depth -= 1;
+      continue;
+    }
+    const list = [...attrs!.matchAll(/\s+([A-Za-z][A-Za-z0-9:-]*)="([^"]*)"/g)].map((a) => [a[1]!.toLowerCase(), a[2]!] as const);
+    if (list.some(([k]) => !SEAM_ATTRIBUTES.has(k)) || new Set(list.map(([k]) => k)).size !== list.length) return null;
+    if (name === "svg") {
+      // only at the top level, decorative, and a seam drawing
+      if (depth !== 0) return null;
+      const a = Object.fromEntries(list);
+      if (a["aria-hidden"] !== "true" || !/^dmg(?: [a-z-]+)*$/.test(a.class ?? "")) return null;
+      svgs += 1;
+    } else if (depth === 0) return null;
+    if (!selfClose) depth += 1;
+    else if (name === "svg") return null;
+  }
+  return depth === 0 && svgs >= 1 ? inner : null;
+}
 
 /** Appended to the copy's CSS only: the picture fills the board's whole box (the board keeps its clip, tilt, shadow). */
 export const SWAP_CSS = `

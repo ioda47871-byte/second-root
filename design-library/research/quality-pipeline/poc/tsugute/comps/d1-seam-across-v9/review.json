@@ -3,27 +3,27 @@
   "shop_id": "fictional-kintsugi-tsugute",
   "direction_id": "d1-seam-across-v9",
   "comp": {
-    "html_sha256": "a99e8c454034cb98a6b23e0710992d71443e52b37966a145119f2bc3ec8bd1cc",
-    "css_sha256": "1ffab62e5fc5f87e3400651fc407bca5c1ca3000f3b0daba5d94140b04655904",
+    "html_sha256": "49149c13eaf108c077d7f4d7c6e1f729234bbc84288395c7ccc82e5550335680",
+    "css_sha256": "ebca33c174ad95f27477d25019cce0f2076ea29822d235d222c73bae2794761d",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
     "desktop": {
-      "sha256": "e88d0b26ec2d1c18119a8428fe9ad87c1f4a1851f8fce8e70f32a9e8f95e4a71",
+      "sha256": "fde136408f4857cfef5c22b04e6a5e86a5feb2c007555deff50a22e46cb8f921",
       "width": 1440,
       "height": 6056
     },
     "mobile": {
-      "sha256": "d1b1c6c0e6a3cbf45b38cde4cdaf0776d3285cf2c8958a8c0f2cd04f7f91133b",
+      "sha256": "e20dfdf76124e52eb20153e6593a4bc53e024ce70a8c07d0b0bb052de76bde54",
       "width": 390,
-      "height": 6356
+      "height": 6426
     }
   },
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-05T17:30:00Z",
-    "how": "Read tool: comp-lane renders PC at 0.4 in 2 strips and SP at 0.6 in 3 strips; crops of the month section at 320 and the first view at 1200 and 320 (container fonts); ink attribution at 320, 390, 601, 768, 1199, 1200, 1440 under container fonts and fonts-ci.conf (no ink in another text box)"
+    "viewed_at": "2026-11-05T18:10:00Z",
+    "how": "Read tool: comp-lane renders PC at 0.4 in 2 strips and SP at 0.6 in 3 strips; first-view crops at 1200, 1440 (with 定休) and 320, the month section at 320; ink attribution at the representative widths under container fonts and fonts-ci.conf"
   },
   "viewed_crops": {
     "desktop": [
@@ -45,25 +45,25 @@
         "x": 0,
         "y": 0,
         "w": 390,
-        "h": 1589
+        "h": 1607
       },
       {
         "x": 0,
-        "y": 1589,
+        "y": 1607,
         "w": 390,
-        "h": 1589
+        "h": 1607
       },
       {
         "x": 0,
-        "y": 3178,
+        "y": 3214,
         "w": 390,
-        "h": 1589
+        "h": 1607
       },
       {
         "x": 0,
-        "y": 4767,
+        "y": 4821,
         "w": 390,
-        "h": 1589
+        "h": 1605
       }
     ]
   },
@@ -135,19 +135,19 @@
         }
       },
       {
-        "what": "Hero の直後、壊れ方 の前に 時間・電話・所在地 を線の左に。線はその下を通らない。壊れ方は 320px 下がる",
+        "what": "Hero の直後、壊れ方 の前に 時間・定休・電話・所在地 を線の左に。線はその下を通らない。壊れ方は 390px 下がる",
         "box": {
           "x": 0,
           "y": 844,
           "w": 390,
-          "h": 2473
+          "h": 2543
         }
       },
       {
         "what": "乾く時間: 乾く器の板が区画の頭の右に (幅 62%)。その下で事実は線の左に横書き4行、句は線の右に横書き。線は事実の下を通らない",
         "box": {
           "x": 0,
-          "y": 3317,
+          "y": 3387,
           "w": 390,
           "h": 742
         }
@@ -156,7 +156,7 @@
         "what": "相談: 見出し、手元の板 (左寄せ 86%)、事実の文、机の板 (右寄せ 64%)。板と板の間にいつも文が入る",
         "box": {
           "x": 0,
-          "y": 4059,
+          "y": 4129,
           "w": 390,
           "h": 951
         }
@@ -165,7 +165,7 @@
         "what": "来店: 前のまま",
         "box": {
           "x": 0,
-          "y": 5010,
+          "y": 5080,
           "w": 390,
           "h": 1066
         }
@@ -275,7 +275,8 @@
       "changed": [
         "600 以下: 事実 漆が乾くまで… を 320 で 14.2px から 19px に (390 未満では 漆が の後で折る。390 以上は前のまま)",
         "600 以下: 句を 線が / 固まるのを、/ 待つ。 でだけ折る (前は 線が固まるの / を、 と折れた)",
-        "導線の事実 (dd) を 601〜1200 で 14px から 16px、600 以下で 15px に (600 以下は箱を 4px 広く)"
+        "導線の事実 (dd) を 601〜1200 で 14px から 16px、600 以下で 15px に (600 以下は箱を 4px 広く)",
+        "PR #226 の指摘 L2: 冒頭の導線に 定休 水曜・木曜 (来店 と同じ語と見出し) を 時間 の後に足した。1199 以下は 壊れ方 を 70px 下げた (タブレット 260px・SP 390px)"
       ],
       "regressions_fixed": []
     }
