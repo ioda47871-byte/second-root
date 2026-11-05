@@ -147,5 +147,6 @@ npx tsx scripts/design-artifact/photo-swap.ts \
 - 取り込みは `status: complete`・6枚・SHA・画素・model の報告を確かめ、PNG を `.intake/photos/tsugute-ai-<slot>.png`（git が無視）へそのまま写し、`source_kind: ai_generated_demo`（来歴: generator・model・generated_at・prompt_sha256・approval_id・demo_only）の権利の記録を作る。
 - 差し替えは既存の検査（SHA・画素・2倍、主役の箱、全部か無し）を通った時だけ `renders/desktop_1440.png`・`mobile_390.png` と `swap-summary.json`（各写真に「AI-generated demo image… Not a real product, workshop or craftsperson」）を作る。
 - 枠への割り当ては画像ファイルの保存順（呼び出し順）による。オーナーは描画で**各枠に正しい被写体が写っていること**（割れ・欠け・ひび・乾燥・手元・机）を目で確かめる。
+- オーナー承認 (a): `ai_generated_demo` の画像だけ、枠の 2倍の目標に届かない時に限り、届く最小の倍率（最大2倍、既存の sharp lanczos3）で取り込み時に拡大し、元の大きさ・倍率・方法を来歴と公開の記録に残す。2倍でも届かない枠は `UPSCALE_EXCEEDS_2X` で拒み採用しない。差し替えの密度の検査は拡大後のファイルに掛かる。実写真の規則は不変。
 - 取り込みは manifest が承認済みの実行のものか（prompt SHA256・文字数、各枠のプロンプト SHA256、generator、デモのラベル）を照合し、違えば拒む。
-- **オーナーの判断が要りうる点:** 画像ツールの出力が 1536×1024 / 1024×1024 なら、ph-ware・ph-hibi は 1.5〜2倍（`SCALE_EXCEPTION_REQUIRED`: オーナーの例外の記録が要る）、ph-hand は 1.5倍未満（`PHOTO_BELOW_MIN_SCALE`: この1回では満たせない）。ph-dry が SP で主役を失えば `SP_PHOTO_REQUIRED`。いずれも Claude は勝手に例外を書かず、生成もやり直さず、オーナーへ報告する。
+- **オーナーの判断が要りうる点:** 2倍の拡大でも届かない枠（`UPSCALE_EXCEEDS_2X`）、ph-dry が SP で主役を失う場合（`SP_PHOTO_REQUIRED`）。いずれも Claude は勝手に例外を書かず、生成もやり直さず、オーナーへ報告する。

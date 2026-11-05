@@ -70,6 +70,20 @@ export const AiProvenance = z.strictObject({
   prompt_sha256: Sha256,
   approval_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{3,95}$/),
   demo_only: z.literal(true),
+  /**
+   * DEV-185 (owner approval (a)): set only when the import enlarged the picture to reach its slot's target — the
+   * smallest factor that does, never more than 2×, with the existing sharp (lanczos3). The record's sha256, width and
+   * height are the enlarged file's; this keeps the original's. Real photos are never enlarged (no such field for them).
+   */
+  upscale: z
+    .strictObject({
+      original_width: z.number().int().positive(),
+      original_height: z.number().int().positive(),
+      original_sha256: Sha256,
+      factor: z.number().gt(1).max(2),
+      method: z.literal("sharp-lanczos3"),
+    })
+    .optional(),
 });
 export type AiProvenance = z.infer<typeof AiProvenance>;
 
@@ -156,7 +170,8 @@ export type PhotoRightsCode =
   | "AI_PROVENANCE_ON_NON_AI_SOURCE"
   | "AI_DEMO_NOT_ALLOWED"
   | "AI_DEMO_NOT_FOR_PUBLIC_SITE"
-  | "AI_GENERATED_IN_FUTURE";
+  | "AI_GENERATED_IN_FUTURE"
+  | "UPSCALE_RECORD_INVALID";
 
 /** A missing or malformed rights field is named by what is missing, never folded into SCHEMA_INVALID. */
 const MISSING: Record<string, PhotoRightsCode> = {
@@ -241,6 +256,9 @@ export function checkPhotoRights(record: unknown, bytesInfo: PhotoBytesInfo | nu
   if (r.source_kind === "ai_generated_demo") {
     if (!r.ai_provenance) codes.add("RIGHTS_MISSING_AI_PROVENANCE");
     else if (utcDay(r.ai_provenance.generated_at) > today) codes.add("AI_GENERATED_IN_FUTURE");
+    const up = r.ai_provenance?.upscale;
+    // the enlarged size must be the original × the recorded factor (±1 px of rounding)
+    if (up && (Math.abs(r.width - up.original_width * up.factor) > 1 || Math.abs(r.height - up.original_height * up.factor) > 1)) codes.add("UPSCALE_RECORD_INVALID");
     if (!opts.aiDemoAllowed) codes.add("AI_DEMO_NOT_ALLOWED");
     if (purpose === "public_site") codes.add("AI_DEMO_NOT_FOR_PUBLIC_SITE");
   } else if (r.ai_provenance) codes.add("AI_PROVENANCE_ON_NON_AI_SOURCE");
@@ -292,7 +310,9 @@ export function toPublicPhotoRecord(r: PhotoRights) {
     bytes_committed: false as const,
     // DEV-185: an AI demo picture is labelled as such wherever its record is shown
     ...(r.source_kind === "ai_generated_demo"
-      ? { demo_image: true as const, ai_generated: true as const, label: AI_DEMO_PUBLIC_LABEL, prompt_sha256: r.ai_provenance?.prompt_sha256 ?? null }
+      ? { demo_image: true as const, ai_generated: true as const, label: AI_DEMO_PUBLIC_LABEL,
+          prompt_sha256: r.ai_provenance?.prompt_sha256 ?? null,
+          upscale: r.ai_provenance?.upscale ? { original_width: r.ai_provenance.upscale.original_width, original_height: r.ai_provenance.upscale.original_height, factor: r.ai_provenance.upscale.factor, method: r.ai_provenance.upscale.method } : null }
       : {}),
   };
 }

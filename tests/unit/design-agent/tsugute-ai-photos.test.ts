@@ -19,7 +19,7 @@ import { edgesFor, PhotoSlotEdges, PhotoSlotInventory, requestFor } from "@/lib/
 import { buildTsugutePhotosPrompt, cropReaches, DEMO_LABEL, GENERATOR, slotPromptSha256, TSUGUTE_COMMON, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_SLOTS } from "@/lib/design-agent/quality-pipeline/tsugute-ai-photos";
 import type { CodexSandbox } from "@/lib/design-agent/sandbox";
 import { swapPage } from "../../../scripts/design-artifact/photo-swap";
-import { importTsuguteAiPhotos } from "../../../scripts/design-artifact/tsugute-ai-intake";
+import { importTsuguteAiPhotos, upscaleFactor } from "../../../scripts/design-artifact/tsugute-ai-intake";
 import { TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256 } from "../../../scripts/sales-design-worker/tsugute-photos";
 import { colourPng } from "./phase2f/fixtures";
 
@@ -471,9 +471,10 @@ describe("DEV-185 intake → swap dry run with synthetic placeholder PNGs labell
     mkdirSync(dir);
     const slots = [];
     for (const [i, s] of TSUGUTE_SLOTS.entries()) {
-      const png = await sharp({ create: { width: s.target.width, height: s.target.height, channels: 3, background: { r: 40 * i, g: 120, b: 200 - 20 * i } } }).png().toBuffer();
+      const size = s.target;
+      const png = await sharp({ create: { width: size.width, height: size.height, channels: 3, background: { r: 40 * i, g: 120, b: 200 - 20 * i } } }).png().toBuffer();
       writeFileSync(join(dir, `${s.slot_id}.png`), png);
-      slots.push({ slot_id: s.slot_id, file: `${s.slot_id}.png`, sha256: sha(png), bytes: png.length, width: s.target.width, height: s.target.height, format: "png", slot_prompt_sha256: slotPromptSha256(s), meets_floor_1_5x: true, meets_target_2x: true });
+      slots.push({ slot_id: s.slot_id, file: `${s.slot_id}.png`, sha256: sha(png), bytes: png.length, width: size.width, height: size.height, format: "png", slot_prompt_sha256: slotPromptSha256(s), meets_floor_1_5x: true, meets_target_2x: true });
     }
     const manifest = { schema: "tsugute_ai_photos_v0", shop: "tsugute", demo_only: true, label: DEMO_LABEL, approval_id: ID, commit: COMMIT, prompt_sha256: PIN, prompt_chars: 4133, generator: GENERATOR, model: "gpt-6.1-sol", cli_version: "0.163.0", generated_at: "2026-11-06T10:00:00.000Z", status: "complete", stop_code: null, image_tool_calls: 6, image_tool_failed: 0, codex_ms: 1, slot_mapping: "call_order", slots, ...over };
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
@@ -483,7 +484,7 @@ describe("DEV-185 intake → swap dry run with synthetic placeholder PNGs labell
   it("imports a complete run as ai_generated_demo records and the d1-v10 swap accepts them (no render)", async () => {
     const from = await runDir("ok");
     const manifestOut = join(root, "swap-manifest.json");
-    const r = importTsuguteAiPhotos({ from, manifestOut, pipelineRoot: pipeline });
+    const r = await importTsuguteAiPhotos({ from, manifestOut, pipelineRoot: pipeline });
     expect(r.ok, JSON.stringify(r)).toBe(true);
     expect((statSync(manifestOut).mode & 0o777).toString(8)).toBe("600");
     expect(readdirSync(join(pipeline, ".intake", "photos")).sort()).toEqual(TSUGUTE_SLOTS.map((s) => `tsugute-ai-${s.slot_id}.png`).sort());
@@ -494,31 +495,118 @@ describe("DEV-185 intake → swap dry run with synthetic placeholder PNGs labell
     const slots = res.summary.slots as Array<{ photos: Array<Record<string, unknown>> }>;
     for (const s of slots) expect(s.photos[0]).toMatchObject({ source_kind: "ai_generated_demo", demo_image: true, label: AI_DEMO_PUBLIC_LABEL });
     // a second import never overwrites the private copies
-    const again = importTsuguteAiPhotos({ from, manifestOut: join(root, "swap-manifest-2.json"), pipelineRoot: pipeline });
+    const again = await importTsuguteAiPhotos({ from, manifestOut: join(root, "swap-manifest-2.json"), pipelineRoot: pipeline });
     expect(again.ok).toBe(false);
   });
 
   it("refuses a stopped run, a missing model, a changed picture, and a manifest written inside the repository", async () => {
     const pr = join(root, "p2");
     mkdirSync(join(pr, ".intake", "photos"), { recursive: true });
-    const codesOf = (r: ReturnType<typeof importTsuguteAiPhotos>) => (r.ok ? [] : r.codes);
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("stopped", { status: "stopped", stop_code: "CODEX_IMAGE_TOOL_FAILED" }), manifestOut: join(root, "m1.json"), pipelineRoot: pr }))).toContain("RUN_NOT_COMPLETE");
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("nomodel", { model: null }), manifestOut: join(root, "m2.json"), pipelineRoot: pr }))).toContain("MODEL_NOT_REPORTED");
+    const codesOf = (r: Awaited<ReturnType<typeof importTsuguteAiPhotos>>) => (r.ok ? [] : r.codes);
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("stopped", { status: "stopped", stop_code: "CODEX_IMAGE_TOOL_FAILED" }), manifestOut: join(root, "m1.json"), pipelineRoot: pr }))).toContain("RUN_NOT_COMPLETE");
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("nomodel", { model: null }), manifestOut: join(root, "m2.json"), pipelineRoot: pr }))).toContain("MODEL_NOT_REPORTED");
     const changed = await runDir("changed");
     writeFileSync(join(changed, "ph-kake.png"), colourPng(1370, 1028));
-    expect(codesOf(importTsuguteAiPhotos({ from: changed, manifestOut: join(root, "m3.json"), pipelineRoot: pr }))).toContain("FILE_MISMATCH:ph-kake");
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("inrepo"), manifestOut: join(REPO, "dev185-should-not-exist.json"), pipelineRoot: pr }))).toContain("MANIFEST_OUT_NOT_PRIVATE");
+    expect(codesOf(await importTsuguteAiPhotos({ from: changed, manifestOut: join(root, "m3.json"), pipelineRoot: pr }))).toContain("FILE_MISMATCH:ph-kake");
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("inrepo"), manifestOut: join(REPO, "dev185-should-not-exist.json"), pipelineRoot: pr }))).toContain("MANIFEST_OUT_NOT_PRIVATE");
     expect(existsSync(join(REPO, "dev185-should-not-exist.json"))).toBe(false);
     // PR #227 M1: a hand-written manifest next to any 6 PNGs is not the approved run
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("prompt", { prompt_sha256: "b".repeat(64) }), manifestOut: join(root, "m4.json"), pipelineRoot: pr }))).toEqual(["RUN_PROMPT_NOT_APPROVED"]);
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("chars", { prompt_chars: 4134 }), manifestOut: join(root, "m5.json"), pipelineRoot: pr }))).toEqual(["RUN_PROMPT_NOT_APPROVED"]);
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("gen", { generator: "some other generator" }), manifestOut: join(root, "m6.json"), pipelineRoot: pr }))).toEqual(["RUN_GENERATOR_UNKNOWN"]);
-    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("label", { label: "real product photo" }), manifestOut: join(root, "m7.json"), pipelineRoot: pr }))).toEqual(["RUN_DEMO_LABEL_MISSING"]);
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("prompt", { prompt_sha256: "b".repeat(64) }), manifestOut: join(root, "m4.json"), pipelineRoot: pr }))).toEqual(["RUN_PROMPT_NOT_APPROVED"]);
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("chars", { prompt_chars: 4134 }), manifestOut: join(root, "m5.json"), pipelineRoot: pr }))).toEqual(["RUN_PROMPT_NOT_APPROVED"]);
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("gen", { generator: "some other generator" }), manifestOut: join(root, "m6.json"), pipelineRoot: pr }))).toEqual(["RUN_GENERATOR_UNKNOWN"]);
+    expect(codesOf(await importTsuguteAiPhotos({ from: await runDir("label", { label: "real product photo" }), manifestOut: join(root, "m7.json"), pipelineRoot: pr }))).toEqual(["RUN_DEMO_LABEL_MISSING"]);
     const slotDir = await runDir("slotprompt");
     const mf = JSON.parse(readFileSync(join(slotDir, "manifest.json"), "utf8"));
     mf.slots[2].slot_prompt_sha256 = "c".repeat(64);
     writeFileSync(join(slotDir, "manifest.json"), JSON.stringify(mf));
-    expect(codesOf(importTsuguteAiPhotos({ from: slotDir, manifestOut: join(root, "m8.json"), pipelineRoot: pr }))).toEqual(["SLOT_PROMPT_NOT_APPROVED:ph-hibi"]);
+    expect(codesOf(await importTsuguteAiPhotos({ from: slotDir, manifestOut: join(root, "m8.json"), pipelineRoot: pr }))).toEqual(["SLOT_PROMPT_NOT_APPROVED:ph-hibi"]);
     expect(readdirSync(join(pr, ".intake", "photos"))).toEqual([]);
+  });
+});
+
+describe("DEV-185 owner approval (a): AI demo pictures enlarged only when needed, at most 2×", () => {
+  let root: string;
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "dev185-up-"));
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const slot = (id: string) => TSUGUTE_SLOTS.find((s) => s.slot_id === id)!;
+
+  it("the factor is 1 when the picture already reaches the target, the smallest that reaches it otherwise, null above 2×", () => {
+    expect(upscaleFactor({ width: 1610, height: 1208 }, slot("ph-ware"))).toBe(1);
+    expect(upscaleFactor({ width: 3000, height: 2000 }, slot("ph-ware"))).toBe(1);
+    // 1536×1024 → 4:3 crop 1365.3×1024; target 1610×1208 needs ×1.18 (1208 / 1024 = 1.1797 → 1.18)
+    const f = upscaleFactor({ width: 1536, height: 1024 }, slot("ph-ware"))!;
+    expect(f).toBe(1.18);
+    expect(cropReaches({ width: Math.round(1536 * f), height: Math.round(1024 * f) }, "4:3", slot("ph-ware").target)).toBe(true);
+    expect(cropReaches({ width: Math.round(1536 * (f - 0.001)), height: Math.round(1024 * (f - 0.001)) }, "4:3", slot("ph-ware").target)).toBe(false);
+    expect(upscaleFactor({ width: 1024, height: 1024 }, slot("ph-hand"))).toBe(1.622);
+    expect(upscaleFactor({ width: 800, height: 800 }, slot("ph-hand"))).toBeNull();
+  });
+
+  /** a pipeline root and a complete run whose pictures have the given sizes (synthetic flat PNGs) */
+  async function run(name: string, sizes: Record<string, { width: number; height: number }>) {
+    const pipeline = join(root, `${name}-pipe`);
+    mkdirSync(join(pipeline, ".intake", "photos"), { recursive: true });
+    const dir = join(root, name);
+    mkdirSync(dir);
+    const slots = [];
+    for (const [i, s] of TSUGUTE_SLOTS.entries()) {
+      const size = sizes[s.slot_id] ?? s.target;
+      const png = await sharp({ create: { width: size.width, height: size.height, channels: 3, background: { r: 30 * i, g: 90, b: 160 } } }).png().toBuffer();
+      writeFileSync(join(dir, `${s.slot_id}.png`), png);
+      slots.push({ slot_id: s.slot_id, file: `${s.slot_id}.png`, sha256: sha(png), bytes: png.length, width: size.width, height: size.height, format: "png", slot_prompt_sha256: slotPromptSha256(s), meets_floor_1_5x: true, meets_target_2x: false });
+    }
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify({ schema: "tsugute_ai_photos_v0", shop: "tsugute", demo_only: true, label: DEMO_LABEL, approval_id: ID, commit: COMMIT, prompt_sha256: PIN, prompt_chars: 4133, generator: GENERATOR, model: "gpt-6.1-sol", cli_version: "0.163.0", generated_at: "2026-11-06T10:00:00.000Z", status: "complete", stop_code: null, image_tool_calls: 6, image_tool_failed: 0, codex_ms: 1, slot_mapping: "call_order", slots }));
+    return { dir, pipeline, slots };
+  }
+  type Rights = { sha256: string; width: number; height: number; ai_provenance: { upscale?: Record<string, unknown> } };
+  const rightsOf = (m: Record<string, unknown>, id: string) => (m.slots as Array<{ slot_id: string; pc: { rights: Rights } }>).find((s) => s.slot_id === id)!.pc.rights;
+
+  it("pictures at the tool's sizes are enlarged by the minimal factor, recorded in provenance and the public record, and pass the swap's own density check", async () => {
+    const sizes = { "ph-ware": { width: 1536, height: 1024 }, "ph-hibi": { width: 1536, height: 1024 }, "ph-hand": { width: 1024, height: 1024 } };
+    const r0 = await run("tool", sizes);
+    const manifestOut = join(root, "tool-swap.json");
+    const r = await importTsuguteAiPhotos({ from: r0.dir, manifestOut, pipelineRoot: r0.pipeline });
+    if (!r.ok) throw new Error(r.codes.join(","));
+    const ware = rightsOf(r.manifest, "ph-ware");
+    expect(ware.ai_provenance.upscale).toEqual({ original_width: 1536, original_height: 1024, original_sha256: r0.slots[0]!.sha256, factor: 1.18, method: "sharp-lanczos3" });
+    expect([ware.width, ware.height]).toEqual([1812, 1208]);
+    const file = readFileSync(join(r0.pipeline, ".intake/photos/tsugute-ai-ph-ware.png"));
+    expect(sha(file)).toBe(ware.sha256);
+    expect(measurePhotoBytes(file)).toMatchObject({ width: 1812, height: 1208 });
+    expect(rightsOf(r.manifest, "ph-hand").ai_provenance.upscale).toMatchObject({ factor: 1.622, original_width: 1024 });
+    // no enlargement where the picture already reaches its target
+    for (const id of ["ph-kake", "ph-dry", "ph-desk"]) expect(rightsOf(r.manifest, id).ai_provenance.upscale, id).toBeUndefined();
+    const res = await swapPage({ pageDir: "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v10", manifest: JSON.parse(readFileSync(manifestOut, "utf8")), out: join(root, "tool-out"), pipelineRoot: r0.pipeline, now: "2026-11-07" });
+    expect(res.ok, JSON.stringify(res.ok ? null : res.refusals)).toBe(true);
+    if (!res.ok) return;
+    const pub = (res.summary.slots as Array<{ slot_id: string; photos: Array<Record<string, unknown>> }>).find((s) => s.slot_id === "ph-ware")!.photos[0]!;
+    expect(pub.upscale).toEqual({ original_width: 1536, original_height: 1024, factor: 1.18, method: "sharp-lanczos3" });
+  });
+
+  it("a slot that would need more than 2× is refused and nothing is written", async () => {
+    const r0 = await run("small", { "ph-hand": { width: 800, height: 800 } });
+    const r = await importTsuguteAiPhotos({ from: r0.dir, manifestOut: join(root, "small-swap.json"), pipelineRoot: r0.pipeline });
+    expect(r.ok ? [] : r.codes).toEqual(["UPSCALE_EXCEEDS_2X:ph-hand"]);
+    expect(readdirSync(join(r0.pipeline, ".intake", "photos"))).toEqual([]);
+    expect(existsSync(join(root, "small-swap.json"))).toBe(false);
+  });
+
+  it("real photos are never enlarged: an upscale record outside ai_generated_demo, above 2×, or not matching the bytes is refused", () => {
+    const BYTES = colourPng(1812, 1208);
+    const INFO = measurePhotoBytes(BYTES)!;
+    const up = { original_width: 1536, original_height: 1024, original_sha256: "d".repeat(64), factor: 1.18, method: "sharp-lanczos3" };
+    const prov = { generator: GENERATOR, model: "gpt-6.1-sol", generated_at: "2026-11-06T10:00:00Z", prompt_sha256: PIN, approval_id: ID, demo_only: true, upscale: up };
+    const base = { schema: "photo_rights_v0", asset_id: "photo-tsugute-ai-ware", sha256: INFO.sha256, bytes: INFO.bytes, width: 1812, height: 1208, format: "png", source_kind: "ai_generated_demo", owner: "o", license: "l", paid: false, allowed_uses: { edit: true, crop: true, commercial: true, public_web: false }, consent_record_ref: ID, received_at: "2026-11-06", expiry: null, private_path: ".intake/photos/tsugute-ai-ph-ware.png", depicts_identifiable_person: false, depicts_real_shop: false, ai_provenance: prov };
+    const check = (r: unknown) => {
+      const c = checkPhotoRights(r, INFO, { now: "2026-11-07", forbiddenSha256: new Set(), aiDemoAllowed: true });
+      return c.ok ? [] : c.codes;
+    };
+    expect(check(base)).toEqual([]);
+    expect(check({ ...base, source_kind: "owner_provided" })).toEqual(["AI_PROVENANCE_ON_NON_AI_SOURCE"]);
+    expect(check({ ...base, ai_provenance: { ...prov, upscale: { ...up, factor: 2.5 } } })).toEqual(["RIGHTS_MISSING_AI_PROVENANCE"]);
+    expect(check({ ...base, ai_provenance: { ...prov, upscale: { ...up, factor: 1.5 } } })).toEqual(["UPSCALE_RECORD_INVALID"]);
+    expect(check({ ...base, ai_provenance: { ...prov, upscale: { ...up, method: "ai-superres" } } })).toEqual(["RIGHTS_MISSING_AI_PROVENANCE"]);
   });
 });
