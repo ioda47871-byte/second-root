@@ -16,7 +16,7 @@ import { generateImagesInOneRun, MAX_BATCH_IMAGES, type ImageBatchResult } from 
 import { writeTsugutePhotos } from "@/lib/design-agent/design-image/tsugute-photos";
 import { AI_DEMO_PUBLIC_LABEL, checkPhotoRights, loadForbiddenSha256, measurePhotoBytes, toPublicPhotoRecord } from "@/lib/design-agent/quality-pipeline/photo-rights";
 import { edgesFor, PhotoSlotEdges, PhotoSlotInventory, requestFor } from "@/lib/design-agent/quality-pipeline/photo-slots";
-import { buildTsugutePhotosPrompt, cropReaches, TSUGUTE_COMMON, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_SLOTS } from "@/lib/design-agent/quality-pipeline/tsugute-ai-photos";
+import { buildTsugutePhotosPrompt, cropReaches, DEMO_LABEL, GENERATOR, slotPromptSha256, TSUGUTE_COMMON, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_SLOTS } from "@/lib/design-agent/quality-pipeline/tsugute-ai-photos";
 import type { CodexSandbox } from "@/lib/design-agent/sandbox";
 import { swapPage } from "../../../scripts/design-artifact/photo-swap";
 import { importTsuguteAiPhotos } from "../../../scripts/design-artifact/tsugute-ai-intake";
@@ -473,9 +473,9 @@ describe("DEV-185 intake → swap dry run with synthetic placeholder PNGs labell
     for (const [i, s] of TSUGUTE_SLOTS.entries()) {
       const png = await sharp({ create: { width: s.target.width, height: s.target.height, channels: 3, background: { r: 40 * i, g: 120, b: 200 - 20 * i } } }).png().toBuffer();
       writeFileSync(join(dir, `${s.slot_id}.png`), png);
-      slots.push({ slot_id: s.slot_id, file: `${s.slot_id}.png`, sha256: sha(png), bytes: png.length, width: s.target.width, height: s.target.height, format: "png", slot_prompt_sha256: "a".repeat(64), meets_floor_1_5x: true, meets_target_2x: true });
+      slots.push({ slot_id: s.slot_id, file: `${s.slot_id}.png`, sha256: sha(png), bytes: png.length, width: s.target.width, height: s.target.height, format: "png", slot_prompt_sha256: slotPromptSha256(s), meets_floor_1_5x: true, meets_target_2x: true });
     }
-    const manifest = { schema: "tsugute_ai_photos_v0", shop: "tsugute", demo_only: true, label: "synthetic", approval_id: ID, commit: COMMIT, prompt_sha256: PIN, prompt_chars: 4133, generator: "synthetic test generator", model: "gpt-6.1-sol", cli_version: "0.163.0", generated_at: "2026-11-06T10:00:00.000Z", status: "complete", stop_code: null, image_tool_calls: 6, image_tool_failed: 0, codex_ms: 1, slot_mapping: "call_order", slots, ...over };
+    const manifest = { schema: "tsugute_ai_photos_v0", shop: "tsugute", demo_only: true, label: DEMO_LABEL, approval_id: ID, commit: COMMIT, prompt_sha256: PIN, prompt_chars: 4133, generator: GENERATOR, model: "gpt-6.1-sol", cli_version: "0.163.0", generated_at: "2026-11-06T10:00:00.000Z", status: "complete", stop_code: null, image_tool_calls: 6, image_tool_failed: 0, codex_ms: 1, slot_mapping: "call_order", slots, ...over };
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
     return dir;
   }
@@ -509,6 +509,16 @@ describe("DEV-185 intake → swap dry run with synthetic placeholder PNGs labell
     expect(codesOf(importTsuguteAiPhotos({ from: changed, manifestOut: join(root, "m3.json"), pipelineRoot: pr }))).toContain("FILE_MISMATCH:ph-kake");
     expect(codesOf(importTsuguteAiPhotos({ from: await runDir("inrepo"), manifestOut: join(REPO, "dev185-should-not-exist.json"), pipelineRoot: pr }))).toContain("MANIFEST_OUT_NOT_PRIVATE");
     expect(existsSync(join(REPO, "dev185-should-not-exist.json"))).toBe(false);
+    // PR #227 M1: a hand-written manifest next to any 6 PNGs is not the approved run
+    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("prompt", { prompt_sha256: "b".repeat(64) }), manifestOut: join(root, "m4.json"), pipelineRoot: pr }))).toEqual(["RUN_PROMPT_NOT_APPROVED"]);
+    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("chars", { prompt_chars: 4134 }), manifestOut: join(root, "m5.json"), pipelineRoot: pr }))).toEqual(["RUN_PROMPT_NOT_APPROVED"]);
+    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("gen", { generator: "some other generator" }), manifestOut: join(root, "m6.json"), pipelineRoot: pr }))).toEqual(["RUN_GENERATOR_UNKNOWN"]);
+    expect(codesOf(importTsuguteAiPhotos({ from: await runDir("label", { label: "real product photo" }), manifestOut: join(root, "m7.json"), pipelineRoot: pr }))).toEqual(["RUN_DEMO_LABEL_MISSING"]);
+    const slotDir = await runDir("slotprompt");
+    const mf = JSON.parse(readFileSync(join(slotDir, "manifest.json"), "utf8"));
+    mf.slots[2].slot_prompt_sha256 = "c".repeat(64);
+    writeFileSync(join(slotDir, "manifest.json"), JSON.stringify(mf));
+    expect(codesOf(importTsuguteAiPhotos({ from: slotDir, manifestOut: join(root, "m8.json"), pipelineRoot: pr }))).toEqual(["SLOT_PROMPT_NOT_APPROVED:ph-hibi"]);
     expect(readdirSync(join(pr, ".intake", "photos"))).toEqual([]);
   });
 });

@@ -4,7 +4,8 @@
  *   npx tsx scripts/design-artifact/tsugute-ai-intake.ts --from <run dir with manifest.json> --manifest-out <file>
  *
  * Reads the one-shot run's manifest.json (run-tsugute-photos-once.sh), refuses it unless it is `complete` (6 pictures,
- * 6 calls, none failed), each picture's bytes match its SHA-256, size and slot in the manifest, and the model is
+ * 6 calls, none failed), it carries the approved run's pins (prompt SHA-256 and length, each slot's prompt SHA-256,
+ * the generator and the demo label), each picture's bytes match its SHA-256, size and slot in the manifest, and the model is
  * reported. Then copies the 6 PNGs (unchanged) into the private, git-ignored
  * design-library/research/quality-pipeline/.intake/photos/ as tsugute-ai-<slot>.png (0600; an existing file is never
  * overwritten) and writes a photo_swap_manifest_v0 (0600) whose rights records are `ai_generated_demo` with the full
@@ -16,7 +17,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { measurePhotoBytes, PHOTO_INTAKE_DIR } from "../../lib/design-agent/quality-pipeline/photo-rights";
-import { TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_PHOTOS_MAX_IMAGES, TSUGUTE_SLOTS, TsugutePhotosManifestSchema } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
+import { DEMO_LABEL, GENERATOR, slotPromptSha256, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_PHOTOS_MAX_IMAGES, TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256, TSUGUTE_SLOTS, TsugutePhotosManifestSchema } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
 
 const REPO = resolve(__dirname, "../..");
 export const PIPELINE_ROOT = join(REPO, "design-library/research/quality-pipeline");
@@ -45,6 +46,10 @@ export function importTsuguteAiPhotos(o: { from: string; manifestOut: string; pi
   if (m.approval_id !== TSUGUTE_PHOTOS_APPROVAL_ID) codes.push("RUN_APPROVAL_UNKNOWN");
   if (m.slots.length !== TSUGUTE_PHOTOS_MAX_IMAGES || m.image_tool_calls !== TSUGUTE_PHOTOS_MAX_IMAGES || m.image_tool_failed !== 0) codes.push("RUN_NOT_SIX_IMAGES");
   if (m.model === null) codes.push("MODEL_NOT_REPORTED");
+  // PR #227 review M1: the manifest must be the approved run's, not one written by hand next to any 6 PNGs
+  if (m.prompt_sha256 !== TSUGUTE_PROMPT_SHA256 || m.prompt_chars !== TSUGUTE_PROMPT_CHARS) codes.push("RUN_PROMPT_NOT_APPROVED");
+  if (m.generator !== GENERATOR) codes.push("RUN_GENERATOR_UNKNOWN");
+  if (m.label !== DEMO_LABEL) codes.push("RUN_DEMO_LABEL_MISSING");
   if (!manifestOutOk(o.manifestOut, pipelineRoot)) codes.push("MANIFEST_OUT_NOT_PRIVATE");
   const photos = join(pipelineRoot, PHOTO_INTAKE_DIR);
   const loaded: Array<{ slot: (typeof TSUGUTE_SLOTS)[number]; buf: Buffer; name: string; width: number; height: number }> = [];
@@ -54,6 +59,7 @@ export function importTsuguteAiPhotos(o: { from: string; manifestOut: string; pi
       codes.push(`SLOT_ORDER:${s.slot_id}`);
       continue;
     }
+    if (s.slot_prompt_sha256 !== slotPromptSha256(slot)) codes.push(`SLOT_PROMPT_NOT_APPROVED:${s.slot_id}`);
     const file = join(o.from, s.file);
     let buf: Buffer;
     try {

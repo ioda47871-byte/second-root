@@ -14,6 +14,9 @@ export const TSUGUTE_PHOTOS_APPROVAL_ID = "tsugute-photos-20261106-01";
 /** The receipt the gate writes into the one-use marker dir (the TS entry requires exactly this, with HEAD). */
 export const TSUGUTE_PHOTOS_DIRECTION = "tsugute-photos";
 export const TSUGUTE_PHOTOS_MAX_IMAGES = 6;
+/** The owner-approved prompt of the one run (DEV-185): the gate, the TS entry and the import all compare against it. */
+export const TSUGUTE_PROMPT_SHA256 = "dab7f2603c7495c4381035391a24ae98cc8bd07064295233fab034964ec33ed0";
+export const TSUGUTE_PROMPT_CHARS = 4133;
 
 /** The common paragraph, verbatim from the brief §1 (the test reads the brief and compares). */
 export const TSUGUTE_COMMON = `Documentary still-life photograph for a fictional kintsugi (urushi lacquer repair) workshop. Demo image, not a real product.

@@ -27,8 +27,8 @@ import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
 /** The owner-approved prompt (DEV-185): any other text is refused before the approval is used. */
-export const TSUGUTE_PROMPT_SHA256 = "dab7f2603c7495c4381035391a24ae98cc8bd07064295233fab034964ec33ed0";
-export const TSUGUTE_PROMPT_CHARS = 4133;
+import { TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256 } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
+export { TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256 };
 const CANONICAL_HOME = "/home/sr-designgen";
 const REPO = resolve(__dirname, "../..");
 const MAX_BUDGET_SECONDS = 3300;
