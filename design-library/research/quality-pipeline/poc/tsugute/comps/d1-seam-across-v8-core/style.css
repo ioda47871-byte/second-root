@@ -515,7 +515,8 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
   .together-grid { display: grid; grid-template-columns: 6% calc(var(--spine-x) - 6% - 28px) 56px 1fr 4%; padding: 0; align-items: start; }
   .hand { grid-column: 2; grid-row: 1 / 6; align-self: start; margin-top: 12px; }
   .ghost-wait { font-size: 21vw; top: -122px; }
-  .month { padding-top: max(60px, calc(21vw - 98px)); }
+  /* 待つ's glyph box (1.3em about the line's centre) clears 乾く時間 by 30px or more under tall metrics */
+  .month { padding-top: max(70px, calc(24.2vw - 84px)); }
   .info dd { font-size: clamp(15px, 2.5vw, 20px); }
   .together-copy .eyebrow { grid-column: 4; grid-row: 1; }
   .together-h { grid-column: 4; grid-row: 2; font-size: clamp(22px, 3.05vw, 34px); }

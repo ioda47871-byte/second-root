@@ -471,8 +471,10 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
    (the line runs on behind it), the hand print stays on the left, and the desk print moves to the right in turn: right, left,
    right, where v7 had three prints in a row on the left. The fact and the phrase stand in the wide left column above it. */
 @media (min-width: 601px) and (max-width: 1199px) {
-  /* 待つ lies across the top of the section (26vw tall from 150px above it): the label and the fact start 24px under it */
-  .month { padding-top: max(60px, calc(26vw - 126px)); }
+  /* 待つ lies across the top of the section (26vw tall from 150px above it): the label and the fact start under its glyph box
+     (1.3em about the line's centre, so 0.15em below the line box) with 30px or more to spare under tall metrics (the wide-metrics
+     sweep found 待 18px into 乾く時間 at 725–1199 with 26vw − 126px) */
+  .month { padding-top: max(70px, calc(30vw - 110px)); }
   .eyebrow-month { margin: 0 0 20px 6vw; }
   .month-grid { grid-template-columns: calc(var(--spine-x) - 30px) 60px 1fr; grid-template-rows: auto auto auto; }
   .ticks { grid-column: 2; grid-row: 1 / 4; min-height: 0; }

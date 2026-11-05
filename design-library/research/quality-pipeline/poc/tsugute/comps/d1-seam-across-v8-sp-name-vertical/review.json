@@ -4,7 +4,7 @@
   "direction_id": "d1-seam-across-v8-sp-name-vertical",
   "comp": {
     "html_sha256": "3265d7a3d3c4ad49a17d1d86b002a6c5865c53b3ea740e5e22e674c17a0c2060",
-    "css_sha256": "8f66ab778bd550afa8caa8741a3a8098ffdc0e0ba8082bc2ed6be4bdf3a67fe9",
+    "css_sha256": "78151efed9131269000437511f46ef794b03cffd9110818b59e670227cb6e503",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
@@ -254,7 +254,8 @@
       ],
       "regressions_fixed": [
         "PC 1700 以上で句 急がない。… が つ の行の箱に入った (CI に近い書体の墨の帰属の検査が 1920 で見つけた)。PC の目盛りの grid の高さを max(800px, 77.6vw − 425px) に",
-        "1行1字の柱にした 待 が、字の高い書体 (ascent 116%) で 線の断面 の字の箱に 30〜55px 入った (1440〜1920)。PC の柱を 3vw + 24px 下げた"
+        "1行1字の柱にした 待 が、字の高い書体 (ascent 116%) で 線の断面 の字の箱に 30〜55px 入った (1440〜1920)。PC の柱を 3vw + 24px 下げた",
+        "タブレットで 待つ の字の箱が、字の高い書体で 乾く時間 のラベルに 18px 入った (725〜1199)。区画の上の余白を max(70px, 30vw − 110px) に (core は max(70px, 24.2vw − 84px))"
       ]
     }
   ],

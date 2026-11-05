@@ -290,7 +290,7 @@
       },
       "tablet_768": {
         "score": {
-          "motif_coverage": 0.959,
+          "motif_coverage": 0.96,
           "motif_largest_gap_px": 230,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
