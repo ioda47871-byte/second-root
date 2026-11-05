@@ -14,6 +14,13 @@
  * Never a photo from another site, never one of the success cases, never a paid stock photo, never a picture of an
  * identifiable person or a real shop (the shops are fictional).
  *
+ * DEV-185 (owner approval, 2026-11-05): a third kind, `ai_generated_demo`, for the AI demo pictures of a FICTIONAL
+ * shop made by the owner-approved one-shot run (scripts/sales-design-worker/run-tsugute-photos-once.sh). It requires
+ * `ai_provenance` (generator, model as reported, generated_at, prompt_sha256, approval_id, demo_only: true), is
+ * refused unless the caller allows AI demo pictures for that shop (`aiDemoAllowed`: only the つぐ手 swap does), is
+ * never allowed for a public site, and its public record says it is a demo image, not a real product, workshop or
+ * craftsperson. Every other check applies to it unchanged.
+ *
  * The record proves nothing about the bytes by itself: `checkPhotoRights` compares it with what was measured from the
  * file (`measurePhotoBytes`), and `resolvePrivatePhoto` refuses any path outside `.intake/photos/`, through a link
  * (symbolic or hard), or under a pipeline root that is itself a link.
@@ -53,6 +60,33 @@ export const utcDay = (s: string) => (s.length === 10 ? s : new Date(s).toISOStr
 const IsoDate = z.string().refine(isIsoDate, "INVALID_DATE");
 const Ref = z.string().trim().min(1).max(300);
 
+/** DEV-185: how an AI demo picture was made (private; the public record keeps only the demo label and the hashes). */
+export const AiProvenance = z.strictObject({
+  /** the means, e.g. "codex-cli image_generation (owner WSL, sr-designgen jail, one run)" */
+  generator: Ref,
+  /** the model name as the tool reported it (session log); "unknown" is not accepted */
+  model: z.string().regex(/^[0-9A-Za-z._-]{1,60}$/).refine((m) => m.toLowerCase() !== "unknown", "MODEL_UNKNOWN"),
+  generated_at: z.string().refine((s) => isIsoDate(s) && s.length > 10, "INVALID_DATE"),
+  prompt_sha256: Sha256,
+  approval_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{3,95}$/),
+  demo_only: z.literal(true),
+  /**
+   * DEV-185 (owner approval (a)): set only when the import enlarged the picture to reach its slot's target — the
+   * smallest factor that does, never more than 2×, with the existing sharp (lanczos3). The record's sha256, width and
+   * height are the enlarged file's; this keeps the original's. Real photos are never enlarged (no such field for them).
+   */
+  upscale: z
+    .strictObject({
+      original_width: z.number().int().positive(),
+      original_height: z.number().int().positive(),
+      original_sha256: Sha256,
+      factor: z.number().gt(1).max(2),
+      method: z.literal("sharp-lanczos3"),
+    })
+    .optional(),
+});
+export type AiProvenance = z.infer<typeof AiProvenance>;
+
 export const PhotoRights = z
   .strictObject({
     schema: z.literal("photo_rights_v0"),
@@ -63,7 +97,7 @@ export const PhotoRights = z
     height: z.number().int().positive().max(20_000),
     format: z.enum(PHOTO_FORMATS),
     /** owner_provided / shop_provided: (a). licensed_stock_with_terms: (b), free material whose terms are pinned. */
-    source_kind: z.enum(["owner_provided", "shop_provided", "licensed_stock_with_terms"]),
+    source_kind: z.enum(["owner_provided", "shop_provided", "licensed_stock_with_terms", "ai_generated_demo"]),
     /** who holds the rights (private; never copied into the public record) */
     owner: Ref,
     /** a licence id (e.g. CC0-1.0) or a reference to the written permission or terms */
@@ -84,6 +118,8 @@ export const PhotoRights = z
     depicts_real_shop: z.boolean(),
     /** public use of a real shop's photo needs the client's written confirmation */
     client_confirmation_ref: Ref.optional(),
+    /** DEV-185: required for (and only for) ai_generated_demo */
+    ai_provenance: AiProvenance.optional(),
   })
   .superRefine((r, ctx) => {
     const ext = r.private_path.split(".").pop();
@@ -129,7 +165,13 @@ export type PhotoRightsCode =
   | "HASH_MISMATCH"
   | "SIZE_MISMATCH"
   | "DIMENSION_MISMATCH"
-  | "FORMAT_MISMATCH";
+  | "FORMAT_MISMATCH"
+  | "RIGHTS_MISSING_AI_PROVENANCE"
+  | "AI_PROVENANCE_ON_NON_AI_SOURCE"
+  | "AI_DEMO_NOT_ALLOWED"
+  | "AI_DEMO_NOT_FOR_PUBLIC_SITE"
+  | "AI_GENERATED_IN_FUTURE"
+  | "UPSCALE_RECORD_INVALID";
 
 /** A missing or malformed rights field is named by what is missing, never folded into SCHEMA_INVALID. */
 const MISSING: Record<string, PhotoRightsCode> = {
@@ -145,6 +187,7 @@ const MISSING: Record<string, PhotoRightsCode> = {
   depicts_identifiable_person: "RIGHTS_MISSING_SUBJECT",
   depicts_real_shop: "RIGHTS_MISSING_SUBJECT",
   private_path: "PATH_NOT_PRIVATE",
+  ai_provenance: "RIGHTS_MISSING_AI_PROVENANCE",
 };
 
 export type PhotoRightsResult = { ok: true; record: PhotoRights } | { ok: false; codes: PhotoRightsCode[]; issues: string[] };
@@ -159,6 +202,11 @@ export type PhotoRightsOptions = {
    * can forget it; `loadForbiddenSha256` reads them from the originals inventory.
    */
   forbiddenSha256: ReadonlySet<string>;
+  /**
+   * DEV-185: whether an `ai_generated_demo` record may pass at all. Off unless the caller is the swap of a fictional
+   * shop it lists (photo-swap.ts AI_DEMO_SHOPS); every other caller refuses it (AI_DEMO_NOT_ALLOWED).
+   */
+  aiDemoAllowed?: boolean;
 };
 
 /** The originals inventory: every success-case picture the repository records (originals and registered previews). */
@@ -197,7 +245,7 @@ export function checkPhotoRights(record: unknown, bytesInfo: PhotoBytesInfo | nu
     for (const i of parsed.error.issues) {
       const key = String(i.path[0] ?? "");
       if (i.message === "FORMAT_EXTENSION_MISMATCH") codes.add("FORMAT_EXTENSION_MISMATCH");
-      else if (i.message === "INVALID_DATE") codes.add("RIGHTS_DATE_INVALID");
+      else if (i.message === "INVALID_DATE" && key !== "ai_provenance") codes.add("RIGHTS_DATE_INVALID");
       else codes.add(MISSING[key] ?? "SCHEMA_INVALID");
       issues.push(`${i.path.join(".") || "(root)"}: ${i.message}`);
     }
@@ -205,6 +253,15 @@ export function checkPhotoRights(record: unknown, bytesInfo: PhotoBytesInfo | nu
   }
   const r = parsed.data;
   if (r.source_kind === "licensed_stock_with_terms" && !r.terms_sha256) codes.add("RIGHTS_MISSING_TERMS_SNAPSHOT");
+  if (r.source_kind === "ai_generated_demo") {
+    if (!r.ai_provenance) codes.add("RIGHTS_MISSING_AI_PROVENANCE");
+    else if (utcDay(r.ai_provenance.generated_at) > today) codes.add("AI_GENERATED_IN_FUTURE");
+    const up = r.ai_provenance?.upscale;
+    // the enlarged size must be the original × the recorded factor (±1 px of rounding)
+    if (up && (Math.abs(r.width - up.original_width * up.factor) > 1 || Math.abs(r.height - up.original_height * up.factor) > 1)) codes.add("UPSCALE_RECORD_INVALID");
+    if (!opts.aiDemoAllowed) codes.add("AI_DEMO_NOT_ALLOWED");
+    if (purpose === "public_site") codes.add("AI_DEMO_NOT_FOR_PUBLIC_SITE");
+  } else if (r.ai_provenance) codes.add("AI_PROVENANCE_ON_NON_AI_SOURCE");
   if (r.paid) codes.add("PAID_SOURCE_NOT_APPROVED");
   if (!r.allowed_uses.edit) codes.add("NOT_ALLOWED_FOR_EDIT");
   if (!r.allowed_uses.crop) codes.add("NOT_ALLOWED_FOR_CROP");
@@ -232,6 +289,9 @@ export function checkPhotoRights(record: unknown, bytesInfo: PhotoBytesInfo | nu
   return codes.size ? { ok: false, codes: [...codes], issues } : { ok: true, record: r };
 }
 
+/** DEV-185: the label every public record of an AI demo picture carries. */
+export const AI_DEMO_PUBLIC_LABEL = "AI-generated demo image (fictional shop). Not a real product, workshop or craftsperson. / デモ用のイメージ（AI 生成）。実在の商品・工房・職人ではありません。";
+
 /** What may be written to the public repository about a photo: no bytes, no owner, no consent record, no path. */
 export function toPublicPhotoRecord(r: PhotoRights) {
   return {
@@ -248,6 +308,12 @@ export function toPublicPhotoRecord(r: PhotoRights) {
     expiry: r.expiry,
     client_confirmed: Boolean(r.client_confirmation_ref),
     bytes_committed: false as const,
+    // DEV-185: an AI demo picture is labelled as such wherever its record is shown
+    ...(r.source_kind === "ai_generated_demo"
+      ? { demo_image: true as const, ai_generated: true as const, label: AI_DEMO_PUBLIC_LABEL,
+          prompt_sha256: r.ai_provenance?.prompt_sha256 ?? null,
+          upscale: r.ai_provenance?.upscale ? { original_width: r.ai_provenance.upscale.original_width, original_height: r.ai_provenance.upscale.original_height, factor: r.ai_provenance.upscale.factor, method: r.ai_provenance.upscale.method } : null }
+      : {}),
   };
 }
 

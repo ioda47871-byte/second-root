@@ -90,3 +90,63 @@ root運用の`admin.sh run`には別にsystemdの`RuntimeMaxSec=3500`がある�
 この入口は**和菓子A v4専用**であり、別店舗・別モデル・別SHAに流用しない。将来のワンコマンド生成には各画像の承認IDとpinを新規で作り、オーナーが**その1回を承認**してから使う。店舗分析・デザイン作成までの自動化を理由に画像利用枠や課金を勝手に使わない。
 
 この開発とtest自体には実Codex、WSL、Worker、Supabase、Production、Staging、develop→mainへの操作を含めない。差分は独立Fresh ReviewとCIで確認する。
+
+## 6. DEV-185 — つぐ手の AI デモ写真6枚（1回の real Codex、最大6枚）
+
+**状態:** オフライン実装のみ。この PR の作成時に real Codex・画像生成は**0回**。オーナー承認（Option A）: つぐ手専用、既存の WSL の隔離・画像モデル・制限のまま、1回の Codex 実行で最大6枚。失敗で止まり再試行しない。新しい課金・契約・本番変更なし。画像は**デモ用のイメージ（AI 生成）**で、実在の商品・工房・職人ではない。
+
+**仕組み:** `run-tsugute-photos-once.sh`（user・HOME・cgroup を確認）→ `tsugute-photos-gate.sh`（env allowlist、resource preflight、共有 `run.lock`、HEAD = origin/develop = `--expected-commit`・クリーン、prompt pin をロック中にオフライン照合、承認マーカー `~/.local/state/sr-design-worker/poc-approval-used/tsugute-photos-20261106-01` を atomic `mkdir`）→ `tsugute-photos.ts`（受領レシートを再確認し、既存の bubblewrap sandbox で `codex exec` を**1回**、最大15分、全体3300秒）。プロンプトは `docs/design/tsugute-ai-photo-brief.md` §1・§2 の本文そのまま（SHA256 `dab7f2603c7495c4381035391a24ae98cc8bd07064295233fab034964ec33ed0`、4133文字）で、画像ツールを順に6回呼ぶよう指示する。実行後、Codex 自身のセッションログと画像フォルダで、呼び出し7回以上・PNG 7枚以上なら全体を拒む（画像を渡さない）、失敗した呼び出しがあればそこで止まる。モデルが指示に従わない場合、7回目の呼び出しを実行中に止めることはできない（終了後に拒む）。時間: 過去の実測は1回 33〜55 秒・Codex 全体 98 秒で、6回でも15分に収まる見込み（既存の制限は変えていない）。
+
+**前提:** この PR が独立レビュー・CI green の後に develop へマージ済み。`sr-jail-claude.service` の Claude で `whoami=sr-designgen`、`git status --short` が空、HEAD = origin/develop = マージ後の SHA（§1 の手順で一度だけ更新）、メモリ preflight が STOP でない、ほかの重い作業なし、マーカー `poc-approval-used/tsugute-photos-20261106-01` が**無い**こと。
+
+### 6.1 オーナーが隔離版 Claude に貼るコマンド（1回だけ）
+
+```bash
+# EXPECTED_COMMIT を、マージ後の develop の40文字SHAに書き換える。foreground で起動しない。
+set -euo pipefail
+umask 077
+EXPECTED_COMMIT="REPLACE_WITH_REVIEWED_40_CHARACTER_SHA"
+[[ "$EXPECTED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || { echo "STOP: REVIEWED_COMMIT_REQUIRED"; exit 2; }
+LOG_DIR="$HOME/sr-design-poc-launch-logs"
+install -d -m 0700 "$LOG_DIR"
+LOG="$(mktemp "$LOG_DIR/tsugute-photos.XXXXXXXX.log")"
+nohup setsid bash "$HOME/work/second-root/scripts/sales-design-worker/run-tsugute-photos-once.sh" \
+  --human-approval-confirmed --expected-commit "$EXPECTED_COMMIT" \
+  >"$LOG" 2>&1 </dev/null &
+echo "POC_LAUNCHED_PID=$! LOG=$LOG"
+```
+
+起動直後に PID の生存を確かめ、その後は数分おきに別の短いコマンドで `tail -n 30 <LOG>` とプロセスの生存を見る（§2 と同じ。開始後は service の停止・再起動、同じ checkout の変更、別の Codex/worker をしない）。
+
+### 6.2 結果の読み方
+
+- `POC_PIN_OK` … プロンプト照合のみ。生成ではない。
+- `POC_APPROVAL_RESERVED` … 承認を消費した。以後、結果がどうであれ**再実行しない**・マーカーを消さない。
+- `POC_IMAGES_READY: ~/sr-tsugute-photos/tsugute-photos-XXXXXX` … 6枚あり（`status: complete`）。直前の JSON 行に枚数・呼び出し回数・モデル・各枠の画素（`(<2x)` は 2倍未満、`(<1.5x)` は 1.5倍未満）。
+- `POC_MANIFEST: …/manifest.json` … slot → ファイル・SHA256・画素・プロンプトの SHA・generator・model・generated_at。止まった場合も残る。
+- `POC_STOP: CODEX_IMAGE_CALLS_EXCEEDED` … 7回以上呼ばれた。画像は保存されない。`CODEX_IMAGE_TOOL_FAILED` / `CODEX_TIMEOUT` / `CODEX_QUOTA` / `CODEX_IMAGES_INCOMPLETE` / `CODEX_IMAGE_COUNT_MISMATCH` / `CODEX_SESSION_LOG_UNVERIFIED` … 止まった（それまでの画像は記録用に残るが取り込みは拒む）。報告して止まる。
+- `STOP: POC_PIN_MISMATCH*` / `POC_COMMIT_PIN_MISMATCH` / `POC_TSUGUTE_APPROVAL_SCOPE_MISMATCH` … Codex 未実行・承認未使用。
+- `STOP: POC_APPROVAL_ALREADY_USED` … 既に使った。**消して再試行しない**。
+
+出力ディレクトリは 0700、各ファイルは 0600、リポジトリの外。Git に入れない。
+
+### 6.3 続き（Claude が行う）: d1-v10 への取り込みと PC/SP の描画
+
+オーナーは `~/sr-tsugute-photos/tsugute-photos-XXXXXX/` を**丸ごと**（6枚の PNG と `manifest.json`、改変しない）、Claude が作業する機械の**リポジトリの外**の私用の場所へコピーする（例: 既存 runbook の Viewing と同じく管理者経由で Windows の私用フォルダ → Claude のセッションの scratchpad）。公開の場所・Issue・PR には置かない。その上で Claude が、クリーンな作業用 checkout（worker の checkout ではない）で:
+
+```bash
+RUN_DIR=/path/outside/repo/tsugute-photos-XXXXXX
+npx tsx scripts/design-artifact/tsugute-ai-intake.ts --from "$RUN_DIR" \
+  --manifest-out design-library/research/quality-pipeline/.intake/tsugute-ai-swap.json
+npx tsx scripts/design-artifact/photo-swap.ts \
+  --page design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v10 \
+  --manifest design-library/research/quality-pipeline/.intake/tsugute-ai-swap.json \
+  --out /path/outside/repo/tsugute-ai-swap
+```
+
+- 取り込みは `status: complete`・6枚・SHA・画素・model の報告を確かめ、PNG を `.intake/photos/tsugute-ai-<slot>.png`（git が無視）へそのまま写し、`source_kind: ai_generated_demo`（来歴: generator・model・generated_at・prompt_sha256・approval_id・demo_only）の権利の記録を作る。
+- 差し替えは既存の検査（SHA・画素・2倍、主役の箱、全部か無し）を通った時だけ `renders/desktop_1440.png`・`mobile_390.png` と `swap-summary.json`（各写真に「AI-generated demo image… Not a real product, workshop or craftsperson」）を作る。
+- 枠への割り当ては画像ファイルの保存順（呼び出し順）による。オーナーは描画で**各枠に正しい被写体が写っていること**（割れ・欠け・ひび・乾燥・手元・机）を目で確かめる。
+- オーナー承認 (a): `ai_generated_demo` の画像だけ、枠の 2倍の目標に届かない時に限り、届く最小の倍率（最大2倍、既存の sharp lanczos3）で取り込み時に拡大し、元の大きさ・倍率・方法を来歴と公開の記録に残す。2倍でも届かない枠は `UPSCALE_EXCEEDS_2X` で拒み採用しない。差し替えの密度の検査は拡大後のファイルに掛かる。実写真の規則は不変。
+- 取り込みは manifest が承認済みの実行のものか（prompt SHA256・文字数、各枠のプロンプト SHA256、generator、デモのラベル）を照合し、違えば拒む。
+- **オーナーの判断が要りうる点:** 2倍の拡大でも届かない枠（`UPSCALE_EXCEEDS_2X`）、ph-dry が SP で主役を失う場合（`SP_PHOTO_REQUIRED`）。いずれも Claude は勝手に例外を書かず、生成もやり直さず、オーナーへ報告する。

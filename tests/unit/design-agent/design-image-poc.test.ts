@@ -2138,7 +2138,9 @@ describe("isolation of the PoC's output", () => {
     const compImpl = files.filter((f) => f.startsWith("lib/design-agent/comp-impl/") || f === "scripts/sales-design-worker/comp-impl-poc.ts");
     // DEV-117 (owner-approved exact path): the research test's image step reuses only the common image call
     // (image-once.ts) and the prompt builder; it is kept out of the worker and the app (phase2f-live/isolation.test.ts)
-    expect(files.filter((f) => !compImpl.includes(f))).toEqual(["scripts/design-artifact/phase2f-image.ts", "scripts/sales-design-worker/design-image-poc.ts"]);
+    // DEV-185 (owner-approved exact path): the つぐ手 one-shot photo run reuses the common image call (image-once.ts);
+    // it is started only by run-tsugute-photos-once.sh (tests/unit/design-agent/tsugute-ai-photos.test.ts)
+    expect(files.filter((f) => !compImpl.includes(f))).toEqual(["scripts/design-artifact/phase2f-image.ts", "scripts/sales-design-worker/design-image-poc.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
   });
 
   it("the v2 direction, the direction files and the AI food-visual policy stay inside the PoC (worker, demo, presets, renderer, asset store never read them)", () => {
