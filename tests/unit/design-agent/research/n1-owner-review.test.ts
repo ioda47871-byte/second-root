@@ -299,7 +299,7 @@ describe("the preview the owner looks at (Chromium; WebKit / Firefox: BLOCKED he
 
 describe("nothing is approved, and nothing can be (repository guards)", () => {
   it("N1 is not a capability, and APPROVED_CAPABILITIES is empty", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]); // DEV-180: N1 is not among them
     expect(CAPABILITY_NAMES.some((c) => /decoration_svg|n1|svg/i.test(c))).toBe(false);
   });
 

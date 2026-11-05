@@ -101,7 +101,7 @@ describe("DEV-161: phase B compatibility baseline (today's behaviour, flag off)"
   // phase-B implementation PR adds five capability names and one option key each. APPROVED_CAPABILITIES stays empty.
   it("has vertical_name and the five phase-B capabilities, and none approved", () => {
     expect([...CAPABILITY_NAMES]).toEqual(["vertical_name", "display_scale", "display_nowrap", "colour_syntax", "gradient_ground", "translucent_decoration"]);
-    expect([...APPROVED_CAPABILITIES]).toEqual([]);
+    expect([...APPROVED_CAPABILITIES]).toEqual(["gradient_ground"]); // DEV-180 (owner approval required to merge)
   });
 
   it("has one CSS option key per capability", () => {

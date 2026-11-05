@@ -8258,7 +8258,7 @@
     {
       "id": "DEV-180",
       "title": "gradient_ground と layered_decoration の安全上の未解決点の修正と、能力ごとの承認資料 (最初に ON を求める単一能力の選定)",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8301,12 +8301,12 @@
         "本番の CSS ゲートの変更",
         "本番の差分の draft PR を ready にすること・merge すること (オーナーの明示の承認まで draft のまま)"
       ],
-      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。"
+      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。 結果 (DEV-180): gradient_ground の測る箱の穴 (DEV-172 M1) は、本番の PAINT_SCANNER への1か所の置き換え (内側の箱で測る、不透明な実線でない枠と1つの箱でない地は GRADIENT_PAINT_BOX) を候補としてテストの道具で示し、M1 の再現 4 と新しい再現 6 が落ち、3店は全幅で変わらない。段 C の試作は 1px の線・疑似要素・SVG を守る事実と普通の本文の両方に上下から当てた 96 例で確かめ、見逃し3つ (SVG の留めの角、SVG のマーカー、::first-letter・::first-line) を塞いだ (守りを足すだけ)。承認資料は docs/design/capability-approval-gradient-ground.md・capability-approval-layered-decoration.md。最初に ON を求める能力は gradient_ground (推奨、承認ではない)。本番の差分は別 branch feature/dev-180-prod-gradient-ground (push のみ、PR は親が draft で開く、merge しない)。研究の branch の lib の差は 0、APPROVED_CAPABILITIES は空のまま。記録は .ai/reviews/DEV-180.md。"
     },
     {
       "id": "DEV-181",
       "title": "N1 の装飾 SVG と段 D (縦書き・回転・縁取り) を本番へ取り込む条件の整理 (機能ごと)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-178"
@@ -8340,12 +8340,12 @@
       "human_approval_triggers": [
         "機能ごとの ON"
       ],
-      "note": "docs/design/production-conditions-n1-phase-d.md。判定: 実装の PR は vertical_text・outlined_type が、共有の守る文字の判定 (FACT_NODES_JS) と段 C の重なりの検査を lib へ移した後に Ready-for-approval。N1・small_rotation は段 C の lib 待ちで Blocked。ON は4つとも Blocked で、ON の前にオーナーの PC/SP の目視と実機を勧める。オーナーの目視の記録は作っていない。縦の事実の文は保護が優先 (規則を緩める案なし)。WebKit・Firefox は BLOCKED (プローブ 終了 2)。"
+      "note": "docs/design/production-conditions-n1-phase-d.md。判定: 実装の PR は vertical_text・outlined_type が、共有の守る文字の判定 (FACT_NODES_JS) と段 C の重なりの検査を lib へ移した後に Ready-for-approval。N1・small_rotation は段 C の lib 待ちで Blocked。ON は4つとも Blocked で、ON の前にオーナーの PC/SP の目視と実機を勧める。オーナーの目視の記録は作っていない。縦の事実の文は保護が優先 (規則を緩める案なし)。WebKit・Firefox は BLOCKED (プローブ 終了 2)。 PR #220 で develop へ merge した (7d908c3)。"
     },
     {
       "id": "DEV-182",
       "title": "つぐ手の実写真 6 枠の受け取りと差し替えの準備 (非公開の受け取り・権利の記録・SHA と画素・PC/SP の切り抜き)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-178"
@@ -8382,7 +8382,7 @@
       "human_approval_triggers": [
         "写真の提供と権利の確認"
       ],
-      "note": "合成の PNG (コードで作った雑音、commit なし) で CLI の通し試験: d1-v3 は 6枠・3区切りの切り抜き・PC/SP の描画まで通り、成功 4 件、拒む 8 件はどれも --out を残さない。最新の C (d1-v8) は一覧が無く PAGE_NOT_INVENTORIED、変換も BOARD_NOT_FOUND (継ぎ目の絵と <wbr>) で止まる: テストで固定し、直しは scripts/・design-library/ を変えるので HOLD。d1-v8 では ph-kake の目標が 1370×1028 に上がるので、オーナー向けチェックリストはその大きさ。写真は1枚も無い。"
+      "note": "合成の PNG (コードで作った雑音、commit なし) で CLI の通し試験: d1-v3 は 6枠・3区切りの切り抜き・PC/SP の描画まで通り、成功 4 件、拒む 8 件はどれも --out を残さない。最新の C (d1-v8) は一覧が無く PAGE_NOT_INVENTORIED、変換も BOARD_NOT_FOUND (継ぎ目の絵と <wbr>) で止まる: テストで固定し、直しは scripts/・design-library/ を変えるので HOLD。d1-v8 では ph-kake の目標が 1370×1028 に上がるので、オーナー向けチェックリストはその大きさ。写真は1枚も無い。 PR #221 で develop へ merge した (165d09f)。"
     },
     {
       "id": "DEV-183",

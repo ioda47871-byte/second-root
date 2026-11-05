@@ -167,7 +167,7 @@ const SCALED = (gutter: string): Case => ({
 });
 
 describe("DEV-174 the join stays OFF", () => {
-  it("approves nothing", () => expect(APPROVED_CAPABILITIES).toEqual([]));
+  it("approves no N1 / phase C capability (DEV-180: gradient_ground alone)", () => expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]));
 });
 
 describe("DEV-174 must fail: an N1 img that reaches text (static parts clean, the phase C check refuses)", () => {

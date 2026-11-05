@@ -122,7 +122,7 @@ const CONSTRUCTS = [
 
 describe("DEV-173 phase C stays OFF (the production checker today)", () => {
   it("approves nothing and names no phase C capability", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]); // DEV-180: no phase C capability
     expect(CAPABILITY_NAMES as readonly string[]).not.toContain("layered_decoration");
     expect(CAPABILITY_NAMES.some((c) => /layer|overlap|magazine|hero_overlay/.test(c))).toBe(false);
   });

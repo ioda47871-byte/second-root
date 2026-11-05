@@ -345,12 +345,12 @@ describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
     const spec = JSON.parse(readFileSync(join(FIXTURE, "layout-spec.json"), "utf8")) as CompSpec;
     expect(checkCompSpec(spec).ok).toBe(true);
     for (const c of [[], ["hero_overlay"], ["Hero Overlay"]]) expect(checkCompSpec({ ...spec, capabilities: c } as unknown)).toEqual({ ok: false, problems: ["SPEC_SHAPE"] });
-    // DEV-102: known, but not approved (APPROVED_CAPABILITIES is empty)
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    // DEV-102: known, but not approved (DEV-180: only gradient_ground is)
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]);
     expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] })).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_NOT_APPROVED"] });
     expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] }, ["vertical_name"]).ok).toBe(true);
     expect(checkCompSpec({ ...spec, capabilities: ["vertical_name", "vertical_name"] }, ["vertical_name"])).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_REPEAT"] });
-    expect(capabilitiesCheck()).toMatchObject({ ok: true, declared: [], approved: [] });
+    expect(capabilitiesCheck()).toMatchObject({ ok: true, declared: [], approved: ["gradient_ground"] });
     expect(capabilitiesCheck(["hero_overlay"]).codes).toEqual(["CAPABILITY_NOT_APPROVED"]);
   });
 

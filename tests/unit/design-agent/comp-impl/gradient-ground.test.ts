@@ -190,11 +190,12 @@ const ALLOWED_ON = [
 /** Pass only with colour_syntax as well (named, hsl, oklch, oklab without alpha below 1). */
 const ALLOWED_ONC = ["background: linear-gradient(red, #fff)", "background: linear-gradient(hsl(0 0% 0%), hsla(0, 0%, 0%, 1))", "background: linear-gradient(oklch(0.5 0.1 30), oklab(0.5 0.1 0.1))", "background: linear-gradient(rebeccapurple, oklch(0.5 0.1 30 / 1))"];
 
-describe("DEV-172 gradient_ground stays OFF", () => {
-  it("approves nothing and turns the flag on for no spec", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
-    expect(pageCssOptionsOf({ capabilities: ["gradient_ground"] })).toEqual({});
-    expect(pageCssOptionsOf({ capabilities: ["gradient_ground", "colour_syntax", "translucent_decoration"] })).toEqual({});
+describe("DEV-172 gradient_ground: approved alone (DEV-180 production draft)", () => {
+  it("approves gradient_ground alone: its flag only for a spec declaring it, never colour_syntax or translucent_decoration", () => {
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]);
+    expect(pageCssOptionsOf({ capabilities: ["gradient_ground"] })).toEqual({ gradientGround: true });
+    expect(pageCssOptionsOf({})).toEqual({});
+    expect(pageCssOptionsOf({ capabilities: ["gradient_ground", "colour_syntax", "translucent_decoration"] })).toEqual({ gradientGround: true });
   });
 
   it("with the flag off, the 1px sweep does not run and every gradient the flag would allow is refused (CSS_VALUE / CSS_PROPERTY)", async () => {
@@ -457,10 +458,10 @@ describe("DEV-172 gradient_ground ON: the stop rule", () => {
     }
   });
 
-  it("known gap before ON (Fresh Review M1): the rule measures the border box, Chromium draws the gradient in the padding box and repeats it under borders, and per line fragment on a wrapped inline box", async () => {
-    // Every page here passes the grammar with the flag and every scan is [] (or a code only without the trick), while the
-    // drawing jumps far more than 2 levels per px. No text is involved (the overlap check uses the border box, which is
-    // the paint extent): this is the smoothness rule, not text safety. Pinned as current behaviour; lib is not changed.
+  it("the gap closed before ON (Fresh Review M1, fixed in DEV-180): the rule measures the padding box, refuses a border that is not solid and opaque, and a ground drawn in fragments", async () => {
+    // Every page here passes the grammar with the flag, while the drawing jumps far more than 2 levels per px. Before
+    // DEV-180 each scan was [] (the rule measured the border box); now each fails (GRADIENT_PAINT_BOX, and the stop rule
+    // on the padding box). No text is involved: this is the smoothness rule, not text safety.
     const drawn = async (css: string, body: string) => {
       const page = `body { margin: 0; background: #fff; } ${css}`;
       expect(cssProblems(page, ON), css).toEqual([]);
@@ -476,28 +477,28 @@ describe("DEV-172 gradient_ground ON: the stop rule", () => {
     const BORDERS = "border-top: 16px solid transparent; border-bottom: 16px solid transparent;";
     // 1. transparent borders: the rule sees 62px, the 30px gradient repeats under the borders
     const a = await drawn(`.g { width: 40px; height: 30px; ${BORDERS} background: linear-gradient(#202020, #848484); }`, '<div class="g"></div>');
-    expect(a.got).toEqual([]);
+    expect(a.got).toEqual(["GRADIENT_PAINT_BOX", "GRADIENT_TOO_STEEP"]);
     expect(a.h).toBe(62);
     expect(a.jump).toBeGreaterThan(2 * 20); // reviewer: 97 levels in one px
     expect((await drawn(".g { width: 40px; height: 30px; background: linear-gradient(#202020, #848484); }", '<div class="g"></div>')).got).toEqual(["GRADIENT_TOO_STEEP"]);
     // 2. black to white on 100px + borders: measured 132px (passes), drawn with a hard edge where the tile repeats
     const b = await drawn(`.g { width: 40px; height: 100px; ${BORDERS} background: linear-gradient(#000, #fff); }`, '<div class="g"></div>');
-    expect(b.got).toEqual([]);
+    expect(b.got).toEqual(["GRADIENT_PAINT_BOX", "GRADIENT_TOO_STEEP"]);
     expect(b.jump).toBeGreaterThan(200);
     // 3. em borders: 1em of a 256px font is a 256px border (the grammar reads 1em as 16px); a 30px tile repeats about 17×,
     //    in effect a repeating-linear-gradient, which the grammar refuses by name
     const c = await drawn(".g { width: 40px; font-size: 256px; height: 30px; border-top: 1em solid transparent; border-bottom: 1em solid transparent; background: linear-gradient(#000, #fff); }", '<div class="g"></div>');
-    expect(c.got).toEqual([]);
+    expect(c.got).toEqual(["GRADIENT_PAINT_BOX", "GRADIENT_TOO_STEEP"]);
     expect(c.h).toBe(542);
     expect(c.jump).toBeGreaterThan(200);
     // 4. an empty inline span wrapping over three lines: measured as the whole area, drawn once per one-line fragment
     const imgs = '<img alt="">'.repeat(6);
     const d = await drawn("p { width: 150px; margin: 0; line-height: 1; font-size: 16px; } img { width: 60px; height: 30px; } .g { background: linear-gradient(#303030, #a0a0a0); }", `<p><span class="g">${imgs}</span></p>`);
     expect(d.frags).toBe(3);
-    expect(d.got).toEqual([]);
+    expect(d.got).toEqual(["GRADIENT_PAINT_BOX"]);
     expect(d.jump).toBeGreaterThan(2);
     expect((await drawn("p { width: 600px; margin: 0; line-height: 1; font-size: 16px; } img { width: 60px; height: 30px; } .g { background: linear-gradient(#303030, #a0a0a0); }", `<p><span class="g">${imgs}</span></p>`)).got).toEqual(["GRADIENT_HARD_STOP", "GRADIENT_TOO_STEEP"]);
-    console.log(`DEV-172 M1 box gap: borders ${a.jump} levels/px (rule []), black-white + borders ${b.jump}, 1em borders ${c.jump}, wrapped inline (${d.frags} fragments) ${d.jump}`);
+    console.log(`DEV-172 M1 box gap (closed in DEV-180): borders ${a.jump} levels/px (rule ${a.got.join(",")}), black-white + borders ${b.jump}, 1em borders ${c.jump}, wrapped inline (${d.frags} fragments) ${d.jump}`);
   });
 
   it("colour_syntax + gradient_ground: a single oklch / oklab stop switches the whole gradient to oklab, hex segments included: black to white at the 2-levels edge goes over", async () => {

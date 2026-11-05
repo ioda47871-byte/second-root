@@ -128,7 +128,7 @@ const CONSTRUCTS = [
 
 describe("DEV-175 phase D stays OFF (the production checker today)", () => {
   it("approves nothing and names no phase D capability", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]); // DEV-180: no phase D capability
     expect(CAPABILITY_NAMES.some((c) => /vertical_text|rotation|outline|stroke/.test(c))).toBe(false);
     // vertical_name exists (DEV-102) and is not approved: a spec declaring it turns nothing on
     expect(pageCssOptionsOf({ capabilities: ["vertical_name"] })).toEqual({});

@@ -276,6 +276,11 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     const s = cs(el);
     if (s.display === "none") continue;
     const r = doc(el.getBoundingClientRect());
+    // DEV-180: markers are drawn outside the shape's box and outside isPointInStroke / isPointInFill (a 14px marker at a
+    // path's end drew over a fact with no geometric code). Their extent and order are not measured: fail closed. Checked
+    // before every other skip (DEV-180 review M1): a shape with no stroke and no fill, or of zero size (a one-point path),
+    // still draws its markers. The marker properties inherit, so a group or the svg itself counts too.
+    if (isSvg(el) && [s.markerStart, s.markerMid, s.markerEnd].some((m) => m && m !== "none")) painters.push({ el, kind: "filter", rects: [grow(r, 1e5)], hit: false });
     if (r.right - r.left <= 0 && r.bottom - r.top <= 0) continue;
     const visible = s.visibility !== "hidden";
     const add2 = (kind, rects, hit) => { if (rects.length) painters.push({ el, kind, rects, hit }); };
@@ -288,7 +293,12 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
       if (!paints) continue;
       let scale = 1;
       try { const b = el.getBBox(); if (b.width > 0) scale = Math.max(scale, (r.right - r.left) / b.width); } catch (e) { scale = 1; }
-      const sw = s.stroke && s.stroke !== "none" ? ((parseFloat(s.strokeWidth) || 0) * (s.vectorEffect === "non-scaling-stroke" ? 1 : scale)) / 2 + 1 : 1;
+      // DEV-180: the stroke reaches past its half width at a join: a miter tip is up to miterlimit × half the width from
+      // the vertex (a 6px stroke at a sharp vertex drew 9.5px past it, onto a fact the box grown by 4px missed), and a
+      // square cap's corner √2 × half the width from the end. Grown by the largest of these (round / bevel joins: √2).
+      const half = s.stroke && s.stroke !== "none" ? ((parseFloat(s.strokeWidth) || 0) * (s.vectorEffect === "non-scaling-stroke" ? 1 : scale)) / 2 : 0;
+      const mitred = !["round", "bevel"].includes(s.strokeLinejoin);
+      const sw = half * (mitred ? Math.max(parseFloat(s.strokeMiterlimit) || 4, Math.SQRT2) : Math.SQRT2) + 1;
       add2("svg", [grow(r, sw)], true);
       if (spread > 0) add2("filter", [grow(r, sw + spread)], false);
       continue;
@@ -588,6 +598,23 @@ export const MATERIALIZE_SCRIPT = String.raw`() => {
       for (let i = 0; i < s.length; i++) { const k = s[i]; if (k === "content" || k.startsWith("--")) continue; props[k] = s.getPropertyValue(k); }
       found.push({ el, p, props, text: m[1] });
     }
+  }
+  // DEV-180: a pseudo-element other than ::before / ::after (materialized above) and ::marker (OVERLAP_MARKER_UNMEASURED)
+  // can change how text is drawn — ::first-letter / ::first-line set its own font-size, letter-spacing, line-height — and
+  // the ink boxes (canvas measureText at the element's font) do not see it: an 80px ::first-letter drew over the next
+  // line with no geometric code (only the pixel pass, checked widths only, saw ink outside the glyph boxes). Every rule
+  // naming another pseudo-element, in any sheet and at any depth (@media, @supports, nesting), fails closed as unproven.
+  const OTHER_PSEUDO = /::?(first-letter|first-line)\b|::(?!before\b|after\b|marker\b)[a-z-]+/i;
+  const walk = (rules) => {
+    for (const r of Array.from(rules || [])) {
+      if (r.selectorText && OTHER_PSEUDO.test(r.selectorText)) unknown += 1;
+      if (r.cssRules) walk(r.cssRules);
+    }
+  };
+  for (const sh of Array.from(document.styleSheets)) {
+    let rules = null;
+    try { rules = sh.cssRules; } catch (e) { unknown += 1; continue; }
+    walk(rules);
   }
   const hide = document.createElement("style");
   hide.id = "ov-hide";
