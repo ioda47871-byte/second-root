@@ -1,0 +1,293 @@
+/* DEV-183 — 輪 の C d1-v8-opt-hub-disc: オーナーが選ぶための別案 (研究専用、本番用ではない、オーナーの判断ではない)。
+   元は ../d1-v7 (カンプ comps/d1-wheel-hub-v6 の実装) で、そのまま残す。変えたのは末尾の「別案」の規則と、黄のスポークの内の端の座標だけ。
+   HOLD 1 の別案 B: 字 輪 の大きさはそのままで、ハブ (黄の円) を大きくする。中心は同じ。四角い字の箱の角まで円の内に入る。
+   直径 PC・タブレット 20.83vw → 26.2vw、SP 27.9vw → 39vw。黄のスポークは新しい円の縁から出る。安全の検査は変えていない。 */
+:root {
+  --concrete: #e7e5df;
+  --asphalt: #26272a;
+  --asphalt-2: #34363a;
+  --yellow: #f2c230;
+  --steel: #9aa0a6;
+  --ink: #1b1c1e;
+  --ink-soft: #5d6066;
+  --mincho: "IPAMincho", serif;
+  --gothic: "Noto Sans CJK JP", "IPAGothic", sans-serif;
+  --pad: clamp(20px, 5.56vw, 80px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--concrete); }
+body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.8; letter-spacing: .04em; }
+.page { position: relative; overflow: hidden; }
+section { position: relative; }
+/* Japanese breaks only between phrases: the HTML marks each phrase end with <wbr>; a phrase too long for its box still breaks */
+h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* photo placeholders: role and proportion only */
+.photo {
+  width: 100%; height: 100%;
+  background:
+    radial-gradient(ellipse at 28% 22%, rgba(255, 255, 255, .28), transparent 58%),
+    radial-gradient(ellipse at 80% 90%, rgba(0, 0, 0, .22), transparent 55%),
+    repeating-linear-gradient(135deg, rgba(27, 28, 30, .06) 0 1px, transparent 1px 12px),
+    linear-gradient(160deg, var(--tone, #c9c6bd), #8e8b84);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+.board { filter: drop-shadow(0 24px 22px rgba(0, 0, 0, .35)); }
+.ph { margin-top: 10px; font-size: 12px; letter-spacing: .08em; color: var(--ink-soft); }
+
+/* the wheel drawings (shared) */
+.wheel-art .tire { fill: none; stroke: var(--ink); stroke-width: 26; }
+.wheel-art .rim { fill: none; stroke: var(--steel); stroke-width: 6; }
+.wheel-art .spk line { stroke: var(--ink); stroke-width: 1.6; }
+.wheel-art .hub { fill: var(--yellow); stroke: var(--ink); stroke-width: 4; }
+.reach, .reach-tab, .ghost-turn-low { display: none; }
+.wheel-sp .sp-spine { fill: none; stroke: var(--yellow); stroke-width: 3; }
+/* v5 (DEV-176): the arm starts on the hub's edge (radius 54.4 of 390; v4 started 5.6 units short) with a square end, as on the tablet */
+.wheel-sp .sp-case { fill: none; stroke: var(--ink); stroke-width: 8; stroke-linecap: butt; }
+.wheel-sp .sp-spoke { fill: none; stroke: var(--yellow); stroke-width: 4; stroke-linecap: butt; }
+.wheel-sp .sp-nip { fill: var(--yellow); stroke: var(--ink); stroke-width: 3; }
+/* the giant words are solid now: an outline on this heavy face drew every overlapping stroke of the glyph (three lines deep) */
+.ghost { position: absolute; z-index: 1; font-family: var(--gothic); font-weight: 900; line-height: 1; white-space: nowrap; color: var(--yellow); pointer-events: none; }
+
+/* hero: an art-led stage that scales with the width; the copy flows over it */
+.hero { min-height: 66.67vw; z-index: 2; }
+.hero-stage { position: absolute; inset: 0; pointer-events: none; }
+.wheel-pc { position: absolute; left: 0; top: 0; width: 100%; height: 97.22vw; }
+.wheel-sp { display: none; }
+.hub-name { position: absolute; top: 34.03vw; left: 67.36%; width: 20.83vw; height: 20.83vw; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--yellow); font-family: var(--mincho); font-weight: 400; font-size: 15.28vw; line-height: 1; color: var(--ink); }
+.name-full { position: absolute; top: clamp(20px, 3.89vw, 56px); left: var(--pad); font-size: 14px; letter-spacing: .3em; color: var(--ink-soft); }
+.hero-text { position: relative; padding: 13.89vw 0 6vw var(--pad); width: 40%; }
+.tagline { font-family: var(--mincho); font-size: clamp(26px, 3.89vw, 56px); line-height: 1.35; letter-spacing: .04em; }
+.how { margin-top: 30px; max-width: min(380px, 26vw); font-size: 14px; border-top: 4px solid var(--yellow); padding-top: 14px; }
+
+/* spokes: four stations on the dark ground, set on a 12-column grid; the hero's wheel runs into its top */
+.spokes { background: var(--asphalt); color: var(--concrete); padding: 34.7vw var(--pad) 26vw; }
+.stations { position: relative; z-index: 3; display: grid; grid-template-columns: repeat(12, 1fr); align-items: center; row-gap: 3vw; }
+.station { display: contents; }
+.spokes-h { grid-column: 1 / 5; grid-row: 1; align-self: start; font-family: var(--mincho); font-weight: 400; font-size: clamp(24px, 2.78vw, 40px); line-height: 1.5; }
+.fig .board { aspect-ratio: var(--ratio); }
+.station .ph { color: #b7b9bd; }
+.station .svc { font-weight: 900; font-size: clamp(28px, 4.44vw, 64px); line-height: 1.1; color: var(--yellow); white-space: nowrap; }
+.st-a .fig { grid-column: 6 / 10; grid-row: 1; width: 84%; --ratio: 360 / 260; }
+.st-a .board { transform: rotate(-4deg); }
+.st-a .svc { grid-column: 10 / 13; grid-row: 1; padding-left: 1.4vw; }
+.st-d .fig { grid-column: 1 / 5; grid-row: 2 / 4; width: 70%; margin-left: 3vw; --ratio: 300 / 330; }
+.st-d .board { transform: rotate(3deg); }
+.st-d .svc { grid-column: 1 / 6; grid-row: 4; align-self: start; }
+.st-b .svc { grid-column: 5 / 10; grid-row: 2; justify-self: end; padding-right: 1.4vw; }
+.st-b .fig { grid-column: 10 / 13; grid-row: 2; width: 94%; --ratio: 300 / 220; }
+.st-b .board { transform: rotate(5deg); }
+.st-c .fig { grid-column: 6 / 10; grid-row: 3; width: 72%; --ratio: 330 / 240; }
+.st-c .board { transform: rotate(-2deg); }
+.st-c .svc { grid-column: 9 / 13; grid-row: 3; padding-left: 1.4vw; }
+.ghost-turn { left: -2.1vw; bottom: -2.1vw; font-size: 20.83vw; letter-spacing: -.02em; }
+
+/* truing: yellow ground, one spoke drawn tight */
+.truing { background: var(--yellow); padding: 10.4vw var(--pad) 10.4vw calc(var(--pad) + 2.8vw); }
+.truing-grid { display: grid; grid-template-columns: 41.7vw 1fr; gap: 6.9vw; align-items: start; }
+.true-art { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.true-art .w2 .tire { fill: none; stroke: var(--ink); stroke-width: 22; }
+.true-art .w2 .rim { fill: none; stroke: #fff6d6; stroke-width: 5; }
+.true-art .w2 .spk line { stroke: rgba(27, 28, 30, .45); stroke-width: 1.4; }
+.true-art .w2 .hub { fill: var(--ink); }
+.true-art .pick { stroke: var(--ink); stroke-width: 6; }
+.truing-text { padding-top: 7.6vw; max-width: 480px; }
+.truing-h { font-family: var(--mincho); font-weight: 400; font-size: clamp(48px, 6.67vw, 96px); line-height: 1; white-space: nowrap; }
+.truing-fact { margin-top: 4.2vw; font-family: var(--mincho); font-size: clamp(18px, 1.8vw, 26px); line-height: 1.7; }
+/* v3: 締める stays whole inside the page (the last glyph used to be cut 10–20px at the right edge, which read as a mistake, not a bleed) */
+.ghost-tight { right: 1.4vw; bottom: -4.17vw; font-size: 18.06vw; color: var(--ink); }
+
+/* check: the workbench, the words written down the side */
+.check { background: var(--concrete); padding: 7.6vw var(--pad) 8vw calc(var(--pad) + 2.8vw); }
+.check-grid { display: grid; grid-template-columns: 52.8vw 1fr auto auto; column-gap: 3vw; align-items: start; }
+.bench .board { aspect-ratio: 760 / 560; transform: rotate(-1.5deg); }
+/* the board's drop shadow paints over its caption (a filter paints above in-flow text): the caption sits on its own ground, above the shadow, in ink */
+.ph-bench { position: relative; z-index: 1; width: fit-content; margin-top: 14px; padding: 2px 8px 2px 0; background: var(--concrete); color: var(--ink); }
+.check-fact { grid-column: 3; margin-top: 2vw; writing-mode: vertical-rl; font-family: var(--mincho); font-size: clamp(16px, 1.53vw, 22px); letter-spacing: .1em; max-height: 620px; }
+.check-h { grid-column: 4; writing-mode: vertical-rl; font-family: var(--mincho); font-weight: 400; font-size: clamp(30px, 3.47vw, 50px); letter-spacing: .12em; max-height: 780px; }
+
+/* lesson: the pump gauge hangs over the boundary */
+.lesson { background: var(--asphalt-2); color: var(--concrete); padding: 13.9vw var(--pad) 8vw calc(var(--pad) + 2.8vw); min-height: 37.5vw; }
+.gauge-art { position: absolute; right: 8.33vw; top: -8.33vw; width: 38.9vw; height: 38.9vw; z-index: 2; }
+.gauge circle { fill: var(--concrete); stroke: var(--ink); stroke-width: 10; }
+.gauge line { stroke: var(--ink); stroke-width: 3; }
+.gauge .needle { stroke: #c4371b; stroke-width: 8; stroke-linecap: round; }
+.lesson-text { position: relative; z-index: 3; max-width: 44vw; }
+.lesson-h { font-family: var(--mincho); font-weight: 400; font-size: clamp(36px, 5vw, 72px); line-height: 1.3; }
+.lesson-fact { margin-top: 2.6vw; font-size: clamp(15px, 1.39vw, 20px); }
+
+/* visit: the wheel comes round to the shop front */
+.visit { background: var(--yellow); padding: 6.25vw var(--pad) 40px calc(var(--pad) + 2.8vw); min-height: 52.8vw; }
+.wheel-end { position: absolute; right: -16vw; top: 2.1vw; width: 48.6vw; height: 48.6vw; opacity: .9; }
+.wheel-end .w3 .tire { fill: none; stroke: var(--ink); stroke-width: 20; }
+.wheel-end .w3 .rim { fill: none; stroke: #fff6d6; stroke-width: 5; }
+.wheel-end .w3 .spk line { stroke: var(--ink); stroke-width: 1.4; }
+.wheel-end .w3 .hub { fill: var(--ink); }
+.visit-text { position: relative; z-index: 2; max-width: 820px; width: 57vw; }
+.visit-h { font-family: var(--mincho); font-weight: 400; font-size: clamp(36px, 4.44vw, 64px); line-height: 1.3; }
+.info { margin-top: 3.5vw; display: grid; grid-template-columns: 1fr 1fr; gap: 22px 48px; }
+.info div { border-top: 2px solid var(--ink); padding-top: 8px; }
+.info dt { font-size: 12px; letter-spacing: .3em; }
+.info dd { font-size: clamp(16px, 1.39vw, 20px); }
+.info .tel { grid-column: 1 / 3; }
+.info .tel dd { font-weight: 900; font-size: clamp(36px, 4.44vw, 64px); letter-spacing: .04em; line-height: 1.2; }
+.fictional { margin-top: 5vw; font-size: 12px; }
+
+
+/* PC (v2): the four stations hang at the ends of the hero wheel's spokes. The hub is at x 1120, y -320 of this
+   section (the wheel's lower third rides over it); four spokes run on past the rim to a nipple, and each board hangs
+   from its nipple, turned a little along its spoke. Positions are 1440-wide coordinates in vw. */
+@media (min-width: 1000px) {
+  .spokes { height: 81.94vw; padding: 0; }
+  .reach { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 81.94vw; z-index: 3; overflow: visible; pointer-events: none; }
+  /* four spokes of the hero wheel are picked out: thick yellow on an ink casing, from the hub past the rim to each pin */
+  /* v5 (DEV-176): each spoke starts on the hub's edge (radius 150 of 1440; v4 started 8 units short, 5.6–10.8px at 1000–1920)
+     with a square end, so it meets the yellow disc without reaching in toward 輪; the outer end is under the pin */
+  .reach .rays-case line { stroke: var(--ink); stroke-width: 10; stroke-linecap: butt; }
+  .reach .rays line { stroke: var(--yellow); stroke-width: 5; stroke-linecap: butt; }
+  .reach .nips circle { fill: var(--yellow); stroke: var(--asphalt); stroke-width: 3; }
+  .stations { position: absolute; inset: 0; display: block; z-index: 2; }
+  .station { display: block; position: absolute; }
+  .station .fig { position: relative; width: var(--w); transform: rotate(var(--rot)); transform-origin: 50% 0; }
+  /* v5 (DEV-176): a shorter shadow (24px + 22px blur reached the names below the boards: ブレーキ調整 at 1000–1920, チェーン交換 at 1000–1300) */
+  .station .board { aspect-ratio: var(--ratio); filter: drop-shadow(0 10px 8px rgba(0, 0, 0, .35)); }
+  .station .ph { position: absolute; right: .9vw; bottom: .9vw; margin: 0; padding: 2px 8px; font-size: 12px; color: #e9e9e6; background: rgba(38, 39, 42, .78); }
+  .station .svc { position: absolute; left: var(--lx); top: var(--ly); font-size: clamp(26px, 2.92vw, 42px); line-height: 1.15; z-index: 2; }
+  /* v5: the caption moves to the board's foot (at the top, the pin came within 1px of 写真｜ at 1000 under a wider face) */
+  .st-d .ph { top: auto; bottom: .9vw; }
+  .st-d .fig { --ratio: 260 / 200; }
+  .st-d .board { transform: rotate(3deg); }
+  /* v5: 車輪の振れ取り 1.4vw further left, clear of the second spoke under a wider face (3px at 1000–1200) */
+  .st-d { left: 20.31vw; top: 3.53vw; --w: 18.06vw; --ratio: 260 / 200; --rot: 8deg; --lx: -8.4vw; --ly: 17vw; --tone: #c4c0b4; }
+  .st-a { left: 20.22vw; top: 29.07vw; --w: 19.44vw; --ratio: 280 / 210; --rot: 12.9deg; --lx: -3.01vw; --ly: 17.50vw; --tone: #cbc6ba; }
+  .st-c { left: 43.92vw; top: 30.43vw; --w: 20.83vw; --ratio: 300 / 220; --rot: 7.2deg; --lx: -1.83vw; --ly: 17.57vw; --tone: #c2c4c4; }
+  /* v5: ブレーキ調整 16px lower, clear of its board's shadow under taller fonts too */
+  .st-b { left: 62.13vw; top: 52.60vw; --w: 20.83vw; --ratio: 300 / 220; --rot: 1.2deg; --lx: -0.32vw; --ly: calc(16.60vw + 16px); --tone: #c8c3b8; }
+  .spokes-h { position: absolute; left: var(--pad); top: 55vw; width: 44vw; white-space: nowrap; font-size: clamp(26px, 2.78vw, 40px); z-index: 3; }
+  /* the outlined word crosses into the yellow section: yellow on the dark ground, ink where it is over yellow */
+  .ghost-turn, .ghost-turn-low { display: block; left: -2.1vw; bottom: -8vw; top: auto; font-size: 20.83vw; letter-spacing: -.02em; }
+  .ghost-turn { clip-path: inset(0 0 8vw 0); }
+  .ghost-turn-low { color: var(--ink); clip-path: inset(calc(100% - 8vw) 0 0 0); }
+}
+
+/* tablet (v3, DEV-168): the stations hang from four spokes of the hero wheel, as on PC and SP. The hub sits up and to the right
+   (x 597, y -171 in 768-wide units of this section), so the stations step down from upper left to lower right: each spoke ends
+   at a pin on the top right corner of its board, and each later spoke runs to the right of every board and name above it.
+   Positions are 768-wide coordinates in vw (1px = 0.1302vw). */
+@media (min-width: 601px) and (max-width: 999px) {
+  .spokes { height: 130.21vw; padding: 0; }
+  .reach-tab { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 130.21vw; z-index: 3; overflow: visible; pointer-events: none; }
+  /* v4 (DEV-177): each spoke starts on the hub's edge (radius 80 of 768; v3 started at 88 and left an 8–11px gap) with a
+     square end, so it meets the yellow disc without reaching in toward 輪; the outer end is under the pin */
+  .reach-tab .rays-case line { stroke: var(--ink); stroke-width: 9; stroke-linecap: butt; }
+  .reach-tab .rays line { stroke: var(--yellow); stroke-width: 4.5; stroke-linecap: butt; }
+  .reach-tab .nips circle { fill: var(--yellow); stroke: var(--asphalt); stroke-width: 3; }
+  .stations { position: absolute; inset: 0; display: block; z-index: 2; }
+  .station { display: block; position: absolute; width: 30.73vw; }
+  /* the board turns about its pin (16 of 236 units in from the right edge) */
+  .station .fig { width: 100%; transform: rotate(var(--rot)); transform-origin: 93.2% 0; }
+  /* v4: a shorter shadow (24px + 22px blur reached the station's name 26px below the board) */
+  .station .board { aspect-ratio: 260 / 200; transform: none; filter: drop-shadow(0 8px 6px rgba(0, 0, 0, .35)); }
+  .station .ph { position: absolute; left: .9vw; bottom: .9vw; margin: 0; padding: 2px 8px; font-size: 12px; color: #e9e9e6; background: rgba(38, 39, 42, .78); }
+  .station .svc { margin-top: 3.4vw; padding: 0; font-size: max(24px, 3.9vw); line-height: 1.15; }
+  /* v6 (DEV-178): v5 stepped the four stations down one diagonal (70, 190, 330, 470 across), and the right half under the wheel
+     stayed empty dark ground from the rim down to the last board. Now they hang as on PC: two on the left (振れ取り, パンク) and
+     two on the right (チェーン, ブレーキ), so the spokes fan out both ways from the hub. Pins (768 units): 260,40 / 284,330 /
+     600,360 / 720,660. Each spoke passes right of every board and name above it (44 units or more in 768 units, measured
+     at 601–999). The section is 1000 units tall. */
+  .st-d { left: 5.21vw; top: 5.21vw; --rot: 3deg; --tone: #c4c0b4; }
+  .st-a { left: 8.33vw; top: 42.97vw; --rot: -2deg; --tone: #cbc6ba; }
+  .st-c { left: 49.48vw; top: 46.88vw; --rot: 2.5deg; --tone: #c2c4c4; }
+  .st-b { left: 65.1vw; top: 85.94vw; --rot: -1.5deg; --tone: #c8c3b8; }
+  .spokes-h { position: absolute; left: var(--pad); top: 83.33vw; width: 36vw; font-size: max(24px, 3.39vw); z-index: 3; }
+  .ghost-turn { left: -2.1vw; bottom: -2.1vw; font-size: 18vw; }
+  /* v4: 16px more above and below 締める, so its glyph box keeps 12px or more from まっすぐに and どこを under taller fonts (4.4px before) */
+  .truing { padding-bottom: calc(10.4vw + 16px); }
+  .check { padding-top: calc(7.6vw + 16px); }
+}
+
+/* SP: the wheel comes first, then the copy; every section flows in one column */
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  .hero { min-height: 216.4vw; }
+  .wheel-pc { display: none; }
+  .wheel-sp { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 256.4vw; }
+  .name-full { top: 20px; left: 20px; font-size: 12px; }
+  /* v2: the wheel's centre moved in (x 250 of 390), so the hub and its name are no longer cut at the right edge */
+  /* v3: the wheel is drawn at .8 and lifted, so the headline sits below it on the plain ground */
+  .hub-name { top: 70.6vw; left: calc(64.1% - 13.95vw); width: 27.9vw; height: 27.9vw; font-size: 22.5vw; }
+  .hero-text { width: auto; padding: 156vw 20px 40px 60px; }
+  /* the words sit on bands of the ground, so the wheel stays round behind them (the comp's box cut it square) */
+  .tagline, .how { font-size: 34px; }
+  .tagline span, .how span { background: var(--concrete); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 6px 0 0; }
+  .how { font-size: 13px; max-width: none; border-top: 0; padding-top: 0; margin-top: 20px; }
+  .how span { border-top: 4px solid var(--yellow); padding-top: 10px; display: inline-block; }
+
+  .spokes { padding: 51.3vw 20px 60px; }
+  /* v2: one spoke runs down from the wheel; each station hangs off it on a short arm with a nipple */
+  .stations { display: block; position: relative; padding-left: 44px; }
+  .stations::before { content: ""; position: absolute; left: 14px; top: -51.3vw; bottom: 30px; width: 3px; z-index: 0; background: var(--yellow); }
+  .station { position: relative; }
+  .station::before { content: ""; position: absolute; left: -30px; top: 34px; width: 30px; height: 3px; background: var(--yellow); }
+  .station::after { content: ""; position: absolute; left: -37px; top: 28px; width: 15px; height: 15px; border-radius: 50%; background: var(--yellow); border: 3px solid var(--asphalt); }
+  .station { display: block; margin-bottom: 70px; }
+  .spokes-h { font-size: 26px; margin-bottom: 40px; }
+  .stations .station .fig { width: auto; margin-left: 0; }
+  .st-a .fig, .st-c .fig { --ratio: 350 / 210; }
+  .st-b, .st-d { margin-left: 28px; }
+  .st-b::before, .st-d::before { left: -58px; width: 58px; }
+  .st-b::after, .st-d::after { left: -65px; }
+  .st-b .fig, .st-d .fig { --ratio: 310 / 210; }
+  /* the puncture board is turned -4deg, so its lower left corner drops further as the board widens: the caption steps down with it (390 keeps 10px) */
+  .st-a .ph { margin-top: max(10px, calc(4.2vw - 6.5px)); }
+  /* the station names and 一本ずつ。 shrink below 390, so 車輪の振れ取り and the full stop stay inside 320–389 */
+  /* v5 (DEV-176): a shorter shadow, and each caption on its own ground above it (the 24px + 22px shadow lay under every caption and name) */
+  .station .board { filter: drop-shadow(0 8px 6px rgba(0, 0, 0, .35)); }
+  .station .ph { position: relative; z-index: 1; width: fit-content; padding: 2px 8px 2px 0; background: var(--asphalt); }
+  .station .svc { display: block; margin-top: 22px; padding: 0; font-size: min(40px, calc(13.7vw - 12.5px)); }
+  .ghost-turn { left: 56px; top: 40px; bottom: auto; font-size: min(100px, calc(34vw - 20px)); }
+
+  .truing { padding: 90px 20px 160px; }
+  .truing-grid { grid-template-columns: 1fr; gap: 0; }
+  .true-art { width: 350px; max-width: 100%; }
+  .truing-text { padding-top: 40px; }
+  .truing-h { font-size: min(60px, calc(18vw - 2px)); }
+  .truing-fact { margin-top: 24px; font-size: 20px; }
+  .ghost-tight { right: 10px; bottom: -10px; font-size: min(110px, calc(30vw - 10px)); }
+
+  .check { padding: 60px 20px 140px; }
+  /* the bench board gives way first, so the two vertical lines keep their full width at 320–389 */
+  .check-grid { grid-template-columns: minmax(0, 240px) 1fr auto auto; column-gap: 10px; }
+  /* v5 (DEV-176): a shorter shadow and 8px more before the vertical fact (24px + 22px blur reached 確かめます at 320–382) */
+  .bench .board { aspect-ratio: 240 / 440; filter: drop-shadow(0 12px 8px rgba(0, 0, 0, .3)); }
+  .check-fact { font-size: 16px; margin-top: 10px; margin-left: 8px; max-height: 640px; }
+  .check-h { font-size: 32px; max-height: 720px; }
+
+  .lesson { padding: 260px 20px 80px; min-height: 0; }
+  .gauge-art { right: 20px; top: -80px; width: 300px; height: 300px; }
+  .lesson-text { max-width: none; }
+  .lesson-h { font-size: 40px; }
+  .lesson-fact { margin-top: 16px; font-size: 16px; max-width: 72%; }
+
+  .visit { padding: 200px 20px 40px; min-height: 0; }
+  .wheel-end { right: -150px; top: -110px; width: 300px; height: 300px; z-index: 2; }
+  .visit-text { width: auto; }
+  .visit-h { font-size: 38px; }
+  .info { grid-template-columns: 1fr; gap: 14px; margin-top: 28px; }
+  .info .tel { grid-column: auto; }
+  .info .tel dd { font-size: min(40px, calc(12vw - 4px)); white-space: nowrap; }
+  .info dd { font-size: 17px; }
+  .fictional { margin-top: 28px; }
+}
+
+/* DEV-183 別案 B (HOLD 1): the disc grows about the same centre (44.445vw down, 67.36% + 10.415vw across on PC and tablet;
+   84.55vw down, 64.1% across on SP) until the glyph box of 輪 (half-diagonal 0.82em) is inside it: radius 13.1vw against
+   0.82 × 15.28vw = 12.53vw (3.4px to spare at 601), and on SP 19.5vw against 0.82 × 22.5vw = 18.45vw (3.4px at 320).
+   The picked-out spokes start on the new edge (their inner ends moved along each spoke in the HTML). */
+@media (min-width: 601px) { .hub-name { top: 31.345vw; left: calc(67.36% - 2.685vw); width: 26.2vw; height: 26.2vw; } }
+@media (max-width: 600px) { .hub-name { top: 65.05vw; left: calc(64.1% - 19.5vw); width: 39vw; height: 39vw; } }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: vertical words were painted far below their boxes, over themselves and over other words. IPAGothic
+   (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAGothic", serif; }
