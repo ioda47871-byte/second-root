@@ -8553,7 +8553,7 @@
         "固定 schema の job (shop_id・page・slot_ids・brief_sha256・approval_id・approval_scope{shop,max_images≤6,max_jobs=1,expires_at}・requested_at) を zod strict で検証。自由文は shell にもプロンプトにも届かない (プロンプトは pin 済み brief だけ)",
         "worker.ts run() の checkout 確認の後に guarded hook (scripts/sales-design-worker/image-autorun.ts)。run.sh の run.lock の中、専用 lock、1回の実行で最大1件",
         "スイッチは root 所有の /etc/sr-design-worker/image-autorun.json (repo に無い・env で差し替え不可)。無い/不正/root 以外/書込可なら HELD_AUTORUN_DISABLED で Codex に一切触れない",
-        "拒否: 不正・上限超過・重複・期限切れ・承認の再使用 (共有台帳 poc-approval-used と DEV-185 の消費済み ID)・失敗後 (STOPPED)・承認エントリ無し/スコープ違い・同時実行・時間不足 (待機)。全判定を監査行 (audit.jsonl) に",
+        "拒否: 不正・上限超過・重複・期限切れ・承認の再使用 (共有台帳 poc-approval-used と DEV-185 の消費済み ID)・失敗後 (STOPPED)・承認エントリ無し/スコープ違い/job_id 不一致・同時実行・時間不足 (待機)。全判定を監査行 (audit.jsonl) に",
         "予約 (atomic mkdir) の後に generateImagesInOneRun 1回 → writeTsugutePhotos → intake (ai_generated_demo) → d1-v10 swap → PC1440/SP390 描画を worker の結果の下の私用ディレクトリへ",
         "モック生成でオフライン E2E: OFF で実生成0回、ON+モックで全経路1回、拒否ケースすべて"
       ],
@@ -8588,7 +8588,7 @@
         "real Codex 無人実行の ON (docs/operations/image-autorun-approval-sheet.md)",
         "既存の分離テスト2件の許可一覧に image-autorun.ts を1行足したこと"
       ],
-      "note": "OFF の既定で実装。E2E はモックの合成 PNG 6枚で DONE まで1回 (d1-v10 PC/SP 描画は repo 外、commit しない)。DEV-185 の分離テスト (tsugute-ai-photos.test.ts、design-image-poc.test.ts) の許可一覧に image-autorun.ts を1行追加 (完全一致のまま)。記録は .ai/reviews/DEV-186.md。"
+      "note": "OFF の既定で実装。E2E はモックの合成 PNG 6枚で DONE まで1回 (d1-v10 PC/SP 描画は repo 外、commit しない)。DEV-185 の分離テスト (tsugute-ai-photos.test.ts、design-image-poc.test.ts) の許可一覧に image-autorun.ts を1行追加 (完全一致のまま)。記録は .ai/reviews/DEV-186.md。 PR #228 レビュー M1/L1/L2 対応済み (root 所有エントリの job_id 束縛・24時間・停止時の画像呼出の片付け・O_NOFOLLOW)。L3/L4 は記録のみ。"
     }
   ]
 }

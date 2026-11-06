@@ -6,7 +6,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -28,7 +28,7 @@ const SAVE = process.env.DEV186_RENDER_SAVE_DIR;
 const COMMIT = "5c2e9d8b4193c66a084329a2be1c84b602c20f92";
 const NOW = new Date();
 const iso = (deltaMs: number) => new Date(NOW.getTime() + deltaMs).toISOString();
-const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
 const roots: string[] = [];
 afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true });
@@ -46,13 +46,13 @@ function job(over: Record<string, unknown> = {}, scope: Record<string, unknown> 
     slot_ids: TSUGUTE_SLOTS.map((s) => s.slot_id),
     brief_sha256: TSUGUTE_PROMPT_SHA256,
     approval_id: "tsugute-autorun-test-01",
-    approval_scope: { shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(2 * DAY), ...scope },
+    approval_scope: { shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(12 * HOUR), ...scope },
     requested_at: iso(-60_000),
     ...over,
   };
 }
 
-function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; configMode?: number; noConfig?: boolean } = {}) {
+function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; configMode?: number; noConfig?: boolean; jobId?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "dev186-"));
   roots.push(root);
   const queue = join(root, "jobs");
@@ -62,7 +62,7 @@ function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; co
   for (const d of [join(queue, "image-autorun", "inbox"), out, state, etc]) mkdirSync(d, { recursive: true, mode: 0o700 });
   const configPath = join(etc, "image-autorun.json");
   if (!o.noConfig) {
-    const approvals = o.approvals ?? [{ approval_id: "tsugute-autorun-test-01", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(2 * DAY) }];
+    const approvals = o.approvals ?? [{ approval_id: "tsugute-autorun-test-01", job_id: o.jobId ?? "job-x", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(12 * HOUR) }];
     writeFileSync(configPath, JSON.stringify({ version: 1, enabled: o.on ?? true, approvals }));
     chmodSync(configPath, o.configMode ?? 0o644);
   }
@@ -131,7 +131,7 @@ describe("DEV-186 OFF by default: real generation is never invoked", () => {
 
 describe("DEV-186 ON + mock generator: job → validation → hook → 6 PNGs → ai_generated_demo → intake → swap → PC/SP renders", () => {
   it("runs the whole chain exactly once; the approval is then used up", async () => {
-    const f = setup();
+    const f = setup({ jobId: "job-ok" });
     const body = job();
     f.put("job-ok", body);
     const gen = vi.fn<ImageGenerate>(async () => mockBatch());
@@ -190,11 +190,12 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
     ["more than 6 images", job({}, { max_images: 7 }), "REFUSED_LIMIT_EXCEEDED"],
     ["fewer images allowed than slots", job({}, { max_images: 5 }), "REFUSED_LIMIT_EXCEEDED"],
     ["more than one job per approval", job({}, { max_jobs: 2 }), "REFUSED_LIMIT_EXCEEDED"],
-    ["a standing window (> 7 days)", job({}, { expires_at: iso(9 * DAY) }), "REFUSED_LIMIT_EXCEEDED"],
-    ["expired", job({ requested_at: iso(-3 * DAY) }, { expires_at: iso(-DAY) }), "REFUSED_APPROVAL_EXPIRED"],
+    ["a window over 24 h (PR #228 M1)", job({}, { expires_at: iso(25 * HOUR) }), "REFUSED_LIMIT_EXCEEDED"],
+    ["expired", job({ requested_at: iso(-2 * HOUR) }, { expires_at: iso(-HOUR) }), "REFUSED_APPROVAL_EXPIRED"],
     ["the consumed DEV-185 approval", job({ approval_id: TSUGUTE_PHOTOS_APPROVAL_ID }), "REFUSED_APPROVAL_REUSED"],
     ["no owner approval entry", job({ approval_id: "tsugute-autorun-unknown" }), "REFUSED_NO_APPROVAL"],
-    ["scope differs from the owner's entry", job({}, { expires_at: iso(DAY) }), "REFUSED_NO_APPROVAL"],
+    ["scope differs from the owner's entry", job({}, { expires_at: iso(6 * HOUR) }), "REFUSED_NO_APPROVAL"],
+    ["the owner's entry names another job_id (PR #228 M1)", job(), "REFUSED_NO_APPROVAL", { jobId: "job-other" }],
   ];
   for (const [label, body, code, o] of cases) {
     it(`${label}: ${code}`, async () => {
@@ -211,6 +212,16 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
       expect(f.audit().at(-1)?.code).toBe(code);
     });
   }
+
+  it("a job file that is a link is never followed (O_NOFOLLOW): REFUSED_JOB_INVALID", async () => {
+    const f = setup();
+    const target = join(f.root, "elsewhere.json");
+    writeFileSync(target, JSON.stringify(job()));
+    symlinkSync(target, join(f.queue, "image-autorun", "inbox", "job-x.json"));
+    const gen = vi.fn<ImageGenerate>(async () => mockBatch());
+    expect((await f.run({ generate: gen }))?.code).toBe("REFUSED_JOB_INVALID");
+    expect(gen).not.toHaveBeenCalled();
+  });
 
   it("an approval id already in the shared one-use ledger: REFUSED_APPROVAL_REUSED", async () => {
     const f = setup();
@@ -233,8 +244,8 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
 
   it("a failed generation stops everything after it (no retry, also not with a new approval)", async () => {
     const f = setup({ approvals: [
-      { approval_id: "tsugute-autorun-test-01", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(2 * DAY) },
-      { approval_id: "tsugute-autorun-test-02", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(2 * DAY) },
+      { approval_id: "tsugute-autorun-test-01", job_id: "job-1", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(12 * HOUR) },
+      { approval_id: "tsugute-autorun-test-02", job_id: "job-2", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: iso(12 * HOUR) },
     ] });
     f.put("job-1", job());
     const gen = vi.fn<ImageGenerate>(async () => mockBatch({ images: [], stopCode: "CODEX_QUOTA", imageCalls: 0, outcome: "not_applicable" }));

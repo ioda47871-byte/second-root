@@ -12,8 +12,8 @@
 | --- | --- | --- |
 | 対象店舗 | `tsugute` のみ（コードがほかを拒む） | |
 | 承認 ID | 新規の ID（`tsugute-photos-20261106-01` は消費済みで常に拒否） | |
-| 期限 `expires_at` | 依頼から最大7日（それ以上は拒否） | |
-| 最大ジョブ数 | 1承認につき1件（`max_jobs: 1` 固定） | |
+| 期限 `expires_at` | 依頼から最大24時間（それ以上は拒否） | |
+| 最大ジョブ数 | 1承認につき1件（`max_jobs: 1` 固定）。エントリの `job_id` と同じ名前のジョブファイルだけが通る | |
 | 最大画像数 | 6（`max_images ≤ 6`） | |
 | 利用枠・費用 | ChatGPT サインインの Codex 画像の利用枠を1件あたり最大6回使う。新しい API キー・課金・契約は無い。枠切れは `CODEX_QUOTA` で止まり再試行しない | |
 
@@ -23,19 +23,24 @@
 sudo install -d -o root -g root -m 0755 /etc/sr-design-worker
 sudo tee /etc/sr-design-worker/image-autorun.json >/dev/null <<'JSON'
 { "version": 1, "enabled": true,
-  "approvals": [ { "approval_id": "<新しいID>", "shop": "tsugute", "max_images": 6, "max_jobs": 1, "expires_at": "<ISO 8601>" } ] }
+  "approvals": [ { "approval_id": "<新しいID>", "job_id": "<ジョブのファイル名から .json を除いたもの>", "shop": "tsugute", "max_images": 6, "max_jobs": 1, "expires_at": "<ISO 8601>" } ] }
 JSON
 sudo chmod 0644 /etc/sr-design-worker/image-autorun.json
 ```
 
-ジョブ（同じ ID・同じ scope）を `~sr-designgen/sr-design-jobs/image-autorun/inbox/<job_id>.json` に置くと、次の worker 実行で処理される。
+ジョブ（同じ承認 ID・同じ scope、ファイル名 = エントリの `job_id`）を `~sr-designgen/sr-design-jobs/image-autorun/inbox/<job_id>.json` に置くと、次の worker 実行で処理される。
 
 ## 止める・失効
 
+- **実行の直後に必ず:** オーナーがそのエントリを消す（または `enabled` を `false` にする）。**これが正式な失効**であり、1回だけの承認を守る本体。
 - **停止スイッチ:** `enabled` を `false` にするか、ファイルを消す → 以後のジョブは `HELD_AUTORUN_DISABLED`。
 - **失効:** 承認エントリを消す（`REFUSED_NO_APPROVAL`）、または期限切れ（`REFUSED_APPROVAL_EXPIRED`）。使った ID は台帳 `~/.local/state/sr-design-worker/poc-approval-used/<id>` に残り、二度と使えない。
 - **失敗の後:** `~/.local/state/sr-design-worker/image-autorun/STOPPED` ができ、以後すべて `REFUSED_AFTER_FAILURE`。オーナーが原因を見てから手で消す。自動の再試行は無い。
 - 実行中の停止は worker の service を止める（途中のジョブは次回 `FAILED_INTERRUPTED`、再開しない）。
+
+## 残る限界（はっきり書く）
+
+使用済みの印（`poc-approval-used/<id>`）と `STOPPED` は worker の利用者（`sr-designgen`）の state にある。**worker の利用者として動くものは、承認の期間内ならこれらを消して同じジョブを出し直せる。** root 所有のエントリ（1つの `job_id` に結び付く）は worker から変えられないが、エントリが残っている間は消された印を補えない。だから **最大24時間の期間と、実行直後のオーナーによるエントリの削除が最後の歯止め**になる。
 
 ## 記録されること
 

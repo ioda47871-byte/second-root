@@ -9,7 +9,7 @@
  *
  * The switch is a ROOT-OWNED file the owner creates on WSL (not writable by the worker user, so the jailed worker or
  * its Claude cannot turn itself on): /etc/sr-design-worker/image-autorun.json
- *   { "version": 1, "enabled": true, "approvals": [ { approval_id, shop, max_images, max_jobs: 1, expires_at } ] }
+ *   { "version": 1, "enabled": true, "approvals": [ { approval_id, job_id, shop, max_images, max_jobs: 1, expires_at } ] }
  * Missing, unreadable, not root-owned, group/other-writable, a link, or enabled !== true: OFF → HELD_AUTORUN_DISABLED,
  * and nothing that can start Codex is called. docs/operations/image-autorun-approval-sheet.md.
  *
@@ -17,7 +17,7 @@
  * a duplicate (REFUSED_DUPLICATE), expiry (REFUSED_APPROVAL_EXPIRED), a used approval — the shared one-use ledger
  * poc-approval-used/<id> of the one-shot gates, and DEV-185's consumed id (REFUSED_APPROVAL_REUSED) — an earlier
  * failure (REFUSED_AFTER_FAILURE: the STOPPED marker; the owner removes it), the switch (HELD_AUTORUN_DISABLED), the
- * owner's approval entry with the same scope (REFUSED_NO_APPROVAL). Then the approval is reserved with an atomic mkdir
+ * owner's approval entry with the same scope and this exact job_id (REFUSED_NO_APPROVAL). Then the approval is reserved with an atomic mkdir
  * (never retried from here on), and ONE generation (generateImagesInOneRun, at most 6 image calls, 15 min) runs, then
  * the DEV-185 intake (ai_generated_demo records), the d1-v10 swap and its PC 1440 / SP 390 renders into a private
  * dir under the worker's results root. Any failure writes the STOPPED marker. Every decision is one audit line
@@ -26,7 +26,8 @@
  * Runs inside the worker run (run.sh holds the shared run.lock; this adds its own lock file) after the checkout check.
  */
 import { createHash } from "node:crypto";
-import { appendFile, lstat, mkdir, readdir, readFile, rename, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { appendFile, lstat, mkdir, open, readdir, readFile, rename, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Browser } from "playwright";
@@ -34,7 +35,10 @@ import { z } from "zod";
 import { swapPage } from "../design-artifact/photo-swap";
 import { importTsuguteAiPhotos } from "../design-artifact/tsugute-ai-intake";
 import type { RunDeadline } from "../../lib/design-agent/bounded-process";
-import { generateImagesInOneRun, MAX_BATCH_IMAGES, type ImageBatchResult } from "../../lib/design-agent/design-image/image-once";
+import { cleanupActiveImageCalls, generateImagesInOneRun, MAX_BATCH_IMAGES, type ImageBatchResult } from "../../lib/design-agent/design-image/image-once";
+
+/** the worker's stop handler removes a cut-off image call's session log and image dir (as tsugute-photos.ts) */
+export { cleanupActiveImageCalls };
 import { writeTsugutePhotos } from "../../lib/design-agent/design-image/tsugute-photos";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { buildTsugutePhotosPrompt, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256, TSUGUTE_SLOTS } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
@@ -43,6 +47,7 @@ import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { acquireLock, writeJsonAtomic } from "../../lib/design-agent/worker/state";
 
 export const IMAGE_AUTORUN_CONFIG = "/etc/sr-design-worker/image-autorun.json";
+const JOB_ID = /^[a-z0-9][a-z0-9-]{2,62}$/;
 const JOB_FILE = /^([a-z0-9][a-z0-9-]{2,62})\.json$/;
 const APPROVAL_ID = /^[a-z0-9][a-z0-9-]{2,62}$/;
 const Sha = z.string().regex(/^[a-f0-9]{64}$/);
@@ -51,8 +56,13 @@ const Iso = z.string().datetime({ offset: true });
 const CODEX_TIMEOUT_MS = 15 * 60 * 1000;
 /** a job is not started with less than this left of the worker's run (the one Codex run + intake, swap, renders) */
 export const IMAGE_AUTORUN_MIN_MS = 25 * 60 * 1000;
-/** an approval window longer than this is a standing permission, not a one-use approval */
-export const MAX_APPROVAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * an approval window longer than this is a standing permission, not a one-use approval. PR #228 review M1: 24 h bounds
+ * what remains — the one-use marker and STOPPED live in the worker user's state dir, so anything running as that user
+ * could delete them; the root-owned entry (bound to one job_id) and the owner removing it right after the run are the
+ * authoritative one-use and revocation.
+ */
+export const MAX_APPROVAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const LEDGER = "poc-approval-used";
 
 /** The shops this path knows (only つぐ手 for now): its page and the pinned brief that is the whole prompt. */
@@ -89,7 +99,8 @@ export type ImageAutorunJob = z.infer<typeof ImageAutorunJobSchema>;
 const ConfigSchema = z.strictObject({
   version: z.literal(1),
   enabled: z.boolean(),
-  approvals: z.array(Scope.extend({ approval_id: z.string().regex(APPROVAL_ID) })).max(20),
+  // each entry approves exactly ONE job file (<job_id>.json); a resubmission under another id is refused
+  approvals: z.array(Scope.extend({ approval_id: z.string().regex(APPROVAL_ID), job_id: z.string().regex(JOB_ID) })).max(20),
 });
 
 export type ImageGenerate = (o: { prompt: string; maxImages: number; timeoutMs: number }) => Promise<ImageBatchResult>;
@@ -218,7 +229,22 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   }
   const processing = join(q.processing, name);
   await rename(from, processing);
-  const bytes = await readFile(processing);
+  // PR #228 review L2: never follow a link; check and read the same open file
+  let bytes: Buffer;
+  try {
+    const fh = await open(processing, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const st = await fh.stat();
+      if (!st.isFile() || st.size > 16 * 1024) throw new Error("not a small regular file");
+      bytes = await fh.readFile();
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    await finish(processing, jobId, "failed", "REFUSED_JOB_INVALID");
+    await audit("REFUSED_JOB_INVALID", { job_id: jobId });
+    return { code: "REFUSED_JOB_INVALID", jobId };
+  }
   const jobSha = sha256(bytes);
   const base = { job_id: jobId, job_sha256: jobSha };
   const decide = async (bucket: "failed" | "held", code: string, f: Record<string, unknown> = {}) => {
@@ -252,7 +278,7 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   const config = await readSwitch(o.configPath ?? IMAGE_AUTORUN_CONFIG, o.trustedUid ?? 0);
   if (!config) return decide("held", "HELD_AUTORUN_DISABLED", ids);
   const entry = config.approvals.find((a) => a.approval_id === job.approval_id);
-  if (!entry || entry.shop !== sc.shop || entry.max_images !== sc.max_images || entry.max_jobs !== sc.max_jobs || entry.expires_at !== sc.expires_at) return decide("failed", "REFUSED_NO_APPROVAL", ids);
+  if (!entry || entry.job_id !== jobId || entry.shop !== sc.shop || entry.max_images !== sc.max_images || entry.max_jobs !== sc.max_jobs || entry.expires_at !== sc.expires_at) return decide("failed", "REFUSED_NO_APPROVAL", ids);
   const prompt = shop.buildPrompt();
   if (sha256(prompt) !== job.brief_sha256 || prompt.length !== shop.briefChars) return decide("failed", "REFUSED_JOB_INVALID", ids);
 
