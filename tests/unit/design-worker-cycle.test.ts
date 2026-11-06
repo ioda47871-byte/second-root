@@ -850,6 +850,8 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     ["no entry for the approval id", { job: imageJob("tsugute-autorun-0404") }, "IMAGE_GRANT_NO_APPROVAL"],
     ["a scope that differs (7 images)", { job: { ...imageJob(), approval_scope: { shop: "tsugute", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["the switch off (enabled: false)", { enabled: false }, "IMAGE_GRANT_DISABLED"],
+    // DEV-188: root's fixed shop allowlist (IMAGE_AUTORUN_SHOPS): a shop outside it is refused even with a matching entry
+    ["a shop outside the allowlist (輪), entry matching", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "bicycle", max_images: 5, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob(), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 5, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["an entry with max_jobs: true (a bool is not 1; L4)", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "tsugute", max_images: 6, max_jobs: true, expires_at: isoAt(T0 + 12 * 3600) }] }, "IMAGE_GRANT_SCOPE_MISMATCH"],
   ] as const)("%s: no grant, nothing used up, the cycle goes on as before", (_, o, code) => {
     const w = imageWorld(o as Parameters<typeof imageWorld>[0]);
