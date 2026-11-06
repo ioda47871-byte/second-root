@@ -45,7 +45,7 @@ import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { buildTsugutePhotosPrompt, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256, TSUGUTE_SLOTS } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
 import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
-import { acquireLock, writeJsonAtomic } from "../../lib/design-agent/worker/state";
+import { acquireLock, bootId, writeJsonAtomic } from "../../lib/design-agent/worker/state";
 
 export const IMAGE_AUTORUN_CONFIG = "/etc/sr-design-worker/image-autorun.json";
 /**
@@ -54,8 +54,13 @@ export const IMAGE_AUTORUN_CONFIG = "/etc/sr-design-worker/image-autorun.json";
  * 0755) and file (0644): the worker can read it but not write, replace or rename it. Removed after the run.
  */
 export const IMAGE_AUTORUN_GRANT = "/var/cache/sr-design-image-grant/grant.json";
-/** a grant is for one worker run: issued_at → expires_at is at most this */
-const MAX_GRANT_MS = 2 * 60 * 60 * 1000;
+/**
+ * a grant covers the worker's start-up and the one Codex image run only: issued_at → expires_at is at most this
+ * (cycle.sh GRANT_TTL=1200 s). Honest limit: this check runs in the worker's own checkout and state, so it guards
+ * honest code only. Once a grant exists, its single use rests on root's side — cycle.sh issues it only while the
+ * jailed Claude is stopped and the worker user has no process at all, for this boot, for 20 minutes.
+ */
+const MAX_GRANT_MS = 20 * 60 * 1000;
 const JOB_ID = /^[a-z0-9][a-z0-9-]{2,62}$/;
 const JOB_FILE = /^([a-z0-9][a-z0-9-]{2,62})\.json$/;
 const APPROVAL_ID = /^[a-z0-9][a-z0-9-]{2,62}$/;
@@ -110,6 +115,7 @@ const GrantSchema = z.strictObject({
   approval_id: z.string().regex(APPROVAL_ID),
   job_id: z.string().regex(JOB_ID),
   job_sha256: Sha,
+  boot_id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
   issued_at: Iso,
   expires_at: Iso,
 });
@@ -178,6 +184,8 @@ async function grantHolds(path: string, uid: number, want: { jobId: string; appr
     if (!g.success) return false;
     const issued = Date.parse(g.data.issued_at);
     const ends = Date.parse(g.data.expires_at);
+    // bound to this boot (the jail reads /proc/sys: ProtectKernelTunables is off there)
+    if (g.data.boot_id !== (await bootId())) return false;
     return g.data.job_id === want.jobId && g.data.approval_id === want.approvalId && g.data.job_sha256 === want.jobSha && issued <= nowMs + 5 * 60 * 1000 && ends > nowMs && ends - issued <= MAX_GRANT_MS;
   } catch {
     return false;

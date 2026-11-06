@@ -88,8 +88,9 @@ finish() {
     fi
   fi
   [ -z "$WORK" ] || rm -rf "$WORK"
-  # DEV-187: the image grant never outlives the cycle (whatever the outcome; the use markers stay)
-  [ -z "${GRANT_PATH:-}" ] || rm -f "$GRANT_PATH"
+  # DEV-187: the image grant never outlives the cycle (whatever the outcome; the use markers stay). Only a cycle that
+  # holds the lock removes it: a refused or concurrent start never touches another cycle's live grant.
+  if [ "${LOCKED:-0}" = 1 ] && [ -n "${GRANT_PATH:-}" ]; then rm -f "$GRANT_PATH" "$GRANT_DIR"/.grant.*; fi
   printf 'CYCLE_RESULT %s phase=%s job=%s exit=%s\n' "$code" "$PHASE" "$JOB" "$rc"
   exit "$rc"
 }
@@ -156,6 +157,10 @@ IMG_CONF="$R/etc/sr-design-worker/image-autorun.json"
 GRANT_DIR="$R/var/cache/sr-design-image-grant"
 GRANT_PATH="$GRANT_DIR/grant.json"
 GRANT_ISSUED=0
+LOCKED=0
+# the grant covers the worker's start-up and the one Codex image run (15 min) with a small margin, not the whole run
+GRANT_TTL=1200
+BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
 
 now() {
   if [ -n "$R" ] && [ -f "$R/clock" ]; then cat "$R/clock"; else date +%s; fi
@@ -340,7 +345,7 @@ if len(hits) != 1:
 e = hits[0]
 if e.get("job_id") != job_id:
     print("IMAGE_GRANT_JOB_MISMATCH"); sys.exit(0)
-if shop != "tsugute" or e.get("shop") != shop or e.get("max_images") != int(mi) or e.get("max_jobs") != int(mj) or e.get("expires_at") != exp or int(mj) != 1 or int(mi) > 6:
+if shop != "tsugute" or e.get("shop") != shop or type(e.get("max_images")) is not int or type(e.get("max_jobs")) is not int or type(e.get("expires_at")) is not str or e["max_images"] != int(mi) or e["max_jobs"] != int(mj) or e["expires_at"] != exp or int(mj) != 1 or int(mi) > 6:
     print("IMAGE_GRANT_SCOPE_MISMATCH"); sys.exit(0)
 try:
     t = datetime.fromisoformat(exp.replace("Z", "+00:00")).timestamp()
@@ -374,6 +379,16 @@ image_grant() {
   [ "$code" = IMAGE_GRANT_MATCH ] || { say "image grant: $code (job $job)"; return 0; }
   # the DEV-185 one-shot approval was consumed on 2026-11-06 and is never an autorun approval
   [ "$appr" != tsugute-photos-20261106-01 ] || { say "image grant: IMAGE_GRANT_APPROVAL_USED (job $job)"; return 0; }
+  # While a grant exists, any other process of the worker user could clear the worker's own markers and start run.sh
+  # again. sr-designgen has no login shell, cron, at or linger (admin.sh); only root starts it (admin.sh run, the
+  # jailed Claude service). So: no grant unless the jailed Claude is stopped and the user has no process at all.
+  if systemctl is-active --quiet sr-jail-claude.service 2>/dev/null || pgrep -U "$WORKER_USER" >/dev/null 2>&1 || pgrep -u "$WORKER_USER" >/dev/null 2>&1; then
+    say "image grant: IMAGE_GRANT_USER_BUSY (the jailed Claude or another $WORKER_USER process is running; job $job)"
+    return 0
+  fi
+  local boot
+  boot="$(cat "$BOOT_ID_FILE" 2>/dev/null)" || boot=""
+  [[ "$boot" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { say "image grant: IMAGE_GRANT_BOOT_ID_UNREADABLE"; return 0; }
   if [ ! -e "$GRANT_DIR" ]; then install -d -m 0755 "$GRANT_DIR"; fi
   [ -d "$GRANT_DIR" ] && [ ! -L "$GRANT_DIR" ] && [ "$(stat -c '%U %a' "$GRANT_DIR")" = "$FILE_ROOT 755" ] ||
     { say "image grant: IMAGE_GRANT_DIR_UNSAFE"; return 0; }
@@ -381,12 +396,12 @@ image_grant() {
   mkdir -m 0700 "$STATE/image-approval-used/$appr" 2>/dev/null || { say "image grant: IMAGE_GRANT_APPROVAL_USED (job $job)"; return 0; }
   mkdir -m 0700 "$STATE/image-job-used/$job" 2>/dev/null || { say "image grant: IMAGE_GRANT_JOB_USED (job $job)"; return 0; }
   printf 'job_id=%s\njob_sha256=%s\nused_at=%s\n' "$job" "$sha" "$t" >"$STATE/image-approval-used/$appr/receipt"
-  # the grant lasts as long as the worker run can (RuntimeMaxSec + the stop grace); removed after it anyway
+  # the grant lasts for the image step only (GRANT_TTL), is bound to this boot, and is removed after the run anyway
   iso_now="$(date -u -d "@$t" +%Y-%m-%dT%H:%M:%SZ)"
-  iso_end="$(date -u -d "@$((t + WORKER_RUNTIME_MAX + WORKER_STOP_GRACE))" +%Y-%m-%dT%H:%M:%SZ)"
+  iso_end="$(date -u -d "@$((t + GRANT_TTL))" +%Y-%m-%dT%H:%M:%SZ)"
   local tmp
   tmp="$(mktemp "$GRANT_DIR/.grant.XXXXXX")"
-  printf '{"version":1,"approval_id":"%s","job_id":"%s","job_sha256":"%s","issued_at":"%s","expires_at":"%s"}\n' "$appr" "$job" "$sha" "$iso_now" "$iso_end" >"$tmp"
+  printf '{"version":1,"approval_id":"%s","job_id":"%s","job_sha256":"%s","boot_id":"%s","issued_at":"%s","expires_at":"%s"}\n' "$appr" "$job" "$sha" "$boot" "$iso_now" "$iso_end" >"$tmp"
   chmod 0644 "$tmp"
   mv -f "$tmp" "$GRANT_PATH"
   GRANT_ISSUED=1
@@ -410,9 +425,10 @@ if ! flock -n 9; then
   say "another cycle is running; nothing done"
   finish CYCLE_LOCKED 11
 fi
+LOCKED=1
 WORK="$(mktemp -d "$STATE/run.XXXXXX")"
-# a grant left by a cycle that was cut off hard (the use markers stay; the grant never carries over)
-rm -f "$GRANT_PATH"
+# a grant (or a half-written one) left by a cycle that was cut off hard (the use markers stay; the grant never carries over)
+rm -f "$GRANT_PATH" "$GRANT_DIR"/.grant.*
 
 START="$(now)"
 END=$((START + CYCLE_BUDGET))

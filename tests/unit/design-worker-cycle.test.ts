@@ -778,7 +778,8 @@ describe("cycle.sh: the one-use image grant (DEV-187)", () => {
     expect(r.out).toContain(`image grant: IMAGE_GRANT_ISSUED (job ${JOB_ID}`);
     const seen = w.grants().trim().split("\n");
     expect(seen[0]).toBe("644");
-    expect(JSON.parse(seen[1]!)).toEqual({ version: 1, approval_id: APPROVAL, job_id: JOB_ID, job_sha256: sha(w.text), issued_at: "1970-01-12T13:46:40Z", expires_at: "1970-01-12T14:46:30Z" });
+    // the image step only (20 min), bound to this boot
+    expect(JSON.parse(seen[1]!)).toEqual({ version: 1, approval_id: APPROVAL, job_id: JOB_ID, job_sha256: sha(w.text), boot_id: readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim(), issued_at: "1970-01-12T13:46:40Z", expires_at: "1970-01-12T14:06:40Z" });
     expect(w.used("approval", APPROVAL) && w.used("job", JOB_ID)).toBe(true);
     expect(existsSync(w.grant)).toBe(false);
     // one heavy job per cycle: no bridge pass, one worker run
@@ -838,6 +839,7 @@ describe("cycle.sh: the one-use image grant (DEV-187)", () => {
     ["no entry for the approval id", { job: imageJob("tsugute-autorun-0404") }, "IMAGE_GRANT_NO_APPROVAL"],
     ["a scope that differs (7 images)", { job: { ...imageJob(), approval_scope: { shop: "tsugute", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["the switch off (enabled: false)", { enabled: false }, "IMAGE_GRANT_DISABLED"],
+    ["an entry with max_jobs: true (a bool is not 1; L4)", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "tsugute", max_images: 6, max_jobs: true, expires_at: isoAt(T0 + 12 * 3600) }] }, "IMAGE_GRANT_SCOPE_MISMATCH"],
   ] as const)("%s: no grant, nothing used up, the cycle goes on as before", (_, o, code) => {
     const w = imageWorld(o as Parameters<typeof imageWorld>[0]);
     const r = cycle(w);
@@ -863,19 +865,57 @@ describe("cycle.sh: the one-use image grant (DEV-187)", () => {
     for (const x of [w, l, n]) expect(x.grants()).not.toContain("{");
   });
 
-  it("a grant left by a cycle that was cut off hard is removed before anything runs", () => {
+  it("a grant or a half-written temp file left by a cycle that was cut off hard is removed before anything runs", () => {
     const w = imageWorld({ job: null });
     mkdirSync(dirname(w.grant), { recursive: true });
     writeFileSync(w.grant, "{}");
+    writeFileSync(join(dirname(w.grant), ".grant.AbC123"), "{");
     const r = cycle(w);
     expect(r.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
     expect(w.grants().trim().split("\n")).toEqual(["NO_GRANT", "NO_GRANT"]);
+    expect(existsSync(join(dirname(w.grant), ".grant.AbC123"))).toBe(false);
+  });
+
+  it("H1(a): while the jailed Claude is active, or the worker user has any process, no grant and nothing used up", () => {
+    const a = imageWorld();
+    writeFileSync(join(a.sc, "active-sr-jail-claude.service"), "");
+    const ra = cycle(a);
+    expect(ra.out).toContain("image grant: IMAGE_GRANT_USER_BUSY");
+    expect(ra.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
+    const b = imageWorld();
+    // a stray process of the worker user (any, not only a worker path): pgrep -U <worker user>
+    const pg = join(b.bin, "pgrep");
+    exe(pg, `case " $* " in *" -U "*) exit 0 ;; esac\n${readFileSync(pg, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
+    const rb = cycle(b);
+    expect(rb.out).toContain("image grant: IMAGE_GRANT_USER_BUSY");
+    for (const x of [a, b]) {
+      expect(x.grants()).not.toContain("{");
+      expect(x.used("approval", APPROVAL) || x.used("job", JOB_ID)).toBe(false);
+    }
+  });
+
+  it("L1: a cycle that does not hold the lock never removes a live grant", () => {
+    const w = imageWorld({ job: null });
+    mkdirSync(dirname(w.grant), { recursive: true });
+    writeFileSync(w.grant, "{\"live\":true}");
+    mkdirSync(join(w.t, "var/lib/sr-design-cycle"), { recursive: true });
+    const holder = spawn("flock", [join(w.t, "var/lib/sr-design-cycle/cycle.lock"), "sleep", "20"], { stdio: "ignore" });
+    try {
+      spawnSync("sleep", ["0.5"]);
+      const r = cycle(w);
+      expect(r.last).toBe("CYCLE_RESULT CYCLE_LOCKED phase=before_claim job=none exit=11");
+      expect(readFileSync(w.grant, "utf8")).toBe("{\"live\":true}");
+    } finally {
+      holder.kill("SIGKILL");
+    }
   });
 
   it("the service gives the grant dir as root's 0755 CacheDirectory (the jail sees /var/cache, not /run)", () => {
     const service = readFileSync(join(UNIT_DIR, "sr-design-cycle.service"), "utf8");
     expect(service).toMatch(/^CacheDirectory=sr-design-image-grant$/m);
     expect(service).toMatch(/^CacheDirectoryMode=0755$/m);
+    // M1: also after a SIGKILL / OOM kill of cycle.sh, systemd removes the grant and any temp file
+    expect(service).toContain("ExecStopPost=-/bin/sh -c 'rm -f /var/cache/sr-design-image-grant/grant.json /var/cache/sr-design-image-grant/.grant.*'");
     const jail = readFileSync(join(REPO, "scripts/sales-design-capture/jail/jail.properties"), "utf8");
     expect(jail).toMatch(/^TemporaryFileSystem=\/run:ro$/m);
     expect(jail).not.toMatch(/\/var\/cache/);

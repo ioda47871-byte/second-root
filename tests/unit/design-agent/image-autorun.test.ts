@@ -31,6 +31,7 @@ const COMMIT = "5c2e9d8b4193c66a084329a2be1c84b602c20f92";
 const NOW = new Date();
 const iso = (deltaMs: number) => new Date(NOW.getTime() + deltaMs).toISOString();
 const HOUR = 60 * 60 * 1000;
+const BOOT = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
 const roots: string[] = [];
 afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true });
@@ -74,7 +75,7 @@ function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; co
   chmodSync(grantDir, 0o755);
   const grantPath = join(grantDir, "grant.json");
   const grant = (over: Record<string, unknown>) => {
-    writeFileSync(grantPath, JSON.stringify({ version: 1, approval_id: "tsugute-autorun-test-01", issued_at: iso(-60_000), expires_at: iso(HOUR), ...over }));
+    writeFileSync(grantPath, JSON.stringify({ version: 1, approval_id: "tsugute-autorun-test-01", boot_id: BOOT, issued_at: iso(-60_000), expires_at: iso(15 * 60 * 1000), ...over }));
     chmodSync(grantPath, 0o644);
   };
   const put = (name: string, body: unknown, withGrant = true) => {
@@ -379,9 +380,16 @@ describe("DEV-187 the root grant: without it, 0 generate calls", () => {
     await refused(f);
     const g = setup();
     g.put("job-x", job());
-    g.grant({ job_id: "job-x", job_sha256: sha(JSON.stringify(job())), issued_at: iso(-60_000), expires_at: iso(5 * HOUR) });
+    g.grant({ job_id: "job-x", job_sha256: sha(JSON.stringify(job())), issued_at: iso(-60_000), expires_at: iso(25 * 60 * 1000) });
     await refused(g);
   });
+  it("a grant from another boot (H1c: a grant never survives a reboot)", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    f.grant({ job_id: "job-x", job_sha256: sha(JSON.stringify(job())), boot_id: "00000000-0000-4000-8000-000000000000" });
+    await refused(f);
+  });
+
   it("job bytes changed after the grant (same name, same approval)", async () => {
     const f = setup();
     f.put("job-x", job());

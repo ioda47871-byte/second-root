@@ -29,6 +29,8 @@ StateDirectoryMode=0700
 # can neither write nor rename it. The use markers stay in the state directory above (0700).
 CacheDirectory=sr-design-image-grant
 CacheDirectoryMode=0755
+# A grant (or a half-written one) never outlives the unit, also after a SIGKILL or an OOM kill of cycle.sh.
+ExecStopPost=-/bin/sh -c 'rm -f /var/cache/sr-design-image-grant/grant.json /var/cache/sr-design-image-grant/.grant.*'
 UMask=0077
 # Root may still drop to sr-designbridge (runuser needs no setuid binary); nothing here may gain privileges.
 # (sudo would refuse under NoNewPrivileges, so cycle.sh uses runuser.)
