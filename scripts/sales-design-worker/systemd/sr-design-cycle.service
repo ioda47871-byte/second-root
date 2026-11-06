@@ -24,6 +24,13 @@ SuccessExitStatus=10 11
 # The lock and the per-run output files (0700, root only).
 StateDirectory=sr-design-cycle
 StateDirectoryMode=0700
+# DEV-187: the one-run image grant (cycle.sh writes grant.json 0644 before the idle worker run, removes it after the
+# run and on every exit). Root's, 0755: the jailed worker reads it (the jail sees /var/cache read-only, not /run) and
+# can neither write nor rename it. The use markers stay in the state directory above (0700).
+CacheDirectory=sr-design-image-grant
+CacheDirectoryMode=0755
+# A grant (or a half-written one) never outlives the unit, also after a SIGKILL or an OOM kill of cycle.sh.
+ExecStopPost=-/bin/sh -c 'rm -f /var/cache/sr-design-image-grant/grant.json /var/cache/sr-design-image-grant/.grant.*'
 UMask=0077
 # Root may still drop to sr-designbridge (runuser needs no setuid binary); nothing here may gain privileges.
 # (sudo would refuse under NoNewPrivileges, so cycle.sh uses runuser.)

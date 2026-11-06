@@ -107,7 +107,8 @@ describe("DEV-185 isolation", () => {
     expect(grep("design-image/tsugute-photos|generateImagesInOneRun", "lib", "app", "components", "scripts", ":!lib/design-agent/design-image")).toEqual(["scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
     expect(grep("sales-design-worker/tsugute-photos\\.ts", ".", ":!tests/**", ":!docs/**", ":!.ai/**", ":!*.ts")).toEqual(["scripts/sales-design-worker/tsugute-photos-gate.sh"]);
     expect(grep("tsugute-photos-gate\\.sh", ".", ":!tests/**", ":!docs/**", ":!.ai/**", ":!*.ts", ":!scripts/sales-design-worker/tsugute-photos-gate.sh")).toEqual(["scripts/sales-design-worker/run-tsugute-photos-once.sh"]);
-    expect(grep("tsugute-photos-20261106-01", ".", ":!tests/**", ":!docs/**", ":!.ai/**")).toEqual(["lib/design-agent/quality-pipeline/tsugute-ai-photos.ts", "scripts/sales-design-worker/run-tsugute-photos-once.sh", "scripts/sales-design-worker/tsugute-photos-gate.sh", "scripts/sales-design-worker/tsugute-photos.ts"]);
+    // DEV-187: root's cycle.sh names the consumed id only to refuse it as an autorun approval (tests/unit/design-worker-cycle.test.ts)
+    expect(grep("tsugute-photos-20261106-01", ".", ":!tests/**", ":!docs/**", ":!.ai/**")).toEqual(["lib/design-agent/quality-pipeline/tsugute-ai-photos.ts", "scripts/sales-design-worker/cycle.sh", "scripts/sales-design-worker/run-tsugute-photos-once.sh", "scripts/sales-design-worker/tsugute-photos-gate.sh", "scripts/sales-design-worker/tsugute-photos.ts"]);
   });
 });
 

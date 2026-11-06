@@ -20,7 +20,7 @@ const real = vi.hoisted(() => ({ generate: vi.fn(), sandbox: vi.fn() }));
 vi.mock("@/lib/design-agent/design-image/image-once", async (orig) => ({ ...(await orig<object>()), generateImagesInOneRun: real.generate }));
 vi.mock("@/lib/design-agent/sandbox", async (orig) => ({ ...(await orig<object>()), prepareCodexSandbox: real.sandbox }));
 
-import { IMAGE_AUTORUN_CONFIG, runImageAutorun, type ImageGenerate } from "../../../scripts/sales-design-worker/image-autorun";
+import { IMAGE_AUTORUN_CONFIG, IMAGE_AUTORUN_GRANT, runImageAutorun, type ImageGenerate } from "../../../scripts/sales-design-worker/image-autorun";
 
 const REPO = resolve(__dirname, "../../..");
 // as photo-swap.ts and worker.ts: an explicit browser only when PLAYWRIGHT_CHROMIUM_EXECUTABLE is set, otherwise
@@ -31,6 +31,7 @@ const COMMIT = "5c2e9d8b4193c66a084329a2be1c84b602c20f92";
 const NOW = new Date();
 const iso = (deltaMs: number) => new Date(NOW.getTime() + deltaMs).toISOString();
 const HOUR = 60 * 60 * 1000;
+const BOOT = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
 const roots: string[] = [];
 afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true });
@@ -68,9 +69,23 @@ function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; co
     writeFileSync(configPath, JSON.stringify({ version: 1, enabled: o.on ?? true, approvals }));
     chmodSync(configPath, o.configMode ?? 0o644);
   }
-  const put = (name: string, body: unknown) => writeFileSync(join(queue, "image-autorun", "inbox", `${name}.json`), typeof body === "string" ? body : JSON.stringify(body));
+  // DEV-187: the grant root's cycle.sh writes (here in a 0755 dir of the test user, who stands in for root)
+  const grantDir = join(root, "grant");
+  mkdirSync(grantDir, { mode: 0o755 });
+  chmodSync(grantDir, 0o755);
+  const grantPath = join(grantDir, "grant.json");
+  const grant = (over: Record<string, unknown>) => {
+    writeFileSync(grantPath, JSON.stringify({ version: 1, approval_id: "tsugute-autorun-test-01", boot_id: BOOT, issued_at: iso(-60_000), expires_at: iso(15 * 60 * 1000), ...over }));
+    chmodSync(grantPath, 0o644);
+  };
+  const put = (name: string, body: unknown, withGrant = true) => {
+    const text = typeof body === "string" ? body : JSON.stringify(body);
+    writeFileSync(join(queue, "image-autorun", "inbox", `${name}.json`), text);
+    const appr = typeof body === "object" && body !== null && typeof (body as { approval_id?: unknown }).approval_id === "string" ? (body as { approval_id: string }).approval_id : "tsugute-autorun-test-01";
+    if (withGrant) grant({ job_id: name, approval_id: appr, job_sha256: createHash("sha256").update(text).digest("hex") });
+  };
   const logs: string[] = [];
-  const run = (extra: { generate?: ImageGenerate; trustedUid?: number; remainingMs?: number; launch?: () => Promise<never> } = {}) =>
+  const run = (extra: { generate?: ImageGenerate; trustedUid?: number; grantUid?: number; remainingMs?: number; launch?: () => Promise<never> } = {}) =>
     runImageAutorun({
       queueRoot: queue,
       outRoot: out,
@@ -82,12 +97,14 @@ function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; co
       log: (l) => logs.push(l),
       configPath,
       trustedUid: extra.trustedUid ?? process.getuid!(),
+      grantPath,
+      ...(extra.grantUid !== undefined ? { grantUid: extra.grantUid } : {}),
       ...(extra.generate ? { generate: extra.generate } : {}),
     });
   const bucket = (b: string) => readdirSync(join(queue, "image-autorun", b)).sort();
   const audit = () => (existsSync(join(state, "image-autorun", "audit.jsonl")) ? readFileSync(join(state, "image-autorun", "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>) : []);
   const marker = (id: string) => existsSync(join(state, "poc-approval-used", id));
-  return { root, queue, out, state, configPath, put, run, bucket, audit, marker, logs };
+  return { root, queue, out, state, configPath, grantDir, grantPath, grant, put, run, bucket, audit, marker, logs };
 }
 
 /** 6 synthetic flat-colour PNGs at each slot's 2× target, as the image tool would hand them back (in call order). */
@@ -103,6 +120,7 @@ async function mockBatch(over: Partial<ImageBatchResult> = {}): Promise<ImageBat
 describe("DEV-186 OFF by default: real generation is never invoked", () => {
   it("the switch is a root-owned file outside the repository, absent in the repository; no queue dir = nothing happens", async () => {
     expect(IMAGE_AUTORUN_CONFIG).toBe("/etc/sr-design-worker/image-autorun.json");
+    expect(IMAGE_AUTORUN_GRANT).toBe("/var/cache/sr-design-image-grant/grant.json");
     const tracked = spawnSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" }).stdout;
     expect(tracked).not.toMatch(/image-autorun\.json/);
     const f = setup();
@@ -315,6 +333,81 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
   });
 });
 
+describe("DEV-187 the root grant: without it, 0 generate calls", () => {
+  const sha = (t: string) => createHash("sha256").update(t).digest("hex");
+  const refused = async (f: ReturnType<typeof setup>, extra: { grantUid?: number } = {}) => {
+    const gen = vi.fn<ImageGenerate>(async () => mockBatch());
+    const r = await f.run({ generate: gen, ...extra });
+    expect(r?.code).toBe("REFUSED_NO_GRANT");
+    expect(gen).not.toHaveBeenCalled();
+    expect(real.generate).not.toHaveBeenCalled();
+    expect(real.sandbox).not.toHaveBeenCalled();
+    expect(f.marker("tsugute-autorun-test-01")).toBe(false);
+  };
+  it("no grant file", async () => {
+    const f = setup();
+    f.put("job-x", job(), false);
+    await refused(f);
+  });
+  it("a grant not owned by root (here: not the trusted uid) — e.g. one the worker wrote itself", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    await refused(f, { grantUid: process.getuid!() + 1 });
+  });
+  it("a grant that is group/other-writable, or in a dir that is not 0755", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    chmodSync(f.grantPath, 0o666);
+    await refused(f);
+    const g = setup();
+    g.put("job-x", job());
+    chmodSync(g.grantDir, 0o775);
+    await refused(g);
+  });
+  it("a grant that is a link", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    const real2 = join(f.root, "real-grant.json");
+    writeFileSync(real2, readFileSync(f.grantPath));
+    rmSync(f.grantPath);
+    symlinkSync(real2, f.grantPath);
+    await refused(f);
+  });
+  it("a stale grant (expired), or one spanning more than one run", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    f.grant({ job_id: "job-x", job_sha256: sha(JSON.stringify(job())), issued_at: iso(-2 * HOUR), expires_at: iso(-60_000) });
+    await refused(f);
+    const g = setup();
+    g.put("job-x", job());
+    g.grant({ job_id: "job-x", job_sha256: sha(JSON.stringify(job())), issued_at: iso(-60_000), expires_at: iso(25 * 60 * 1000) });
+    await refused(g);
+  });
+  it("a grant from another boot (H1c: a grant never survives a reboot)", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    f.grant({ job_id: "job-x", job_sha256: sha(JSON.stringify(job())), boot_id: "00000000-0000-4000-8000-000000000000" });
+    await refused(f);
+  });
+
+  it("job bytes changed after the grant (same name, same approval)", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    writeFileSync(join(f.queue, "image-autorun", "inbox", "job-x.json"), JSON.stringify(job({ requested_at: iso(-30_000) })));
+    await refused(f);
+  });
+  it("a grant for another job id or another approval id", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    f.grant({ job_id: "job-y", job_sha256: sha(JSON.stringify(job())) });
+    await refused(f);
+    const g = setup();
+    g.put("job-x", job());
+    g.grant({ job_id: "job-x", approval_id: "tsugute-autorun-test-09", job_sha256: sha(JSON.stringify(job())) });
+    await refused(g);
+  });
+});
+
 describe("DEV-186 isolation", () => {
   it("only the one-shot entry and the worker's guarded hook call generateImagesInOneRun; the worker reaches it only via the hook", () => {
     const grep = (re: string, ...paths: string[]) => spawnSync("git", ["grep", "--untracked", "-lE", re, "--", ...paths], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
@@ -325,6 +418,6 @@ describe("DEV-186 isolation", () => {
     expect(hook).not.toMatch(/process\.env/);
     expect(readFileSync(join(REPO, "scripts/sales-design-worker/run.sh"), "utf8")).not.toMatch(/IMAGE_AUTORUN/);
     const worker = readFileSync(join(REPO, "scripts/sales-design-worker/worker.ts"), "utf8");
-    expect(worker).not.toMatch(/configPath|trustedUid|generate:/);
+    expect(worker).not.toMatch(/configPath|trustedUid|grantPath|grantUid|generate:/);
   });
 });
