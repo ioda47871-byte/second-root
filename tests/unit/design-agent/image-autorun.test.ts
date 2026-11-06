@@ -23,7 +23,9 @@ vi.mock("@/lib/design-agent/sandbox", async (orig) => ({ ...(await orig<object>(
 import { IMAGE_AUTORUN_CONFIG, runImageAutorun, type ImageGenerate } from "../../../scripts/sales-design-worker/image-autorun";
 
 const REPO = resolve(__dirname, "../../..");
-const CHROME = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+// as photo-swap.ts and worker.ts: an explicit browser only when PLAYWRIGHT_CHROMIUM_EXECUTABLE is set, otherwise
+// Playwright's own install (CI: `npx playwright install --with-deps chromium`)
+const CHROME = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
 const SAVE = process.env.DEV186_RENDER_SAVE_DIR;
 const COMMIT = "5c2e9d8b4193c66a084329a2be1c84b602c20f92";
 const NOW = new Date();
@@ -76,7 +78,7 @@ function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; co
       workerCommit: COMMIT,
       deadline: new RunDeadline(Date.now() + (extra.remainingMs ?? 55 * 60 * 1000)),
       env: { ...process.env, HOME: root },
-      launchBrowser: extra.launch ?? (() => chromium.launch({ headless: true, executablePath: CHROME })),
+      launchBrowser: extra.launch ?? (() => chromium.launch({ headless: true, ...(CHROME ? { executablePath: CHROME } : {}) })),
       log: (l) => logs.push(l),
       configPath,
       trustedUid: extra.trustedUid ?? process.getuid!(),
@@ -231,6 +233,18 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
     const gen = vi.fn<ImageGenerate>(async () => mockBatch());
     expect((await f.run({ generate: gen }))?.code).toBe("REFUSED_LIMIT_EXCEEDED");
     expect(gen).not.toHaveBeenCalled();
+  });
+
+  it("a throw after generation is FAILED_UNEXPECTED with a fixed step sub-code (no error text) and stops the path", async () => {
+    const f = setup();
+    f.put("job-x", job());
+    const gen = vi.fn<ImageGenerate>(async () => mockBatch());
+    const r = await f.run({ generate: gen, launch: () => Promise.reject(new Error("secret-looking text /home/x")) });
+    expect(r?.code).toBe("FAILED_UNEXPECTED");
+    const last = f.audit().at(-1)!;
+    expect(last).toMatchObject({ code: "FAILED_UNEXPECTED", step: "BROWSER_LAUNCH" });
+    expect(JSON.stringify(f.audit())).not.toContain("secret-looking");
+    expect(existsSync(join(f.state, "image-autorun", "STOPPED"))).toBe(true);
   });
 
   it("an approval id already in the shared one-use ledger: REFUSED_APPROVAL_REUSED", async () => {

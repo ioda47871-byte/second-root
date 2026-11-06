@@ -303,29 +303,36 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
     return { ...(await decide("failed", code, { ...ids, ...f })), out };
   };
   let browser: Browser | null = null;
+  // the step a throw came from, recorded as a fixed sub-code of FAILED_UNEXPECTED (never the error text)
+  let step = "GENERATE";
   try {
     await mkdir(join(out, "photos"), { recursive: true, mode: 0o700 });
     const generate = o.generate ?? realGenerate(o);
     const timeoutMs = Math.min(CODEX_TIMEOUT_MS, o.deadline.remainingMs() - 5 * 60 * 1000);
     const batch = await generate({ prompt, maxImages: job.slot_ids.length, timeoutMs });
+    step = "WRITE_BUNDLE";
     const { dir, manifest } = await writeTsugutePhotos({ outRoot: join(out, "photos"), batch, commit: o.workerCommit, prompt, generatedAt: now().toISOString(), approvalId: job.approval_id });
     await audit("GENERATED", { ...base, status: manifest.status, stop_code: manifest.stop_code, images: manifest.slots.length, image_tool_calls: manifest.image_tool_calls });
     if (manifest.status !== "complete") return await fail("FAILED_GENERATION", { stop_code: manifest.stop_code });
     const pipelineRoot = join(out, "pipeline");
     await mkdir(join(pipelineRoot, ".intake", "photos"), { recursive: true, mode: 0o700 });
     const manifestOut = join(out, "swap-manifest.json");
+    step = "INTAKE";
     const intake = await importTsuguteAiPhotos({ from: dir, manifestOut, pipelineRoot, approvalIds: [job.approval_id] });
     if (!intake.ok) return await fail("FAILED_INTAKE", { codes: intake.codes });
+    step = "BROWSER_LAUNCH";
     browser = await o.launchBrowser();
+    step = "SWAP_RENDER";
     const swap = await swapPage({ pageDir: shop.pageDir, manifest: JSON.parse(await readFile(manifestOut, "utf8")), out: join(out, "swap"), pipelineRoot, now: now().toISOString().slice(0, 10), browser });
     if (!swap.ok) return await fail("FAILED_SWAP", { codes: swap.refusals.flatMap((r) => r.codes) });
     const renders = swap.renders.map((r) => r.file);
+    step = "RENDER_CHECK";
     for (const r of renders) await stat(r);
     await finish(processing, jobId, "done", "DONE", { job_sha256: jobSha, ...ids, out, renders });
     await audit("DONE", { ...base, ...ids, out, renders: renders.length });
     return { code: "DONE", jobId, out, renders };
   } catch {
-    return await fail("FAILED_UNEXPECTED");
+    return await fail("FAILED_UNEXPECTED", { step });
   } finally {
     await browser?.close().catch(() => undefined);
   }
