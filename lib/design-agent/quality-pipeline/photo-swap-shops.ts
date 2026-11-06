@@ -29,22 +29,30 @@ export type SwapRange = { key: SwapRangeKey; media: string | null; viewports: re
  *  - "figure_photo_board" (つぐ手): a <figure> holding one <div class="photo"> board (empty, or only drawn seams) and the
  *    caption <figcaption class="ph-label"> / <span> (DEV-166, DEV-184; unchanged).
  *  - "board_before_caption" (輪): the caption <p class="ph…"> directly follows the board `<div class="board…"><div
- *    class="photo"></div></div>`, which directly follows the container's opening tag. Both are matched exactly.
+ *    class="photo"></div></div>`, which directly follows the container's opening tag. DEV-190 (DEV-189 review L2): the
+ *    container, board and caption tags are matched as ONE of the listed triples, never mixed across triples.
  */
 export type SwapStructure =
   | { kind: "figure_photo_board" }
   | {
       kind: "board_before_caption";
-      /** the caption's opening tags (the caption text may carry <wbr> between its letters) */
-      captionOpen: readonly string[];
-      /** the container's opening tags, directly before the board */
-      containerOpen: readonly string[];
-      /** the board's opening tags (the board holds exactly one empty <div class="photo"></div>) */
-      boardOpen: readonly string[];
+      /**
+       * the allowed (container, board, caption) opening tags, as exact triples: the container's tag directly before the
+       * board, the board holding exactly one empty <div class="photo"></div>, then the caption (its text may carry <wbr>
+       * between its letters)
+       */
+      triples: ReadonlyArray<{ container: string; board: string; caption: string }>;
     };
 
 export type SwapShopSpec = {
   shop: string;
+  /**
+   * DEV-190: the page versions (fidelity/<version>) this spec's ranges and structure were read from. A page must be one of
+   * these AND have its own pinned inventory (photo-slots-<version>.json); any other is refused (PAGE_NOT_IN_SPEC).
+   */
+  pages: readonly string[];
+  /** DEV-190 (DEV-189 review L1): the full-page renders the swap draws and checks (the viewports must be measured ones) */
+  renders: ReadonlyArray<{ viewport: "desktop_1440" | "tablet_1024" | "tablet_768" | "mobile_390"; width: number; height: number }>;
   ranges: readonly [SwapRange, SwapRange, SwapRange];
   /** the range edges measured for this shop, in photo-slot-edges*.json order */
   edgeViewports: readonly [EdgeViewport, EdgeViewport, EdgeViewport];
@@ -79,6 +87,11 @@ export const BICYCLE_SWAP_CSS = `
 export const SWAP_SHOP_SPECS = {
   tsugute: {
     shop: "tsugute",
+    pages: ["d1-v3", "d1-v10"],
+    renders: [
+      { viewport: "desktop_1440", width: 1440, height: 900 },
+      { viewport: "mobile_390", width: 390, height: 844 },
+    ],
     // the pinned つぐ手 CSS: desktop ≥1200, tablet 601–1199, mobile ≤600
     ranges: [
       { key: "desktop", media: null, viewports: ["desktop_1440", "desktop_1920"] },
@@ -95,7 +108,15 @@ export const SWAP_SHOP_SPECS = {
   },
   bicycle: {
     shop: "bicycle",
-    // the pinned 輪 d1-v7 CSS: desktop ≥1000 (so the measured 1024 is a desktop width here), tablet 601–999, mobile ≤600.
+    // d1-v7 (DEV-189) and the integrated d1-v9 (DEV-190: B1 hub-disc + B2 cta-hero + B3 check-horizontal): the same
+    // breakpoints and the same placeholder markup; each has its own pinned inventory
+    pages: ["d1-v7", "d1-v9"],
+    renders: [
+      { viewport: "desktop_1440", width: 1440, height: 900 },
+      { viewport: "tablet_768", width: 768, height: 1024 },
+      { viewport: "mobile_390", width: 390, height: 844 },
+    ],
+    // the pinned 輪 d1-v7 / d1-v9 CSS: desktop ≥1000 (so the measured 1024 is a desktop width here), tablet 601–999, mobile ≤600.
     // Inside each range the boards are sized in vw (desktop, tablet) or by the column (mobile): they grow with the window.
     ranges: [
       { key: "desktop", media: null, viewports: ["desktop_1440", "tablet_1024", "desktop_1920"] },
@@ -108,9 +129,12 @@ export const SWAP_SHOP_SPECS = {
     spViewports: ["mobile_390", "mobile_600"],
     structure: {
       kind: "board_before_caption",
-      captionOpen: ['<p class="ph">', '<p class="ph ph-bench">'],
-      containerOpen: ['<div class="fig">', '<figure class="bench">'],
-      boardOpen: ['<div class="board">', '<div class="board board-bench">'],
+      triples: [
+        // the four repair stations
+        { container: '<div class="fig">', board: '<div class="board">', caption: '<p class="ph">' },
+        // the workbench
+        { container: '<figure class="bench">', board: '<div class="board board-bench">', caption: '<p class="ph ph-bench">' },
+      ],
     },
     swapCss: BICYCLE_SWAP_CSS,
     // no owner approval for AI demo pictures of 輪 (the brief is a draft, 未承認)

@@ -4,8 +4,8 @@
  *
  *   npx tsx scripts/design-artifact/photo-swap.ts --page <C page dir> --manifest <intake manifest> --out <new dir>
  *
- * Makes a PRIVATE copy of an inventoried C page in which each of its placeholder boards (つぐ手 6, 輪 d1-v7 5) shows a
- * rights-cleared photo, then draws it at PC 1440 and SP 390 (JavaScript off, every request outside the copy refused).
+ * Makes a PRIVATE copy of an inventoried C page in which each of its placeholder boards (つぐ手 6, 輪 d1-v7/d1-v9 5) shows a
+ * rights-cleared photo, then draws it at the shop's render widths (PC 1440 and SP 390; 輪 also tablet 768) (JavaScript off, every request outside the copy refused).
  * The repository page is not changed. Nothing is written inside the repository.
  *
  * DEV-189: this file is the COMMON part. What is fixed per shop (the CSS breakpoint ranges and their edges, where the
@@ -83,10 +83,6 @@ export const RANGES = SWAP_SHOP_SPECS.tsugute.ranges;
  */
 export const TSUGUTE_SP_VIEWPORTS: readonly PlanViewport[] = SWAP_SHOP_SPECS.tsugute.spViewports;
 
-const RENDERS = [
-  { viewport: "desktop_1440", width: 1440, height: 900 },
-  { viewport: "mobile_390", width: 390, height: 844 },
-] as const;
 
 const PhotoRef = z.strictObject({ rights: z.unknown(), focal_box: FocalBox });
 export const SwapManifest = z.strictObject({
@@ -198,8 +194,7 @@ export function checkManifestPath(file: string): string | null {
  * carries that page's hashes.
  */
 export const INVENTORY_FILE = /^photo-slots(-[a-z0-9][a-z0-9-]{0,40})?\.json$/;
-export function inventoryFiles(shop: string): Array<{ slots: string; edges: string }> {
-  const shopDir = join(REPO, `design-library/research/quality-pipeline/poc/${shop}`);
+export function inventoryFiles(shop: string, shopDir: string = join(REPO, `design-library/research/quality-pipeline/poc/${shop}`)): Array<{ slots: string; edges: string }> {
   return readdirSync(shopDir)
     .sort()
     .flatMap((f) => {
@@ -212,7 +207,12 @@ export function inventoryFiles(shop: string): Array<{ slots: string; edges: stri
  * The slot inventory of a shop measured on this page and its range edges, and a refusal unless the page is exactly
  * the page both were measured on. Two inventories naming one page are refused.
  */
-export function loadInventory(shop: string, pageDir: string): { ok: true; inv: PhotoSlotInventory; edges: Map<string, EdgeVariant[]>; dir: string } | { ok: false; code: string } {
+export function loadInventory(
+  shop: string,
+  pageDir: string,
+  /** tests only: read the shop's inventory files from this folder instead of poc/<shop>/ (the page itself is still the repository's) */
+  seam: { shopDir?: string } = {},
+): { ok: true; inv: PhotoSlotInventory; edges: Map<string, EdgeVariant[]>; dir: string } | { ok: false; code: string } {
   let dir: string;
   try {
     dir = realpathSync(resolve(REPO, pageDir));
@@ -221,7 +221,7 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
   }
   const matches: PhotoSlotInventory[] = [];
   const edgeFiles: string[] = [];
-  for (const f of inventoryFiles(shop)) {
+  for (const f of inventoryFiles(shop, seam.shopDir)) {
     const one = PhotoSlotInventory.parse(JSON.parse(readFileSync(f.slots, "utf8")));
     let at: string;
     try {
@@ -234,6 +234,10 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
     edgeFiles.push(f.edges);
   }
   if (matches.length === 0) return { ok: false, code: "PAGE_NOT_INVENTORIED" };
+  // DEV-190: the page must also be one the shop's spec was read from (photo-swap-shops.ts pages), compared as the full
+  // research path poc/<shop>/fidelity/<version> (PR #232 review L2: never by the last path segment alone)
+  const specPages: readonly string[] | undefined = Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, shop) ? SWAP_SHOP_SPECS[shop as keyof typeof SWAP_SHOP_SPECS].pages.map((v) => `design-library/research/quality-pipeline/poc/${shop}/fidelity/${v}`) : undefined;
+  if (specPages && matches.some((m) => !specPages.includes(m.page_dir))) return { ok: false, code: "PAGE_NOT_IN_SPEC" };
   if (matches.length > 1) return { ok: false, code: "INVENTORY_AMBIGUOUS" };
   const inv = matches[0]!;
   if (!existsSync(edgeFiles[0]!)) return { ok: false, code: "EDGES_STALE" };
@@ -302,22 +306,24 @@ export function transformHtml(html: string, slots: ReadonlyArray<TransformSlot>,
 
 /**
  * DEV-189 (輪): the caption `<p class="ph…">写真｜…</p>` (one match in the page, <wbr> allowed between its letters) must
- * directly follow `<container><board><div class="photo"></div></div>`, each tag one of the spec's, with nothing in
+ * directly follow `<container><board><div class="photo"></div></div>`, the three tags one of the spec's triples (DEV-190), with nothing in
  * between and nothing inside the board but the empty .photo. The caption is taken out and the .photo gets the picture.
  * Anything else — a second caption, a board with content, a missing container — throws (fail closed).
  */
 function swapBoardBeforeCaption(html: string, slot: PhotoSlot, caption: string, pictureEl: string, st: Extract<SwapShopSpec["structure"], { kind: "board_before_caption" }>): string {
   const alt = (xs: readonly string[]) => `(?:${xs.map(escapeRe).join("|")})`;
-  const re = new RegExp(`${alt(st.captionOpen)}${[...caption].map(escapeRe).join("(?:<wbr>)?")}</p>`, "g");
+  const text = [...caption].map(escapeRe).join("(?:<wbr>)?");
+  const re = new RegExp(`${alt([...new Set(st.triples.map((t) => t.caption))])}${text}</p>`, "g");
   const hits = [...html.matchAll(re)];
   if (hits.length !== 1) throw new Error(`CAPTION_NOT_FOUND: ${slot.slot_id}`);
   const at = hits[0]!.index!;
   const before = html.slice(0, at);
-  const board = new RegExp(`(${alt(st.containerOpen)}${alt(st.boardOpen)})<div class="photo"></div></div>$`).exec(before);
-  if (!board) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
-  if (slot.placeholder !== "css_board") throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+  // DEV-190 (review L2): the container, the board and the caption must be one listed triple, not a mix of two
+  const empty = (t: (typeof st.triples)[number]) => `${t.container}${t.board}<div class="photo"></div></div>`;
+  const triple = st.triples.find((t) => hits[0]![0].startsWith(t.caption) && before.endsWith(empty(t)));
+  if (!triple || slot.placeholder !== "css_board") throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
   // plain concatenation: no replacement-string expansion of $&, $`, $' or $$ found in the alt text
-  return `${before.slice(0, board.index)}${board[1]}<div class="photo">${pictureEl}</div></div>${html.slice(at + hits[0]![0].length)}`;
+  return `${before.slice(0, before.length - empty(triple).length)}${triple.container}${triple.board}<div class="photo">${pictureEl}</div></div>${html.slice(at + hits[0]![0].length)}`;
 }
 
 /**
@@ -443,7 +449,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
     const renders: RenderCheck[] = [];
     if (opts.browser) {
       mkdirSync(join(tmp, "renders"));
-      for (const r of RENDERS) {
+      for (const r of spec.renders) {
         let check: RenderCheck;
         try {
           check = await renderCopy(opts.browser, realpathSync(pageOut), r, inv.slots, join(tmp, "renders", `${r.viewport}.png`));
@@ -553,7 +559,7 @@ async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, tr
 }
 
 /** Draws the private copy like fidelity-measure (JS off, nothing outside the copy) and checks the swap took. */
-async function renderCopy(browser: Browser, dir: string, r: (typeof RENDERS)[number], slots: PhotoSlot[], file: string): Promise<RenderCheck> {
+async function renderCopy(browser: Browser, dir: string, r: SwapShopSpec["renders"][number], slots: PhotoSlot[], file: string): Promise<RenderCheck> {
   const ctx = await browser.newContext({ viewport: { width: r.width, height: r.height }, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: "block" });
   try {
     const page = await ctx.newPage();
