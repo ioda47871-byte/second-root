@@ -920,6 +920,21 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     expect(w.used("approval", APPROVAL) || w.used("job", JOB_ID)).toBe(false);
   });
 
+  it.each([
+    ["pgrep -U", "-U"],
+    ["pgrep -u", "-u"],
+  ])("H1'': %s exits 2+ (error, cannot tell) → IMAGE_GRANT_USER_BUSY, no grant, nothing used up (fail closed)", (_, flag) => {
+    for (const rc of [2, 3]) {
+      const w = imageWorld();
+      const pg = join(w.bin, "pgrep");
+      exe(pg, `case " $* " in *" ${flag} "*) exit ${rc} ;; esac\n${readFileSync(pg, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
+      const r = cycle(w);
+      expect(r.out, `${flag} rc=${rc}`).toContain("image grant: IMAGE_GRANT_USER_BUSY");
+      expect(w.grants()).not.toContain("{");
+      expect(w.used("approval", APPROVAL) || w.used("job", JOB_ID)).toBe(false);
+    }
+  });
+
   it.each(["inactive", "failed"])("H1': ActiveState %s + disabled/masked + no process → the grant is issued", (state) => {
     for (const enabled of ["disabled", "masked"]) {
       const w = imageWorld();

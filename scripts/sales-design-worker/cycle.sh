@@ -388,9 +388,13 @@ image_grant() {
   local claude_state claude_enabled
   claude_state="$(systemctl show -p ActiveState --value sr-jail-claude.service 2>/dev/null)" || claude_state=error
   claude_enabled="$(systemctl is-enabled sr-jail-claude.service 2>/dev/null)" || true
+  # pgrep: 0 = a process (busy), 1 = none, 2+ = error (cannot tell → busy). Only "1" from both checks counts as idle.
+  local pg_real=0 pg_eff=0
+  pgrep -U "$WORKER_USER" >/dev/null 2>&1 || pg_real=$?
+  pgrep -u "$WORKER_USER" >/dev/null 2>&1 || pg_eff=$?
   if ! [[ "$claude_state" =~ ^(inactive|failed)$ ]] || ! [[ "$claude_enabled" =~ ^(disabled|masked)$ ]] ||
-    pgrep -U "$WORKER_USER" >/dev/null 2>&1 || pgrep -u "$WORKER_USER" >/dev/null 2>&1; then
-    say "image grant: IMAGE_GRANT_USER_BUSY (the jailed Claude is not stopped and disabled, or another $WORKER_USER process is running; job $job)"
+    [ "$pg_real" -ne 1 ] || [ "$pg_eff" -ne 1 ]; then
+    say "image grant: IMAGE_GRANT_USER_BUSY (the jailed Claude is not stopped and disabled, another $WORKER_USER process is running, or pgrep could not tell; job $job)"
     return 0
   fi
   local boot
