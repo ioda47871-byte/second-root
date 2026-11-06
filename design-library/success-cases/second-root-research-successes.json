@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "dataset": "second-root-quality-pipeline-research-successes",
+  "as_of": "2026-11-06",
+  "scope": "Second Root's own research pages for FICTIONAL shops, made in the quality pipeline (design-library/research/quality-pipeline/poc). Kept apart from the 30 external research success cases (manifest.json, CP-001..032): those are a frozen, guarded reference corpus of real shops (design-library/intelligence/v01/registration-safety.mjs pins exactly 30), and a fictional shop's own page is not a reference for other shops.",
+  "policy": {
+    "not_templates": true,
+    "not_added_to_external_case_count": true,
+    "not_fed_to_generators_automatically": true,
+    "release_or_deployment_approval": false,
+    "old_versions_kept_unedited": true
+  },
+  "counts": {
+    "formal_success_examples": 1,
+    "success_example_candidates": 1,
+    "external_research_success_cases": 30,
+    "all_research_success_records": 31,
+    "note": "all_research_success_records = the 30 external cases (manifest.json) + this ledger's formal success examples. Candidates are not counted as successes."
+  },
+  "records": [
+    {
+      "id": "SR-001",
+      "shop": "bicycle",
+      "shop_display_name": "輪 (fictional bicycle repair shop)",
+      "status": "owner_formal_research_success_example",
+      "adopted_version": "d1-v9",
+      "page_dir": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9",
+      "merge_commit": "38e396eedf2de3f7472fd29052036b8ca0f7541e",
+      "merged_pr": 232,
+      "page_hashes": {
+        "html_sha256": "de7ccbc2469f4e14c0db5cae6cf39c5b5a34a6c03ca7b685a6304dc0460e4503",
+        "css_sha256": "32957e480201e0ce17860498ba5af71b956ad2f379e5b6be8b611970b1223a5b",
+        "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
+      },
+      "owner_decision": {
+        "decided_by": "owner",
+        "decided_on": "2026-11-06",
+        "evidence": "Issue #193 comment 6687410438"
+      },
+      "success_scope": "design_structure_only",
+      "viewports": [
+        "desktop_1440",
+        "tablet_768",
+        "mobile_390"
+      ],
+      "verified_with": "MOCK photos (offline E2E, tests/unit/design-agent/quality-pipeline/photo-swap-bicycle-d1-v9.test.ts)",
+      "design_status": "success",
+      "photo_status": "mock_only",
+      "real_images_generated": 0,
+      "image_rights_status": "no real image exists; MOCK photos are test-time stubs, never committed; a future AI demo picture would be ai_generated_demo, demo only, not public web",
+      "photo_prompt": {
+        "file": "docs/design/bicycle-ai-photo-prompt.txt",
+        "sha256": "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594",
+        "bytes": 3865,
+        "approval_id": "bicycle-photo-prompt-20261106",
+        "approved": true,
+        "real_generation_approved": false
+      },
+      "not_claimed": [
+        "a finished page with real photos",
+        "automatic reproduction by the production B pipeline",
+        "published to Production or any public site",
+        "a real shop or merchant approval"
+      ],
+      "creative_heading_kept": "どこを直すか、先に決める。 (research creative copy; facts and the fictional shop's facts unchanged)",
+      "previous_versions_kept": [
+        "d1",
+        "d1-v2",
+        "d1-v3",
+        "d1-v4",
+        "d1-v5",
+        "d1-v6",
+        "d1-v7",
+        "d1-v8-opt-check-horizontal",
+        "d1-v8-opt-cta-band",
+        "d1-v8-opt-cta-hero",
+        "d1-v8-opt-hub-disc",
+        "d1-v8-opt-hub-glyph"
+      ],
+      "previous_versions_status": "kept unedited; not adopted (d1-v8-opt-hub-disc, cta-hero and check-horizontal were approved as parts of d1-v9)",
+      "pending_human_checks": "docs/design/bicycle-ai-photo-brief.md §6 (after a real generation only)",
+      "approved_for_generation": false,
+      "approved_for_sales": false,
+      "approved_for_production": false,
+      "website_deployed": false
+    },
+    {
+      "id": "SR-C01",
+      "shop": "tsugute",
+      "shop_display_name": "つぐ手 (fictional kintsugi shop)",
+      "status": "owner_confirmed_success_example_candidate_not_formal",
+      "adopted_version": null,
+      "candidate_version": "d1-v10",
+      "page_dir": "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v10",
+      "merge_commit": "5c2e9d8b4193c66a084329a2be1c84b602c20f92",
+      "page_hashes": {
+        "html_sha256": "49149c13eaf108c077d7f4d7c6e1f729234bbc84288395c7ccc82e5550335680",
+        "css_sha256": "ebca33c174ad95f27477d25019cce0f2076ea29822d235d222c73bae2794761d",
+        "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
+      },
+      "owner_decision": {
+        "decided_by": "owner",
+        "decided_on": "2026-11-06",
+        "evidence": "Issue #193 comment 6676754174"
+      },
+      "success_scope": "candidate only (not formally adopted; not reproduced by strict B; not published)",
+      "viewports": [
+        "desktop_1440",
+        "mobile_390"
+      ],
+      "design_status": "candidate",
+      "photo_status": "ai_generated_demo (the one approved DEV-185 run, used up; images not committed)",
+      "real_images_generated": 6,
+      "image_rights_status": "ai_generated_demo, demo only, not public web",
+      "approved_for_generation": false,
+      "approved_for_sales": false,
+      "approved_for_production": false,
+      "website_deployed": false
+    }
+  ]
+}

@@ -15,6 +15,7 @@
  * generate pictures for it: the image auto-run takes only scripts/sales-design-worker/autorun-shops.ts's shops (and
  * root's IMAGE_AUTORUN_SHOPS), and 輪 is in neither.
  */
+import { BICYCLE_OFFLINE_STUB_GENERATOR, BICYCLE_PROMPT_SHA256 } from "./bicycle-ai-photos";
 import { EDGE_VIEWPORTS, type EdgeViewport, type PlanViewport } from "./photo-slots";
 
 export type SwapRangeKey = "desktop" | "tablet" | "mobile";
@@ -63,6 +64,13 @@ export type SwapShopSpec = {
   swapCss: string;
   /** DEV-185 owner approval: may this shop's swap take `ai_generated_demo` pictures */
   aiDemoAllowed: boolean;
+  /**
+   * DEV-191: an OFF candidate for AI demo pictures (輪: the prompt text is owner-approved, a real run is not). It never
+   * turns aiDemoAllowed on. Only the swap's test-only seam (photo-swap.ts SwapOptions.offlineAiDemoCandidate) reads it,
+   * and then takes an `ai_generated_demo` picture only when its provenance names THIS stub generator and THIS approved
+   * prompt SHA-256 — so a real (tool-made) picture is refused even through the seam. Production: absent seam → refused.
+   */
+  aiDemoCandidate?: { status: "off_candidate"; promptSha256: string; offlineStubGenerator: string };
 };
 
 /** つぐ手's CSS addition, byte for byte as DEV-166 wrote it. */
@@ -137,8 +145,11 @@ export const SWAP_SHOP_SPECS = {
       ],
     },
     swapCss: BICYCLE_SWAP_CSS,
-    // no owner approval for AI demo pictures of 輪 (the brief is a draft, 未承認)
+    // no owner approval for AI demo pictures of 輪 in the swap (DEV-191: the prompt TEXT is approved, a real run and the
+    // auto-run are not; the swap still refuses 輪's ai_generated_demo pictures)
     aiDemoAllowed: false,
+    // DEV-191: OFF candidate — read only by the test-only seam, and only for offline stub pictures of the approved prompt
+    aiDemoCandidate: { status: "off_candidate", promptSha256: BICYCLE_PROMPT_SHA256, offlineStubGenerator: BICYCLE_OFFLINE_STUB_GENERATOR },
   },
 } as const satisfies Record<string, SwapShopSpec>;
 

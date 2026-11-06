@@ -37,6 +37,8 @@ Second Rootの **成功したアートディレクションの研究記録** は
 
 * CP-024: Boheme. / FLORAL FITTING ROOM 全ページv2（気に入られた鏡のHeroを保持し、Introduction→操作可能なLOOK→Styling Rail→Story→VisitをPC/スマホ全ページに展開して正式採用）
 
+* SR-001: 輪 d1-v9（架空の自転車修理店・Second Root の品質パイプラインの研究ページ。2026-11-06 にオーナーが研究用の正式成功例として登録。デザインの構造の成功で、写真は MOCK・実画像は未生成・非公開。別台帳 [second-root-research-successes.json](../../design-library/success-cases/second-root-research-successes.json)。外部30件の件数には足さない）
+
 成功した**レイアウトをテンプレート化せず**、店舗ごとのアートディレクションやスクリーンショット比較の方法を学ぶ。
 既存の40+40件の候補データとは別管理。営業システム・本番サイトへ自動投入しない。
 
