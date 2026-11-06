@@ -51,7 +51,9 @@ echo PIN_OK
 # root が動かすファイルの差（期待: cycle.sh の 1 ファイルだけ。unit・admin.sh・jail・ops・bridge は 0）
 sudo git -C "$C" diff --stat "$OLD" "$PIN" -- scripts/sales-design-capture scripts/sales-design-worker/cycle.sh scripts/sales-design-worker/systemd scripts/ops scripts/sales-design-bridge
 sudo git -C "$C" diff "$OLD" "$PIN" -- scripts/sales-design-worker/cycle.sh | grep '^[-+][^-+]' || true
-read -r -p "差が cycle.sh の allowlist（'tsugute:6 bicycle:6'）とその照合だけなら yes: " a; [ "$a" = yes ] || { echo NOT_CONFIRMED; exit 1; }
+# 差そのものを固定する（DEV-192 のレビュー済みの差。違えば STOP）
+[ "$(sudo git -C "$C" diff "$OLD" "$PIN" -- scripts/sales-design-worker/cycle.sh | sha256sum | cut -d' ' -f1)" = 094175c663143d7c8442d90d13f8e5969dbd2fef3ed2a96e3f4ffc9e685d0527 ] || { echo STOP_ROOT_DIFF_NOT_REVIEWED; exit 1; }; echo ROOT_DIFF_PINNED
+read -r -p "差が cycle.sh の (1) allowlist（'tsugute:6 bicycle:6'）とその照合、(2) grant が出なければ止まる CYCLE_STOP_IMAGE_NOT_GRANTED（動きを狭めるだけ）の2つだけなら yes: " a; [ "$a" = yes ] || { echo NOT_CONFIRMED; exit 1; }
 sudo git -C "$C" checkout -q --detach "$PIN"
 [ "$(sudo git -C "$C" rev-parse HEAD)" = "$PIN" ] || { echo STOP_CLONE_NOT_AT_PIN; exit 1; }
 [ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] || { echo STOP_CLONE_DIRTY; exit 1; }
@@ -65,7 +67,7 @@ echo PROMPT_SHAS_OK
 echo "BK=$BK   # 控えておく" )
 ```
 
-期待: `PIN_OK`、diff --stat は `scripts/sales-design-worker/cycle.sh | 16 +++++++++++++---` の1行だけ、`yes`、`UNIT_SAME`・`ROOT_ALLOWLIST_OK`・`PROMPT_SHAS_OK`。実行プロンプト本体の SHA は worker が実行の前に組み立て直して照合し、違えば `REFUSED_JOB_INVALID`（生成0回）で止まる。
+期待: `PIN_OK`、diff --stat は `scripts/sales-design-worker/cycle.sh | 30 ++++++++++++++++++++++++++----` の1行だけ、`ROOT_DIFF_PINNED`、`yes`、`UNIT_SAME`・`ROOT_ALLOWLIST_OK`・`PROMPT_SHAS_OK`。実行プロンプト本体の SHA は worker が実行の前に組み立て直して照合し、違えば `REFUSED_JOB_INVALID`（生成0回）で止まる。
 
 ## (c) jail の Claude（Remote Control）を止める
 
@@ -140,6 +142,7 @@ sudo python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); print("RESU
 # 生成に使った worker のコードが PIN と同じか（worker は毎回 origin/develop を使う）
 WC=$(sudo python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["worker_commit"])' "/home/sr-designgen/.local/state/sr-design-worker/poc-approval-used/$APPROVAL/receipt.json") || { echo STOP_RECEIPT_UNREADABLE; exit 1; }
 [[ "$WC" =~ ^[0-9a-f]{40}$ ]] || { echo STOP_RECEIPT_COMMIT; exit 1; }
+sudo git -C /root/sr-capture-admin fetch -q origin
 sudo git -C /root/sr-capture-admin cat-file -e "$WC^{commit}" || { echo "STOP_WORKER_COMMIT_UNKNOWN $WC"; exit 1; }
 sudo git -C /root/sr-capture-admin diff --quiet "$PIN" "$WC" -- scripts/sales-design-worker scripts/design-artifact lib/design-agent docs/design/bicycle-ai-photo-prompt.txt package.json package-lock.json \
   && echo "WORKER_CODE_MATCH $WC" || { echo "STOP_WORKER_CODE_DIFFERS $WC"; exit 1; }
