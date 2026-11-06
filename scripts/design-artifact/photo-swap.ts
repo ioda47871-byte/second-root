@@ -147,7 +147,22 @@ export type SwapOptions = {
   browser?: Browser;
   /** tests only: a stand-in for transformHtml, to prove a late failure leaves no --out */
   transform?: typeof transformHtml;
+  /**
+   * DEV-191, tests only: lets a shop with an OFF aiDemoCandidate (輪) take an `ai_generated_demo` picture whose
+   * provenance names the candidate's offline stub generator and approved prompt SHA-256 — nothing else. Never set by the
+   * CLI or the worker; a real picture (any other generator) is still AI_DEMO_NOT_ALLOWED.
+   */
+  offlineAiDemoCandidate?: true;
 };
+
+/** DEV-191: whether this one record may pass as an AI demo picture (the spec's approval, or the test-only stub seam). */
+export function aiDemoAllowedFor(spec: SwapShopSpec, record: unknown, seam: true | undefined): boolean {
+  if (spec.aiDemoAllowed) return true;
+  const c = spec.aiDemoCandidate;
+  if (seam !== true || !c || c.status !== "off_candidate") return false;
+  const p = (record as { source_kind?: unknown; ai_provenance?: { generator?: unknown; prompt_sha256?: unknown } } | null) ?? null;
+  return p?.source_kind === "ai_generated_demo" && p.ai_provenance?.generator === c.offlineStubGenerator && p.ai_provenance?.prompt_sha256 === c.promptSha256;
+}
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const inside = (child: string, parent: string) => (child + sep).startsWith(parent + sep);
@@ -409,7 +424,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
       if (!ref) continue;
       const path = (ref.rights as { private_path?: unknown } | null)?.private_path;
       const opened = typeof path === "string" ? resolvePrivatePhoto(pipelineRoot, path) : ({ ok: false, code: "PATH_NOT_PRIVATE" } as const);
-      const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden, aiDemoAllowed: spec.aiDemoAllowed });
+      const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden, aiDemoAllowed: aiDemoAllowedFor(spec, ref.rights, opts.offlineAiDemoCandidate) });
       const codes = [...(opened.ok ? [] : [opened.code]), ...(rights.ok ? [] : rights.codes)];
       if (codes.length || !opened.ok || !rights.ok) {
         refusals.push({ slot_id: entry.slot_id, photo: which, codes: [...new Set(codes)] });

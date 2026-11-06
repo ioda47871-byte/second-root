@@ -35,7 +35,7 @@ type Slot = (typeof TSUGUTE_SLOTS)[number];
  * The smallest factor (> 1, three decimals, rounded up) whose enlarged size still covers the slot's 2× target after the
  * cover crop to the slot's shape; 1 when the picture already does; null when even MAX_UPSCALE would not.
  */
-export function upscaleFactor(img: { width: number; height: number }, slot: Pick<Slot, "aspect" | "target">): number | null {
+export function upscaleFactor(img: { width: number; height: number }, slot: { aspect: `${number}:${number}`; target: Slot["target"] }): number | null {
   if (cropReaches(img, slot.aspect, slot.target)) return 1;
   const [a, b] = slot.aspect.split(":").map(Number) as [number, number];
   const r = a / b;
@@ -172,7 +172,7 @@ export async function importTsuguteAiPhotos(o: {
 }
 
 /** The swap manifest names the approval and private paths: outside the repository, or under the private .intake/. */
-function manifestOutOk(file: string, pipelineRoot: string): boolean {
+export function manifestOutOk(file: string, pipelineRoot: string): boolean {
   const abs = resolve(file);
   if (existsSync(abs)) return false;
   let parent: string;

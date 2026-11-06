@@ -125,7 +125,7 @@ ${images}
 }
 
 /** Whether a picture's cover crop to the slot's shape still reaches a size (crop to the aspect first, then compare). */
-export function cropReaches(img: { width: number; height: number }, aspect: TsuguteSlot["aspect"], need: { width: number; height: number }): boolean {
+export function cropReaches(img: { width: number; height: number }, aspect: `${number}:${number}`, need: { width: number; height: number }): boolean {
   const [a, b] = aspect.split(":").map(Number) as [number, number];
   const r = a / b;
   const w = img.width / img.height > r ? img.height * r : img.width;
