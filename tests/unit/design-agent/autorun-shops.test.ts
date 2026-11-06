@@ -103,7 +103,7 @@ describe("DEV-188 unimplemented shops stay out (未対応)", () => {
     }
   });
 
-  it("the recorded reasons hold: the swap does not take them and their slot inventories have no edges", () => {
+  it("the recorded reasons hold: not auto-run, no AI demo (輪 is a research-only swap shop), and no unsuffixed slot edges", () => {
     for (const id of Object.keys(UNIMPLEMENTED_SHOPS)) {
       // DEV-189 (owner GO 2026-11-06 item 3): 輪 is in the swap as a research-only shop (mock photos, no AI demo
       // pictures); ゆげ湯 is not in the swap at all. Neither takes ai_generated_demo pictures nor is an auto-run shop.
