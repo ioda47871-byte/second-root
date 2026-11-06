@@ -75,7 +75,7 @@ function setup(o: { on?: boolean; approvals?: Array<Record<string, unknown>>; co
       stateDir: state,
       workerCommit: COMMIT,
       deadline: new RunDeadline(Date.now() + (extra.remainingMs ?? 55 * 60 * 1000)),
-      env: { HOME: root, PATH: process.env.PATH } as NodeJS.ProcessEnv,
+      env: { ...process.env, HOME: root },
       launchBrowser: extra.launch ?? (() => chromium.launch({ headless: true, executablePath: CHROME })),
       log: (l) => logs.push(l),
       configPath,
