@@ -34,7 +34,7 @@
 
 clone 全体では約 1040 file が変わる（アプリ・研究の file。root は動かさない）。clone が `679c3c2` でも `c066618` でもなければ、§3 の前に止まってオーナーが判断する。
 
-### 1.2 unit（`sr-design-cycle.service`）に増えた 2 行の設定
+### 1.2 unit（`sr-design-cycle.service`）に増えた 3 つの設定（`CacheDirectory`・`CacheDirectoryMode`・`ExecStopPost`）
 
 - `CacheDirectory=sr-design-image-grant` と `CacheDirectoryMode=0755`: systemd が unit の起動時に `/var/cache/sr-design-image-grant`（root、0755）を作る。grant（`grant.json`、root 0644）の置き場所。jail からは `/var/cache` が読み取り専用で見え、`/run` は見えないのでここにした。
 - `ExecStopPost=-/bin/sh -c 'rm -f /var/cache/sr-design-image-grant/grant.json /var/cache/sr-design-image-grant/.grant.*'`: cycle が SIGKILL・OOM で落ちても grant を残さない。
@@ -93,16 +93,20 @@ systemctl list-timers --all 'sr-*' --no-pager
 systemctl list-units --all 'sr-jail-run-*' --no-pager
 
 # B. いま入っている cycle の unit（無ければ "No files found"）
-systemctl cat sr-design-cycle.service sr-design-cycle.timer --no-pager 2>&1
-systemctl show sr-design-cycle.service -p FragmentPath -p DropInPaths -p UnitFileState -p ActiveState -p CacheDirectory -p StateDirectory -p ExecStopPost --no-pager
+#    drop-in があると systemctl cat はその中身（Environment= など）も出す。先に drop-in の有無だけを見て、空のときだけ cat する
+DROPINS="$(systemctl show sr-design-cycle.service sr-design-cycle.timer -p DropInPaths --value 2>&1 | tr -d '[:space:]')"
+echo "DropInPaths: ${DROPINS:-none}"
+if [ -z "$DROPINS" ]; then systemctl cat sr-design-cycle.service sr-design-cycle.timer --no-pager 2>&1; else echo "DROPIN_PRESENT: cat しない。ここで止まってオーナーが判断する"; fi
+systemctl show sr-design-cycle.service -p FragmentPath -p UnitFileState -p ActiveState -p CacheDirectory -p StateDirectory -p ExecStopPost --no-pager
 systemctl status sr-design-cycle.service sr-design-cycle.timer --no-pager -n 5 2>&1 | head -40
 ls -l /etc/systemd/system/sr-design-cycle.* 2>&1
 ls -ld /etc/systemd/system/sr-design-cycle.service.d /etc/systemd/system/sr-design-cycle.timer.d 2>&1
 
 # C. root だけの clone の commit と状態
-sudo git -C /root/sr-capture-admin rev-parse HEAD
-sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal | head -20; echo "status lines: $(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal | wc -l)"
-sudo git -C /root/sr-capture-admin cat-file -e bb7da4fa42817ae1c8f0a2ef86587368e84f418e^{commit} 2>/dev/null && echo "has #229 object" || echo "no #229 object (fetch needed in §3)"
+#    --no-optional-locks: git status が index を書き直さない（読むだけ）
+sudo git --no-optional-locks -C /root/sr-capture-admin rev-parse HEAD
+sudo git --no-optional-locks -C /root/sr-capture-admin status --porcelain --untracked-files=normal | head -20; echo "status lines: $(sudo git --no-optional-locks -C /root/sr-capture-admin status --porcelain --untracked-files=normal | wc -l)"
+sudo git --no-optional-locks -C /root/sr-capture-admin cat-file -e bb7da4fa42817ae1c8f0a2ef86587368e84f418e^{commit} 2>/dev/null && echo "has #229 object" || echo "no #229 object (fetch needed in §3)"
 sudo grep -c 'image_grant' /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh
 sudo stat -c '%U:%G %a %n' /root /root/sr-capture-admin /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh /root/sr-capture-admin/scripts/sales-design-capture/admin.sh
 
@@ -111,7 +115,7 @@ sudo stat -c '%U:%G %a %F %n' /etc/sr-design-worker /etc/sr-design-worker/image-
   /etc/second-root /etc/second-root/design-cycle.conf \
   /var/lib/sr-design-cycle /var/cache/sr-design-image-grant 2>&1
 sudo ls -la /var/lib/sr-design-cycle /var/cache/sr-design-image-grant 2>&1
-sudo cut -d= -f1 /etc/second-root/design-cycle.conf 2>&1
+sudo cut -s -d= -f1 /etc/second-root/design-cycle.conf 2>&1   # -s: = の無い行は出さない（キーの名前だけ）
 sudo python3 -I -c 'import json,sys
 try: c=json.load(open(sys.argv[1]))
 except FileNotFoundError: print("image-autorun.json: absent"); sys.exit()
@@ -121,7 +125,10 @@ print("image-autorun.json: enabled=%r approvals=%d" % (c.get("enabled"), len(c.g
 sudo ls -la /home/sr-designgen/sr-design-jobs/inbox /home/sr-designgen/sr-design-jobs/processing 2>&1
 sudo ls -la /home/sr-designgen/sr-design-jobs/image-autorun 2>&1
 sudo ls -la /home/sr-designgen/sr-design-jobs/image-autorun/inbox 2>&1
-pgrep -a -u sr-designgen | cut -c1-80; echo "pgrep exit: ${PIPESTATUS[0]}"
+# cycle.sh と同じ 2 つ（実 uid と実効 uid）。コマンド行は出さず、終了コードだけ（0 = あり、1 = 無し、2 以上 = 判定できない）
+pg_real=0; pgrep -U sr-designgen >/dev/null 2>&1 || pg_real=$?
+pg_eff=0; pgrep -u sr-designgen >/dev/null 2>&1 || pg_eff=$?
+echo "pgrep -U exit=$pg_real  pgrep -u exit=$pg_eff"
 ```
 
 期待（違えば止まる）:
@@ -129,10 +136,10 @@ pgrep -a -u sr-designgen | cut -c1-80; echo "pgrep exit: ${PIPESTATUS[0]}"
 | 段 | 期待 |
 |---|---|
 | A | `sr-design-cycle.timer` は `disabled` か `not-found`、`inactive`。`sr-design-bridge.*`・`sr-design-worker.*` は `not-found` か `disabled`/`inactive`（enabled・active なら止まる）。`sr-jail-run-*` は 0 件。systemd は 235 以上 |
-| B | unit が無い（`No files found`）か、`FragmentPath=/etc/systemd/system/sr-design-cycle.service` で drop-in 無し。`CacheDirectory=` が空なら #229 前の unit。`ActiveState=inactive`（`activating` なら cycle が動いている。終わるまで待つ） |
+| B | `DropInPaths: none`（`DROPIN_PRESENT` なら止まる）。unit が無い（`No files found`）か、`FragmentPath=/etc/systemd/system/sr-design-cycle.service` で drop-in 無し。`CacheDirectory=` が空なら #229 前の unit。`ActiveState=inactive`（`activating` なら cycle が動いている。終わるまで待つ） |
 | C | HEAD が 40 文字（記録では `679c3c2…`。違えばそのまま見せる）。status の行が 0。`image_grant` の数は #229 前なら 0。`/root` 以下が root の所有で他から書けない |
 | D | `/etc/sr-design-worker` と `image-autorun.json` は **無い**のが期待（あれば `root:root`・`644` 以下・`enabled=False`）。`/etc/second-root` は `root:root 755`、`design-cycle.conf` は `root:root 644`、キーは `SR_DESIGN_CYCLE_BRIDGE_SHA`（と任意で `SR_DESIGN_CYCLE_VERCEL_BYPASS`）だけ。`/var/lib/sr-design-cycle` は無いか `root:root 700`（中身は `cycle.lock`、`run.*`、#229 後なら `image-*-used`）。`/var/cache/sr-design-image-grant` は無いか `root:root 755` で `grant.json` が無い |
-| E | `inbox`・`processing` は空。`image-autorun` は無い（DEV-186 以降もジョブを置いていなければ無い）。`pgrep` は何も出さず exit 1（jail の Claude が動いていれば出る。それ自体は異常ではない） |
+| E | `inbox`・`processing` は空。`image-autorun` は無い（DEV-186 以降もジョブを置いていなければ無い）。`pgrep -U exit=1  pgrep -u exit=1`（jail の Claude が動いていれば 0。それ自体は異常ではないが、画像の grant は出ない。2 以上なら止まる） |
 
 **Claude に返すもの:** 上の出力をそのまま。ただし、知らない人名・メールアドレス・URL・ホスト名が出たら伏せてよい。env・token・bypass の中身はこのシートでは出ない（出ていたら貼らずに止まる）。
 
@@ -161,15 +168,19 @@ sudo sh -c "cd '$BK' && sha256sum * > SHA256SUMS"; sudo cat "$BK/clone-head" "$B
 # 3-2. root だけの clone を PIN へ（確かめてから）
 OLD=$(sudo cat "$BK/clone-head")
 sudo git -C /root/sr-capture-admin fetch -q origin
-sudo git -C /root/sr-capture-admin merge-base --is-ancestor bb7da4fa42817ae1c8f0a2ef86587368e84f418e "$PIN" && echo PIN_HAS_229
-sudo git -C /root/sr-capture-admin merge-base --is-ancestor "$PIN" origin/develop && echo PIN_ON_DEVELOP
+# どれも門: 通らなければ checkout・install の前に subshell ごと終わる（`cmd && echo X` の形は set -e では止まらないので使わない）
+sudo git -C /root/sr-capture-admin merge-base --is-ancestor bb7da4fa42817ae1c8f0a2ef86587368e84f418e "$PIN" || { echo PIN_NOT_ON_229; exit 1; }
+echo PIN_HAS_229
+sudo git -C /root/sr-capture-admin merge-base --is-ancestor "$PIN" origin/develop || { echo PIN_NOT_ON_DEVELOP; exit 1; }
+echo PIN_ON_DEVELOP
 # root が動かすファイルの差。X2 からなら cycle.sh と sr-design-cycle.service の 2 行だけのはず。ほかが出たら止まる
 sudo git -C /root/sr-capture-admin diff --stat "$OLD" "$PIN" -- scripts/sales-design-capture scripts/sales-design-worker/cycle.sh \
   scripts/sales-design-worker/systemd scripts/ops scripts/sales-design-bridge
-read -r -p "差が cycle.sh と sr-design-cycle.service だけなら yes: " a; [ "$a" = yes ]
+read -r -p "差が cycle.sh と sr-design-cycle.service だけなら yes: " a; [ "$a" = yes ] || { echo NOT_CONFIRMED; exit 1; }
 sudo git -C /root/sr-capture-admin checkout -q --detach "$PIN"
-[ "$(sudo git -C /root/sr-capture-admin rev-parse HEAD)" = "$PIN" ] \
-  && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" && echo CLONE_OK
+[ "$(sudo git -C /root/sr-capture-admin rev-parse HEAD)" = "$PIN" ] || { echo CLONE_NOT_AT_PIN; exit 1; }
+test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" || { echo CLONE_DIRTY; exit 1; }
+echo CLONE_OK
 
 # 3-3. unit を置いて daemon-reload（enable・start・stop はしない）
 S=/root/sr-capture-admin/scripts/sales-design-worker/systemd
@@ -177,7 +188,8 @@ sudo install -o root -g root -m 0644 "$S/sr-design-cycle.service" /etc/systemd/s
 # timer は前から置いてあった時だけ同じ内容で置き直す（#229 で変わっていない）。enable の状態は変えない
 if sudo test -e "$BK/sr-design-cycle.timer"; then sudo install -o root -g root -m 0644 "$S/sr-design-cycle.timer" /etc/systemd/system/sr-design-cycle.timer; fi
 sudo systemctl daemon-reload
-sudo systemd-analyze verify /etc/systemd/system/sr-design-cycle.service && echo UNIT_VERIFY_OK
+sudo systemd-analyze verify /etc/systemd/system/sr-design-cycle.service || { echo UNIT_VERIFY_FAILED; exit 1; }
+echo UNIT_VERIFY_OK
 
 # 3-4. スイッチは作らない（無いまま。あるなら enabled:false のまま触らない）
 sudo test ! -e /etc/sr-design-worker/image-autorun.json && echo SWITCH_ABSENT || echo "SWITCH_PRESENT (enabled:false であることを §4 で確かめる)"
@@ -185,7 +197,9 @@ echo "BK=$BK   # §4 と戻し方で使う。控えておく"
 )
 ```
 
-- 3-2 の `read` で yes 以外なら何も変わらない（clone は fetch しただけ）。`CLONE_OK` が出なければ §4 の戻し方。
+- 3-2 の門（`PIN_NOT_ON_229`・`PIN_NOT_ON_DEVELOP`・`NOT_CONFIRMED`）で終わったら何も変わらない（clone は fetch しただけ、unit は触らない）。
+- `CLONE_NOT_AT_PIN`・`CLONE_DIRTY` で終わったら unit は install されていない。clone だけを §4 の戻し方で元の commit に戻す。
+- `UNIT_VERIFY_FAILED` で終わったら（unit は置かれ daemon-reload 済み、enable・start はしていない）§4 の戻し方。
 - timer が enabled だった場合（§2 の期待外。止まってオーナーが判断済みのときだけここに来る）も、`enable`/`disable` はしない。
 - 動いている cycle は無いこと（§2 B）。`daemon-reload` は動いている cycle を止めないが、念のため inactive の時だけ行う。
 
@@ -197,7 +211,7 @@ systemctl show sr-design-cycle.service -p FragmentPath -p CacheDirectory -p Cach
 sudo cmp /etc/systemd/system/sr-design-cycle.service /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-design-cycle.service && echo UNIT_SAME
 sudo git -C /root/sr-capture-admin rev-parse HEAD
 for u in sr-design-cycle.service sr-design-cycle.timer sr-jail-claude.service; do printf '%s %s %s\n' "$u" "$(systemctl is-enabled "$u" 2>&1)" "$(systemctl is-active "$u" 2>&1)"; done
-sudo diff <(sudo cat "$BK/unit-state") <(for u in sr-design-cycle.service sr-design-cycle.timer; do printf '%s %s %s\n' "$u" "$(systemctl is-enabled "$u" 2>&1 || true)" "$(systemctl is-active "$u" 2>&1 || true)"; done) && echo ENABLE_STATE_UNCHANGED
+diff <(sudo cat "$BK/unit-state") <(for u in sr-design-cycle.service sr-design-cycle.timer; do printf '%s %s %s\n' "$u" "$(systemctl is-enabled "$u" 2>&1 || true)" "$(systemctl is-active "$u" 2>&1 || true)"; done) && echo ENABLE_STATE_UNCHANGED
 sudo python3 -I -c 'import json,sys
 try: c=json.load(open(sys.argv[1]))
 except FileNotFoundError: print("SWITCH_ABSENT (OFF)"); sys.exit()

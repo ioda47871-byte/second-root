@@ -21,7 +21,10 @@ export type AutorunShop = {
   /** the approved page version the swap writes into (a job names exactly this) */
   page: string;
   pageDir: string;
-  /** the measured slot inventory and its breakpoint edges for that page (photo-slots.ts) */
+  /**
+   * the measured slot inventory and its breakpoint edges for that page (photo-slots.ts). Documented values pinned by
+   * tests/unit/design-agent/autorun-shops.test.ts; the swap finds its inventory itself and does not read these.
+   */
   slotInventory: string;
   slotEdges: string;
   /** the page's exact slot set, in the prompt's call order (all or nothing: the swap needs every slot) */
@@ -35,7 +38,10 @@ export type AutorunShop = {
   intake: AutorunIntake;
   /** under the worker's results root: <outRoot>/<subdir>/<job_id>/ (photos, pipeline, swap, renders) */
   out: { subdir: "image-autorun" };
-  /** the rights and size rules the intake applies (recorded here so a new shop cannot loosen them silently) */
+  /**
+   * the rights and size rules of the shop's intake, as documented values: a test pins them to the intake's constants
+   * (MAX_UPSCALE etc.). Neither the intake nor the swap reads this field at run time — it is not enforced here.
+   */
   rights: { sourceKind: "ai_generated_demo"; demoOnly: true; publicWeb: false; maxUpscale: number; upscaleMethod: "sharp-lanczos3" };
 };
 
