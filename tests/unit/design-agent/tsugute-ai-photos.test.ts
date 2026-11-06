@@ -103,7 +103,8 @@ describe("DEV-185 pins", () => {
 describe("DEV-185 isolation", () => {
   it("only the TS entry imports the run's module; only the gate starts the TS entry; nothing else names the approval marker", () => {
     const grep = (re: string, ...paths: string[]) => spawnSync("git", ["grep", "--untracked", "-lE", re, "--", ...paths], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
-    expect(grep("design-image/tsugute-photos|generateImagesInOneRun", "lib", "app", "components", "scripts", ":!lib/design-agent/design-image")).toEqual(["scripts/sales-design-worker/tsugute-photos.ts"]);
+    // DEV-186 (owner instruction 2026-11-06): the worker's guarded, default-OFF hook (tests/unit/design-agent/image-autorun.test.ts)
+    expect(grep("design-image/tsugute-photos|generateImagesInOneRun", "lib", "app", "components", "scripts", ":!lib/design-agent/design-image")).toEqual(["scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
     expect(grep("sales-design-worker/tsugute-photos\\.ts", ".", ":!tests/**", ":!docs/**", ":!.ai/**", ":!*.ts")).toEqual(["scripts/sales-design-worker/tsugute-photos-gate.sh"]);
     expect(grep("tsugute-photos-gate\\.sh", ".", ":!tests/**", ":!docs/**", ":!.ai/**", ":!*.ts", ":!scripts/sales-design-worker/tsugute-photos-gate.sh")).toEqual(["scripts/sales-design-worker/run-tsugute-photos-once.sh"]);
     expect(grep("tsugute-photos-20261106-01", ".", ":!tests/**", ":!docs/**", ":!.ai/**")).toEqual(["lib/design-agent/quality-pipeline/tsugute-ai-photos.ts", "scripts/sales-design-worker/run-tsugute-photos-once.sh", "scripts/sales-design-worker/tsugute-photos-gate.sh", "scripts/sales-design-worker/tsugute-photos.ts"]);

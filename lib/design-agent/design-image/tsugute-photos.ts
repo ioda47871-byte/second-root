@@ -32,6 +32,8 @@ export async function writeTsugutePhotos(o: {
   commit: string;
   prompt: string;
   generatedAt: string;
+  /** DEV-186: the worker's approved job passes its own one-use approval id; the one-shot entry leaves the default */
+  approvalId?: string;
 }): Promise<{ dir: string; manifest: TsugutePhotosManifest }> {
   const { batch } = o;
   if (batch.images.length > TSUGUTE_PHOTOS_MAX_IMAGES) throw new Error("more pictures than slots");
@@ -61,7 +63,7 @@ export async function writeTsugutePhotos(o: {
     shop: "tsugute",
     demo_only: true,
     label: DEMO_LABEL,
-    approval_id: TSUGUTE_PHOTOS_APPROVAL_ID,
+    approval_id: o.approvalId ?? TSUGUTE_PHOTOS_APPROVAL_ID,
     commit: o.commit,
     prompt_sha256: sha256(o.prompt),
     prompt_chars: o.prompt.length,

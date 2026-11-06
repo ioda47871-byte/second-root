@@ -51,6 +51,7 @@ import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { fromSandboxError } from "../../lib/design-agent/codex";
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
+import { runImageAutorun } from "./image-autorun";
 
 const REPO = resolve(__dirname, "../..");
 // Everything the worker writes (results, queue, screenshots) is private to the worker user.
@@ -247,6 +248,18 @@ async function run(): Promise<number> {
       ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : args.length > 0 ? { channel: "chromium" } : {}),
     });
   say(`design worker ${checkout.slice(0, 12)} (max ${max}, budget ${Math.round(runBudgetMs / 60000)} min)`);
+  // DEV-186: at most one approved demo image job (<queue>/image-autorun/), OFF unless the owner's root-owned switch
+  // file says so (image-autorun.ts); without that queue dir this does nothing. Never stops the design jobs below.
+  await runImageAutorun({
+    queueRoot: paths.queue,
+    outRoot: paths.out,
+    stateDir: paths.state,
+    workerCommit: checkout,
+    deadline,
+    env: process.env,
+    launchBrowser: () => launch(childEnvironment(process.env)),
+    log: say,
+  }).catch(() => say("image-autorun: STOP_UNEXPECTED"));
   // DEV-030: with the design bridge set up, take its new jobs into the inbox
   // first. Only files move; the worker never holds the bridge token.
   const spool = bridgeSpoolFromEnv();
