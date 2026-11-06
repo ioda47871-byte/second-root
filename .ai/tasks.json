@@ -8479,7 +8479,7 @@
     {
       "id": "DEV-185",
       "title": "つぐ手の AI デモ写真6枚: 1回の real Codex で最大6枚を作るワンショット入口 (オフライン実装、生成0回) と、権利の記録の ai_generated_demo",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-110",
@@ -8535,7 +8535,60 @@
         "画像ツールの出力が 2倍に届かない枠の scale exception (ph-ware・ph-hibi は 1536×1024 なら 1.5〜2倍、ph-hand は 1024×1024 なら 1.5倍未満)",
         "public_site での AI デモ画像の利用"
       ],
-      "note": "実行は1回だけ (承認 ID tsugute-photos-20261106-01)。プロンプトは指示書 §1・§2 の本文をそのまま使い、SHA256 dab7f260…3ed0、4133 文字。6回の画像呼び出しは過去の実測 (1回 33〜55 秒、Codex 全体 98 秒) から 15 分に収まる見込み。記録は .ai/reviews/DEV-185.md。"
+      "note": "実行は1回だけ (承認 ID tsugute-photos-20261106-01)。プロンプトは指示書 §1・§2 の本文をそのまま使い、SHA256 dab7f260…3ed0、4133 文字。6回の画像呼び出しは過去の実測 (1回 33〜55 秒、Codex 全体 98 秒) から 15 分に収まる見込み。記録は .ai/reviews/DEV-185.md。 【2026-11-06 オーナー確定 (Issue コメント 6676754174)】つぐ手は研究用 C 方式の「成功例候補」(正式採用ではない・本番 strict B では未再現・未公開)。承認 tsugute-photos-20261106-01 の実生成は1回成功・消費済み (Codex 1回、画像呼出6回、失敗0、写真の出自 = AI 生成 ai_generated_demo、6枠 ph-ware/kake/hibi/dry/hand/desk、d1-v10 差し替え、PC1440/SP390 描画成功)。この ID は再使用しない・再生成しない・画像と rights.private.json は commit しない。オーナー目視の未解消点: 欠けの金塊感、ひび周囲の金の枝、SP の補助文が小さい。APPROVED_CAPABILITIES=[] のまま。 PR #227 は develop へマージ済み (5c2e9d8)。"
+    },
+    {
+      "id": "DEV-186",
+      "title": "既存の WSL worker に承認済みデモ画像生成ジョブ (固定 schema) を最小差分で接続 — 既定 OFF・fail closed、モックでオフライン E2E",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-185"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-186-worker-image-autoconnect",
+      "purpose": "オーナー指示 (Issue コメント 6676754174): 画像生成を既存 WSL worker に自動接続し、別店舗でも同じ品質を作れる土台にする。当面つぐ手1例。real Codex の無人実行 ON・本番能力 ON・公開・費用は別承認",
+      "acceptance_criteria": [
+        "固定 schema の job (shop_id・page・slot_ids・brief_sha256・approval_id・approval_scope{shop,max_images≤6,max_jobs=1,expires_at}・requested_at) を zod strict で検証。自由文は shell にもプロンプトにも届かない (プロンプトは pin 済み brief だけ)",
+        "worker.ts run() の checkout 確認の後に guarded hook (scripts/sales-design-worker/image-autorun.ts)。run.sh の run.lock の中、専用 lock、1回の実行で最大1件",
+        "スイッチは root 所有の /etc/sr-design-worker/image-autorun.json (repo に無い・env で差し替え不可)。無い/不正/root 以外/書込可なら HELD_AUTORUN_DISABLED で Codex に一切触れない",
+        "拒否: 不正・上限超過・重複・期限切れ・承認の再使用 (共有台帳 poc-approval-used と DEV-185 の消費済み ID)・失敗後 (STOPPED)・承認エントリ無し/スコープ違い/job_id 不一致・同時実行・時間不足 (待機)。全判定を監査行 (audit.jsonl) に",
+        "予約 (atomic mkdir) の後に generateImagesInOneRun 1回 → writeTsugutePhotos → intake (ai_generated_demo) → d1-v10 swap → PC1440/SP390 描画を worker の結果の下の私用ディレクトリへ",
+        "モック生成でオフライン E2E: OFF で実生成0回、ON+モックで全経路1回、拒否ケースすべて"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/image-autorun.test.ts",
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/design-image-poc.test.ts",
+        "npx vitest run tests/unit/guardrails.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-worker/image-autorun.ts",
+        "scripts/sales-design-worker/worker.ts (hook 呼び出しだけ)",
+        "lib/design-agent/design-image/tsugute-photos.ts (approvalId 任意引数)",
+        "scripts/design-artifact/tsugute-ai-intake.ts (approvalIds 任意引数)",
+        "tests/unit/design-agent/",
+        "docs/operations/image-autorun-approval-sheet.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "real Codex・画像生成の実行",
+        "スイッチを ON にすること",
+        "隔離・env allowlist・run.lock・時間制限の緩和",
+        "APPROVED_CAPABILITIES・本番 CSS gate",
+        "systemd/timer の有効化",
+        ".github/workflows・package.json・lockfile",
+        "main・Production・Staging・DB",
+        "画像・rights.private.json の commit",
+        "tsugute-photos-20261106-01 の再使用"
+      ],
+      "human_approval_triggers": [
+        "real Codex 無人実行の ON (docs/operations/image-autorun-approval-sheet.md)",
+        "既存の分離テスト2件の許可一覧に image-autorun.ts を1行足したこと"
+      ],
+      "note": "OFF の既定で実装。E2E はモックの合成 PNG 6枚で DONE まで1回 (d1-v10 PC/SP 描画は repo 外、commit しない)。DEV-185 の分離テスト (tsugute-ai-photos.test.ts、design-image-poc.test.ts) の許可一覧に image-autorun.ts を1行追加 (完全一致のまま)。記録は .ai/reviews/DEV-186.md。 PR #228 レビュー M1/L1/L2 対応済み (root 所有エントリの job_id 束縛・24時間・停止時の画像呼出の片付け・O_NOFOLLOW)。L3/L4 は記録のみ。"
     }
   ]
 }

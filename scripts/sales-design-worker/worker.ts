@@ -51,11 +51,14 @@ import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { fromSandboxError } from "../../lib/design-agent/codex";
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
+import { cleanupActiveImageCalls, runImageAutorun } from "./image-autorun";
 
 const REPO = resolve(__dirname, "../..");
 // Everything the worker writes (results, queue, screenshots) is private to the worker user.
 process.umask(0o077);
 const WATCHDOG_GRACE_MS = 60 * 1000;
+/** set by stopNow; the run's deadline then reads as spent, so the claim loop, the image hook and every deadline-bound step start nothing new */
+let stopping = false;
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -225,7 +228,7 @@ async function run(): Promise<number> {
   const budgetSeconds = flag("budget-seconds");
   if (budgetSeconds !== undefined && !/^[1-9][0-9]{0,5}$/.test(budgetSeconds)) usage("--budget-seconds: a positive integer.");
   const runBudgetMs = Math.min(RUN_TIME_BUDGET_MS, budgetSeconds === undefined ? RUN_TIME_BUDGET_MS : Number(budgetSeconds) * 1000);
-  const deadline = new RunDeadline(Date.now() + runBudgetMs);
+  const deadline = new RunDeadline(Date.now() + runBudgetMs, () => (stopping ? Number.POSITIVE_INFINITY : Date.now()));
 
   // Last resort: never outlive the budget (systemd / timeout(1) come after).
   setTimeout(() => stopNow("WORKER_RUN_TIME_BUDGET"), runBudgetMs + WATCHDOG_GRACE_MS).unref();
@@ -247,6 +250,18 @@ async function run(): Promise<number> {
       ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : args.length > 0 ? { channel: "chromium" } : {}),
     });
   say(`design worker ${checkout.slice(0, 12)} (max ${max}, budget ${Math.round(runBudgetMs / 60000)} min)`);
+  // DEV-186: at most one approved demo image job (<queue>/image-autorun/), OFF unless the owner's root-owned switch
+  // file says so (image-autorun.ts); without that queue dir this does nothing. Never stops the design jobs below.
+  await runImageAutorun({
+    queueRoot: paths.queue,
+    outRoot: paths.out,
+    stateDir: paths.state,
+    workerCommit: checkout,
+    deadline,
+    env: process.env,
+    launchBrowser: () => launch(childEnvironment(process.env)),
+    log: say,
+  }).catch(() => say("image-autorun: STOP_UNEXPECTED"));
   // DEV-030: with the design bridge set up, take its new jobs into the inbox
   // first. Only files move; the worker never holds the bridge token.
   const spool = bridgeSpoolFromEnv();
@@ -306,7 +321,9 @@ async function bridgeSync(direction: "import" | "export", spool: BridgeSpool): P
   }
 }
 
-function stopNow(code: string): never {
+function stopNow(code: string): void {
+  if (stopping) return;
+  stopping = true;
   killPreviewServers();
   killAllBoundedChildren();
   // Stopped by a person or systemd: the job goes back to the inbox without
@@ -314,8 +331,13 @@ function stopNow(code: string): never {
   // which counts it (a job that always breaks the run ends in failed/).
   if (code === "WORKER_STOPPED_BY_SIGNAL") abandonActiveJobSync();
   removeActiveTempRootsSync();
-  process.stdout.write(`${JSON.stringify({ status: "stopped", code, message: publicMessage(code) })}\n`);
-  process.exit(3);
+  // DEV-186: an image job cut off mid-generation leaves no session log or image dir behind (as tsugute-photos.ts)
+  void Promise.race([cleanupActiveImageCalls().catch(() => undefined), new Promise((r) => setTimeout(r, 20_000))]).then(() => {
+    // anything started while the cleanup ran
+    killAllBoundedChildren();
+    process.stdout.write(`${JSON.stringify({ status: "stopped", code, message: publicMessage(code) })}\n`);
+    process.exit(3);
+  });
 }
 
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, () => stopNow("WORKER_STOPPED_BY_SIGNAL"));

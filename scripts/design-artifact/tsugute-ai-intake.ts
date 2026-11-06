@@ -53,7 +53,13 @@ export type IntakeResult = { ok: true; manifest: Record<string, unknown>; files:
  * Builds the swap manifest and copies the pictures. Everything is checked first; files are written only when nothing
  * is refused. `pipelineRoot` defaults to the repository's quality pipeline (tests give a temporary one).
  */
-export async function importTsuguteAiPhotos(o: { from: string; manifestOut: string; pipelineRoot?: string }): Promise<IntakeResult> {
+export async function importTsuguteAiPhotos(o: {
+  from: string;
+  manifestOut: string;
+  pipelineRoot?: string;
+  /** DEV-186: the approval ids this import accepts (the worker passes the one job's reserved id); default: DEV-185's */
+  approvalIds?: readonly string[];
+}): Promise<IntakeResult> {
   const pipelineRoot = o.pipelineRoot ?? PIPELINE_ROOT;
   const codes: string[] = [];
   let raw: unknown;
@@ -66,7 +72,7 @@ export async function importTsuguteAiPhotos(o: { from: string; manifestOut: stri
   if (!parsed.success) return { ok: false, codes: ["RUN_MANIFEST_INVALID"] };
   const m = parsed.data;
   if (m.status !== "complete" || m.stop_code !== null) codes.push("RUN_NOT_COMPLETE");
-  if (m.approval_id !== TSUGUTE_PHOTOS_APPROVAL_ID) codes.push("RUN_APPROVAL_UNKNOWN");
+  if (!(o.approvalIds ?? [TSUGUTE_PHOTOS_APPROVAL_ID]).includes(m.approval_id)) codes.push("RUN_APPROVAL_UNKNOWN");
   if (m.slots.length !== TSUGUTE_PHOTOS_MAX_IMAGES || m.image_tool_calls !== TSUGUTE_PHOTOS_MAX_IMAGES || m.image_tool_failed !== 0) codes.push("RUN_NOT_SIX_IMAGES");
   if (m.model === null) codes.push("MODEL_NOT_REPORTED");
   // PR #227 review M1: the manifest must be the approved run's, not one written by hand next to any 6 PNGs
