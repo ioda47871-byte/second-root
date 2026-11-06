@@ -19,6 +19,9 @@
 #      in the config (DEV-059, off by default), also the Vercel bypass file's owner and mode and its
 #      origin (never its value)
 #   3. an idle worker run (heartbeat; removes results of jobs the bridge has closed)
+#      DEV-187: right before it, with the owner's image switch on, root uses up the approval id and job id of the
+#      first image job (root's state, atomic mkdir) and only then writes the one-run grant; the grant is removed after
+#      the run and on every exit; a cycle that granted one ends there (CYCLE_IMAGE_RUN, exit 0)
 #   4. bridge --deliver-only: must deliver, supersede, refuse and expire nothing
 #   5. time guard, then bridge --once: claims exactly one job, or nothing (CYCLE_IDLE)
 #   6. time guard, then worker --max=1 (budget 3300 s); STOP codes in its output (login, jail, bridge, ...)
@@ -85,6 +88,8 @@ finish() {
     fi
   fi
   [ -z "$WORK" ] || rm -rf "$WORK"
+  # DEV-187: the image grant never outlives the cycle (whatever the outcome; the use markers stay)
+  [ -z "${GRANT_PATH:-}" ] || rm -f "$GRANT_PATH"
   printf 'CYCLE_RESULT %s phase=%s job=%s exit=%s\n' "$code" "$PHASE" "$JOB" "$rc"
   exit "$rc"
 }
@@ -144,6 +149,13 @@ BRIDGE_LEDGER="$BRIDGE_HOME/.local/state/sr-design-bridge/ledger.json"
 WORKER_HOME="$R/home/sr-designgen"
 WORKER_RUN="$WORKER_HOME/work/second-root/scripts/sales-design-worker/run.sh"
 WORKER_QUEUE="$WORKER_HOME/sr-design-jobs"
+# DEV-187: the owner's root-owned image switch (DEV-186) and the one-run grant root writes for the worker.
+# The grant dir is the unit's CacheDirectory (root, 0755): the jail sees /var/cache read-only (ProtectSystem=strict)
+# but not /run (TemporaryFileSystem=/run:ro), and the worker can neither write nor rename anything there.
+IMG_CONF="$R/etc/sr-design-worker/image-autorun.json"
+GRANT_DIR="$R/var/cache/sr-design-image-grant"
+GRANT_PATH="$GRANT_DIR/grant.json"
+GRANT_ISSUED=0
 
 now() {
   if [ -n "$R" ] && [ -f "$R/clock" ]; then cat "$R/clock"; else date +%s; fi
@@ -252,6 +264,135 @@ private_file() {
   [ ! -L "$1" ] && [ -f "$1" ] && [ "$(stat -c '%U %a' "$1")" = "$2 600" ]
 }
 
+# ---------------------------------------------------------------- DEV-187: the one-use image grant
+# The worker user's own commands (as as_bridge): root never parses a file that user controls.
+as_worker() {
+  if [ -n "$R" ]; then
+    env HOME="$WORKER_HOME" "$@" 9>&-
+  else
+    runuser -u "$WORKER_USER" -- env HOME="$WORKER_HOME" "$@" 9>&-
+  fi
+}
+
+# As the worker: the first job of its image inbox (the one the worker's hook takes), opened without following a
+# link, a regular file of at most 16 KiB. Prints one line "job_id approval_id sha256 shop max_images max_jobs
+# expires_at" (strict formats), nothing when the inbox is empty; exit 3 when the job is not usable.
+IMAGE_JOB_PY='
+import hashlib, json, os, re, stat, sys
+d = sys.argv[1]
+try:
+    names = sorted(n for n in os.listdir(d) if not n.startswith("."))
+except FileNotFoundError:
+    sys.exit(0)
+except Exception:
+    sys.exit(3)
+if not names:
+    sys.exit(0)
+m = re.fullmatch(r"([a-z0-9][a-z0-9-]{2,62})\.json", names[0])
+if not m:
+    sys.exit(3)
+try:
+    fd = os.open(os.path.join(d, names[0]), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_size > 16384:
+        sys.exit(3)
+    data = b""
+    while len(data) <= 16384:
+        chunk = os.read(fd, 16385)
+        if not chunk:
+            break
+        data += chunk
+    os.close(fd)
+    if len(data) > 16384:
+        sys.exit(3)
+    job = json.loads(data.decode("utf-8"))
+except Exception:
+    sys.exit(3)
+sc = job.get("approval_scope") if isinstance(job, dict) else None
+ok_int = lambda v: type(v) is int and 1 <= v <= 100
+fields = [m.group(1), job.get("approval_id") if isinstance(job, dict) else None, hashlib.sha256(data).hexdigest()]
+if not isinstance(sc, dict) or not ok_int(sc.get("max_images")) or not ok_int(sc.get("max_jobs")):
+    sys.exit(3)
+fields += [sc.get("shop"), str(sc["max_images"]), str(sc["max_jobs"]), sc.get("expires_at")]
+if not all(isinstance(f, str) for f in fields):
+    sys.exit(3)
+print(" ".join(fields))
+'
+IMAGE_JOB_RE='^([a-z0-9][a-z0-9-]{2,62}) ([a-z0-9][a-z0-9-]{2,62}) ([0-9a-f]{64}) ([a-z0-9-]{1,40}) ([0-9]{1,3}) ([0-9]{1,3}) ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,3})?(Z|[+-][0-9]{2}:[0-9]{2}))$'
+
+# As root, on root's own trusted file: does the switch hold an entry for exactly this job? Prints one fixed code.
+IMAGE_MATCH_PY='
+import json, sys
+from datetime import datetime
+conf, job_id, appr, shop, mi, mj, exp, now = sys.argv[1:9]
+try:
+    with open(conf, encoding="utf-8") as f:
+        c = json.load(f)
+except Exception:
+    print("IMAGE_GRANT_CONFIG_INVALID"); sys.exit(0)
+if not isinstance(c, dict) or c.get("version") != 1 or not isinstance(c.get("approvals"), list):
+    print("IMAGE_GRANT_CONFIG_INVALID"); sys.exit(0)
+if c.get("enabled") is not True:
+    print("IMAGE_GRANT_DISABLED"); sys.exit(0)
+hits = [e for e in c["approvals"] if isinstance(e, dict) and e.get("approval_id") == appr]
+if len(hits) != 1:
+    print("IMAGE_GRANT_NO_APPROVAL"); sys.exit(0)
+e = hits[0]
+if e.get("job_id") != job_id:
+    print("IMAGE_GRANT_JOB_MISMATCH"); sys.exit(0)
+if shop != "tsugute" or e.get("shop") != shop or e.get("max_images") != int(mi) or e.get("max_jobs") != int(mj) or e.get("expires_at") != exp or int(mj) != 1 or int(mi) > 6:
+    print("IMAGE_GRANT_SCOPE_MISMATCH"); sys.exit(0)
+try:
+    t = datetime.fromisoformat(exp.replace("Z", "+00:00")).timestamp()
+except Exception:
+    print("IMAGE_GRANT_SCOPE_MISMATCH"); sys.exit(0)
+if t <= int(now):
+    print("IMAGE_GRANT_EXPIRED"); sys.exit(0)
+if t - int(now) > 86400:
+    print("IMAGE_GRANT_WINDOW_TOO_LONG"); sys.exit(0)
+print("IMAGE_GRANT_MATCH")
+'
+
+# Before the one worker run that takes the image inbox: when the owner's switch is on and the first image job matches
+# one entry, consume its approval id AND job id in root's state (atomic mkdir; never removed), then write the grant.
+# Any doubt: no grant (the worker then refuses the job, REFUSED_NO_GRANT). Never stops the cycle.
+image_grant() {
+  local line code iso_now iso_end t
+  [ -e "$IMG_CONF" ] || [ -L "$IMG_CONF" ] || return 0
+  if [ -z "$R" ]; then
+    trusted_path "$IMG_CONF" && [ -f "$IMG_CONF" ] && [ ! -L "$IMG_CONF" ] || { say "image grant: IMAGE_GRANT_CONFIG_UNSAFE"; return 0; }
+  else
+    [ -f "$IMG_CONF" ] && [ ! -L "$IMG_CONF" ] && [ "$(stat -c %U "$IMG_CONF")" = "$FILE_ROOT" ] && [ $(( 0$(stat -c %a "$IMG_CONF") & 022 )) -eq 0 ] ||
+      { say "image grant: IMAGE_GRANT_CONFIG_UNSAFE"; return 0; }
+  fi
+  line="$(as_worker python3 -I -c "$IMAGE_JOB_PY" "$WORKER_QUEUE/image-autorun/inbox" 2>/dev/null)" || { say "image grant: IMAGE_GRANT_JOB_UNUSABLE"; return 0; }
+  [ -n "$line" ] || return 0
+  [[ "$line" =~ $IMAGE_JOB_RE ]] || { say "image grant: IMAGE_GRANT_JOB_UNUSABLE"; return 0; }
+  local job="${BASH_REMATCH[1]}" appr="${BASH_REMATCH[2]}" sha="${BASH_REMATCH[3]}" shop="${BASH_REMATCH[4]}" mi="${BASH_REMATCH[5]}" mj="${BASH_REMATCH[6]}" exp="${BASH_REMATCH[7]}"
+  t="$(now)"
+  code="$(python3 -I -c "$IMAGE_MATCH_PY" "$IMG_CONF" "$job" "$appr" "$shop" "$mi" "$mj" "$exp" "$t" 9>&-)" || code=IMAGE_GRANT_CONFIG_INVALID
+  [ "$code" = IMAGE_GRANT_MATCH ] || { say "image grant: $code (job $job)"; return 0; }
+  # the DEV-185 one-shot approval was consumed on 2026-11-06 and is never an autorun approval
+  [ "$appr" != tsugute-photos-20261106-01 ] || { say "image grant: IMAGE_GRANT_APPROVAL_USED (job $job)"; return 0; }
+  if [ ! -e "$GRANT_DIR" ]; then install -d -m 0755 "$GRANT_DIR"; fi
+  [ -d "$GRANT_DIR" ] && [ ! -L "$GRANT_DIR" ] && [ "$(stat -c '%U %a' "$GRANT_DIR")" = "$FILE_ROOT 755" ] ||
+    { say "image grant: IMAGE_GRANT_DIR_UNSAFE"; return 0; }
+  mkdir -p -m 0700 "$STATE/image-approval-used" "$STATE/image-job-used"
+  mkdir -m 0700 "$STATE/image-approval-used/$appr" 2>/dev/null || { say "image grant: IMAGE_GRANT_APPROVAL_USED (job $job)"; return 0; }
+  mkdir -m 0700 "$STATE/image-job-used/$job" 2>/dev/null || { say "image grant: IMAGE_GRANT_JOB_USED (job $job)"; return 0; }
+  printf 'job_id=%s\njob_sha256=%s\nused_at=%s\n' "$job" "$sha" "$t" >"$STATE/image-approval-used/$appr/receipt"
+  # the grant lasts as long as the worker run can (RuntimeMaxSec + the stop grace); removed after it anyway
+  iso_now="$(date -u -d "@$t" +%Y-%m-%dT%H:%M:%SZ)"
+  iso_end="$(date -u -d "@$((t + WORKER_RUNTIME_MAX + WORKER_STOP_GRACE))" +%Y-%m-%dT%H:%M:%SZ)"
+  local tmp
+  tmp="$(mktemp "$GRANT_DIR/.grant.XXXXXX")"
+  printf '{"version":1,"approval_id":"%s","job_id":"%s","job_sha256":"%s","issued_at":"%s","expires_at":"%s"}\n' "$appr" "$job" "$sha" "$iso_now" "$iso_end" >"$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$GRANT_PATH"
+  GRANT_ISSUED=1
+  say "image grant: IMAGE_GRANT_ISSUED (job $job; approval and job id used up)"
+}
+
 # ---------------------------------------------------------------- the budget is consistent
 budget_ok() {
   [ "$WORKER_BUDGET" -lt "$WORKER_RUNTIME_MAX" ] &&
@@ -270,6 +411,8 @@ if ! flock -n 9; then
   finish CYCLE_LOCKED 11
 fi
 WORK="$(mktemp -d "$STATE/run.XXXXXX")"
+# a grant left by a cycle that was cut off hard (the use markers stay; the grant never carries over)
+rm -f "$GRANT_PATH"
 
 START="$(now)"
 END=$((START + CYCLE_BUDGET))
@@ -426,8 +569,12 @@ guard_claim() {
 
 # ---------------------------------------------------------------- 3. idle worker run
 guard_claim
+# DEV-187: this run is the one that takes the image inbox — it runs in every cycle, before step 5 can end the
+# cycle as CYCLE_IDLE; the run of step 6 happens only after a bridge claim.
+image_grant
 rc=0
 worker_run idle-worker || rc=$?
+[ "$GRANT_ISSUED" = 0 ] || rm -f "$GRANT_PATH"
 codes="$(stop_codes_in "$WORK/idle-worker.out")"
 [ -z "$codes" ] || { say "idle worker: stop codes: $codes"; finish CYCLE_STOP_IDLE_RUN 22; }
 [ "$rc" = 0 ] || { say "idle worker: exit $rc"; finish CYCLE_STOP_IDLE_RUN 22; }
@@ -436,6 +583,11 @@ has_line "$WORK/idle-worker.out" 'bridge: imported 0' && has_line "$WORK/idle-wo
   { say "idle worker: not an idle run (imported 0 / no jobs / exported 0 expected)"; finish CYCLE_STOP_IDLE_RUN 22; }
 [ -z "$(find "$SPOOL/from-worker" -maxdepth 1 -name '*.json' ! -name worker-heartbeat.json ! -name '*.review.json' -print -quit)" ] ||
   { say "idle worker: a result file is left in from-worker"; finish CYCLE_STOP_IDLE_RUN 22; }
+# DEV-187: a cycle that granted an image job ends here: one heavy job per cycle (the claim waits for the next one)
+if [ "$GRANT_ISSUED" = 1 ]; then
+  say "image job: the worker run with the grant ended; the grant is removed (the result is in the worker's image-autorun queue)"
+  finish CYCLE_IMAGE_RUN 0
+fi
 
 # ---------------------------------------------------------------- 4. deliver-only: nothing to deliver
 rc=0

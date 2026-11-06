@@ -17,7 +17,8 @@
  * a duplicate (REFUSED_DUPLICATE), expiry (REFUSED_APPROVAL_EXPIRED), a used approval — the shared one-use ledger
  * poc-approval-used/<id> of the one-shot gates, and DEV-185's consumed id (REFUSED_APPROVAL_REUSED) — an earlier
  * failure (REFUSED_AFTER_FAILURE: the STOPPED marker; the owner removes it), the switch (HELD_AUTORUN_DISABLED), the
- * owner's approval entry with the same scope and this exact job_id (REFUSED_NO_APPROVAL). Then the approval is reserved with an atomic mkdir
+ * owner's approval entry with the same scope and this exact job_id (REFUSED_NO_APPROVAL), root's one-run grant for
+ * these exact bytes (REFUSED_NO_GRANT; DEV-187: cycle.sh uses up the approval and job id in root's state first). Then the approval is reserved with an atomic mkdir
  * (never retried from here on), and ONE generation (generateImagesInOneRun, at most 6 image calls, 15 min) runs, then
  * the DEV-185 intake (ai_generated_demo records), the d1-v10 swap and its PC 1440 / SP 390 renders into a private
  * dir under the worker's results root. Any failure writes the STOPPED marker. Every decision is one audit line
@@ -47,6 +48,14 @@ import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { acquireLock, writeJsonAtomic } from "../../lib/design-agent/worker/state";
 
 export const IMAGE_AUTORUN_CONFIG = "/etc/sr-design-worker/image-autorun.json";
+/**
+ * DEV-187: the one-run grant root's cycle.sh writes before the worker run that takes this job, after it has used up
+ * the approval id and job id in root's own state (cycle.sh image_grant). Root's dir (the cycle unit's CacheDirectory,
+ * 0755) and file (0644): the worker can read it but not write, replace or rename it. Removed after the run.
+ */
+export const IMAGE_AUTORUN_GRANT = "/var/cache/sr-design-image-grant/grant.json";
+/** a grant is for one worker run: issued_at → expires_at is at most this */
+const MAX_GRANT_MS = 2 * 60 * 60 * 1000;
 const JOB_ID = /^[a-z0-9][a-z0-9-]{2,62}$/;
 const JOB_FILE = /^([a-z0-9][a-z0-9-]{2,62})\.json$/;
 const APPROVAL_ID = /^[a-z0-9][a-z0-9-]{2,62}$/;
@@ -96,6 +105,15 @@ export const ImageAutorunJobSchema = z.strictObject({
 });
 export type ImageAutorunJob = z.infer<typeof ImageAutorunJobSchema>;
 
+const GrantSchema = z.strictObject({
+  version: z.literal(1),
+  approval_id: z.string().regex(APPROVAL_ID),
+  job_id: z.string().regex(JOB_ID),
+  job_sha256: Sha,
+  issued_at: Iso,
+  expires_at: Iso,
+});
+
 const ConfigSchema = z.strictObject({
   version: z.literal(1),
   enabled: z.boolean(),
@@ -118,6 +136,9 @@ export type ImageAutorunOptions = {
   /** tests only: the switch file and the uid that must own it (production: IMAGE_AUTORUN_CONFIG, root) */
   configPath?: string;
   trustedUid?: number;
+  /** tests only: the grant file and the uid that must own it and its dir (production: IMAGE_AUTORUN_GRANT, root) */
+  grantPath?: string;
+  grantUid?: number;
   /** tests only: a mock generator. Production: one generateImagesInOneRun in the worker's Codex sandbox. */
   generate?: ImageGenerate;
   now?: () => Date;
@@ -139,6 +160,30 @@ function realGenerate(o: ImageAutorunOptions): ImageGenerate {
 }
 
 /** OFF unless the root-owned switch file is a plain file in a root-owned dir, not group/other-writable, and valid. */
+/** The grant of this exact job (ids and the bytes' SHA-256), root's, in root's 0755 dir, issued and not expired. */
+async function grantHolds(path: string, uid: number, want: { jobId: string; approvalId: string; jobSha: string }, nowMs: number): Promise<boolean> {
+  try {
+    const dir = await lstat(dirname(path));
+    if (!dir.isDirectory() || dir.isSymbolicLink() || dir.uid !== uid || (dir.mode & 0o777) !== 0o755) return false;
+    const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let text: string;
+    try {
+      const st = await fh.stat();
+      if (!st.isFile() || st.uid !== uid || (st.mode & 0o022) !== 0 || st.size > 4096) return false;
+      text = await fh.readFile("utf8");
+    } finally {
+      await fh.close();
+    }
+    const g = GrantSchema.safeParse(JSON.parse(text));
+    if (!g.success) return false;
+    const issued = Date.parse(g.data.issued_at);
+    const ends = Date.parse(g.data.expires_at);
+    return g.data.job_id === want.jobId && g.data.approval_id === want.approvalId && g.data.job_sha256 === want.jobSha && issued <= nowMs + 5 * 60 * 1000 && ends > nowMs && ends - issued <= MAX_GRANT_MS;
+  } catch {
+    return false;
+  }
+}
+
 async function readSwitch(path: string, uid: number): Promise<z.infer<typeof ConfigSchema> | null> {
   try {
     const dir = await lstat(dirname(path));
@@ -281,6 +326,8 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   // re-review L2: the owner's entry itself may not outlive 24 h from now (a standing entry is not a one-use approval)
   if (entry && Date.parse(entry.expires_at) - nowMs > MAX_APPROVAL_WINDOW_MS) return decide("failed", "REFUSED_LIMIT_EXCEEDED", ids);
   if (!entry || entry.job_id !== jobId || entry.shop !== sc.shop || entry.max_images !== sc.max_images || entry.max_jobs !== sc.max_jobs || entry.expires_at !== sc.expires_at) return decide("failed", "REFUSED_NO_APPROVAL", ids);
+  // DEV-187: root has used up this approval and job id and granted exactly these bytes for this run
+  if (!(await grantHolds(o.grantPath ?? IMAGE_AUTORUN_GRANT, o.grantUid ?? o.trustedUid ?? 0, { jobId, approvalId: job.approval_id, jobSha }, nowMs))) return decide("failed", "REFUSED_NO_GRANT", ids);
   const prompt = shop.buildPrompt();
   if (sha256(prompt) !== job.brief_sha256 || prompt.length !== shop.briefChars) return decide("failed", "REFUSED_JOB_INVALID", ids);
 

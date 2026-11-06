@@ -8540,7 +8540,7 @@
     {
       "id": "DEV-186",
       "title": "既存の WSL worker に承認済みデモ画像生成ジョブ (固定 schema) を最小差分で接続 — 既定 OFF・fail closed、モックでオフライン E2E",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-185"
@@ -8588,7 +8588,57 @@
         "real Codex 無人実行の ON (docs/operations/image-autorun-approval-sheet.md)",
         "既存の分離テスト2件の許可一覧に image-autorun.ts を1行足したこと"
       ],
-      "note": "OFF の既定で実装。E2E はモックの合成 PNG 6枚で DONE まで1回 (d1-v10 PC/SP 描画は repo 外、commit しない)。DEV-185 の分離テスト (tsugute-ai-photos.test.ts、design-image-poc.test.ts) の許可一覧に image-autorun.ts を1行追加 (完全一致のまま)。記録は .ai/reviews/DEV-186.md。 PR #228 レビュー M1/L1/L2 対応済み (root 所有エントリの job_id 束縛・24時間・停止時の画像呼出の片付け・O_NOFOLLOW)。L3/L4 は記録のみ。"
+      "note": "OFF の既定で実装。E2E はモックの合成 PNG 6枚で DONE まで1回 (d1-v10 PC/SP 描画は repo 外、commit しない)。DEV-185 の分離テスト (tsugute-ai-photos.test.ts、design-image-poc.test.ts) の許可一覧に image-autorun.ts を1行追加 (完全一致のまま)。記録は .ai/reviews/DEV-186.md。 PR #228 レビュー M1/L1/L2 対応済み (root 所有エントリの job_id 束縛・24時間・停止時の画像呼出の片付け・O_NOFOLLOW)。L3/L4 は記録のみ。 PR #228 は develop へマージ済み (1a9f649)。"
+    },
+    {
+      "id": "DEV-187",
+      "title": "画像の承認を root の境界で1回限りに: cycle.sh が Codex の前に承認 ID と job_id を消費し、1回分の grant を発行 (既定 OFF)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-186"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-187-image-grant-root",
+      "purpose": "オーナー指示 (Issue コメント 6677710995): worker の利用者が消せる印だけに頼らず、1回限りの消費を root の境界で Codex 起動前に確定し、実行後の sudo でのエントリ削除を不要にする。無人 real Codex の ON はこの承認ではない",
+      "acceptance_criteria": [
+        "cycle.sh (root) が idle の worker 実行の直前に: root 所有スイッチを root が読み、inbox の最初のジョブは worker の利用者として (runuser・O_NOFOLLOW・16KiB) 読み、job_id・承認 ID・scope・期限 (未来・24h 以内) を照合",
+        "照合後に root の state に image-approval-used/<id> と image-job-used/<job_id> を atomic mkdir。既存なら発行しない。DEV-185 の消費済み ID は拒否",
+        "その後でだけ grant (/var/cache/sr-design-image-grant/grant.json、root 0644、dir は unit の CacheDirectory 0755) を書き、実行直後と cycle の終了時に消す",
+        "worker の hook は grant (root 所有・link でない・書込不可・ID と SHA256 一致・期限内) が無ければ REFUSED_NO_GRANT で生成0回",
+        "攻撃・故障のテスト: worker が自分の印・STOPPED・queue を消して再投入、実行後のクラッシュ、期限切れ、再使用 ID、grant 後のバイト変更、grant 無し/他人所有/期限切れ"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-worker-cycle.test.ts",
+        "npx vitest run tests/unit/design-agent/image-autorun.test.ts",
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "bash -n scripts/sales-design-worker/cycle.sh",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-worker/cycle.sh",
+        "scripts/sales-design-worker/systemd/sr-design-cycle.service (CacheDirectory だけ)",
+        "scripts/sales-design-worker/image-autorun.ts",
+        "tests/unit/design-worker-cycle.test.ts",
+        "tests/unit/design-agent/image-autorun.test.ts",
+        "tests/unit/design-agent/tsugute-ai-photos.test.ts (ID の名簿に cycle.sh を1行)",
+        "docs/operations/image-autorun-approval-sheet.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "スイッチの ON・real Codex・画像生成",
+        "jail.properties・admin.sh・隔離の緩和",
+        "新しい常駐・汎用 root コマンド",
+        "APPROVED_CAPABILITIES・本番 CSS gate",
+        ".github/workflows・package.json・lockfile",
+        "main・Production・Staging・DB"
+      ],
+      "human_approval_triggers": [
+        "real Codex 無人実行の ON (承認シート)",
+        "sr-design-cycle.service の再インストール (CacheDirectory の追加)"
+      ],
+      "note": "grant の置き場所は /run ではなく /var/cache: jail は TemporaryFileSystem=/run:ro で /run を見られず、jail を変えずに読める root の場所として unit の CacheDirectory (0755) を使う。記録は .ai/reviews/DEV-187.md。"
     }
   ]
 }
