@@ -15,6 +15,7 @@
  * generate pictures for it: the image auto-run takes only scripts/sales-design-worker/autorun-shops.ts's shops (and
  * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run (つぐ手 and 輪 only).
  */
+import { BICYCLE_PROMPT_SHA256 } from "./bicycle-ai-photos";
 import { EDGE_VIEWPORTS, type EdgeViewport, type PlanViewport } from "./photo-slots";
 
 export type SwapRangeKey = "desktop" | "tablet" | "mobile";
@@ -63,6 +64,11 @@ export type SwapShopSpec = {
   swapCss: string;
   /** DEV-185 owner approval: may this shop's swap take `ai_generated_demo` pictures */
   aiDemoAllowed: boolean;
+  /**
+   * DEV-192 (PR #234 review L5): when set, an `ai_generated_demo` picture passes only if its provenance names exactly
+   * this prompt SHA-256 (the owner-approved text), else AI_DEMO_PROMPT_NOT_APPROVED. 輪: the approved core text.
+   */
+  aiDemoPromptSha256?: string;
 };
 
 /** つぐ手's CSS addition, byte for byte as DEV-166 wrote it. */
@@ -140,6 +146,7 @@ export const SWAP_SHOP_SPECS = {
     // DEV-192 (owner GO 2026-11-07, comment 6689664215): the swap takes 輪's ai_generated_demo pictures for the one
     // approved run (rights unchanged: demo only, never a public site, full provenance; the intake checks the prompt pins)
     aiDemoAllowed: true,
+    aiDemoPromptSha256: BICYCLE_PROMPT_SHA256,
   },
 } as const satisfies Record<string, SwapShopSpec>;
 

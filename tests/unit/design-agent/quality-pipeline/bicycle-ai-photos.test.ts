@@ -311,6 +311,15 @@ describe("DEV-191/192 offline E2E with 6 STUB pictures: bundle → intake → ri
     expect(r2.ok).toBe(false);
     if (!r2.ok) expect(r2.refusals[0]!.codes).toContain("RIGHTS_MISSING_AI_PROVENANCE");
     expect(existsSync(out2)).toBe(false);
+    // PR #234 review L5: 輪 takes only AI demo pictures made from the approved core text (its provenance's prompt SHA)
+    expect(SWAP_SHOP_SPECS.bicycle.aiDemoPromptSha256).toBe(BICYCLE_PROMPT_SHA256);
+    expect(Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS.tsugute, "aiDemoPromptSha256")).toBe(false);
+    const prov = rec.ai_provenance as Record<string, unknown>;
+    const otherPrompt = { ...m, slots: [{ ...m.slots[0]!, pc: { ...m.slots[0]!.pc, rights: { ...rec, ai_provenance: { ...prov, prompt_sha256: "8b659d0242340085e6bd7cc6422b4102fa02d75575e79a769d6b87ef1cb50bd7" } } } }, ...m.slots.slice(1)] };
+    const out3 = join(c.dir, "swap-other-prompt");
+    const r3 = await swapPage({ pageDir: PAGE, manifest: otherPrompt, out: out3, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
+    expect(r3.ok ? [] : r3.refusals).toEqual([{ slot_id: "ph-d", photo: "pc", codes: ["AI_DEMO_PROMPT_NOT_APPROVED"] }]);
+    expect(existsSync(out3)).toBe(false);
   }, 120_000);
 
   describe("refusal on failure: refused, and nothing written", () => {

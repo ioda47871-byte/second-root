@@ -8902,7 +8902,8 @@
         "cycle.sh: IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6' だけ。原子的な消費・照合・grant・lock・STOPPED・再試行なし・jail/pgrep の fail closed・24時間の上限・使用済みのつぐ手 ID の拒否は不変",
         "テスト: 完全な連鎖でだけ受け付け、root の entry なし・grant なし・SHA/page/slot 違い・使用後・使用済み ID・本文の変更は生成0回で拒否。モックの完全な連鎖が1回だけ動き、6枚の bundle・intake・swap・PC1440/タブレット768/SP390 の描画",
         "brief §6 に作業台 PC の 1500/1920 の目視 (V7a/V7b)。SR-001 は ai_photo_complete: pending_owner_visual_checks",
-        "docs/operations/bicycle-one-time-run-sheet.md (日本語1枚、(a)〜(i)、門の形、期待の出力)"
+        "docs/operations/bicycle-one-time-run-sheet.md (日本語1枚、(a)〜(i)、門の形、期待の出力)",
+        "PR #234 review: M1 シートの門、L1 cycle.sh の CYCLE_STOP_IMAGE_NOT_GRANTED (26)、L2/L3 シート、L4 後続の記録、L5 aiDemoPromptSha256"
       ],
       "required_tests": [
         "npx vitest run tests/unit/design-agent/bicycle-real-path-off.test.ts",
@@ -8926,7 +8927,7 @@
         "scripts/design-artifact/photo-swap.ts (DEV-191 の口を外す)",
         "scripts/sales-design-worker/autorun-shops.ts",
         "scripts/sales-design-worker/image-autorun.ts (bundle の書き手)",
-        "scripts/sales-design-worker/cycle.sh (IMAGE_AUTORUN_SHOPS だけ)",
+        "scripts/sales-design-worker/cycle.sh (IMAGE_AUTORUN_SHOPS と、PR #234 review L1 の CYCLE_STOP_IMAGE_NOT_GRANTED だけ)",
         "design-library/success-cases/second-root-research-successes.json・README.md",
         "docs/design/bicycle-ai-photo-brief.md",
         "docs/operations/bicycle-one-time-run-sheet.md・image-autorun-approval-sheet.md・image-autorun-wsl-install-prep.md",
@@ -8936,7 +8937,8 @@
         "tests/unit/design-agent/autorun-shops.test.ts",
         "tests/unit/design-worker-cycle.test.ts",
         ".ai/",
-        "tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts・photo-swap-bicycle-d1-v9.test.ts (GO の前の「AI デモ写真を拒否」の前提だけ)"
+        "tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts・photo-swap-bicycle-d1-v9.test.ts (GO の前の「AI デモ写真を拒否」の前提だけ)",
+        "docs/operations/design-worker-cycle.md (符号の表に CYCLE_STOP_IMAGE_NOT_GRANTED)"
       ],
       "forbidden_scope": [
         "real Codex・サインイン・systemd・switch・WSL の操作 (オーナーがシートで行う)",

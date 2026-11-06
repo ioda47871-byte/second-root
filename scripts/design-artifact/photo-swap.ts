@@ -410,7 +410,9 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
       const path = (ref.rights as { private_path?: unknown } | null)?.private_path;
       const opened = typeof path === "string" ? resolvePrivatePhoto(pipelineRoot, path) : ({ ok: false, code: "PATH_NOT_PRIVATE" } as const);
       const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden, aiDemoAllowed: spec.aiDemoAllowed });
-      const codes = [...(opened.ok ? [] : [opened.code]), ...(rights.ok ? [] : rights.codes)];
+      const codes: string[] = [...(opened.ok ? [] : [opened.code]), ...(rights.ok ? [] : rights.codes)];
+      // DEV-192 (PR #234 review L5): a shop that pins its approved prompt takes only AI demo pictures made from it
+      if (rights.ok && spec.aiDemoPromptSha256 && rights.record.source_kind === "ai_generated_demo" && rights.record.ai_provenance?.prompt_sha256 !== spec.aiDemoPromptSha256) codes.push("AI_DEMO_PROMPT_NOT_APPROVED");
       if (codes.length || !opened.ok || !rights.ok) {
         refusals.push({ slot_id: entry.slot_id, photo: which, codes: [...new Set(codes)] });
         continue;

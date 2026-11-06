@@ -157,6 +157,10 @@ IMG_CONF="$R/etc/sr-design-worker/image-autorun.json"
 GRANT_DIR="$R/var/cache/sr-design-image-grant"
 GRANT_PATH="$GRANT_DIR/grant.json"
 GRANT_ISSUED=0
+# DEV-192 (PR #234 review L1): set while the owner's image switch file exists (not enabled:false) and an image job may
+# be waiting; a cycle that then issued no grant stops before the bridge (CYCLE_STOP_IMAGE_NOT_GRANTED) instead of
+# claiming a sales job in the run the owner started for the image job
+IMAGE_PENDING=0
 LOCKED=0
 # the grant covers the worker's start-up and the one Codex image run (15 min) with a small margin, not the whole run
 GRANT_TTL=1200
@@ -374,6 +378,7 @@ print("IMAGE_GRANT_MATCH")
 image_grant() {
   local line code iso_now iso_end t
   [ -e "$IMG_CONF" ] || [ -L "$IMG_CONF" ] || return 0
+  IMAGE_PENDING=1
   if [ -z "$R" ]; then
     trusted_path "$IMG_CONF" && [ -f "$IMG_CONF" ] && [ ! -L "$IMG_CONF" ] || { say "image grant: IMAGE_GRANT_CONFIG_UNSAFE"; return 0; }
   else
@@ -381,11 +386,12 @@ image_grant() {
       { say "image grant: IMAGE_GRANT_CONFIG_UNSAFE"; return 0; }
   fi
   line="$(as_worker python3 -I -c "$IMAGE_JOB_PY" "$WORKER_QUEUE/image-autorun/inbox" 2>/dev/null)" || { say "image grant: IMAGE_GRANT_JOB_UNUSABLE"; return 0; }
-  [ -n "$line" ] || return 0
+  [ -n "$line" ] || { IMAGE_PENDING=0; return 0; }
   [[ "$line" =~ $IMAGE_JOB_RE ]] || { say "image grant: IMAGE_GRANT_JOB_UNUSABLE"; return 0; }
   local job="${BASH_REMATCH[1]}" appr="${BASH_REMATCH[2]}" sha="${BASH_REMATCH[3]}" shop="${BASH_REMATCH[4]}" mi="${BASH_REMATCH[5]}" mj="${BASH_REMATCH[6]}" exp="${BASH_REMATCH[7]}"
   t="$(now)"
   code="$(python3 -I -c "$IMAGE_MATCH_PY" "$IMG_CONF" "$job" "$appr" "$shop" "$mi" "$mj" "$exp" "$t" "$IMAGE_AUTORUN_SHOPS" 9>&-)" || code=IMAGE_GRANT_CONFIG_INVALID
+  [ "$code" != IMAGE_GRANT_DISABLED ] || IMAGE_PENDING=0
   [ "$code" = IMAGE_GRANT_MATCH ] || { say "image grant: $code (job $job)"; return 0; }
   # the DEV-185 one-shot approval was consumed on 2026-11-06 and is never an autorun approval
   [ "$appr" != tsugute-photos-20261106-01 ] || { say "image grant: IMAGE_GRANT_APPROVAL_USED (job $job)"; return 0; }
@@ -609,6 +615,12 @@ guard_claim
 # DEV-187: this run is the one that takes the image inbox — it runs in every cycle, before step 5 can end the
 # cycle as CYCLE_IDLE; the run of step 6 happens only after a bridge claim.
 image_grant
+# DEV-192 (PR #234 review L1): switch on and an image job waiting, but no grant: stop here, before the idle run and any
+# bridge pass or claim (nothing is used up by this stop; the job stays in the inbox for the owner to look at)
+if [ "$IMAGE_PENDING" = 1 ] && [ "$GRANT_ISSUED" = 0 ]; then
+  say "image job: the switch is on and an image job is waiting, but no grant was issued; no worker run, no bridge claim"
+  finish CYCLE_STOP_IMAGE_NOT_GRANTED 26
+fi
 rc=0
 worker_run idle-worker || rc=$?
 [ "$GRANT_ISSUED" = 0 ] || rm -f "$GRANT_PATH"

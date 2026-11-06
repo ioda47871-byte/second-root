@@ -19,8 +19,9 @@ sudo test ! -e /etc/sr-design-worker/image-autorun.json || { echo STOP_SWITCH_PR
 [ -z "$(sudo git --no-optional-locks -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" ] || { echo STOP_CLONE_DIRTY; exit 1; }; echo CLONE_CLEAN
 printf 'sr-jail-claude: enabled=%s active=%s\n' "$(systemctl is-enabled sr-jail-claude.service 2>&1 || true)" "$(systemctl is-active sr-jail-claude.service 2>&1 || true)"
 sudo test ! -e /home/sr-designgen/.local/state/sr-design-worker/image-autorun/STOPPED || { echo STOP_WORKER_STOPPED_MARKER; exit 1; }; echo NO_STOPPED_MARKER
-n=$(sudo find /home/sr-designgen/sr-design-jobs/image-autorun/inbox /home/sr-designgen/sr-design-jobs/image-autorun/processing -maxdepth 1 -type f 2>/dev/null | wc -l)
-[ "$n" -eq 0 ] || { echo STOP_IMAGE_INBOX_NOT_EMPTY; exit 1; }; echo IMAGE_INBOX_EMPTY
+for d in /home/sr-designgen/sr-design-jobs/image-autorun/inbox /home/sr-designgen/sr-design-jobs/image-autorun/processing; do   # 無いのが普通（その時は空と同じ）
+  sudo test ! -e "$d" || [ -z "$(sudo find "$d" -maxdepth 1 -type f -print -quit)" ] || { echo STOP_IMAGE_INBOX_NOT_EMPTY; exit 1; }
+done; echo IMAGE_INBOX_EMPTY
 sudo stat -c '%U %a %s bytes %n' /home/sr-designgen/.codex/auth.json || { echo STOP_NO_CODEX_SIGNIN; exit 1; }   # 中身は出さない
 sudo test ! -e /home/sr-designgen/.codex/.env || { echo STOP_CODEX_DOTENV; exit 1; }; echo CODEX_SIGNIN_PRESENT_NO_DOTENV
 echo PREFLIGHT_OK )
@@ -112,41 +113,57 @@ echo "APPROVAL=$APPROVAL JOB=$JOB EXPIRES=$EXP   # 控えておく" )
 ```bash
 T0=$(date '+%Y-%m-%d %H:%M:%S')
 sudo systemctl start sr-design-cycle.service; echo "start rc=$?"       # 終わるまで戻らない（最大80分、画像の段は15分以内）
-journalctl -u sr-design-cycle.service --since "$T0" --no-pager | grep -E 'image grant:|CYCLE_RESULT|image-autorun: ' | tail -20
+( set -uo pipefail
+J=$(journalctl -u sr-design-cycle.service --since "$T0" --no-pager | grep -E 'image grant:|image job:|CYCLE_RESULT|image-autorun: ' || true)
+printf '%s\n' "$J" | tail -20
 # worker 側の判定（符号だけ。プロンプト・画像は書かれていない）
 sudo python3 -I -c 'import json,sys
-for l in open(sys.argv[1]).read().splitlines()[-6:]: d=json.loads(l); print(d.get("at"), d.get("code"), d.get("job_id"), d.get("images", ""), d.get("stop_code", ""))' /home/sr-designgen/.local/state/sr-design-worker/image-autorun/audit.jsonl
+for l in open(sys.argv[1]).read().splitlines()[-6:]: d=json.loads(l); print(d.get("at"), d.get("code"), d.get("job_id"), d.get("images", ""), d.get("stop_code", ""))' /home/sr-designgen/.local/state/sr-design-worker/image-autorun/audit.jsonl 2>/dev/null || echo "audit.jsonl: none"
+grep -q 'image grant: IMAGE_GRANT_ISSUED' <<<"$J" || { echo STOP_IMAGE_GRANT_NOT_ISSUED; exit 1; }
+grep -q 'CYCLE_RESULT CYCLE_IMAGE_RUN ' <<<"$J" || { echo STOP_CYCLE_NOT_IMAGE_RUN; exit 1; }
+echo GRANT_ISSUED_AND_IMAGE_RUN )
 ```
 
-期待（順に）: `image grant: IMAGE_GRANT_ISSUED (job job-bicycle-…`、`image-autorun: {"…","code":"APPROVAL_RESERVED"…}`・`"GENERATED"`・`"DONE"`、最後に `CYCLE_RESULT CYCLE_IMAGE_RUN …`。
+期待（順に）: `image grant: IMAGE_GRANT_ISSUED (job job-bicycle-…`、`image-autorun: {"…","code":"APPROVAL_RESERVED"…}`・`"GENERATED"`・`"DONE"`、`CYCLE_RESULT CYCLE_IMAGE_RUN …`、最後に `GRANT_ISSUED_AND_IMAGE_RUN`。
+**`IMAGE_GRANT_ISSUED` が無ければ STOP**（(i) へ）。grant が出ないとき、cycle は `CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED … exit=26` で worker も bridge も動かさずに止まる（営業の job を claim しない）。
 
 ## (f) 確かめる（中身は Git・PR・Issue に貼らない。path と符号だけ）
 
 ```bash
 ( set -euo pipefail
-APPROVAL=<(d) の値>; JOB=<(d) の値>
+APPROVAL=<(d) の値>; JOB=<(d) の値>; PIN=<MERGE_SHA>
 sudo test ! -e /var/cache/sr-design-image-grant/grant.json || { echo STOP_GRANT_LEFT; exit 1; }; echo GRANT_GONE
 sudo test -d "/var/lib/sr-design-cycle/image-approval-used/$APPROVAL" && sudo test -d "/var/lib/sr-design-cycle/image-job-used/$JOB" || { echo STOP_ROOT_MARKERS_MISSING; exit 1; }; echo ROOT_USE_MARKERS_PRESENT
 sudo test -d "/home/sr-designgen/.local/state/sr-design-worker/poc-approval-used/$APPROVAL" || { echo STOP_WORKER_MARKER_MISSING; exit 1; }; echo WORKER_USE_MARKER_PRESENT
 R=/home/sr-designgen/sr-design-jobs/image-autorun/done/$JOB.result.json
 sudo python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); print("RESULT", r["code"]); sys.exit(r["code"]!="DONE")' "$R" || { echo STOP_RESULT_NOT_DONE; exit 1; }
+# 生成に使った worker のコードが PIN と同じか（worker は毎回 origin/develop を使う）
+WC=$(sudo python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["worker_commit"])' "/home/sr-designgen/.local/state/sr-design-worker/poc-approval-used/$APPROVAL/receipt.json") || { echo STOP_RECEIPT_UNREADABLE; exit 1; }
+[[ "$WC" =~ ^[0-9a-f]{40}$ ]] || { echo STOP_RECEIPT_COMMIT; exit 1; }
+sudo git -C /root/sr-capture-admin cat-file -e "$WC^{commit}" || { echo "STOP_WORKER_COMMIT_UNKNOWN $WC"; exit 1; }
+sudo git -C /root/sr-capture-admin diff --quiet "$PIN" "$WC" -- scripts/sales-design-worker scripts/design-artifact lib/design-agent docs/design/bicycle-ai-photo-prompt.txt package.json package-lock.json \
+  && echo "WORKER_CODE_MATCH $WC" || { echo "STOP_WORKER_CODE_DIFFERS $WC"; exit 1; }
 O=/home/sr-designgen/.local/share/second-root-design/image-autorun/$JOB
-B=$(sudo find "$O/photos" -mindepth 1 -maxdepth 1 -type d -name 'bicycle-photos-*' | head -1)
+B=$(sudo find "$O/photos" -mindepth 1 -maxdepth 1 -type d -name 'bicycle-photos-*' 2>/dev/null | head -1 || true)
+[ -n "$B" ] || { echo STOP_BUNDLE_MISSING; exit 1; }
 [ "$(sudo find "$B" -maxdepth 1 -name 'ph-*.png' | wc -l)" = 6 ] && sudo test -f "$B/manifest.json" || { echo STOP_BUNDLE_INCOMPLETE; exit 1; }; echo BUNDLE_6_PHOTOS_AND_MANIFEST
 for v in desktop_1440 tablet_768 mobile_390; do sudo test -f "$O/swap/renders/$v.png" || { echo "STOP_RENDER_MISSING $v"; exit 1; }; done; echo RENDERS_PC_TABLET_SP
 sudo ls -1 "$B" "$O/swap/renders"; echo "OUT=$O" )
 ```
 
-期待: `GRANT_GONE`・`ROOT_USE_MARKERS_PRESENT`・`WORKER_USE_MARKER_PRESENT`・`RESULT DONE`・`BUNDLE_6_PHOTOS_AND_MANIFEST`・`RENDERS_PC_TABLET_SP`。画像は `OUT` の下（`photos/`・`swap/page/`・`swap/renders/`、`swap/rights.private.json`）にだけある。**画像・manifest・private の path を Git・PR・Issue に上げない。** 目視は `docs/design/bicycle-ai-photo-brief.md` §6（V1〜V8・1500/1920 の V7a/V7b）。合格まで SR-001 を「AI写真入り完成」と記録しない。
+期待: `GRANT_GONE`・`ROOT_USE_MARKERS_PRESENT`・`WORKER_USE_MARKER_PRESENT`・`RESULT DONE`・`WORKER_CODE_MATCH <40文字>`・`BUNDLE_6_PHOTOS_AND_MANIFEST`・`RENDERS_PC_TABLET_SP`。画像は `OUT` の下（`photos/`・`swap/page/`・`swap/renders/`、`swap/rights.private.json`）にだけある。**画像・manifest・private の path を Git・PR・Issue に上げない。** 目視は `docs/design/bicycle-ai-photo-brief.md` §6（V1〜V8・1500/1920 の V7a/V7b）。合格まで SR-001 を「AI写真入り完成」と記録しない。
 
 ## (g) OFF に戻す（成功でも失敗でも）
 
 ```bash
 ( set -euo pipefail
-sudo rm -f /etc/sr-design-worker/image-autorun.json; sudo test ! -e /etc/sr-design-worker/image-autorun.json && echo SWITCH_REMOVED_OFF
-[ "$(systemctl show sr-design-cycle.timer -p LoadState --value)" = not-found ] && echo TIMER_STILL_NOT_FOUND
-sudo ls -d /var/lib/sr-design-cycle/image-approval-used/* /var/lib/sr-design-cycle/image-job-used/* )   # 使用の印は消さない
+sudo rm -f /etc/sr-design-worker/image-autorun.json
+sudo test ! -e /etc/sr-design-worker/image-autorun.json || { echo STOP_SWITCH_STILL_PRESENT; exit 1; }; echo SWITCH_REMOVED_OFF
+[ "$(systemctl show sr-design-cycle.timer -p LoadState --value)" = not-found ] || { echo STOP_TIMER_PRESENT; exit 1; }; echo TIMER_STILL_NOT_FOUND
+sudo ls /var/lib/sr-design-cycle/image-approval-used /var/lib/sr-design-cycle/image-job-used )   # 使用の印は消さない（root の 0700 の下なので sudo ls で見る）
 ```
+
+**実行の後に残ること（オーナーの承認は1回限り）:** コードの中には「輪は使い終わった」と記録するものが無い。同じ承認 ID・job ID は root と worker の使用の印が拒否するが、**新しい ID を作れば、技術的にはもう一度走れてしまう。** 次の PR（DEV-192 の後続）で、輪を `AUTORUN_SHOPS` と root の `IMAGE_AUTORUN_SHOPS` から外すか、台帳での拒否を足す。それまで、新しい承認 ID で (d)・(e) をやり直さない。
 
 ## (h) 任意: Remote Control を戻す
 
@@ -157,11 +174,12 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-st
 ## (i) 失敗したとき
 
 - **再試行しない。** 同じ ID でも新しい ID でも、もう一度 (d)・(e) をしない。まず (g) で OFF に戻す。
+- `STOP_IMAGE_GRANT_NOT_ISSUED`（cycle が `CYCLE_STOP_IMAGE_NOT_GRANTED`、exit 26）: grant が出なかった。承認 ID・job ID は**使われていない**、worker も bridge も動いていない、ジョブは inbox に残る（スイッチを消した後の普通の cycle で worker が `HELD_AUTORUN_DISABLED` として held へ移す）。`image grant:` の行の符号をオーナーが見る。
 - 符号を集めて Claude に見せる（中身は貼らない）:
   `journalctl -u sr-design-cycle.service --since "$T0" --no-pager | grep -E 'image grant:|CYCLE_RESULT|image-autorun: '`、
   `sudo ls /home/sr-designgen/sr-design-jobs/image-autorun/{done,failed,held}`、`sudo cat …/failed/$JOB.result.json`（codes と path だけの JSON）、
   `sudo test -e /home/sr-designgen/.local/state/sr-design-worker/image-autorun/STOPPED && echo STOPPED_PRESENT`（STOPPED は消さない。オーナーが原因を見てから決める）。
 - よくある符号: `IMAGE_GRANT_USER_BUSY`（jail の Claude か `sr-designgen` のプロセスが残っていた。何も使われていない）、`REFUSED_NO_GRANT`（起動が20分を超えた。ID は使用済み）、`REFUSED_JOB_INVALID`（ジョブかプロンプトの SHA の不一致）、`FAILED_GENERATION` / `CODEX_QUOTA`（生成が途中で止まった）、`FAILED_INTAKE` / `FAILED_SWAP`（写真の検査で拒否）。
 - root clone を元に戻す必要があるとき（オーナーが決める）:
-  `( set -euo pipefail; sudo git -C /root/sr-capture-admin checkout -q --detach bb7da4fa42817ae1c8f0a2ef86587368e84f418e; [ -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" ] && echo CLONE_RESTORED_BB7DA4F )`
+  `( set -euo pipefail; sudo git -C /root/sr-capture-admin checkout -q --detach bb7da4fa42817ae1c8f0a2ef86587368e84f418e; [ -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" ] || { echo STOP_CLONE_DIRTY; exit 1; }; echo CLONE_RESTORED_BB7DA4F )`
 - 次の一手（作り直し・寸法の判断・別の承認）は、オーナーが決める。

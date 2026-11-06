@@ -806,10 +806,13 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     mkdirSync(w.inbox, { recursive: true });
     writeFileSync(join(w.inbox, `${JOB_ID}.json`), w.text);
     nextIdle(w, 2, 1);
+    const before = w.grants();
     const r = cycle(w);
-    expect(r.last, r.out).toBe("CYCLE_RESULT CYCLE_IDLE phase=before_claim job=none exit=10");
+    // DEV-192 (PR #234 review L1): the switch is on and the job waits, but no grant → the cycle stops before any worker
+    // run or bridge pass (it used to go on to an idle cycle)
+    expect(r.last, r.out).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
     expect(r.out).toContain(`image grant: IMAGE_GRANT_APPROVAL_USED (job ${JOB_ID})`);
-    expect(w.grants().trim().split("\n").pop()).toBe("NO_GRANT");
+    expect(w.grants()).toBe(before);
     expect(await hookAfter(w)).toEqual({ code: "REFUSED_NO_GRANT", calls: 0 });
   });
 
@@ -823,9 +826,11 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     expect(cycle(w).last).toContain("CYCLE_IMAGE_RUN");
     writeFileSync(join(w.inbox, `${JOB_ID}.json`), JSON.stringify(imageJob("tsugute-autorun-0002")));
     nextIdle(w, 2, 1);
+    const before = w.grants();
     const r = cycle(w);
     expect(r.out).toContain(`image grant: IMAGE_GRANT_JOB_USED (job ${JOB_ID})`);
-    expect(w.grants().trim().split("\n").pop()).toBe("NO_GRANT");
+    expect(r.last).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
+    expect(w.grants()).toBe(before);
   });
 
   it("a crash / timeout of the worker run after the use was recorded: the grant is removed, the use stays, the next cycle issues none", async () => {
@@ -836,9 +841,11 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     expect(existsSync(w.grant)).toBe(false);
     expect(w.used("approval", APPROVAL)).toBe(true);
     nextIdle(w, 2, 1);
+    const before = w.grants();
     const r2 = cycle(w);
     expect(r2.out).toContain("IMAGE_GRANT_APPROVAL_USED");
-    expect(w.grants().trim().split("\n").pop()).toBe("NO_GRANT");
+    expect(r2.last).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
+    expect(w.grants()).toBe(before);
     expect(await hookAfter(w)).toEqual({ code: "REFUSED_NO_GRANT", calls: 0 });
   });
 
@@ -857,12 +864,19 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     ["輪 with 7 images, entry matching", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "bicycle", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob(), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["輪 under the consumed DEV-185 approval id", { entries: [{ approval_id: "tsugute-photos-20261106-01", job_id: JOB_ID, shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob("tsugute-photos-20261106-01"), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_APPROVAL_USED"],
     ["an entry with max_jobs: true (a bool is not 1; L4)", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "tsugute", max_images: 6, max_jobs: true, expires_at: isoAt(T0 + 12 * 3600) }] }, "IMAGE_GRANT_SCOPE_MISMATCH"],
-  ] as const)("%s: no grant, nothing used up, the cycle goes on as before", (_, o, code) => {
+  ] as const)("%s: no grant, nothing used up; switch on → the cycle stops before the worker and the bridge (DEV-192 L1), switch off → it goes on as before", (_, o, code) => {
     const w = imageWorld(o as Parameters<typeof imageWorld>[0]);
     const r = cycle(w);
     expect(r.out).toContain(`image grant: ${code}`);
-    expect(r.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
-    expect(w.grants().trim().split("\n")).toEqual(["NO_GRANT", "NO_GRANT"]);
+    if (code === "IMAGE_GRANT_DISABLED") {
+      expect(r.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
+      expect(w.grants().trim().split("\n")).toEqual(["NO_GRANT", "NO_GRANT"]);
+    } else {
+      expect(r.last).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
+      // no worker run at all (the fake admin.sh records every run), so no bridge claim either
+      expect(w.grants()).toBe("");
+      expect(count(r.calls, "admin") + count(r.calls, "bridge")).toBe(0);
+    }
     if (code !== "IMAGE_GRANT_APPROVAL_USED") expect(w.used("approval", APPROVAL)).toBe(false);
     expect(existsSync(join(w.t, "var/lib/sr-design-cycle/image-approval-used/tsugute-photos-20261106-01"))).toBe(false);
   });
@@ -885,9 +899,11 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     mkdirSync(w.inbox, { recursive: true });
     writeFileSync(join(w.inbox, `${JOB_ID}.json`), JSON.stringify(bikeJob));
     nextIdle(w, 2, 1);
+    const before = w.grants();
     const r2 = cycle(w);
     expect(r2.out).toContain(`image grant: IMAGE_GRANT_APPROVAL_USED (job ${JOB_ID})`);
-    expect(w.grants().trim().split("\n").pop()).toBe("NO_GRANT");
+    expect(r2.last).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
+    expect(w.grants()).toBe(before);
   });
 
   it("a group-writable switch file, a job that is a link, and no switch file: no grant", () => {
@@ -916,12 +932,30 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     expect(existsSync(join(dirname(w.grant), ".grant.AbC123"))).toBe(false);
   });
 
+  it("DEV-192 (PR #234 review L1): switch on + an image job + no grant → CYCLE_STOP_IMAGE_NOT_GRANTED (26) before any worker run, bridge pass or claim; with an empty image inbox the cycle runs as before", () => {
+    const busy = imageWorld({ entries: [{ approval_id: "bicycle-run-0002", job_id: JOB_ID, shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 2 * 3600) }], job: { ...imageJob("bicycle-run-0002", T0 + 2 * 3600), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 2 * 3600) } } });
+    writeFileSync(join(busy.sc, "active-sr-jail-claude.service"), "");
+    const r = cycle(busy);
+    expect(r.out).toContain("image grant: IMAGE_GRANT_USER_BUSY");
+    expect(r.out).toContain("no worker run, no bridge claim");
+    expect(r.last).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
+    expect(count(r.calls, "admin") + count(r.calls, "bridge")).toBe(0);
+    expect(busy.used("approval", "bicycle-run-0002") || busy.used("job", JOB_ID)).toBe(false);
+    expect(existsSync(join(busy.inbox, `${JOB_ID}.json`))).toBe(true);
+    // the switch on but nothing in the image inbox: the normal cycle (idle run, deliver-only, claim)
+    const empty = imageWorld({ job: null });
+    expect(cycle(empty).last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
+    // the code is in the runbook's table
+    expect(readFileSync(DOC, "utf8")).toContain("| `CYCLE_STOP_IMAGE_NOT_GRANTED` | 26 | before_claim |");
+  });
+
   it("H1(a): while the jailed Claude is active, or the worker user has any process, no grant and nothing used up", () => {
     const a = imageWorld();
     writeFileSync(join(a.sc, "active-sr-jail-claude.service"), "");
     const ra = cycle(a);
     expect(ra.out).toContain("image grant: IMAGE_GRANT_USER_BUSY");
-    expect(ra.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
+    // DEV-192 (PR #234 review L1): no grant with the switch on and a job waiting → stop before the worker and the bridge
+    expect(ra.last).toBe("CYCLE_RESULT CYCLE_STOP_IMAGE_NOT_GRANTED phase=before_claim job=none exit=26");
     const b = imageWorld();
     // a stray process of the worker user (any, not only a worker path): pgrep -U <worker user>
     const pg = join(b.bin, "pgrep");
