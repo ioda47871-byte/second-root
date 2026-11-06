@@ -9,7 +9,9 @@
  *
  * What the owner did NOT approve: a real generation run (Codex, the image tool, the ChatGPT quota), the auto-run, 輪 in
  * the worker's AUTORUN_SHOPS or root's IMAGE_AUTORUN_SHOPS, or the swap taking 輪's ai_generated_demo pictures
- * unconditionally. So there is NO generation approval id here (BICYCLE_RUN_APPROVAL_ID is null), the intake accepts
+ * unconditionally. The real gates against a run are the worker's job schema (AUTORUN_SHOP_IDS has no 輪), root's
+ * IMAGE_AUTORUN_SHOPS in cycle.sh, and the swap's aiDemoAllowed (false for 輪). Beside them, no generation approval id
+ * is recorded here (BICYCLE_RUN_APPROVAL_ID is null, a record, not a gate), the intake accepts
  * none by default, the swap spec keeps aiDemoAllowed: false, and the run prompt below is a CANDIDATE whose SHA the owner
  * must approve with the one-time run.
  *
@@ -43,8 +45,10 @@ export const BICYCLE_PROMPT_APPROVAL = {
 } as const;
 
 /**
- * The approval id of a real generation run of these 6 pictures. null: none exists. A future owner GO adds it (a code
- * change, reviewed) together with root's config; until then nothing can name an approved 輪 run.
+ * The approval id of a real generation run of these 6 pictures. null: none exists. This is a RECORD and the intake's
+ * default, not a gate by itself: what stops a run is the worker's job schema (輪 is not in AUTORUN_SHOP_IDS), root's
+ * IMAGE_AUTORUN_SHOPS (cycle.sh, 'tsugute:6') and the swap's aiDemoAllowed (false for 輪). A future owner GO sets it
+ * together with those (code reviewed, root's config on WSL).
  */
 export const BICYCLE_RUN_APPROVAL_ID: string | null = null;
 

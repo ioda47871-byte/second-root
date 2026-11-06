@@ -2,7 +2,7 @@
   "schema_version": 1,
   "dataset": "second-root-quality-pipeline-research-successes",
   "as_of": "2026-11-06",
-  "scope": "Second Root's own research pages for FICTIONAL shops, made in the quality pipeline (design-library/research/quality-pipeline/poc). Kept apart from the 30 external research success cases (manifest.json, CP-001..032): those are a frozen, guarded reference corpus of real shops (design-library/intelligence/v01/registration-safety.mjs pins exactly 30), and a fictional shop's own page is not a reference for other shops.",
+  "scope": "Second Root's own research pages for FICTIONAL shops, made in the quality pipeline (design-library/research/quality-pipeline/poc). Kept apart from the 30 external research success cases (manifest.json, CP-001..032): those are external research success cases (the frozen manifest.json corpus, guarded at 30 by design-library/intelligence/v01/registration-safety.mjs; concept images, user-supplied images and local PoCs), and a fictional shop's own page is not a reference for other shops.",
   "policy": {
     "not_templates": true,
     "not_added_to_external_case_count": true,

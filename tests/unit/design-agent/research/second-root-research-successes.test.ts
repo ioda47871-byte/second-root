@@ -65,11 +65,15 @@ describe("DEV-191 Second Root research success ledger", () => {
     expect(r.not_claimed).toEqual(["a finished page with real photos", "automatic reproduction by the production B pipeline", "published to Production or any public site", "a real shop or merchant approval"]);
   });
 
-  it("old versions are kept (every fidelity version of 輪 is listed and exists); d1-v9's README is not rewritten", () => {
+  it("old versions are kept (every fidelity version of 輪 is listed and exists); d1-v9's README carries the appended SR-001 status line", () => {
     const r = LEDGER.records.find((x) => x.id === "SR-001")!;
     const dir = join(REPO, "design-library/research/quality-pipeline/poc/bicycle/fidelity");
     expect([...(r.previous_versions_kept as string[]), "d1-v9"].sort()).toEqual(readdirSync(dir).sort());
-    expect(read("design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/README.md")).toContain("成功例として採用したのではない");
+    // PR #233 review M1: the README is append-only — the dated status line is appended (the DEV-190 sentence stays as history)
+    const readme = read("design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/README.md");
+    const status = "- 2026-11-06 (DEV-191、オーナーの Issue #193 コメント `6687410438`): このページ d1-v9 を研究用の正式成功例 **SR-001** として登録した (デザインの構造の成功、写真は MOCK、実画像は未生成)。";
+    expect(readme).toContain(status);
+    expect(readme.indexOf("## 状態の追記 (2026-11-06、DEV-191)")).toBeGreaterThan(readme.indexOf("成功例として採用したのではない"));
   });
 
   it("つぐ手 stays a candidate (not formal); its page is the merged d1-v10", () => {

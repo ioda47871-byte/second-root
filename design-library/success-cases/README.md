@@ -74,7 +74,7 @@
 
 ## 2026-11-06 Second Root 自身の研究ページの成功例（架空店舗・品質パイプライン）
 
-架空店舗の研究ページ (`design-library/research/quality-pipeline/poc/`) は、上の30件 (実在店舗の研究事例・`manifest.json`・`registration-safety.mjs` が30件で固定) とは**別の台帳** [`second-root-research-successes.json`](second-root-research-successes.json) に記録する。架空店の自店ページは他店の参照例ではなく、30件の分析コーパスや生成器へ自動で入れない。
+架空店舗の研究ページ (`design-library/research/quality-pipeline/poc/`) は、上の30件 (外部の研究成功事例。凍結した `manifest.json` のコーパスで、`registration-safety.mjs` が30件で固定。コンセプト画像・ユーザー提供の画像・ローカル PoC を含む) とは**別の台帳** [`second-root-research-successes.json`](second-root-research-successes.json) に記録する。架空店の自店ページは他店の参照例ではなく、30件の分析コーパスや生成器へ自動で入れない。
 
 | ID | 研究ページ | 状態 | 範囲・画像 |
 | --- | --- | --- | --- |

@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { BICYCLE_DEMO_LABEL, BICYCLE_GENERATOR, BICYCLE_PHOTOS, BICYCLE_PHOTOS_MAX_IMAGES, BICYCLE_PROMPT_APPROVAL, BICYCLE_PROMPT_BYTES, BICYCLE_PROMPT_SHA256, checkApprovedBicyclePrompt, reachesTarget, type BicyclePhotosManifest } from "../quality-pipeline/bicycle-ai-photos";
+import { BICYCLE_DEMO_LABEL, BICYCLE_GENERATOR, BICYCLE_PHOTOS, BICYCLE_PHOTOS_MAX_IMAGES, BICYCLE_PROMPT_APPROVAL, BICYCLE_PROMPT_BYTES, BICYCLE_PROMPT_SHA256, BICYCLE_RUN_PROMPT_CANDIDATE_SHA256, checkApprovedBicyclePrompt, reachesTarget, type BicyclePhotosManifest } from "../quality-pipeline/bicycle-ai-photos";
 import type { ImageBatchResult } from "./image-once";
 
 const sha256 = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
@@ -35,6 +35,8 @@ export async function writeBicyclePhotos(o: {
   const check = checkApprovedBicyclePrompt(o.approvedPrompt);
   if (!check.ok) throw new Error(`PROMPT_NOT_APPROVED: ${check.codes.join(",")}`);
   if (!o.runPrompt.endsWith(check.parsed.fromCommon)) throw new Error("RUN_PROMPT_DOES_NOT_CARRY_THE_APPROVED_TEXT");
+  // PR #233 review L2: only the pinned candidate run prompt (checked before anything is written; the owner approves its SHA with a run)
+  if (sha256(o.runPrompt) !== BICYCLE_RUN_PROMPT_CANDIDATE_SHA256) throw new Error("RUN_PROMPT_NOT_THE_CANDIDATE");
   if (batch.images.length > BICYCLE_PHOTOS_MAX_IMAGES) throw new Error("more pictures than photos");
   const dir = await mkdtemp(join(o.outRoot, "bicycle-photos-"));
   await chmod(dir, 0o700);

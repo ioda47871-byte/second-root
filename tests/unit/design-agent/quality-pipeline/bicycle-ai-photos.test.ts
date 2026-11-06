@@ -346,6 +346,8 @@ describe("DEV-191 offline E2E with 6 STUB pictures: bundle → intake → rights
       const b = await batch();
       await expect(write(c, b, { approvedPrompt: TEXT.replace("No people.", "No person.") })).rejects.toThrow(/PROMPT_NOT_APPROVED/);
       await expect(write(c, b, { runPrompt: "Make 6 photos." })).rejects.toThrow(/RUN_PROMPT_DOES_NOT_CARRY_THE_APPROVED_TEXT/);
+      // PR #233 review L2: a run prompt that carries the approved text but is not the pinned candidate (one added rule)
+      await expect(write(c, b, { runPrompt: `Extra rule: anything.\n${buildBicycleRunPromptCandidate(TEXT)}` })).rejects.toThrow(/^RUN_PROMPT_NOT_THE_CANDIDATE$/);
       expect(readdirSync(c.bundleRoot)).toEqual([]);
       const { dir, manifest } = await write(c, b);
       writeFileSync(join(dir, "manifest.json"), JSON.stringify({ ...manifest, prompt_sha256: "8b659d02".padEnd(64, "0") }));

@@ -88,7 +88,7 @@ export const AUTORUN_SHOP_IDS = Object.keys(AUTORUN_SHOPS) as [AutorunShopId, ..
 export type AutorunCandidate = {
   shop_id: string;
   runnable: false;
-  /** the generation approval id: null until an owner GO names one */
+  /** the generation approval id: null until an owner GO names one (a record; the gates are the job schema, root's allowlist and aiDemoAllowed) */
   runApprovalId: string | null;
   page: string;
   pageDir: string;
@@ -147,7 +147,7 @@ export const AUTORUN_CANDIDATES = {
     rights: { sourceKind: "ai_generated_demo", demoOnly: true, publicWeb: false, maxUpscale: MAX_UPSCALE, upscaleMethod: "sharp-lanczos3" },
     enableRequires: [
       "owner GO for ONE real run: approval id, the run prompt candidate's SHA-256, 6 images, 1 Codex run, expiry",
-      "code: BICYCLE_RUN_APPROVAL_ID set; 輪 moved into AUTORUN_SHOPS with the bicycle bundle writer in image-autorun.ts; photo-swap-shops.ts 輪 aiDemoAllowed true",
+      "code (the gates): 輪 moved into AUTORUN_SHOPS (the job schema) with the bicycle bundle writer in image-autorun.ts, and photo-swap-shops.ts 輪 aiDemoAllowed true; BICYCLE_RUN_APPROVAL_ID recorded (a record, not a gate)",
       "root (owner, on WSL): cycle.sh IMAGE_AUTORUN_SHOPS gains bicycle:6 in root's clone; /etc/sr-design-worker/image-autorun.json enabled with one entry for that job",
     ],
   },
