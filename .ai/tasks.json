@@ -8643,7 +8643,7 @@
     {
       "id": "DEV-188",
       "title": "画像の無人実行の WSL 導入準備 (読むだけの確認シート・オーナー実行の導入と戻し方、OFF のまま) と、店ごとの固定 manifest への最小リファクタリング (つぐ手のみ実装、輪・ゆげ湯は未対応)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-187"
@@ -8695,6 +8695,66 @@
         "第2の店の実装 (承認された写真の brief・ページ・slot の計測・差し替えの対応)"
       ],
       "note": "実機の現状 (root の clone の commit・unit の有無・スイッチ) は不明。最後の記録は 2026-10-23 の X2 679c3c2。記録は .ai/reviews/DEV-188.md。"
+    },
+    {
+      "id": "DEV-189",
+      "title": "2店舗目「輪」の写真スロット計測と差し替えをオフラインで実装 (研究専用の指定ページ d1-v7、模擬写真の E2E、画像 brief は未承認の草案、無人実行は OFF のまま)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-188"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-189-bicycle-photo-slots-swap",
+      "purpose": "オーナー GO (Issue #193、2026-11-06、DEV-189): 輪 (架空の自転車修理店) の研究ページの写真 placeholder を計測して SHA で固定し、photo-swap.ts を共通部と店別の固定 spec に最小分割、輪を模擬写真で intake→rights→crop→swap→PC/SP render までオフライン E2E。画像 brief は承認前の提案。real Codex 0 回、AUTORUN_SHOPS・IMAGE_AUTORUN_SHOPS に輪を足さない。WSL 導入準備の文書に実機の確認済みの状態を追記",
+      "acceptance_criteria": [
+        "指定ページ poc/bicycle/fidelity/d1-v7 (fidelity-spec の fidelity_c、研究専用の指定ページ、未承認、d1-v8 の HOLD の選択肢は採用しない)",
+        "photo-slots-d1-v7.json と photo-slot-edges-d1-v7.json (HTML・CSS・copy の SHA で固定、5枠、6に揃えない、端は 600/999/1920)",
+        "lib/design-agent/quality-pipeline/photo-swap-shops.ts: 店別の固定 spec (範囲・端・SP 写真の範囲・HTML 構造・追加 CSS・aiDemoAllowed)。photo-swap.ts は共通部",
+        "つぐ手 d1-v3・d1-v10 の既存テストは無変更で通る。transform・CSS・PC/SP の描画はバイト単位で同じ (before/after 比較)",
+        "輪の E2E (模擬写真): placeholder 残り無し・全画像 naturalWidth>0・PC/SP の横はみ出し無し・板の寸法と写真の充填。失敗は拒否で出力無し (AI デモ写真・欠けた枠・権利・寸法・SP 写真無し・遅い失敗)",
+        "docs/design/bicycle-ai-photo-brief.md と bicycle-ai-photo-prompt.txt (SHA 8b659d02…、未承認)",
+        "image-autorun-wsl-install-prep.md §7: 実機の確認済みの状態と UnitFileState=static の意味"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap.test.ts",
+        "npx vitest run tests/unit/design-agent/autorun-shops.test.ts",
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/image-autorun.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-intake.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/photo-slots.ts (端の集合の一般化だけ)",
+        "lib/design-agent/quality-pipeline/photo-swap-shops.ts",
+        "scripts/design-artifact/photo-swap.ts",
+        "scripts/design-artifact/photo-slots.ts",
+        "scripts/sales-design-worker/autorun-shops.ts (未対応の理由の文だけ)",
+        "design-library/research/quality-pipeline/poc/bicycle/photo-slots-d1-v7.json",
+        "design-library/research/quality-pipeline/poc/bicycle/photo-slot-edges-d1-v7.json",
+        "docs/design/bicycle-ai-photo-brief.md",
+        "docs/design/bicycle-ai-photo-prompt.txt",
+        "docs/operations/image-autorun-wsl-install-prep.md",
+        "tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts",
+        "tests/unit/design-agent/autorun-shops.test.ts",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "real Codex・画像生成・写真のコミット",
+        "AUTORUN_SHOPS・cycle.sh の IMAGE_AUTORUN_SHOPS への輪の追加",
+        "古い研究版の編集・HOLD の採用",
+        "APPROVED_CAPABILITIES・本番 CSS gate",
+        ".github/workflows・package.json・lockfile",
+        "main・Production・Staging・DB・jail・WSL・root・systemd"
+      ],
+      "human_approval_triggers": [
+        "輪の画像 brief の承認 (本文の SHA を記録し直す)・作業台の PC の大きさ (拡大・1.5倍の例外・1440 までの保証)",
+        "輪のデザインの HOLD (d1-v8 の選択肢) の決定 (版が変われば枠を測り直す)",
+        "輪の real Codex 生成・無人実行の登録 (固定 manifest・root allowlist・1回の承認)"
+      ],
+      "note": "オフラインで成立: 計測・SHA の固定・差し替え・模擬写真の E2E。未承認: 輪の brief、輪のデザイン (HOLD)、無人実行の登録。記録は .ai/reviews/DEV-189.md"
     }
   ]
 }

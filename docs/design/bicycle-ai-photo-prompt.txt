@@ -1,0 +1,42 @@
+DRAFT (未承認) — DEV-189 — 輪 (fictional bicycle repair shop) — demo photo prompts for the research page fidelity/d1-v7.
+Not approved by the owner. Not a run prompt: no tool may be called with this text until the owner approves it.
+
+COMMON:
+Documentary workshop photograph for a fictional bicycle repair shop. Demo image, not a real shop, product or mechanic.
+Setting: a small open-front repair bench at street level, bare grey concrete floor and wall, a charcoal steel
+workbench, worn but clean tools. Light: hard, low late-afternoon side light from one side (about 4300K) with crisp
+shadows and a cool open-shade fill; no flash, no studio softbox look. Colour: asphalt charcoal (#26272a), raw concrete
+grey (#e7e5df), brushed steel (#9aa0a6), black rubber; at most one small signal-yellow (#f2c230) object in a frame,
+and not in every frame. Natural contrast, true blacks, fine grain, no HDR, no teal-orange grade, no vignette.
+Each frame has its own camera position and lens (given per image); do not repeat the same angle or layout across the set.
+No text, letters, numbers, logos, brand names, decals, stickers, serial numbers, shop signs, street signs, licence plates,
+faces, jewellery, tattoos or identifiable places. Components are plain and unbranded.
+
+ph-d (4:3, at least 980x735 px; subject inside x 0.25-0.75, y 0.25-0.75):
+A bicycle wheel clamped in a truing stand, seen straight on at the hub's height with a 50 mm lens at f/4: the rim and
+spokes make a full circle in the centre, the stand's calipers just touching the rim, the far spokes falling soft.
+No hands. The wheel fills about half of the frame, concrete wall behind.
+
+ph-a (3:2, at least 1040x694 px; subject inside x 0.25-0.75, y 0.25-0.75):
+Seen from directly above (90 degrees, 35 mm lens): two anonymous hands in dark work gloves pressing a round rubber patch
+onto a deflated inner tube laid on the steel bench, two plain tyre levers and a small shallow water tray beside it.
+Only hands and forearms with plain grey sleeves, no face. Graphic, flat-lay composition with hard shadows.
+
+ph-c (3:2, at least 1040x694 px; subject inside x 0.25-0.75, y 0.25-0.75):
+A removed bicycle chain lying in a loose S-curve on a folded grey shop rag on the concrete floor, shot low from floor
+level with a 35 mm lens at f/2.8, the nearest links sharp with a thin sheen of oil, the rest falling out of focus
+toward the bench legs. No hands, no people.
+
+ph-b (4:3, at least 980x735 px; subject inside x 0.25-0.75, y 0.25-0.75):
+Macro close-up of a plain rim brake caliper and its pad against the wheel rim, taken from the side with a 100 mm macro
+lens at f/8, the hard side light raking across the metal so the pad's edge and the gap to the rim read clearly.
+Tight framing, no hands, the background a dark blur.
+
+ph-bench-pc (4:3, at least 2030x1523 px; subject inside x 0.20-0.80, y 0.20-0.80):
+A wide environmental view of the open-front repair bench (28 mm lens, eye level, straight verticals): a plain bicycle
+held in a repair stand in the middle, a pegboard of tools on the concrete wall, the charcoal bench to one side, the
+late light falling in from the open front across the floor. No people. Generous empty floor in the foreground.
+
+ph-bench-sp (2:3 portrait, at least 590x885 px; subject inside x 0.20-0.80, y 0.15-0.85):
+The same bench and bicycle in its repair stand framed tall from a step to the left (35 mm lens, slightly above eye
+level): the whole bicycle from tyre to saddle, the pegboard above it, the floor below. No people.

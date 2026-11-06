@@ -13,6 +13,8 @@
  * --edges (DEV-166): the same boards at the widest edge of each CSS breakpoint range (600, 1199, and the desktop cap
  * 1920; EDGE_WINDOWS), kept beside the inventory as photo-slot-edges.json with the same page hashes. A board grows
  * inside its range, so the scale rule is checked there too (photo-swap.test.ts compares).
+ * DEV-189: the edges are the shop's own (photo-swap-shops.ts edgeViewports): 輪 d1-v7's tablet range ends at 999, so
+ * its edges are 600, 999 and 1920, and the file names that set in `edge_viewports` (つぐ手's files keep the default).
  *
  * Nothing is written but --out (a new file). Exit: 0 inventory, 2 refused. Never calls a model, a generator or the
  * network.
@@ -21,7 +23,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { chromium, type Browser } from "playwright";
-import { DESKTOP_CAP_PX, EDGE_VIEWPORTS, EDGE_WINDOWS, PhotoSlotEdges, PhotoSlotInventory, SLOT_DENSITY, SLOT_VIEWPORTS, variantOf, type PhotoSlot, type SlotViewport } from "../../lib/design-agent/quality-pipeline/photo-slots";
+import { edgeViewportsFor } from "../../lib/design-agent/quality-pipeline/photo-swap-shops";
+import { DESKTOP_CAP_PX, EDGE_VIEWPORTS, EDGE_WINDOWS, PhotoSlotEdges, PhotoSlotInventory, SLOT_DENSITY, SLOT_VIEWPORTS, variantOf, type EdgeViewport, type PhotoSlot, type SlotViewport } from "../../lib/design-agent/quality-pipeline/photo-slots";
 
 const REPO = resolve(__dirname, "../..");
 const RESEARCH = join(REPO, "design-library/research/quality-pipeline/poc");
@@ -155,12 +158,13 @@ export async function deriveSlots(browser: Browser, shop: string, pageDir: strin
 }
 
 /** The boards of an inventoried page at the range edges, in the inventory's slot order (same board, same selector). */
-export async function deriveEdges(browser: Browser, inv: PhotoSlotInventory): Promise<PhotoSlotEdges> {
+export async function deriveEdges(browser: Browser, inv: PhotoSlotInventory, viewports: readonly EdgeViewport[] = edgeViewportsFor(inv.shop)): Promise<PhotoSlotEdges> {
   const dir = realpathSync(join(REPO, inv.page_dir));
   if (!(dir + sep).startsWith(realpathSync(RESEARCH) + sep)) throw new Error("REFUSED: the page is outside the research tree");
   if (sha(join(dir, "index.html")) !== inv.html_sha256 || sha(join(dir, "style.css")) !== inv.css_sha256 || sha(join(dir, "copy.json")) !== inv.copy_sha256) throw new Error("REFUSED: the page is not the inventoried page");
-  const at = {} as Record<(typeof EDGE_VIEWPORTS)[number], Found[]>;
-  for (const v of EDGE_VIEWPORTS) at[v] = await measureBoards(browser, dir, EDGE_WINDOWS[v]);
+  const at = {} as Record<EdgeViewport, Found[]>;
+  for (const v of viewports) at[v] = await measureBoards(browser, dir, EDGE_WINDOWS[v]);
+  const isDefault = viewports.join(",") === EDGE_VIEWPORTS.join(",");
   return PhotoSlotEdges.parse({
     schema: "photo_slot_edges_v0",
     shop: inv.shop,
@@ -170,9 +174,10 @@ export async function deriveEdges(browser: Browser, inv: PhotoSlotInventory): Pr
     copy_sha256: inv.copy_sha256,
     derived_by: "scripts/design-artifact/photo-slots.ts --edges",
     desktop_cap_px: DESKTOP_CAP_PX,
+    ...(isDefault ? {} : { edge_viewports: [...viewports] }),
     slots: inv.slots.map((s, i) => ({
       slot_id: s.slot_id,
-      edges: EDGE_VIEWPORTS.map((v) => {
+      edges: viewports.map((v) => {
         const b = at[v][i];
         if (!b || b.label !== `${LABEL}${s.role}` || b.board_selector !== s.board_selector) throw new Error(`REFUSED: ${s.slot_id} is not the same board at ${v}`);
         if (b.width <= 0 || b.height <= 0) throw new Error(`REFUSED: ${s.slot_id} has no size at ${v}`);

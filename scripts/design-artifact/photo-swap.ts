@@ -1,11 +1,16 @@
 /**
- * DEV-166 (Issue #193 comment 6623100651; owner, 2026-11-04 item 3) — OFFLINE research tool. つぐ手 (tsugute) only.
+ * DEV-166 (Issue #193 comment 6623100651; owner, 2026-11-04 item 3) — OFFLINE research tool. つぐ手 (tsugute) and, from
+ * DEV-189 (owner GO 2026-11-06 item 3), 輪 (bicycle, a research-only swap: no AI demo pictures).
  *
  *   npx tsx scripts/design-artifact/photo-swap.ts --page <C page dir> --manifest <intake manifest> --out <new dir>
  *
- * Makes a PRIVATE copy of the つぐ手 C page in which each of its 6 placeholder boards shows a rights-cleared photo,
- * then draws it at PC 1440 and SP 390 (JavaScript off, every request outside the copy refused). The repository page
- * is not changed. Nothing is written inside the repository.
+ * Makes a PRIVATE copy of an inventoried C page in which each of its placeholder boards (つぐ手 6, 輪 d1-v7 5) shows a
+ * rights-cleared photo, then draws it at PC 1440 and SP 390 (JavaScript off, every request outside the copy refused).
+ * The repository page is not changed. Nothing is written inside the repository.
+ *
+ * DEV-189: this file is the COMMON part. What is fixed per shop (the CSS breakpoint ranges and their edges, where the
+ * SP photo is used, the placeholder's HTML structure, the CSS added to the copy, whether AI demo pictures are taken)
+ * lives in lib/design-agent/quality-pipeline/photo-swap-shops.ts. The ranges named below are つぐ手's.
  *
  * Refuses (exit 2, --out not created) unless:
  *  - the page is one a slot inventory was measured on (HTML, CSS and copy hashes). A shop keeps one inventory per
@@ -13,7 +18,7 @@
  *    photo-slot-edges-<page>.json) beside it (つぐ手: d1-v3 and d1-v10);
  *  - --out is a new directory outside the repository whose parent exists;
  *  - the manifest is outside the repository or under the private .intake/;
- *  - every one of the 6 slots has a photo, and each photo opens from .intake/photos/ (no link) and passes
+ *  - every slot of the inventory (つぐ手 6) has a photo, and each photo opens from .intake/photos/ (no link) and passes
  *    checkPhotoRights (quality_verification) against its measured bytes;
  *  - each slot passes planSlot: 2× (1.5–2× only with an owner exception record) at the 4 measured viewports AND at the
  *    widest edge of each breakpoint range (mobile ≤600 at 600, tablet 601–1199 at 1199, desktop at 1920 — wider desktop
@@ -21,8 +26,9 @@
  *    photo's SP-shaped crops (≤1199px on this page) lose the subject.
  *
  * All or nothing: every crop is decoded and cut and the HTML transformed in memory first; the copy is then built in a
- * new temporary sibling of --out (same parent, outside the repository), drawn and checked (6 images loaded, every
- * board an <img alt>, no 写真｜ left), and only then renamed to --out. Any failure removes the temporary directory and
+ * new temporary sibling of --out (same parent, outside the repository), drawn and checked (every image loaded, every
+ * board an <img alt>, no 写真｜ left; DEV-189: no horizontal overflow, and each board keeps its measured size with the
+ * photo filling it), and only then renamed to --out. Any failure removes the temporary directory and
  * leaves --out absent.
  *
  * Crop: real pixel crops with sharp (already in node_modules through next; no dependency is added). Each photo is
@@ -46,35 +52,36 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSyn
 import { chromium, type Browser } from "playwright";
 import { z } from "zod";
 import { checkPhotoRights, loadForbiddenSha256, resolvePrivatePhoto, toPublicPhotoRecord, type PhotoBytesInfo, type PhotoRights } from "../../lib/design-agent/quality-pipeline/photo-rights";
-import { edgesFor, FocalBox, planSlot, PhotoSlotEdges, PhotoSlotInventory, type EdgeVariant, type PhotoSlot, type PlanViewport, type SlotPlan } from "../../lib/design-agent/quality-pipeline/photo-slots";
+import { edgesFor, EDGE_VIEWPORTS, FocalBox, planSlot, PhotoSlotEdges, PhotoSlotInventory, type EdgeVariant, type PhotoSlot, type PlanViewport, type SlotPlan } from "../../lib/design-agent/quality-pipeline/photo-slots";
+import { SWAP_SHOP_IDS, SWAP_SHOP_SPECS, swapShopSpec, TSUGUTE_SWAP_CSS, type SwapRangeKey, type SwapShopSpec } from "../../lib/design-agent/quality-pipeline/photo-swap-shops";
 
 const REPO = resolve(__dirname, "../..");
 export const PIPELINE_ROOT = join(REPO, "design-library/research/quality-pipeline");
-/** The owner started with つぐ手's 6 slots only (not all 15). */
-export const SWAP_SHOPS = ["tsugute"] as const;
+/**
+ * The shops the swap takes: つぐ手 (DEV-166) and 輪 (DEV-189, research only), each with its fixed spec
+ * (photo-swap-shops.ts). Not the image auto-run's list: that is autorun-shops.ts (つぐ手 only).
+ */
+export const SWAP_SHOPS = SWAP_SHOP_IDS;
 /**
  * DEV-185 (owner approval): the fictional shops whose swap may take `ai_generated_demo` pictures (with their full
- * provenance; every other rights check unchanged). Only つぐ手.
+ * provenance; every other rights check unchanged). Only つぐ手 (its spec's aiDemoAllowed; 輪's is false).
  */
-export const AI_DEMO_SHOPS: ReadonlySet<string> = new Set(["tsugute"]);
+export const AI_DEMO_SHOPS: ReadonlySet<string> = new Set(SWAP_SHOP_IDS.filter((id) => SWAP_SHOP_SPECS[id].aiDemoAllowed));
 export const CAPTION_PREFIX = "写真｜";
 
 /**
  * The breakpoints of the pinned つぐ手 CSS (style.css, hash in photo-slots.json): one crop per range. The viewport
  * whose box the crop is cut for comes first; the others in the range use the same file (object-fit: cover). The last
  * of each is the range's widest edge (the board is largest there; a board's shape does not change inside a range).
+ * DEV-189: kept as つぐ手's spec; each shop's own ranges are in photo-swap-shops.ts.
  */
-export const RANGES = [
-  { key: "desktop", media: null, viewports: ["desktop_1440", "desktop_1920"] },
-  { key: "tablet", media: "(max-width: 1199px)", viewports: ["tablet_1024", "tablet_768", "tablet_1199"] },
-  { key: "mobile", media: "(max-width: 600px)", viewports: ["mobile_390", "mobile_600"] },
-] as const satisfies ReadonlyArray<{ key: string; media: string | null; viewports: readonly PlanViewport[] }>;
+export const RANGES = SWAP_SHOP_SPECS.tsugute.ranges;
 
 /**
  * Where a separate SP photo is used: every board of the pinned つぐ手 CSS takes its SP shape at ≤1199px (e.g. ph-dry
  * is 340/500 above it and 4/3 at and below it), so the SP photo serves the tablet and mobile ranges, edges included.
  */
-export const TSUGUTE_SP_VIEWPORTS: readonly PlanViewport[] = ["tablet_1024", "tablet_768", "tablet_1199", "mobile_390", "mobile_600"];
+export const TSUGUTE_SP_VIEWPORTS: readonly PlanViewport[] = SWAP_SHOP_SPECS.tsugute.spViewports;
 
 const RENDERS = [
   { viewport: "desktop_1440", width: 1440, height: 900 },
@@ -116,7 +123,20 @@ export type SwapRefusal = { slot_id?: string; photo?: "pc" | "sp"; codes: string
 export type SwapResult =
   | { ok: true; out: string; summary: SwapSummary; renders: RenderCheck[] }
   | { ok: false; refusals: SwapRefusal[] };
-export type RenderCheck = { viewport: string; file: string; sha256: string; images: number; images_loaded: number; caption_text_left: boolean; boards_matched: number };
+export type RenderCheck = {
+  viewport: string;
+  file: string;
+  sha256: string;
+  images: number;
+  images_loaded: number;
+  caption_text_left: boolean;
+  boards_matched: number;
+  /** DEV-189: document.documentElement.scrollWidth, and whether it is wider than the window (fidelity-measure's rule: > width + 1) */
+  scroll_width: number;
+  horizontal_overflow: boolean;
+  /** DEV-189: boards whose layout box is within 2px of the inventory's measure at this viewport, and whose photo fills it (within 1px) */
+  boards_intact: number;
+};
 type SwapSummary = Record<string, unknown>;
 
 export type SwapOptions = {
@@ -217,8 +237,12 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
   if (matches.length > 1) return { ok: false, code: "INVENTORY_AMBIGUOUS" };
   const inv = matches[0]!;
   if (!existsSync(edgeFiles[0]!)) return { ok: false, code: "EDGES_STALE" };
-  const edges = edgesFor(inv, PhotoSlotEdges.parse(JSON.parse(readFileSync(edgeFiles[0]!, "utf8"))));
+  const edgeFile = PhotoSlotEdges.parse(JSON.parse(readFileSync(edgeFiles[0]!, "utf8")));
+  const edges = edgesFor(inv, edgeFile);
   if (!edges) return { ok: false, code: "EDGES_STALE" };
+  // DEV-189: the edges must be the widest edges of THIS shop's ranges (つぐ手 1199, 輪 999)
+  const want = Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, shop) ? SWAP_SHOP_SPECS[shop as keyof typeof SWAP_SHOP_SPECS].edgeViewports : EDGE_VIEWPORTS;
+  if ((edgeFile.edge_viewports ?? EDGE_VIEWPORTS).join(",") !== want.join(",")) return { ok: false, code: "EDGES_STALE" };
   const hash = (f: string) => sha(readFileSync(join(dir, f)));
   if (hash("index.html") !== inv.html_sha256 || hash("style.css") !== inv.css_sha256 || hash("copy.json") !== inv.copy_sha256) return { ok: false, code: "PAGE_CHANGED" };
   return { ok: true, inv, edges, dir };
@@ -236,10 +260,22 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
  * matched without regard to case; any other element, attribute, text, comment or stray "<" fails closed. The picture goes in first and the seams stay after it, so the design's gold seams are drawn above the
  * photo. A board of the other kind, or with anything else in it, is BOARD_NOT_FOUND.
  */
-export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSlot; alt: string; files: Record<"desktop" | "tablet" | "mobile", string>; size: { width: number; height: number } }>): string {
+export type TransformSlot = { slot: PhotoSlot; alt: string; files: Record<SwapRangeKey, string>; size: { width: number; height: number } };
+export function transformHtml(html: string, slots: ReadonlyArray<TransformSlot>, spec: SwapShopSpec = SWAP_SHOP_SPECS.tsugute): string {
   let out = html;
   for (const { slot, alt, files, size } of slots) {
     const caption = `${CAPTION_PREFIX}${slot.role}`;
+    const sources = spec.ranges
+      .filter((r) => r.media)
+      .slice()
+      .reverse()
+      .map((r) => `<source media="${r.media}" srcset="${escapeHtml(files[r.key])}">`)
+      .join("");
+    const pictureEl = `<picture data-slot="${slot.slot_id}">${sources}<img src="${escapeHtml(files.desktop)}" alt="${escapeHtml(alt)}" width="${size.width}" height="${size.height}"></picture>`;
+    if (spec.structure.kind === "board_before_caption") {
+      out = swapBoardBeforeCaption(out, slot, caption, pictureEl, spec.structure);
+      continue;
+    }
     const re = new RegExp(`[ \\t]*<(figcaption|span)( class="ph-label")?>${[...caption].map(escapeRe).join("(?:<wbr>)?")}</\\1>(\\n?)`, "g");
     const hits = [...out.matchAll(re)];
     if (hits.length !== 1) throw new Error(`CAPTION_NOT_FOUND: ${slot.slot_id}`);
@@ -256,17 +292,32 @@ export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSl
     const inner = seg.slice(start + open.length, end);
     const seams = slot.placeholder === "css_board_with_svg" ? seamBoardInner(inner) : inner === "" ? "" : null;
     if (seams === null) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
-    const sources = RANGES.filter((r) => r.media)
-      .slice()
-      .reverse()
-      .map((r) => `<source media="${r.media}" srcset="${escapeHtml(files[r.key])}">`)
-      .join("");
-    const picture = `<div class="photo"><picture data-slot="${slot.slot_id}">${sources}<img src="${escapeHtml(files.desktop)}" alt="${escapeHtml(alt)}" width="${size.width}" height="${size.height}"></picture>${seams}</div>`;
+    const picture = `<div class="photo">${pictureEl}${seams}</div>`;
     // plain concatenation: no replacement-string expansion of $&, $`, $' or $$ found in the alt text
     out = out.slice(0, figStart) + seg.slice(0, start) + picture + seg.slice(end + "</div>".length) + out.slice(figEnd);
   }
   if (out.replace(/<wbr\s*\/?>/gi, "").includes(CAPTION_PREFIX)) throw new Error("CAPTION_LEFT: 写真｜ text remains in the page");
   return out;
+}
+
+/**
+ * DEV-189 (輪): the caption `<p class="ph…">写真｜…</p>` (one match in the page, <wbr> allowed between its letters) must
+ * directly follow `<container><board><div class="photo"></div></div>`, each tag one of the spec's, with nothing in
+ * between and nothing inside the board but the empty .photo. The caption is taken out and the .photo gets the picture.
+ * Anything else — a second caption, a board with content, a missing container — throws (fail closed).
+ */
+function swapBoardBeforeCaption(html: string, slot: PhotoSlot, caption: string, pictureEl: string, st: Extract<SwapShopSpec["structure"], { kind: "board_before_caption" }>): string {
+  const alt = (xs: readonly string[]) => `(?:${xs.map(escapeRe).join("|")})`;
+  const re = new RegExp(`${alt(st.captionOpen)}${[...caption].map(escapeRe).join("(?:<wbr>)?")}</p>`, "g");
+  const hits = [...html.matchAll(re)];
+  if (hits.length !== 1) throw new Error(`CAPTION_NOT_FOUND: ${slot.slot_id}`);
+  const at = hits[0]!.index!;
+  const before = html.slice(0, at);
+  const board = new RegExp(`(${alt(st.containerOpen)}${alt(st.boardOpen)})<div class="photo"></div></div>$`).exec(before);
+  if (!board) throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+  if (slot.placeholder !== "css_board") throw new Error(`BOARD_NOT_FOUND: ${slot.slot_id}`);
+  // plain concatenation: no replacement-string expansion of $&, $`, $' or $$ found in the alt text
+  return `${before.slice(0, board.index)}${board[1]}<div class="photo">${pictureEl}</div></div>${html.slice(at + hits[0]![0].length)}`;
 }
 
 /**
@@ -309,12 +360,13 @@ export function seamBoardInner(inner: string): string | null {
   return depth === 0 && svgs >= 1 ? inner : null;
 }
 
-/** Appended to the copy's CSS only: the picture fills the board's whole box (the board keeps its clip, tilt, shadow). */
-export const SWAP_CSS = `
-/* DEV-166: private photo swap (this copy only; the repository page is unchanged) */
-.photo > picture { position: absolute; inset: 0; display: block; }
-.photo > picture > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
-`;
+/** Appended to the つぐ手 copy's CSS only: the picture fills the board's whole box (the board keeps its clip, tilt, shadow). Each shop's own: photo-swap-shops.ts. */
+export const SWAP_CSS = TSUGUTE_SWAP_CSS;
+
+/** DEV-189: what a render must show to pass (every shop): every image loaded in its board, no 写真｜, no horizontal overflow, every board intact. */
+export function renderCheckPassed(check: Omit<RenderCheck, "viewport" | "file" | "sha256">, n: number): boolean {
+  return check.images === n && check.images_loaded === n && check.boards_matched === n && check.caption_text_left === false && check.horizontal_overflow === false && check.boards_intact === n;
+}
 
 type Loaded = { which: "pc" | "sp"; record: PhotoRights; info: PhotoBytesInfo; file: string; focal_box: FocalBox };
 
@@ -326,11 +378,12 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
   const manifest = m.data;
   const outCode = checkOut(opts.out);
   if (outCode) refusals.push({ codes: [outCode] });
+  const spec = swapShopSpec(manifest.shop);
   const page = loadInventory(manifest.shop, opts.pageDir);
   if (!page.ok) return { ok: false, refusals: [...refusals, { codes: [page.code] }] };
   const { inv, edges, dir } = page;
 
-  // all six, each once
+  // every slot of the inventory, each once
   const ids = manifest.slots.map((s) => s.slot_id);
   const known = new Set(inv.slots.map((s) => s.slot_id));
   const missing = inv.slots.filter((s) => !ids.includes(s.slot_id)).map((s) => s.slot_id);
@@ -350,7 +403,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
       if (!ref) continue;
       const path = (ref.rights as { private_path?: unknown } | null)?.private_path;
       const opened = typeof path === "string" ? resolvePrivatePhoto(pipelineRoot, path) : ({ ok: false, code: "PATH_NOT_PRIVATE" } as const);
-      const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden, aiDemoAllowed: AI_DEMO_SHOPS.has(manifest.shop) });
+      const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden, aiDemoAllowed: spec.aiDemoAllowed });
       const codes = [...(opened.ok ? [] : [opened.code]), ...(rights.ok ? [] : rights.codes)];
       if (codes.length || !opened.ok || !rights.ok) {
         refusals.push({ slot_id: entry.slot_id, photo: which, codes: [...new Set(codes)] });
@@ -362,7 +415,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
     if (!pc || (entry.sp && !photos.some((p) => p.which === "sp"))) continue;
     const sp = photos.find((p) => p.which === "sp");
     const asInput = (p: Loaded) => ({ width: p.info.width, height: p.info.height, focal_box: p.focal_box });
-    const plan = planSlot(slot, { pc: asInput(pc), ...(sp ? { sp: asInput(sp) } : {}), ...(entry.scale_exception !== undefined ? { scale_exception: entry.scale_exception } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS, edges: edges.get(slot.slot_id) ?? [] });
+    const plan = planSlot(slot, { pc: asInput(pc), ...(sp ? { sp: asInput(sp) } : {}), ...(entry.scale_exception !== undefined ? { scale_exception: entry.scale_exception } : {}) }, { spViewports: spec.spViewports, edges: edges.get(slot.slot_id) ?? [] });
     if (!plan.ok) refusals.push({ slot_id: entry.slot_id, codes: plan.codes });
     plans.push({ slot, entry, plan, photos });
   }
@@ -370,7 +423,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
 
   // build: every crop and the HTML in memory first, then the copy in a temporary sibling of --out, renamed at the end
   const out = resolve(opts.out);
-  const built = await buildCopy(inv, plans, dir, opts.transform ?? transformHtml);
+  const built = await buildCopy(inv, plans, dir, opts.transform ?? transformHtml, spec);
   if (!built.ok) return built;
   const { files, crops, html, css } = built;
   let tmp: string;
@@ -397,8 +450,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
         } catch {
           return abort(tmp, [{ codes: ["RENDER_FAILED", `viewport:${r.viewport}`] }]);
         }
-        const n = inv.slots.length;
-        if (!(check.images === n && check.images_loaded === n && check.boards_matched === n && !check.caption_text_left)) return abort(tmp, [{ codes: ["RENDER_CHECK_FAILED", `viewport:${r.viewport}`] }]);
+        if (!renderCheckPassed(check, inv.slots.length)) return abort(tmp, [{ codes: ["RENDER_CHECK_FAILED", `viewport:${r.viewport}`] }]);
         renders.push({ ...check, file: join(out, "renders", `${r.viewport}.png`) });
       }
     }
@@ -411,7 +463,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
       source_hashes: { html: inv.html_sha256, css: inv.css_sha256, copy: inv.copy_sha256 },
       copy_hashes: { html: sha(html), css: sha(css) },
       crop_method: "pixel crop (sharp: auto-orient, extract, metadata stripped), one file per CSS breakpoint range",
-      scale_checked_at: "the 4 measured viewports and each range's widest edge (600, 1199, 1920); wider than 1920 is not guaranteed",
+      scale_checked_at: `the 4 measured viewports and each range's widest edge (${spec.edgeViewports.map((v) => v.split("_")[1]).join(", ")}); wider than 1920 is not guaranteed`,
       slots: plans.map(({ slot, entry, plan, photos }) => ({
         slot_id: slot.slot_id,
         alt: entry.alt ?? slot.role,
@@ -421,7 +473,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
       })),
       crops,
       files: fileShas,
-      renders: renders.map((r) => ({ viewport: r.viewport, sha256: r.sha256, images_loaded: r.images_loaded, caption_text_left: r.caption_text_left })),
+      renders: renders.map((r) => ({ viewport: r.viewport, sha256: r.sha256, images_loaded: r.images_loaded, caption_text_left: r.caption_text_left, horizontal_overflow: r.horizontal_overflow, boards_intact: r.boards_intact })),
       owner_review_required: true,
       note: "Not a success-case judgement. The owner looks at the renders and decides.",
     };
@@ -451,17 +503,17 @@ type Plan = { slot: PhotoSlot; entry: SwapManifest["slots"][number]; plan: SlotP
 type Built = { ok: true; files: Record<string, Buffer>; crops: Record<string, unknown>; html: string; css: string } | { ok: false; refusals: SwapRefusal[] };
 
 /** Every crop (decoded, cut, re-encoded) and the transformed HTML, in memory. Nothing is written. */
-async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, transform: typeof transformHtml): Promise<Built> {
+async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, transform: typeof transformHtml, spec: SwapShopSpec): Promise<Built> {
   const sharp = (await import("sharp")).default;
   const files: Record<string, Buffer> = {};
-  const slotsOut: Parameters<typeof transformHtml>[1][number][] = [];
+  const slotsOut: TransformSlot[] = [];
   const crops: Record<string, unknown> = {};
   for (const { slot, entry, plan, photos } of plans) {
-    const names = {} as Record<"desktop" | "tablet" | "mobile", string>;
+    const names = {} as Record<SwapRangeKey, string>;
     let size = { width: 0, height: 0 };
-    for (const r of RANGES) {
-      const lead = plan.byViewport[r.viewports[0]];
-      if (!lead.crop.ok) return { ok: false, refusals: [{ slot_id: slot.slot_id, codes: ["NOT_PLANNED", `range:${r.key}`] }] };
+    for (const r of spec.ranges) {
+      const lead = plan.byViewport[r.viewports[0]!];
+      if (!lead || !lead.crop.ok) return { ok: false, refusals: [{ slot_id: slot.slot_id, codes: ["NOT_PLANNED", `range:${r.key}`] }] };
       const src = photos.find((p) => p.which === lead.source)!;
       const c = lead.crop.crop;
       let buf: Buffer;
@@ -491,13 +543,13 @@ async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, tr
   }
   let html: string;
   try {
-    html = transform(readFileSync(join(dir, "index.html"), "utf8"), slotsOut);
+    html = transform(readFileSync(join(dir, "index.html"), "utf8"), slotsOut, spec);
   } catch (e) {
     const code = /^([A-Z_]+):/.exec((e as Error).message)?.[1] ?? "TRANSFORM_FAILED";
     return { ok: false, refusals: [{ codes: [code] }] };
   }
   if (inv.slots.some((s) => !html.includes(`<picture data-slot="${s.slot_id}">`))) return { ok: false, refusals: [{ codes: ["BOARD_NOT_FOUND"] }] };
-  return { ok: true, files, crops, html, css: readFileSync(join(dir, "style.css"), "utf8") + SWAP_CSS };
+  return { ok: true, files, crops, html, css: readFileSync(join(dir, "style.css"), "utf8") + spec.swapCss };
 }
 
 /** Draws the private copy like fidelity-measure (JS off, nothing outside the copy) and checks the swap took. */
@@ -519,16 +571,38 @@ async function renderCopy(browser: Browser, dir: string, r: (typeof RENDERS)[num
     });
     await page.goto(`${base}index.html`, { waitUntil: "load" });
     await page.evaluate("document.fonts.ready.then(() => true)");
+    // DEV-189: each board's layout box (as photo-slots.ts measures it) against the inventory at this viewport
+    const boards = slots.map((s) => {
+      const v = s.variants.find((x) => x.viewport === r.viewport)!;
+      return { sel: s.board_selector, w: v.width_px, h: v.height_px };
+    });
     const check = (await page.evaluate(
-      `((sels) => {
+      `((boards) => {
         const imgs = Array.from(document.querySelectorAll(".photo > picture > img"));
+        // the picture sits in the board itself (つぐ手: the board is the .photo) or in the board's one .photo (輪)
+        const imgOf = (s) => Array.from(document.querySelectorAll(s + " > picture > img[alt], " + s + " > .photo > picture > img[alt]"));
+        const intact = (b) => {
+          const el = document.querySelectorAll(b.sel);
+          const im = imgOf(b.sel);
+          if (el.length !== 1 || im.length !== 1) return false;
+          const cs = getComputedStyle(el[0]);
+          const w = parseFloat(cs.width), h = parseFloat(cs.height);
+          if (Math.abs(w - b.w) > 2 || Math.abs(h - b.h) > 2) return false;
+          // the photo fills the board's box (layout sizes: a tilted board keeps them)
+          const host = im[0].closest(".photo");
+          return Math.abs(im[0].offsetWidth - host.offsetWidth) <= 1 && Math.abs(im[0].offsetHeight - host.offsetHeight) <= 1 && Math.abs(host.offsetWidth - w) <= 1 && Math.abs(host.offsetHeight - h) <= 1;
+        };
+        const de = document.documentElement;
         return {
           images: imgs.length,
           images_loaded: imgs.filter((i) => i.complete && i.naturalWidth > 0).length,
           caption_text_left: document.body.innerText.includes(${JSON.stringify(CAPTION_PREFIX)}),
-          boards_matched: sels.filter((s) => document.querySelectorAll(s + " > picture > img[alt]").length === 1).length,
+          boards_matched: boards.filter((b) => imgOf(b.sel).length === 1).length,
+          scroll_width: de.scrollWidth,
+          horizontal_overflow: de.scrollWidth > window.innerWidth + 1,
+          boards_intact: boards.filter(intact).length,
         };
-      })(${JSON.stringify(slots.map((s) => s.board_selector))})`,
+      })(${JSON.stringify(boards)})`,
     )) as Omit<RenderCheck, "viewport" | "file" | "sha256">;
     const png = await page.screenshot({ fullPage: true, path: file });
     return { viewport: r.viewport, file, sha256: sha(png), ...check };
