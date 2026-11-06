@@ -382,8 +382,15 @@ image_grant() {
   # While a grant exists, any other process of the worker user could clear the worker's own markers and start run.sh
   # again. sr-designgen has no login shell, cron, at or linger (admin.sh); only root starts it (admin.sh run, the
   # jailed Claude service). So: no grant unless the jailed Claude is stopped and the user has no process at all.
-  if systemctl is-active --quiet sr-jail-claude.service 2>/dev/null || pgrep -U "$WORKER_USER" >/dev/null 2>&1 || pgrep -u "$WORKER_USER" >/dev/null 2>&1; then
-    say "image grant: IMAGE_GRANT_USER_BUSY (the jailed Claude or another $WORKER_USER process is running; job $job)"
+  # Fail closed: the jailed Claude must be stopped (inactive / failed — not activating, not auto-restart) AND not enabled
+  # (sr-jail-net's ExecStartPost starts it again when it is enabled). Any other answer, an error, or "not-found" (the
+  # jail is installed on the owner's machine; anything else is unexpected) means busy.
+  local claude_state claude_enabled
+  claude_state="$(systemctl show -p ActiveState --value sr-jail-claude.service 2>/dev/null)" || claude_state=error
+  claude_enabled="$(systemctl is-enabled sr-jail-claude.service 2>/dev/null)" || true
+  if ! [[ "$claude_state" =~ ^(inactive|failed)$ ]] || ! [[ "$claude_enabled" =~ ^(disabled|masked)$ ]] ||
+    pgrep -U "$WORKER_USER" >/dev/null 2>&1 || pgrep -u "$WORKER_USER" >/dev/null 2>&1; then
+    say "image grant: IMAGE_GRANT_USER_BUSY (the jailed Claude is not stopped and disabled, or another $WORKER_USER process is running; job $job)"
     return 0
   fi
   local boot

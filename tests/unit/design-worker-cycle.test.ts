@@ -729,6 +729,17 @@ describe("cycle.sh: the one-use image grant (DEV-187)", () => {
     const grant = join(w.t, "var/cache/sr-design-image-grant/grant.json");
     const admin = join(w.t, "root/sr-capture-admin/scripts/sales-design-capture/admin.sh");
     const body = readFileSync(admin, "utf8").replace(/^#!\/bin\/bash\n/, "");
+    // systemctl as the grant's precheck sees it: sr-jail-claude.service inactive and disabled unless the scenario says otherwise
+    const sysctl = join(w.bin, "systemctl");
+    exe(sysctl, `u="\${@: -1}"
+case "$1" in
+  show) [ ! -f '${w.sc}/show-fail' ] || exit 1
+    if [ -f '${w.sc}'/active-$u ]; then echo active; elif [ -f '${w.sc}'/state-$u ]; then cat '${w.sc}'/state-$u; else echo inactive; fi; exit 0 ;;
+  is-enabled) if [ "$u" = sr-jail-claude.service ]; then
+      [ ! -f '${w.sc}/isenabled-fail' ] || exit 1
+      st=$(cat '${w.sc}/claude-enabled' 2>/dev/null || echo disabled); echo "$st"; [ "$st" = enabled ]; exit; fi ;;
+esac
+${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     exe(admin, `if [ -f '${grant}' ]; then { stat -c '%a' '${grant}'; cat '${grant}'; } >> '${w.sc}/grants.log'; else echo NO_GRANT >> '${w.sc}/grants.log'; fi\n${body}`);
     mkdirSync(join(w.t, "etc/sr-design-worker"), { recursive: true });
     const entries = o.entries ?? [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }];
@@ -891,6 +902,32 @@ describe("cycle.sh: the one-use image grant (DEV-187)", () => {
     for (const x of [a, b]) {
       expect(x.grants()).not.toContain("{");
       expect(x.used("approval", APPROVAL) || x.used("job", JOB_ID)).toBe(false);
+    }
+  });
+
+  it.each([
+    ["ActiveState activating (auto-restart)", (sc: string) => writeFileSync(join(sc, "state-sr-jail-claude.service"), "activating\n")],
+    ["inactive but enabled (sr-jail-net would start it again)", (sc: string) => writeFileSync(join(sc, "claude-enabled"), "enabled")],
+    ["not-found (unexpected on the owner's machine)", (sc: string) => writeFileSync(join(sc, "claude-enabled"), "not-found")],
+    ["systemctl show fails", (sc: string) => writeFileSync(join(sc, "show-fail"), "")],
+    ["systemctl is-enabled fails with no answer", (sc: string) => writeFileSync(join(sc, "isenabled-fail"), "")],
+  ])("H1': %s → IMAGE_GRANT_USER_BUSY, no grant, nothing used up (fail closed)", (_, arrange) => {
+    const w = imageWorld();
+    arrange(w.sc);
+    const r = cycle(w);
+    expect(r.out).toContain("image grant: IMAGE_GRANT_USER_BUSY");
+    expect(w.grants()).not.toContain("{");
+    expect(w.used("approval", APPROVAL) || w.used("job", JOB_ID)).toBe(false);
+  });
+
+  it.each(["inactive", "failed"])("H1': ActiveState %s + disabled/masked + no process → the grant is issued", (state) => {
+    for (const enabled of ["disabled", "masked"]) {
+      const w = imageWorld();
+      writeFileSync(join(w.sc, "state-sr-jail-claude.service"), `${state}\n`);
+      writeFileSync(join(w.sc, "claude-enabled"), enabled);
+      const r = cycle(w);
+      expect(r.out, `${state}/${enabled}`).toContain("image grant: IMAGE_GRANT_ISSUED");
+      expect(w.grants()).toContain("{");
     }
   });
 
