@@ -112,6 +112,7 @@ CYCLE_RESULT <CODE> phase=<before_claim|claim_unknown|after_claim|done> job=<b-�
 | `CYCLE_STOP_IDLE_RUN` | 22 | before_claim | idle run が失敗・符号あり・idle でない・結果 file が残った | 出力の符号を見る（`LOGIN_REQUIRED` なら `admin.sh login`、`JAIL_UNSAFE` なら `admin.sh jail-check`） |
 | `CYCLE_STOP_DELIVER_BEFORE` | 23 | before_claim | 最初の `--deliver-only` がすべて 0 でない | 想定外の ledger・spool。読むだけで調べる |
 | `CYCLE_STOP_TIME_BEFORE_CLAIM` | 24 | before_claim | claim の前に 4220 秒残っていない | 次の回でよい（続くなら idle run の時間を調べる） |
+| `CYCLE_STOP_IMAGE_NOT_GRANTED` | 26 | before_claim | DEV-192: 画像のスイッチがあり（`enabled:false` でない）画像ジョブが待っている（または読めない）のに grant を出さなかった（`image grant:` の行が理由）。switch ファイルが安全でない（`CONFIG_UNSAFE`）ときも止まる。idle run も bridge も動かさない | 再試行しない。スイッチを消し（OFF）、符号をオーナーが見る |
 | `CYCLE_STOP_CLAIM` | 25 | before_claim / after_claim | `--once` が失敗した、ちょうど 1 件でない、`BRIDGE_WORKER_IDLE` | `stopped: BRIDGE_*` を見る（§7）。phase が after_claim なら §6 |
 | `CYCLE_STOP_TIME_BEFORE_WORKER` | 30 | after_claim | claim の後、worker の前に 3960 秒残っていない | §6 |
 | `CYCLE_STOP_WORKER_SIGNAL` | 31 | after_claim | worker の出力に STOP の符号 | 符号の原因（login・jail・bridge）を先に直し、§6 |

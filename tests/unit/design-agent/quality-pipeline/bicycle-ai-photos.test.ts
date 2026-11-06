@@ -28,7 +28,10 @@ import {
   BICYCLE_RUN_APPROVAL_ID,
   BICYCLE_RUN_PROMPT_CANDIDATE_CHARS,
   BICYCLE_RUN_PROMPT_CANDIDATE_SHA256,
+  buildBicycleRunPrompt,
   buildBicycleRunPromptCandidate,
+  BICYCLE_RUN_PROMPT_APPROVAL,
+  readApprovedBicyclePrompt,
   checkApprovedBicyclePrompt,
   parseBicyclePrompt,
   photoPrompt,
@@ -37,7 +40,7 @@ import { AI_DEMO_PUBLIC_LABEL, checkPhotoRights, loadForbiddenSha256, toPublicPh
 import { edgesFor, PhotoSlotEdges, PhotoSlotInventory, planSlot } from "@/lib/design-agent/quality-pipeline/photo-slots";
 import { SWAP_SHOP_SPECS } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
 import { importBicycleAiPhotos } from "../../../../scripts/design-artifact/bicycle-ai-intake";
-import { aiDemoAllowedFor, AI_DEMO_SHOPS, swapPage, SwapManifest } from "../../../../scripts/design-artifact/photo-swap";
+import { AI_DEMO_SHOPS, swapPage, SwapManifest } from "../../../../scripts/design-artifact/photo-swap";
 
 const REPO = resolve(__dirname, "../../../..");
 const POC = "design-library/research/quality-pipeline/poc/bicycle";
@@ -106,7 +109,7 @@ describe("DEV-191 the owner-approved prompt: verified and pinned, its bytes uned
     expect(() => parseBicyclePrompt(swapped)).toThrow(/PROMPT_PHOTO_ORDER/);
     expect(() => parseBicyclePrompt(TEXT.replace("at least 980x735 px; subject inside x 0.25-0.75", "at least 900x735 px; subject inside x 0.25-0.75"))).toThrow(/PROMPT_HEADING_MISMATCH: ph-d/);
   });
-  it("the run prompt is a CANDIDATE: fixed rules + the approved text from COMMON: on, byte for byte; no run approval id exists", () => {
+  it("the run prompt (DEV-192: owner-approved): fixed rules + the approved text from COMMON: on, byte for byte; no run approval id in code", () => {
     const run = buildBicycleRunPromptCandidate(TEXT);
     expect([sha(run), run.length]).toEqual([BICYCLE_RUN_PROMPT_CANDIDATE_SHA256, BICYCLE_RUN_PROMPT_CANDIDATE_CHARS]);
     const at = TEXT.indexOf("\nCOMMON:\n") + 1;
@@ -120,9 +123,36 @@ describe("DEV-191 the owner-approved prompt: verified and pinned, its bytes uned
     expect(BICYCLE_RUN_APPROVAL_ID).toBeNull();
     expect(() => buildBicycleRunPromptCandidate(`${TEXT}x`)).toThrow(/PROMPT_NOT_APPROVED/);
   });
+  it("DEV-192: the owner's one-time-run approval pins both byte sequences; a change in either voids it (fails closed, never throws)", () => {
+    expect(BICYCLE_RUN_PROMPT_APPROVAL).toEqual({
+      approval_record: "bicycle-one-time-run-20261107",
+      scope: "one_time_run_of_6_pictures_not_a_standing_permission",
+      decided_by: "owner",
+      decided_on: "2026-11-07",
+      evidence: "Issue #193 comment 6689664215",
+      shop: "bicycle",
+      page: "d1-v9",
+      jobs: 1,
+      max_image_calls: 6,
+      codex_runs: 1,
+      timeout_minutes: 15,
+      retry: false,
+      run_prompt_sha256: "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447",
+      run_prompt_chars: 4566,
+      core_prompt_sha256: "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594",
+      core_prompt_bytes: 3865,
+      void_if_either_byte_sequence_changes: true,
+      run_approval_id_in_code: false,
+    });
+    const run = buildBicycleRunPrompt();
+    expect([sha(run), run.length]).toEqual([BICYCLE_RUN_PROMPT_CANDIDATE_SHA256, 4566]);
+    expect(readApprovedBicyclePrompt()).toBe(TEXT);
+    // the core text changed by one byte (even in the historical DRAFT lines, which the run prompt does not carry): void
+    for (const t of [TEXT.replace("No hands.", "No hands!"), TEXT.replace("DRAFT (未承認)", "DRAFT (承認済)"), `${TEXT}\n`, ""]) expect(buildBicycleRunPrompt(t)).toBe("");
+  });
 });
 
-describe("DEV-191 offline E2E with 6 STUB pictures: bundle → intake → rights → swap (OFF candidate seam) → PC 1440 / tablet 768 / SP 390", () => {
+describe("DEV-191/192 offline E2E with 6 STUB pictures: bundle → intake → rights → swap → PC 1440 / tablet 768 / SP 390", () => {
   let root: string;
   let browser: Browser;
   let n = 0;
@@ -225,9 +255,9 @@ describe("DEV-191 offline E2E with 6 STUB pictures: bundle → intake → rights
         expect(checkPhotoRights(rec, measured, { now: NOW, forbiddenSha256: FORBIDDEN, aiDemoAllowed: true, purpose: "public_site" })).toMatchObject({ ok: false, codes: expect.arrayContaining(["AI_DEMO_NOT_FOR_PUBLIC_SITE"]) });
       }
 
-    // the swap through the test-only OFF candidate seam, rendered at PC 1440, tablet 768 and SP 390
+    // DEV-192: the swap takes 輪's AI demo pictures (owner GO 2026-11-07), rendered at PC 1440, tablet 768 and SP 390
     const out = join(c.dir, "swap");
-    const res = await swapPage({ pageDir: PAGE, manifest: m, out, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN, browser, offlineAiDemoCandidate: true });
+    const res = await swapPage({ pageDir: PAGE, manifest: m, out, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN, browser });
     if (!res.ok) throw new Error(JSON.stringify(res.refusals));
     expect(res.renders.map((x) => x.viewport)).toEqual(["desktop_1440", "tablet_768", "mobile_390"]);
     for (const x of res.renders) expect(x, x.viewport).toMatchObject({ images: 5, images_loaded: 5, boards_matched: 5, caption_text_left: false, horizontal_overflow: false, boards_intact: 5 });
@@ -259,39 +289,37 @@ describe("DEV-191 offline E2E with 6 STUB pictures: bundle → intake → rights
     expect(readdirSync(join(out, "renders")).sort()).toEqual(["desktop_1440.png", "mobile_390.png", "tablet_768.png"]);
   }, 240_000);
 
-  it("the production default refuses: the same pictures without the seam, or through the seam with a real generator's label", async () => {
+  it("DEV-192: the swap takes 輪's AI demo pictures (aiDemoAllowed), rights checks unchanged; the test-only seam is gone", async () => {
+    expect(SWAP_SHOP_SPECS.bicycle.aiDemoAllowed).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS.bicycle, "aiDemoCandidate")).toBe(false);
+    expect([...AI_DEMO_SHOPS].sort()).toEqual(["bicycle", "tsugute"]);
+    expect(readFileSync(join(REPO, "scripts/design-artifact/photo-swap.ts"), "utf8")).not.toMatch(/offlineAiDemoCandidate|aiDemoAllowedFor/);
+    // a real-generator bundle (as the worker hook writes it) passes intake and swap without any test option
     const c = fresh();
-    const { dir } = await write(c, await batch());
-    const r = await intake(c, dir);
+    const real = await write(c, await batch(), { generator: BICYCLE_GENERATOR });
+    const r = await intake(c, real.dir, { generators: [BICYCLE_GENERATOR] });
     if (!r.ok) throw new Error(r.codes.join(","));
-    let out = join(c.dir, "swap-default");
-    const def = await swapPage({ pageDir: PAGE, manifest: r.manifest, out, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
-    expect(def.ok).toBe(false);
-    if (!def.ok) {
-      expect(def.refusals).toHaveLength(6);
-      for (const x of def.refusals) expect(x.codes).toEqual(["AI_DEMO_NOT_ALLOWED"]);
-    }
-    expect(existsSync(out)).toBe(false);
-    // a real (tool-made) picture's provenance through the seam: still refused
-    const c2 = fresh();
-    const real = await write(c2, await batch(), { generator: BICYCLE_GENERATOR });
-    const r2 = await intake(c2, real.dir, { generators: [BICYCLE_GENERATOR] });
-    if (!r2.ok) throw new Error(r2.codes.join(","));
-    out = join(c2.dir, "swap-seam-real");
-    const seam = await swapPage({ pageDir: PAGE, manifest: r2.manifest, out, pipelineRoot: c2.pipeline, now: NOW, forbiddenSha256: FORBIDDEN, offlineAiDemoCandidate: true });
-    expect(seam.ok).toBe(false);
-    if (!seam.ok) for (const x of seam.refusals) expect(x.codes).toEqual(["AI_DEMO_NOT_ALLOWED"]);
-    expect(existsSync(out)).toBe(false);
-    // the spec: 輪 aiDemoAllowed stays false (an OFF candidate only); つぐ手 is unchanged
-    expect(SWAP_SHOP_SPECS.bicycle.aiDemoAllowed).toBe(false);
-    expect(SWAP_SHOP_SPECS.bicycle.aiDemoCandidate).toEqual({ status: "off_candidate", promptSha256: BICYCLE_PROMPT_SHA256, offlineStubGenerator: BICYCLE_OFFLINE_STUB_GENERATOR });
-    expect(AI_DEMO_SHOPS.has("bicycle")).toBe(false);
-    expect([...AI_DEMO_SHOPS]).toEqual(["tsugute"]);
-    const stubRec = { source_kind: "ai_generated_demo", ai_provenance: { generator: BICYCLE_OFFLINE_STUB_GENERATOR, prompt_sha256: BICYCLE_PROMPT_SHA256 } };
-    expect(aiDemoAllowedFor(SWAP_SHOP_SPECS.bicycle, stubRec, undefined)).toBe(false);
-    expect(aiDemoAllowedFor(SWAP_SHOP_SPECS.bicycle, stubRec, true)).toBe(true);
-    expect(aiDemoAllowedFor(SWAP_SHOP_SPECS.bicycle, { ...stubRec, ai_provenance: { ...stubRec.ai_provenance, prompt_sha256: "0".repeat(64) } }, true)).toBe(false);
-    expect(aiDemoAllowedFor(SWAP_SHOP_SPECS.tsugute, {}, undefined)).toBe(true);
+    const out = join(c.dir, "swap-real-label");
+    const res = await swapPage({ pageDir: PAGE, manifest: r.manifest, out, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
+    if (!res.ok) throw new Error(JSON.stringify(res.refusals));
+    // the rights are still demo only: a record that claims public web or lacks its provenance is refused
+    const m = SwapManifest.parse(r.manifest);
+    const rec = m.slots[0]!.pc.rights as Record<string, unknown>;
+    const bad = { ...m, slots: [{ ...m.slots[0]!, pc: { ...m.slots[0]!.pc, rights: { ...rec, ai_provenance: undefined } } }, ...m.slots.slice(1)] };
+    const out2 = join(c.dir, "swap-no-provenance");
+    const r2 = await swapPage({ pageDir: PAGE, manifest: bad, out: out2, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.refusals[0]!.codes).toContain("RIGHTS_MISSING_AI_PROVENANCE");
+    expect(existsSync(out2)).toBe(false);
+    // PR #234 review L5: 輪 takes only AI demo pictures made from the approved core text (its provenance's prompt SHA)
+    expect(SWAP_SHOP_SPECS.bicycle.aiDemoPromptSha256).toBe(BICYCLE_PROMPT_SHA256);
+    expect(Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS.tsugute, "aiDemoPromptSha256")).toBe(false);
+    const prov = rec.ai_provenance as Record<string, unknown>;
+    const otherPrompt = { ...m, slots: [{ ...m.slots[0]!, pc: { ...m.slots[0]!.pc, rights: { ...rec, ai_provenance: { ...prov, prompt_sha256: "8b659d0242340085e6bd7cc6422b4102fa02d75575e79a769d6b87ef1cb50bd7" } } } }, ...m.slots.slice(1)] };
+    const out3 = join(c.dir, "swap-other-prompt");
+    const r3 = await swapPage({ pageDir: PAGE, manifest: otherPrompt, out: out3, pipelineRoot: c.pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
+    expect(r3.ok ? [] : r3.refusals).toEqual([{ slot_id: "ph-d", photo: "pc", codes: ["AI_DEMO_PROMPT_NOT_APPROVED"] }]);
+    expect(existsSync(out3)).toBe(false);
   }, 120_000);
 
   describe("refusal on failure: refused, and nothing written", () => {

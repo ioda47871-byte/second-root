@@ -38,8 +38,8 @@ describe("DEV-188 the shop allowlist: root and worker agree", () => {
     expect(rootAllowlist()).toEqual(fromManifest);
   });
 
-  it("only つぐ手 is implemented", () => {
-    expect(AUTORUN_SHOP_IDS).toEqual(["tsugute"]);
+  it("つぐ手 and (DEV-192, owner GO 2026-11-07, one approved run) 輪 are implemented — no other shop", () => {
+    expect(AUTORUN_SHOP_IDS).toEqual(["tsugute", "bicycle"]);
   });
 
   it("cycle.sh compares the job's shop with that allowlist, not with a literal", () => {
@@ -72,7 +72,11 @@ describe("DEV-188 every implemented entry is complete and pinned", () => {
       const inv = JSON.parse(readFileSync(join(REPO, shop.slotInventory), "utf8")) as { shop: string; page_dir: string; slots: Array<{ slot_id: string }> };
       expect(inv.shop).toBe(id);
       expect(inv.page_dir).toBe(shop.pageDir);
-      expect(inv.slots.map((s) => s.slot_id).sort()).toEqual([...shop.slotIds].sort());
+      // DEV-192: a slot that takes two pictures (輪's bench PC + SP) maps its photo ids to the one slot; every photo maps
+      // to a slot of the inventory and every slot gets at least one photo
+      const photoToSlot: Readonly<Record<string, string>> = "photoToSlot" in shop ? shop.photoToSlot : Object.fromEntries(shop.slotIds.map((s) => [s, s]));
+      expect(Object.keys(photoToSlot)).toEqual([...shop.slotIds]);
+      expect(inv.slots.map((s) => s.slot_id).sort()).toEqual([...new Set(shop.slotIds.map((s) => photoToSlot[s]!))].sort());
       expect(existsSync(join(REPO, shop.slotEdges))).toBe(true);
       // the swap takes the shop and its ai_generated_demo pictures
       expect((SWAP_SHOPS as readonly string[]).includes(id)).toBe(true);
@@ -118,14 +122,14 @@ describe("DEV-188 unimplemented shops stay out (未対応)", () => {
     expect(wa.page_dir.endsWith("/d1-v2")).toBe(true);
   });
 
-  it("DEV-189: 輪's research swap is not an approval — no AI demo pictures, no auto-run, a 未承認 brief", () => {
-    expect(SWAP_SHOP_SPECS.bicycle.aiDemoAllowed).toBe(false);
-    expect(Object.prototype.hasOwnProperty.call(AUTORUN_SHOPS, "bicycle")).toBe(false);
-    expect(rootAllowlist().bicycle).toBeUndefined();
-    expect(UNIMPLEMENTED_SHOPS.bicycle).toContain("未承認");
+  it("DEV-192 (owner GO 2026-11-07, comment 6689664215): 輪 left the unimplemented list for one approved run — swap, worker and root agree", () => {
+    expect(Object.prototype.hasOwnProperty.call(UNIMPLEMENTED_SHOPS, "bicycle")).toBe(false);
+    expect(SWAP_SHOP_SPECS.bicycle.aiDemoAllowed).toBe(true);
+    expect(AUTORUN_SHOPS.bicycle.page).toBe("d1-v9");
+    expect(rootAllowlist().bicycle).toBe(6);
     const brief = readFileSync(join(REPO, "docs/design/bicycle-ai-photo-brief.md"), "utf8");
-    expect(brief).toContain("未承認");
-    // its page inventory is d1-v7, beside the old d1-v2 one (no photo-slot-edges.json without a page suffix)
+    expect(brief).toContain("6689664215");
+    // its older page inventories stay beside d1-v9's (no photo-slot-edges.json without a page suffix)
     expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slots-d1-v7.json"))).toBe(true);
     expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slot-edges-d1-v7.json"))).toBe(true);
   });

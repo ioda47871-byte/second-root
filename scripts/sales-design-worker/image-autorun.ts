@@ -20,8 +20,8 @@
  * owner's approval entry with the same scope and this exact job_id (REFUSED_NO_APPROVAL), root's one-run grant for
  * these exact bytes (REFUSED_NO_GRANT; DEV-187: cycle.sh uses up the approval and job id in root's state first). Then the approval is reserved with an atomic mkdir
  * (never retried from here on), and ONE generation (generateImagesInOneRun, at most the shop's slot count of image
- * calls — 6 for つぐ手 — 15 min) runs, then the shop's intake (ai_generated_demo records), the swap of the shop's
- * approved page and its PC 1440 / SP 390 renders into a private dir under the worker's results root.
+ * calls — 6 for つぐ手 and 輪 — 15 min) runs, then the shop's intake (ai_generated_demo records), the swap of the shop's
+ * approved page and its renders (つぐ手 PC 1440 / SP 390; 輪 also tablet 768) into a private dir under the worker's results root.
  * DEV-188: everything shop-specific (page, slots, pinned prompt, bundle, intake, rights) comes from the fixed,
  * code-defined manifest in autorun-shops.ts; a job only selects allowlisted values. Any failure writes the STOPPED marker. Every decision is one audit line
  * (stdout and <state>/image-autorun/audit.jsonl): codes, ids, hashes and paths only.
@@ -42,6 +42,7 @@ import { cleanupActiveImageCalls, generateImagesInOneRun, MAX_BATCH_IMAGES, type
 
 /** the worker's stop handler removes a cut-off image call's session log and image dir (as tsugute-photos.ts) */
 export { cleanupActiveImageCalls };
+import { writeBicyclePhotosForRun } from "../../lib/design-agent/design-image/bicycle-photos";
 import { writeTsugutePhotos } from "../../lib/design-agent/design-image/tsugute-photos";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { TSUGUTE_PHOTOS_APPROVAL_ID } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
@@ -82,7 +83,19 @@ export const MAX_APPROVAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const LEDGER = "poc-approval-used";
 
 /** DEV-188: the run-bundle writers, by the bundle schema a shop's manifest names (autorun-shops.ts). */
-const BUNDLE_WRITERS = { tsugute_ai_photos_v0: writeTsugutePhotos } as const;
+type BundleInput = { outRoot: string; batch: ImageBatchResult; commit: string; prompt: string; generatedAt: string; approvalId: string };
+type BundleOutcome = { dir: string; status: "complete" | "stopped"; stop_code: string | null; images: number; image_tool_calls: number };
+/** DEV-192: one outcome shape for every shop's writer (つぐ手's manifest is unchanged; 輪's photos are its 6 pictures) */
+const BUNDLE_WRITERS: Record<"tsugute_ai_photos_v0" | "bicycle_ai_photos_v0", (o: BundleInput) => Promise<BundleOutcome>> = {
+  tsugute_ai_photos_v0: async (o) => {
+    const { dir, manifest } = await writeTsugutePhotos(o);
+    return { dir, status: manifest.status, stop_code: manifest.stop_code, images: manifest.slots.length, image_tool_calls: manifest.image_tool_calls };
+  },
+  bicycle_ai_photos_v0: async (o) => {
+    const { dir, manifest } = await writeBicyclePhotosForRun(o);
+    return { dir, status: manifest.status, stop_code: manifest.stop_code, images: manifest.photos.length, image_tool_calls: manifest.image_tool_calls };
+  },
+};
 
 const Scope = z.strictObject({
   shop: z.enum(AUTORUN_SHOP_IDS),
@@ -360,8 +373,9 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
     const timeoutMs = Math.min(CODEX_TIMEOUT_MS, o.deadline.remainingMs() - 5 * 60 * 1000);
     const batch = await generate({ prompt, maxImages: job.slot_ids.length, timeoutMs });
     step = "WRITE_BUNDLE";
-    const { dir, manifest } = await BUNDLE_WRITERS[shop.bundle]({ outRoot: join(out, "photos"), batch, commit: o.workerCommit, prompt, generatedAt: now().toISOString(), approvalId: job.approval_id });
-    await audit("GENERATED", { ...base, status: manifest.status, stop_code: manifest.stop_code, images: manifest.slots.length, image_tool_calls: manifest.image_tool_calls });
+    const manifest = await BUNDLE_WRITERS[shop.bundle]({ outRoot: join(out, "photos"), batch, commit: o.workerCommit, prompt, generatedAt: now().toISOString(), approvalId: job.approval_id });
+    const dir = manifest.dir;
+    await audit("GENERATED", { ...base, status: manifest.status, stop_code: manifest.stop_code, images: manifest.images, image_tool_calls: manifest.image_tool_calls });
     if (manifest.status !== "complete") return await fail("FAILED_GENERATION", { stop_code: manifest.stop_code });
     const pipelineRoot = join(out, "pipeline");
     await mkdir(join(pipelineRoot, ".intake", "photos"), { recursive: true, mode: 0o700 });

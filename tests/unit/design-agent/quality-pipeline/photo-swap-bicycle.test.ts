@@ -396,16 +396,18 @@ describe("輪 E2E with MOCK photos: intake → rights → crop → swap → PC/S
   }, 180_000);
 
   describe("fail closed: refused, and no output at all", () => {
-    it("輪 takes no ai_generated_demo picture (no owner approval): AI_DEMO_NOT_ALLOWED", async () => {
+    // DEV-192 (owner GO 2026-11-07): the swap now takes 輪's ai_generated_demo pictures (DEV-189 refused them all, before
+    // that approval); an AI demo record without its provenance is still refused, and nothing is written
+    it("輪 takes ai_generated_demo pictures only with their provenance (DEV-192): RIGHTS_MISSING_AI_PROVENANCE", async () => {
       expect(SWAP_SHOPS).toContain("bicycle");
-      expect(AI_DEMO_SHOPS.has("bicycle")).toBe(false);
+      expect(AI_DEMO_SHOPS.has("bicycle")).toBe(true);
       const slots = await fiveSlots("ai");
       const pc0 = (slots[0]!.pc as { rights: Record<string, unknown> }).rights;
-      const ai = { ...pc0, source_kind: "ai_generated_demo", owner: "mock (AI demo)", ai_provenance: { generator: "mock generator", model: "mock-model", generated_at: "2026-11-05T10:00:00Z", prompt_sha256: "8b659d0242340085e6bd7cc6422b4102fa02d75575e79a769d6b87ef1cb50bd7", approval_id: "bicycle-not-approved", demo_only: true } };
+      const ai = { ...pc0, source_kind: "ai_generated_demo", owner: "mock (AI demo)" };
       slots[0] = { ...slots[0]!, pc: { rights: ai, focal_box: CENTRE } };
       const out = outDir();
       const res = await run(slots, out, browser);
-      expect(res.ok ? [] : res.refusals).toEqual([{ slot_id: "ph-d", photo: "pc", codes: ["AI_DEMO_NOT_ALLOWED"] }]);
+      expect(res.ok ? [] : res.refusals).toEqual([{ slot_id: "ph-d", photo: "pc", codes: ["RIGHTS_MISSING_AI_PROVENANCE"] }]);
       nothingLeft(out);
     });
     it("a missing slot, an unknown slot, a bad rights record, a too-small photo", async () => {

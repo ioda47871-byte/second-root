@@ -431,12 +431,14 @@ describe("d1-v9 E2E with 6 MOCK photos: intake → rights → crop → swap → 
   }, 120_000);
 
   describe("fail closed: refused, and no output at all", () => {
-    it("輪 still takes no ai_generated_demo picture", async () => {
+    // DEV-192 (owner GO 2026-11-07): 輪's ai_generated_demo pictures are taken now; one generated "in the future" (a
+    // provenance that cannot be true) is still refused, and nothing is written
+    it("輪 takes an ai_generated_demo picture only with a sound provenance (DEV-192): AI_GENERATED_IN_FUTURE", async () => {
       const slots = await sixPhotos("ai");
       const r0 = (slots[0]!.pc as { rights: Record<string, unknown> }).rights;
-      slots[0] = { ...slots[0]!, pc: { rights: { ...r0, source_kind: "ai_generated_demo", ai_provenance: { generator: "mock generator", model: "mock-model", generated_at: "2026-11-05T10:00:00Z", prompt_sha256: "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594", approval_id: "bicycle-not-approved", demo_only: true } }, focal_box: CENTRE } };
+      slots[0] = { ...slots[0]!, pc: { rights: { ...r0, source_kind: "ai_generated_demo", ai_provenance: { generator: "mock generator", model: "mock-model", generated_at: "2026-11-09T10:00:00Z", prompt_sha256: "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594", approval_id: "bicycle-mock-run", demo_only: true } }, focal_box: CENTRE } };
       const out = outDir();
-      expect((await run(slots, out)) as unknown).toEqual({ ok: false, refusals: [{ slot_id: "ph-d", photo: "pc", codes: ["AI_DEMO_NOT_ALLOWED"] }] });
+      expect((await run(slots, out)) as unknown).toEqual({ ok: false, refusals: [{ slot_id: "ph-d", photo: "pc", codes: ["AI_GENERATED_IN_FUTURE"] }] });
       nothingLeft(out);
     });
     it("the bench without its SP picture, a missing slot, a tampered hash", async () => {
