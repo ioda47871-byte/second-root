@@ -19,9 +19,11 @@
  * failure (REFUSED_AFTER_FAILURE: the STOPPED marker; the owner removes it), the switch (HELD_AUTORUN_DISABLED), the
  * owner's approval entry with the same scope and this exact job_id (REFUSED_NO_APPROVAL), root's one-run grant for
  * these exact bytes (REFUSED_NO_GRANT; DEV-187: cycle.sh uses up the approval and job id in root's state first). Then the approval is reserved with an atomic mkdir
- * (never retried from here on), and ONE generation (generateImagesInOneRun, at most 6 image calls, 15 min) runs, then
- * the DEV-185 intake (ai_generated_demo records), the d1-v10 swap and its PC 1440 / SP 390 renders into a private
- * dir under the worker's results root. Any failure writes the STOPPED marker. Every decision is one audit line
+ * (never retried from here on), and ONE generation (generateImagesInOneRun, at most the shop's slot count of image
+ * calls — 6 for つぐ手 — 15 min) runs, then the shop's intake (ai_generated_demo records), the swap of the shop's
+ * approved page and its PC 1440 / SP 390 renders into a private dir under the worker's results root.
+ * DEV-188: everything shop-specific (page, slots, pinned prompt, bundle, intake, rights) comes from the fixed,
+ * code-defined manifest in autorun-shops.ts; a job only selects allowlisted values. Any failure writes the STOPPED marker. Every decision is one audit line
  * (stdout and <state>/image-autorun/audit.jsonl): codes, ids, hashes and paths only.
  *
  * Runs inside the worker run (run.sh holds the shared run.lock; this adds its own lock file) after the checkout check.
@@ -34,7 +36,7 @@ import { dirname, join } from "node:path";
 import type { Browser } from "playwright";
 import { z } from "zod";
 import { swapPage } from "../design-artifact/photo-swap";
-import { importTsuguteAiPhotos } from "../design-artifact/tsugute-ai-intake";
+import { AUTORUN_SHOP_IDS, AUTORUN_SHOPS } from "./autorun-shops";
 import type { RunDeadline } from "../../lib/design-agent/bounded-process";
 import { cleanupActiveImageCalls, generateImagesInOneRun, MAX_BATCH_IMAGES, type ImageBatchResult } from "../../lib/design-agent/design-image/image-once";
 
@@ -42,7 +44,7 @@ import { cleanupActiveImageCalls, generateImagesInOneRun, MAX_BATCH_IMAGES, type
 export { cleanupActiveImageCalls };
 import { writeTsugutePhotos } from "../../lib/design-agent/design-image/tsugute-photos";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
-import { buildTsugutePhotosPrompt, TSUGUTE_PHOTOS_APPROVAL_ID, TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256, TSUGUTE_SLOTS } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
+import { TSUGUTE_PHOTOS_APPROVAL_ID } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
 import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { acquireLock, bootId, writeJsonAtomic } from "../../lib/design-agent/worker/state";
@@ -79,20 +81,11 @@ export const IMAGE_AUTORUN_MIN_MS = 25 * 60 * 1000;
 export const MAX_APPROVAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const LEDGER = "poc-approval-used";
 
-/** The shops this path knows (only つぐ手 for now): its page and the pinned brief that is the whole prompt. */
-const SHOPS = {
-  tsugute: {
-    page: "d1-v10",
-    pageDir: "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v10",
-    slotIds: TSUGUTE_SLOTS.map((s) => s.slot_id),
-    briefSha256: TSUGUTE_PROMPT_SHA256,
-    briefChars: TSUGUTE_PROMPT_CHARS,
-    buildPrompt: buildTsugutePhotosPrompt,
-  },
-} as const;
+/** DEV-188: the run-bundle writers, by the bundle schema a shop's manifest names (autorun-shops.ts). */
+const BUNDLE_WRITERS = { tsugute_ai_photos_v0: writeTsugutePhotos } as const;
 
 const Scope = z.strictObject({
-  shop: z.literal("tsugute"),
+  shop: z.enum(AUTORUN_SHOP_IDS),
   max_images: z.number().int().min(1).max(100),
   max_jobs: z.number().int().min(1).max(100),
   expires_at: Iso,
@@ -100,9 +93,10 @@ const Scope = z.strictObject({
 
 export const ImageAutorunJobSchema = z.strictObject({
   version: z.literal(1),
-  shop_id: z.literal("tsugute"),
-  page: z.literal(SHOPS.tsugute.page),
-  slot_ids: z.array(z.enum(SHOPS.tsugute.slotIds as unknown as [string, ...string[]])).min(1).max(100),
+  // only the fixed manifest's shops; the page and the slot ids must then be exactly that shop's (checked below)
+  shop_id: z.enum(AUTORUN_SHOP_IDS),
+  page: z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/),
+  slot_ids: z.array(z.string().regex(/^ph-[a-z0-9-]{1,40}$/)).min(1).max(100),
   brief_sha256: Sha,
   approval_id: z.string().regex(APPROVAL_ID),
   approval_scope: Scope,
@@ -314,13 +308,13 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   const parsed = ImageAutorunJobSchema.safeParse(raw);
   if (!parsed.success) return decide("failed", "REFUSED_JOB_INVALID");
   const job = parsed.data;
-  const shop = SHOPS[job.shop_id];
+  const shop = AUTORUN_SHOPS[job.shop_id];
   const ids = { approval_id: job.approval_id, shop: job.shop_id };
-  // the pinned brief and the page's exact slot set (all or nothing: the swap needs all 6)
-  if (job.brief_sha256 !== shop.briefSha256 || job.slot_ids.join(",") !== shop.slotIds.join(",")) return decide("failed", "REFUSED_JOB_INVALID", ids);
+  // the shop's approved page, its pinned brief and the page's exact slot set (all or nothing: the swap needs every slot)
+  if (job.page !== shop.page || job.brief_sha256 !== shop.prompt.sha256 || job.slot_ids.join(",") !== shop.slotIds.join(",")) return decide("failed", "REFUSED_JOB_INVALID", ids);
   const sc = job.approval_scope;
   const windowMs = Date.parse(sc.expires_at) - Date.parse(job.requested_at);
-  if (sc.shop !== job.shop_id || sc.max_jobs !== 1 || sc.max_images > MAX_BATCH_IMAGES || job.slot_ids.length > sc.max_images || windowMs > MAX_APPROVAL_WINDOW_MS) return decide("failed", "REFUSED_LIMIT_EXCEEDED", ids);
+  if (sc.shop !== job.shop_id || sc.max_jobs !== 1 || sc.max_images > MAX_BATCH_IMAGES || sc.max_images > shop.maxImages || job.slot_ids.length > sc.max_images || windowMs > MAX_APPROVAL_WINDOW_MS) return decide("failed", "REFUSED_LIMIT_EXCEEDED", ids);
   const seen = join(stateDir, "seen", jobSha);
   if ((await exists(seen)) || (await exists(join(q.done, name))) || (await exists(join(q.failed, name)))) return decide("failed", "REFUSED_DUPLICATE", ids);
   const nowMs = now().getTime();
@@ -336,8 +330,8 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   if (!entry || entry.job_id !== jobId || entry.shop !== sc.shop || entry.max_images !== sc.max_images || entry.max_jobs !== sc.max_jobs || entry.expires_at !== sc.expires_at) return decide("failed", "REFUSED_NO_APPROVAL", ids);
   // DEV-187: root has used up this approval and job id and granted exactly these bytes for this run
   if (!(await grantHolds(o.grantPath ?? IMAGE_AUTORUN_GRANT, o.grantUid ?? o.trustedUid ?? 0, { jobId, approvalId: job.approval_id, jobSha }, nowMs))) return decide("failed", "REFUSED_NO_GRANT", ids);
-  const prompt = shop.buildPrompt();
-  if (sha256(prompt) !== job.brief_sha256 || prompt.length !== shop.briefChars) return decide("failed", "REFUSED_JOB_INVALID", ids);
+  const prompt = shop.prompt.build();
+  if (sha256(prompt) !== job.brief_sha256 || prompt.length !== shop.prompt.chars) return decide("failed", "REFUSED_JOB_INVALID", ids);
 
   // reserve: one job per approval, atomic, never retried from here on
   const ledgerInfo = await lstat(ledger).catch(() => null);
@@ -352,7 +346,7 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   await mkdir(seen, { recursive: true, mode: 0o700 });
   await audit("APPROVAL_RESERVED", { ...base, ...ids });
 
-  const out = join(o.outRoot, "image-autorun", jobId);
+  const out = join(o.outRoot, shop.out.subdir, jobId);
   const fail = async (code: string, f: Record<string, unknown> = {}) => {
     await writeJsonAtomic(stopped, { at: now().toISOString(), code, job_id: jobId });
     return { ...(await decide("failed", code, { ...ids, ...f })), out };
@@ -366,14 +360,14 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
     const timeoutMs = Math.min(CODEX_TIMEOUT_MS, o.deadline.remainingMs() - 5 * 60 * 1000);
     const batch = await generate({ prompt, maxImages: job.slot_ids.length, timeoutMs });
     step = "WRITE_BUNDLE";
-    const { dir, manifest } = await writeTsugutePhotos({ outRoot: join(out, "photos"), batch, commit: o.workerCommit, prompt, generatedAt: now().toISOString(), approvalId: job.approval_id });
+    const { dir, manifest } = await BUNDLE_WRITERS[shop.bundle]({ outRoot: join(out, "photos"), batch, commit: o.workerCommit, prompt, generatedAt: now().toISOString(), approvalId: job.approval_id });
     await audit("GENERATED", { ...base, status: manifest.status, stop_code: manifest.stop_code, images: manifest.slots.length, image_tool_calls: manifest.image_tool_calls });
     if (manifest.status !== "complete") return await fail("FAILED_GENERATION", { stop_code: manifest.stop_code });
     const pipelineRoot = join(out, "pipeline");
     await mkdir(join(pipelineRoot, ".intake", "photos"), { recursive: true, mode: 0o700 });
     const manifestOut = join(out, "swap-manifest.json");
     step = "INTAKE";
-    const intake = await importTsuguteAiPhotos({ from: dir, manifestOut, pipelineRoot, approvalIds: [job.approval_id] });
+    const intake = await shop.intake({ from: dir, manifestOut, pipelineRoot, approvalIds: [job.approval_id] });
     if (!intake.ok) return await fail("FAILED_INTAKE", { codes: intake.codes });
     step = "BROWSER_LAUNCH";
     browser = await o.launchBrowser();

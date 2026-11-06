@@ -1,10 +1,23 @@
-# 承認シート — 画像生成の無人実行（real Codex）を ON にする（DEV-186・DEV-187）
+# 承認シート — 画像生成の無人実行（real Codex）を ON にする（DEV-186・DEV-187・DEV-188）
 
 **状態: OFF（未承認）。** このシートは、オーナーが後で ON を決めるための1枚。ここに書いたことは承認されるまで何も起こさない。
+実機への unit・root の clone の導入準備（読むだけの確認・導入・戻し方）は `docs/operations/image-autorun-wsl-install-prep.md`（DEV-188）。
+
+## 対象にできる店舗（DEV-188: コードで固定した manifest）
+
+承認できる店舗は、worker の固定 manifest（`scripts/sales-design-worker/autorun-shops.ts` の `AUTORUN_SHOPS`）と、root の `cycle.sh` の同じ allowlist（`IMAGE_AUTORUN_SHOPS`、店:画像数。テストで一致を固定）に載っている店だけ。ジョブは manifest の値（店・ページ・slot・プロンプトの SHA256）を**選ぶだけ**で、プロンプト・URL・shell・ファイルの path は書けない。店を足すのはコードの変更（レビュー・テスト・オーナーの承認）で、ジョブや設定では足せない。
+
+| 店舗 | 状態 | ページ・slot | プロンプトの pin |
+| --- | --- | --- | --- |
+| `tsugute`（つぐ手、架空の金継ぎ） | **実装済み**（OFF） | `d1-v10`、6 枠（ph-ware・ph-kake・ph-hibi・ph-dry・ph-hand・ph-desk） | SHA256 `dab7f260…3ed0`・4133 文字（DEV-185 で承認された文面） |
+| `bicycle`（輪、架空の自転車修理） | **未対応** | slot の計測は古い `d1-v2` だけで edges が無い。写真の差し替えがつぐ手専用 | 承認された写真の brief・プロンプトが無い |
+| `sento`（ゆげ湯、架空の銭湯） | **未対応** | edges が無い。写真の差し替えがつぐ手専用 | 承認された写真の brief・プロンプトが無い |
+
+未対応の店のジョブは worker が `REFUSED_JOB_INVALID`、root が `IMAGE_GRANT_SCOPE_MISMATCH`（grant を出さない）で拒否する。
 
 ## 何が動くか
 
-既存の design worker（`run.sh` → `worker.ts`、jail の中の `sr-designgen`）が、1回の実行で最大1件の「承認済みデモ画像生成ジョブ」を処理する（`scripts/sales-design-worker/image-autorun.ts`）。1件 = real Codex 1回・画像呼び出し最大6回・15分、その後に取り込み・d1-v10 差し替え・PC/SP 描画。画像はリポジトリの外（`~/.local/share/second-root-design/image-autorun/<job_id>/`）に残り、Git・公開には出ない。
+既存の design worker（`run.sh` → `worker.ts`、jail の中の `sr-designgen`）が、1回の実行で最大1件の「承認済みデモ画像生成ジョブ」を処理する（`scripts/sales-design-worker/image-autorun.ts`）。1件 = real Codex 1回・画像呼び出しは店の slot 数まで（つぐ手は6回）・15分、その後に取り込み・その店の承認済みページ（つぐ手は d1-v10）への差し替え・PC/SP 描画。画像はリポジトリの外（`~/.local/share/second-root-design/image-autorun/<job_id>/`）に残り、Git・公開には出ない。
 
 **1回限りの使用は root が確定する（DEV-187）。** root の `cycle.sh`（`sr-design-cycle.service`）が、その回の worker 実行の直前に:
 
@@ -19,11 +32,11 @@
 
 | 項目 | 上限・既定 | 決定 |
 | --- | --- | --- |
-| 対象店舗 | `tsugute` のみ（コードがほかを拒む） | |
+| 対象店舗 | manifest の実装済みの店だけ。今は `tsugute` のみ（コードがほかを拒む） | |
 | 承認 ID | 新規の ID（`tsugute-photos-20261106-01` は消費済みで常に拒否） | |
 | 期限 `expires_at` | 依頼から最大24時間（それ以上は拒否） | |
 | 最大ジョブ数 | 1承認につき1件（`max_jobs: 1` 固定）。エントリの `job_id` と同じ名前のジョブファイルだけが通る | |
-| 最大画像数 | 6（`max_images ≤ 6`） | |
+| 最大画像数 | 店の slot 数（`tsugute` は 6）。全体の上限も 6 | |
 | 利用枠・費用 | ChatGPT サインインの Codex 画像の利用枠を1件あたり最大6回使う。新しい API キー・課金・契約は無い。枠切れは `CODEX_QUOTA` で止まり再試行しない | |
 
 ## ON の仕方（オーナーが WSL で sudo、Claude はしない）

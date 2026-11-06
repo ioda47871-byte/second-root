@@ -160,6 +160,10 @@ GRANT_ISSUED=0
 LOCKED=0
 # the grant covers the worker's start-up and the one Codex image run (15 min) with a small margin, not the whole run
 GRANT_TTL=1200
+# DEV-188: the shops an image job may name, each with its image count (shop:max_images, space-separated). Fixed here, in
+# root's clone; the worker's code-defined manifest (scripts/sales-design-worker/autorun-shops.ts) holds the same list and a
+# unit test pins the two. Any other shop, or more images than its slots: IMAGE_GRANT_SCOPE_MISMATCH, no grant.
+IMAGE_AUTORUN_SHOPS='tsugute:6'
 BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
 
 now() {
@@ -329,7 +333,11 @@ IMAGE_JOB_RE='^([a-z0-9][a-z0-9-]{2,62}) ([a-z0-9][a-z0-9-]{2,62}) ([0-9a-f]{64}
 IMAGE_MATCH_PY='
 import json, sys
 from datetime import datetime
-conf, job_id, appr, shop, mi, mj, exp, now = sys.argv[1:9]
+conf, job_id, appr, shop, mi, mj, exp, now, allow = sys.argv[1:10]
+shops = {}
+for pair in allow.split():
+    k, _, v = pair.partition(":")
+    shops[k] = int(v)
 try:
     with open(conf, encoding="utf-8") as f:
         c = json.load(f)
@@ -345,7 +353,7 @@ if len(hits) != 1:
 e = hits[0]
 if e.get("job_id") != job_id:
     print("IMAGE_GRANT_JOB_MISMATCH"); sys.exit(0)
-if shop != "tsugute" or e.get("shop") != shop or type(e.get("max_images")) is not int or type(e.get("max_jobs")) is not int or type(e.get("expires_at")) is not str or e["max_images"] != int(mi) or e["max_jobs"] != int(mj) or e["expires_at"] != exp or int(mj) != 1 or int(mi) > 6:
+if shop not in shops or e.get("shop") != shop or type(e.get("max_images")) is not int or type(e.get("max_jobs")) is not int or type(e.get("expires_at")) is not str or e["max_images"] != int(mi) or e["max_jobs"] != int(mj) or e["expires_at"] != exp or int(mj) != 1 or int(mi) > shops[shop] or int(mi) > 6:
     print("IMAGE_GRANT_SCOPE_MISMATCH"); sys.exit(0)
 try:
     t = datetime.fromisoformat(exp.replace("Z", "+00:00")).timestamp()
@@ -375,7 +383,7 @@ image_grant() {
   [[ "$line" =~ $IMAGE_JOB_RE ]] || { say "image grant: IMAGE_GRANT_JOB_UNUSABLE"; return 0; }
   local job="${BASH_REMATCH[1]}" appr="${BASH_REMATCH[2]}" sha="${BASH_REMATCH[3]}" shop="${BASH_REMATCH[4]}" mi="${BASH_REMATCH[5]}" mj="${BASH_REMATCH[6]}" exp="${BASH_REMATCH[7]}"
   t="$(now)"
-  code="$(python3 -I -c "$IMAGE_MATCH_PY" "$IMG_CONF" "$job" "$appr" "$shop" "$mi" "$mj" "$exp" "$t" 9>&-)" || code=IMAGE_GRANT_CONFIG_INVALID
+  code="$(python3 -I -c "$IMAGE_MATCH_PY" "$IMG_CONF" "$job" "$appr" "$shop" "$mi" "$mj" "$exp" "$t" "$IMAGE_AUTORUN_SHOPS" 9>&-)" || code=IMAGE_GRANT_CONFIG_INVALID
   [ "$code" = IMAGE_GRANT_MATCH ] || { say "image grant: $code (job $job)"; return 0; }
   # the DEV-185 one-shot approval was consumed on 2026-11-06 and is never an autorun approval
   [ "$appr" != tsugute-photos-20261106-01 ] || { say "image grant: IMAGE_GRANT_APPROVAL_USED (job $job)"; return 0; }

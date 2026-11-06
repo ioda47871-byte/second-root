@@ -204,6 +204,10 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
     ["not JSON", "{", "REFUSED_JOB_INVALID"],
     ["free text field", { ...job(), prompt: "anything; rm -rf /" }, "REFUSED_JOB_INVALID"],
     ["another shop", job({ shop_id: "wagashi" }), "REFUSED_JOB_INVALID"],
+    // DEV-188: the fixed per-shop manifest — a known but unimplemented shop, and another page of つぐ手
+    ["an unimplemented shop (輪)", job({ shop_id: "bicycle", page: "d1-v2" }, { shop: "bicycle" }), "REFUSED_JOB_INVALID"],
+    ["another page of the shop", job({ page: "d1-v3" }), "REFUSED_JOB_INVALID"],
+    ["a slot id outside the page's", job({ slot_ids: [...TSUGUTE_SLOTS.slice(0, 5).map((s) => s.slot_id), "ph-other"] }), "REFUSED_JOB_INVALID"],
     ["another brief", job({ brief_sha256: "0".repeat(64) }), "REFUSED_JOB_INVALID"],
     ["not the 6 slots", job({ slot_ids: TSUGUTE_SLOTS.slice(0, 5).map((s) => s.slot_id) }), "REFUSED_JOB_INVALID"],
     ["approval id with shell characters", job({ approval_id: "a;b$(x)" }), "REFUSED_JOB_INVALID"],

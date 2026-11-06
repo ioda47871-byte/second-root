@@ -8593,7 +8593,7 @@
     {
       "id": "DEV-187",
       "title": "画像の承認を root の境界で1回限りに: cycle.sh が Codex の前に承認 ID と job_id を消費し、1回分の grant を発行 (既定 OFF)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-186"
@@ -8639,6 +8639,62 @@
         "sr-design-cycle.service の再インストール (CacheDirectory の追加)"
       ],
       "note": "grant の置き場所は /run ではなく /var/cache: jail は TemporaryFileSystem=/run:ro で /run を見られず、jail を変えずに読める root の場所として unit の CacheDirectory (0755) を使う。記録は .ai/reviews/DEV-187.md。"
+    },
+    {
+      "id": "DEV-188",
+      "title": "画像の無人実行の WSL 導入準備 (読むだけの確認シート・オーナー実行の導入と戻し方、OFF のまま) と、店ごとの固定 manifest への最小リファクタリング (つぐ手のみ実装、輪・ゆげ湯は未対応)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-187"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-188-autorun-install-prep-multishop",
+      "purpose": "オーナー指示 (Issue コメント 6679926895): Phase A = 実機への安全な導入準備だけ (#228 前と #229 の差、読むだけの確認シート、オーナーが別途 OK するまで実行しない導入コマンド、OFF の確認と戻し方)。Phase B = image-autorun の店依存を固定の per-shop manifest へ。real Codex 無人実行 ON・root の service の install/reload/start/enable・jail の Claude 停止・スイッチ変更・公開・課金の承認ではない",
+      "acceptance_criteria": [
+        "docs/operations/image-autorun-wsl-install-prep.md: 差 (root が動かすファイルは X2 679c3c2 → bb7da4f で cycle.sh と unit だけ、CacheDirectory・ExecStopPost)、root の clone と worker の develop 追従、前提、旧 unit の timer 競合、jail・Remote Control との共存",
+        "読むだけの確認シート: 期待値つき、秘密は stat だけ、想定外の root のファイルなら止まる、返すもの",
+        "オーナー実行の導入 (退避・#229 を含む develop の pin を検証して detach・unit の install と daemon-reload・enable 状態は変えない・スイッチは無いまま) と導入後の OFF の確認・戻し方・まだ禁止の操作",
+        "scripts/sales-design-worker/autorun-shops.ts: shop_id・page・pageDir・slot inventory/edges・slot_ids・maxImages・pin 済みプロンプト (source・brief・SHA256・文字数)・bundle・intake・out・権利とサイズの基準。ジョブは allowlist の値を選ぶだけ",
+        "cycle.sh は固定 allowlist IMAGE_AUTORUN_SHOPS (店:画像数) で照合し fail closed。テストで manifest と一致を固定",
+        "つぐ手の既存テストは無変更で通る (拒否の行を追加しただけ)。権利ラベル・root の1回限り・grant・停止/再試行なしは無変更",
+        "第2の店は実在の承認済みページと差し替え可能な slot が無いので未対応と明記し、未対応の店の拒否をテスト。架空の E2E 成功は報告しない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/autorun-shops.test.ts",
+        "npx vitest run tests/unit/design-agent/image-autorun.test.ts",
+        "npx vitest run tests/unit/design-worker-cycle.test.ts",
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/design-image-poc.test.ts",
+        "bash -n scripts/sales-design-worker/cycle.sh",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "docs/operations/image-autorun-wsl-install-prep.md",
+        "docs/operations/image-autorun-approval-sheet.md",
+        "scripts/sales-design-worker/autorun-shops.ts",
+        "scripts/sales-design-worker/image-autorun.ts",
+        "scripts/sales-design-worker/cycle.sh (店の allowlist だけ)",
+        "tests/unit/design-agent/autorun-shops.test.ts",
+        "tests/unit/design-agent/image-autorun.test.ts (拒否の行の追加だけ)",
+        "tests/unit/design-worker-cycle.test.ts (拒否の行の追加だけ)",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実機での実行 (systemctl・sudo・root の変更)、スイッチの ON・real Codex・画像生成",
+        "admin.sh・jail・systemd の unit・隔離の緩和",
+        "grant の形・使用の印・停止条件の変更",
+        "APPROVED_CAPABILITIES・本番 CSS gate",
+        ".github/workflows・package.json・lockfile",
+        "main・Production・Staging・DB"
+      ],
+      "human_approval_triggers": [
+        "導入コマンド (docs/operations/image-autorun-wsl-install-prep.md §3) の実行: root の clone の更新・unit の install・daemon-reload",
+        "real Codex 無人実行の ON (承認シート)・jail の Claude の claude-stop・sr-design-cycle.timer の enable",
+        "第2の店の実装 (承認された写真の brief・ページ・slot の計測・差し替えの対応)"
+      ],
+      "note": "実機の現状 (root の clone の commit・unit の有無・スイッチ) は不明。最後の記録は 2026-10-23 の X2 679c3c2。記録は .ai/reviews/DEV-188.md。"
     }
   ]
 }
