@@ -1,5 +1,6 @@
-DRAFT (未承認) — DEV-189 — 輪 (fictional bicycle repair shop) — demo photo prompts for the research page fidelity/d1-v7.
-Not approved by the owner. Not a run prompt: no tool may be called with this text until the owner approves it.
+DRAFT (未承認) — DEV-190 — 輪 (fictional bicycle repair shop) — demo photo prompts for the integrated research page fidelity/d1-v9.
+The owner approved the direction and the count (5 slots, 6 pictures) on 2026-11-06, NOT this full text: it is not a run prompt,
+and no tool may be called with it until the owner approves the text itself.
 
 COMMON:
 Documentary workshop photograph for a fictional bicycle repair shop. Demo image, not a real shop, product or mechanic.
@@ -33,6 +34,8 @@ lens at f/8, the hard side light raking across the metal so the pad's edge and t
 Tight framing, no hands, the background a dark blur.
 
 ph-bench-pc (4:3, at least 2030x1523 px; subject inside x 0.20-0.80, y 0.20-0.80):
+(Ask for the largest landscape size the tool offers. The intake may enlarge this one picture up to 2x with a high-quality
+filter, as the owner allowed; enlarging does not guarantee quality, so the real picture is checked by eye at PC 1440/1920.)
 A wide environmental view of the open-front repair bench (28 mm lens, eye level, straight verticals): a plain bicycle
 held in a repair stand in the middle, a pegboard of tools on the concrete wall, the charcoal bench to one side, the
 late light falling in from the open front across the floor. No people. Generous empty floor in the foreground.

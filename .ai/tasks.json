@@ -8699,7 +8699,7 @@
     {
       "id": "DEV-189",
       "title": "2店舗目「輪」の写真スロット計測と差し替えをオフラインで実装 (研究専用の指定ページ d1-v7、模擬写真の E2E、画像 brief は未承認の草案、無人実行は OFF のまま)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-188"
@@ -8755,6 +8755,64 @@
         "輪の real Codex 生成・無人実行の登録 (固定 manifest・root allowlist・1回の承認)"
       ],
       "note": "オフラインで成立: 計測・SHA の固定・差し替え・模擬写真の E2E。未承認: 輪の brief、輪のデザイン (HOLD)、無人実行の登録。記録は .ai/reviews/DEV-189.md"
+    },
+    {
+      "id": "DEV-190",
+      "title": "輪のデザイン統合版 d1-v9 (オーナー承認の B1・B2・B3 を同時に反映) と5枠の再計測、MOCK写真6枚での PC/タブレット/SP の E2E (成功例の採用ではない、実生成・無人実行は OFF のまま)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-189"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-190-bicycle-integrated-e2e",
+      "purpose": "オーナー正式決定 (Issue #193 コメント 6685366900、2026-11-06): 写真の表現・5枠6枚・作業台 PC の2倍までの補間・B1 hub-disc・B2 cta-hero・B3 check-horizontal を承認。統合版を作り、その SHA で枠を測り直し、MOCK写真で 1440/768/390 の E2E と文字の重なり・見切れの確認。ページ全体の成功例の採用、プロンプト全文の承認、real Codex、無人実行の承認ではない",
+      "acceptance_criteria": [
+        "poc/bicycle/fidelity/d1-v9: d1-v7 に3案の差分だけを同時に入れる (テストで再構成して一致)、copy.json は d1-v7 と同じバイト、README に決定の出どころ・成功例ではない・5枠6枚",
+        "photo-slots-d1-v9.json・photo-slot-edges-d1-v9.json (d1-v9 の SHA で再計測、d1-v7 の流用なし)",
+        "photo-swap-shops.ts: 輪の spec に pages [d1-v7, d1-v9]、renders に tablet 768 (review L1)、構造は (入れ物, 板, 札) の組だけ (review L2)。d1-v7 も引き続き差し替えられる",
+        "E2E (6枚): swap の門で 1440/768/390、書かれたコピーを 1440/1024/1000/999/768/601/600/390/1920 で開き直し: placeholder 0・画像 5/5 読み込み (6枚とも使用)・横はみ出し 0・板の寸法・情報帯/ハブ/縦見出しの箱と画素の重なり・見切れ 0。CI に似た書体でも通る",
+        "fail closed: AI デモ写真・SP 写真なし・枠の欠け・ハッシュ・タブレットでの遅い失敗・spec 外の版",
+        "prompt 草案と brief を d1-v9 に更新 (SHA 83c9b2c6…、未承認)",
+        "つぐ手 d1-v10 は無変更のテストで通り、差し替えの描画もバイト単位で同じ"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap-bicycle-d1-v9.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap.test.ts",
+        "npx vitest run tests/unit/design-agent/autorun-shops.test.ts",
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/image-autorun.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-intake.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/",
+        "design-library/research/quality-pipeline/poc/bicycle/photo-slots-d1-v9.json",
+        "design-library/research/quality-pipeline/poc/bicycle/photo-slot-edges-d1-v9.json",
+        "lib/design-agent/quality-pipeline/photo-swap-shops.ts",
+        "scripts/design-artifact/photo-swap.ts",
+        "docs/design/bicycle-ai-photo-brief.md",
+        "docs/design/bicycle-ai-photo-prompt.txt",
+        "tests/unit/design-agent/quality-pipeline/photo-swap-bicycle-d1-v9.test.ts",
+        "tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "real Codex・AI 画像の生成・写真のコミット",
+        "輪の aiDemoAllowed・AUTORUN_SHOPS・IMAGE_AUTORUN_SHOPS",
+        "d1-v7・d1-v8-opt-* の編集 (追記専用)",
+        "統合版を成功例として採用済みにすること",
+        "WSL・jail・root・systemd・APPROVED_CAPABILITIES・#224・本番・公開・課金",
+        ".github/workflows・package.json・lockfile"
+      ],
+      "human_approval_triggers": [
+        "d1-v9 の MOCK プレビュー (PC/タブレット/SP) のオーナーの目視 (終わるまで実画像の生成はしない)",
+        "プロンプト全文 (SHA 83c9b2c6…) の承認",
+        "輪の real Codex 生成・無人実行の登録 (aiDemoAllowed・固定 manifest・root allowlist・intake・1回の承認)"
+      ],
+      "note": "オフラインで成立: 統合版・再計測・MOCK の E2E。未承認: ページ全体 (成功例ではない)、プロンプト全文、実生成と無人実行。記録は .ai/reviews/DEV-190.md"
     }
   ]
 }

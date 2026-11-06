@@ -86,10 +86,11 @@ describe("輪 d1-v7: the designated research page and its 5 real photo slots", (
     // the bench's SP board is tall, its PC board wide: one landscape photo cannot serve SP
     expect(slot("ph-bench").variants.find((v) => v.viewport === "mobile_390")!.ratio).toBeLessThan(1);
   });
-  it("is the only 輪 page the swap takes: the old d1-v2 inventory has no edges, every other version is not inventoried", () => {
+  it("the swap takes d1-v7 (and, from DEV-190, the integrated d1-v9); the old d1-v2 is refused, every other version is not inventoried", () => {
     expect(loadInventory("bicycle", PAGE)).toMatchObject({ ok: true });
-    expect(loadInventory("bicycle", `${POC}/fidelity/d1-v2`)).toEqual({ ok: false, code: "EDGES_STALE" });
-    const versions = readdirSync(join(REPO, POC, "fidelity")).filter((v) => v !== "d1-v7" && v !== "d1-v2");
+    // DEV-190: d1-v2 is not one of the spec's pages (refused before its missing edges are looked at)
+    expect(loadInventory("bicycle", `${POC}/fidelity/d1-v2`)).toEqual({ ok: false, code: "PAGE_NOT_IN_SPEC" });
+    const versions = readdirSync(join(REPO, POC, "fidelity")).filter((v) => v !== "d1-v7" && v !== "d1-v2" && v !== "d1-v9");
     // the d1-v8 HOLD options (PR #222) included: none is adopted, none is swappable
     expect(versions).toEqual(expect.arrayContaining(["d1-v6", "d1-v8-opt-hub-glyph", "d1-v8-opt-cta-band"]));
     for (const v of versions) expect(loadInventory("bicycle", `${POC}/fidelity/${v}`), v).toEqual({ ok: false, code: "PAGE_NOT_INVENTORIED" });
@@ -144,7 +145,8 @@ describe("輪's image brief: a 未承認 draft, pinned by SHA-256", () => {
   const prompt = readFileSync(join(REPO, "docs/design/bicycle-ai-photo-prompt.txt"));
   it("records the prompt file's SHA-256 and size, and both say 未承認", () => {
     expect(brief).toContain(`\`${sha(prompt)}\` (${prompt.length} バイト)`);
-    expect(sha(prompt)).toBe("8b659d0242340085e6bd7cc6422b4102fa02d75575e79a769d6b87ef1cb50bd7");
+    // DEV-190: the draft was updated for d1-v9 (same sizes and subjects; header and the bench note)
+    expect(sha(prompt)).toBe("83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594");
     expect(brief).toContain("未承認");
     expect(prompt.toString("utf8").split("\n")[0]).toContain("未承認");
   });
@@ -289,12 +291,13 @@ describe("輪 E2E with MOCK photos: intake → rights → crop → swap → PC/S
     const res = await run(slots, out, browser);
     if (!res.ok) throw new Error(JSON.stringify(res.refusals));
     // the swap's own render gate (the same for つぐ手)
-    expect(res.renders.map((r) => r.viewport)).toEqual(["desktop_1440", "mobile_390"]);
+    // DEV-190 (review L1): 輪 is also drawn and checked at tablet 768
+    expect(res.renders.map((r) => r.viewport)).toEqual(["desktop_1440", "tablet_768", "mobile_390"]);
     for (const r of res.renders) {
       expect(r, r.viewport).toMatchObject({ images: 5, images_loaded: 5, boards_matched: 5, caption_text_left: false, horizontal_overflow: false, boards_intact: 5 });
       expect(existsSync(r.file)).toBe(true);
       const png = await sharp(r.file).metadata();
-      expect(png.width).toBe(r.viewport === "desktop_1440" ? 1440 : 390);
+      expect(png.width).toBe({ desktop_1440: 1440, tablet_768: 768, mobile_390: 390 }[r.viewport]);
     }
     // the crops: 3 ranges × 5 slots; the bench's mobile file from its SP photo and tall, its desktop file wide
     expect(readdirSync(join(out, "page", "photos"))).toHaveLength(15);
