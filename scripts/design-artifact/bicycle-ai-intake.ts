@@ -5,7 +5,7 @@
  * (BICYCLE_RUN_APPROVAL_ID is null) and every real bundle is RUN_APPROVAL_UNKNOWN. The offline tests pass their own stub
  * approval id and stub generator.
  *
- * Refuses (nothing written) unless the bundle's manifest.json (bicycle_ai_photos_v0, lib/design-agent/design-image/bicycle-photos.ts)
+ * Refuses (nothing written) unless the bundle's manifest.json (bicycle_ai_photos_v0, the bundle writer bicycle-photos.ts)
  *  - is complete: 6 pictures, 6 calls, none failed, the model reported;
  *  - names an accepted approval id and generator, the demo label, and the owner-approved prompt (SHA-256, bytes and
  *    approval record of docs/design/bicycle-ai-photo-prompt.txt) inside the pinned candidate run prompt;
