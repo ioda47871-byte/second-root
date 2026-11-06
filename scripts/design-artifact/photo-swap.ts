@@ -194,8 +194,7 @@ export function checkManifestPath(file: string): string | null {
  * carries that page's hashes.
  */
 export const INVENTORY_FILE = /^photo-slots(-[a-z0-9][a-z0-9-]{0,40})?\.json$/;
-export function inventoryFiles(shop: string): Array<{ slots: string; edges: string }> {
-  const shopDir = join(REPO, `design-library/research/quality-pipeline/poc/${shop}`);
+export function inventoryFiles(shop: string, shopDir: string = join(REPO, `design-library/research/quality-pipeline/poc/${shop}`)): Array<{ slots: string; edges: string }> {
   return readdirSync(shopDir)
     .sort()
     .flatMap((f) => {
@@ -208,7 +207,12 @@ export function inventoryFiles(shop: string): Array<{ slots: string; edges: stri
  * The slot inventory of a shop measured on this page and its range edges, and a refusal unless the page is exactly
  * the page both were measured on. Two inventories naming one page are refused.
  */
-export function loadInventory(shop: string, pageDir: string): { ok: true; inv: PhotoSlotInventory; edges: Map<string, EdgeVariant[]>; dir: string } | { ok: false; code: string } {
+export function loadInventory(
+  shop: string,
+  pageDir: string,
+  /** tests only: read the shop's inventory files from this folder instead of poc/<shop>/ (the page itself is still the repository's) */
+  seam: { shopDir?: string } = {},
+): { ok: true; inv: PhotoSlotInventory; edges: Map<string, EdgeVariant[]>; dir: string } | { ok: false; code: string } {
   let dir: string;
   try {
     dir = realpathSync(resolve(REPO, pageDir));
@@ -217,7 +221,7 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
   }
   const matches: PhotoSlotInventory[] = [];
   const edgeFiles: string[] = [];
-  for (const f of inventoryFiles(shop)) {
+  for (const f of inventoryFiles(shop, seam.shopDir)) {
     const one = PhotoSlotInventory.parse(JSON.parse(readFileSync(f.slots, "utf8")));
     let at: string;
     try {
@@ -230,9 +234,10 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
     edgeFiles.push(f.edges);
   }
   if (matches.length === 0) return { ok: false, code: "PAGE_NOT_INVENTORIED" };
-  // DEV-190: the page version must also be one the shop's spec was read from (photo-swap-shops.ts pages)
-  const specPages: readonly string[] | undefined = Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, shop) ? SWAP_SHOP_SPECS[shop as keyof typeof SWAP_SHOP_SPECS].pages : undefined;
-  if (specPages && matches.some((m) => !specPages.includes(m.page_dir.split("/").pop()!))) return { ok: false, code: "PAGE_NOT_IN_SPEC" };
+  // DEV-190: the page must also be one the shop's spec was read from (photo-swap-shops.ts pages), compared as the full
+  // research path poc/<shop>/fidelity/<version> (PR #232 review L2: never by the last path segment alone)
+  const specPages: readonly string[] | undefined = Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, shop) ? SWAP_SHOP_SPECS[shop as keyof typeof SWAP_SHOP_SPECS].pages.map((v) => `design-library/research/quality-pipeline/poc/${shop}/fidelity/${v}`) : undefined;
+  if (specPages && matches.some((m) => !specPages.includes(m.page_dir))) return { ok: false, code: "PAGE_NOT_IN_SPEC" };
   if (matches.length > 1) return { ok: false, code: "INVENTORY_AMBIGUOUS" };
   const inv = matches[0]!;
   if (!existsSync(edgeFiles[0]!)) return { ok: false, code: "EDGES_STALE" };

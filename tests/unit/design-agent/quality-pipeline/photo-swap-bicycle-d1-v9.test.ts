@@ -214,6 +214,9 @@ const LAYOUT = String.raw`(() => {
     items.slice(i + 1).forEach((b) => { if (a.rs.some((p) => b.rs.some((q) => hit(p, q)))) issues.push("band_overlap:" + a.name + "/" + b.name); });
   });
   if (bb.r > W + 0.5) issues.push("band_wider_than_window");
+  // PR #232 review L3: the band sits wholly above the hero, so it can never cover the hero's drawing
+  const heroTop = abs(document.querySelector('[data-comp-section="hero"]').getBoundingClientRect()).t;
+  if (bb.b > heroTop + 0.5) issues.push("band_over_hero");
   const heroText = Array.from(document.querySelectorAll(".name-full, .tagline, .how")).flatMap(lines);
   if (heroText.some((r) => hit(r, bb))) issues.push("band_over_hero_text");
   // B1: 輪 in its disc — the glyph's em square inside the circle, nothing written over the disc
@@ -419,6 +422,9 @@ describe("d1-v9 E2E with 6 MOCK photos: intake → rights → crop → swap → 
       const ink = await inkOutside(page, ".check-h", { box }, { ...box, b: box.b + 140 });
       expect(ink.ink).toBeGreaterThan(50);
       expect(ink.outside).toBeGreaterThan(0);
+      // L3: a band pushed down over the hero is caught
+      await page.evaluate(`(() => { const s = document.createElement("style"); s.textContent = ".quick { margin-bottom: -40px; }"; document.head.appendChild(s); })()`);
+      expect(((await page.evaluate(LAYOUT)) as Layout).issues).toContain("band_over_hero");
     } finally {
       await ctx.close();
     }
@@ -461,7 +467,7 @@ describe("d1-v9 E2E with 6 MOCK photos: intake → rights → crop → swap → 
       expect(codesOf(await run(slots, out, fake))).toEqual(["RENDER_CHECK_FAILED", "viewport:tablet_768"]);
       nothingLeft(out);
     });
-    it("a page not in the spec is refused even though it has the same placeholders (the d1-v8 options)", () => {
+    it("the d1-v8 options (same placeholders, no inventory) are refused as not inventoried", () => {
       for (const o of ["hub-disc", "cta-hero", "check-horizontal"]) expect(loadInventory("bicycle", `${FID}/d1-v8-opt-${o}`), o).toEqual({ ok: false, code: "PAGE_NOT_INVENTORIED" });
     });
   });

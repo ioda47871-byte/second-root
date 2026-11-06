@@ -102,6 +102,61 @@ describe("輪 d1-v7: the designated research page and its 5 real photo slots", (
   });
 });
 
+describe("loadInventory refusals, each on its own (PR #232 review M1/L2)", () => {
+  // the seam reads the shop's inventory files from a temporary folder; the pages are still the repository's
+  const TS = "design-library/research/quality-pipeline/poc/tsugute";
+  const json = (f: string) => JSON.parse(readFileSync(join(REPO, f), "utf8")) as Record<string, unknown>;
+  const folder = (files: Record<string, unknown>) => {
+    const dir = mkdtempSync(join(tmpdir(), "dev190-inv-"));
+    for (const [name, data] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(data));
+    return dir;
+  };
+  const dirs: string[] = [];
+  const at = (files: Record<string, unknown>) => {
+    const d = folder(files);
+    dirs.push(d);
+    return d;
+  };
+  afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
+  const V7_SLOTS = json(`${POC}/photo-slots-d1-v7.json`);
+  const V7_EDGES = json(`${POC}/photo-slot-edges-d1-v7.json`);
+
+  it("control: the unchanged copies load through the seam (so each refusal below is the one change)", () => {
+    expect(loadInventory("bicycle", PAGE, { shopDir: at({ "photo-slots-d1-v7.json": V7_SLOTS, "photo-slot-edges-d1-v7.json": V7_EDGES }) })).toMatchObject({ ok: true });
+  });
+  it("EDGES_STALE: no edges file beside the inventory", () => {
+    expect(loadInventory("bicycle", PAGE, { shopDir: at({ "photo-slots-d1-v7.json": V7_SLOTS }) })).toEqual({ ok: false, code: "EDGES_STALE" });
+  });
+  it("EDGES_STALE: edges measured on another state of the page (hash) or with another slot list", () => {
+    expect(loadInventory("bicycle", PAGE, { shopDir: at({ "photo-slots-d1-v7.json": V7_SLOTS, "photo-slot-edges-d1-v7.json": { ...V7_EDGES, css_sha256: "0".repeat(64) } }) })).toEqual({ ok: false, code: "EDGES_STALE" });
+    const slots = (V7_EDGES.slots as unknown[]).slice(0, 4);
+    expect(loadInventory("bicycle", PAGE, { shopDir: at({ "photo-slots-d1-v7.json": V7_SLOTS, "photo-slot-edges-d1-v7.json": { ...V7_EDGES, slots } }) })).toEqual({ ok: false, code: "EDGES_STALE" });
+  });
+  it("EDGES_STALE: edges at another shop's range widths (輪 measured at 1199, つぐ手 at 999)", () => {
+    const at1199 = { ...V7_EDGES, edge_viewports: undefined, slots: (V7_EDGES.slots as Array<{ slot_id: string; edges: Array<Record<string, unknown>> }>).map((x) => ({ ...x, edges: x.edges.map((e) => (e.viewport === "tablet_999" ? { ...e, viewport: "tablet_1199" } : e)) })) };
+    delete (at1199 as Record<string, unknown>).edge_viewports;
+    expect(PhotoSlotEdges.safeParse(at1199).success).toBe(true); // a valid file, only at the wrong widths
+    expect(loadInventory("bicycle", PAGE, { shopDir: at({ "photo-slots-d1-v7.json": V7_SLOTS, "photo-slot-edges-d1-v7.json": at1199 }) })).toEqual({ ok: false, code: "EDGES_STALE" });
+    const tsSlots = json(`${TS}/photo-slots-d1-v10.json`);
+    const tsEdges = json(`${TS}/photo-slot-edges-d1-v10.json`);
+    expect(loadInventory("tsugute", `${TS}/fidelity/d1-v10`, { shopDir: at({ "photo-slots-d1-v10.json": tsSlots, "photo-slot-edges-d1-v10.json": tsEdges }) })).toMatchObject({ ok: true });
+    const at999 = { ...tsEdges, edge_viewports: ["mobile_600", "tablet_999", "desktop_1920"], slots: (tsEdges.slots as Array<{ slot_id: string; edges: Array<Record<string, unknown>> }>).map((x) => ({ ...x, edges: x.edges.map((e) => (e.viewport === "tablet_1199" ? { ...e, viewport: "tablet_999" } : e)) })) };
+    expect(PhotoSlotEdges.safeParse(at999).success).toBe(true);
+    expect(loadInventory("tsugute", `${TS}/fidelity/d1-v10`, { shopDir: at({ "photo-slots-d1-v10.json": tsSlots, "photo-slot-edges-d1-v10.json": at999 }) })).toEqual({ ok: false, code: "EDGES_STALE" });
+  });
+  it("PAGE_NOT_IN_SPEC for both shops: an inventoried page that is not one of the spec's", () => {
+    // 輪: the real repository, the old d1-v2 inventory
+    expect(loadInventory("bicycle", `${POC}/fidelity/d1-v2`)).toEqual({ ok: false, code: "PAGE_NOT_IN_SPEC" });
+    // つぐ手: an inventory naming d1-v8 (not d1-v3 / d1-v10)
+    const tsSlots = json(`${TS}/photo-slots-d1-v10.json`);
+    expect(loadInventory("tsugute", `${TS}/fidelity/d1-v8`, { shopDir: at({ "photo-slots-d1-v8.json": { ...tsSlots, page_dir: `${TS}/fidelity/d1-v8` } }) })).toEqual({ ok: false, code: "PAGE_NOT_IN_SPEC" });
+  });
+  it("PAGE_NOT_IN_SPEC compares the full path (L2): a 輪 inventory naming つぐ手's d1-v9 is not 輪's d1-v9", () => {
+    expect(existsSync(join(REPO, TS, "fidelity/d1-v9/index.html"))).toBe(true);
+    expect(loadInventory("bicycle", `${TS}/fidelity/d1-v9`, { shopDir: at({ "photo-slots-d1-v9.json": { ...V7_SLOTS, page_dir: `${TS}/fidelity/d1-v9` } }) })).toEqual({ ok: false, code: "PAGE_NOT_IN_SPEC" });
+  });
+});
+
 describe("輪's transform (board directly before its caption)", () => {
   const html = readFileSync(join(REPO, PAGE, "index.html"), "utf8");
   const slotsIn = INV.slots.map((s) => ({ slot: s, alt: s.role, files: { desktop: `photos/${s.slot_id}-desktop.png`, tablet: `photos/${s.slot_id}-tablet.png`, mobile: `photos/${s.slot_id}-mobile.png` }, size: { width: 10, height: 10 } }));
