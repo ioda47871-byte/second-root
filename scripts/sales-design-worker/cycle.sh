@@ -163,7 +163,9 @@ GRANT_TTL=1200
 # DEV-188: the shops an image job may name, each with its image count (shop:max_images, space-separated). Fixed here, in
 # root's clone; the worker's code-defined manifest (scripts/sales-design-worker/autorun-shops.ts) holds the same list and a
 # unit test pins the two. Any other shop, or more images than its slots: IMAGE_GRANT_SCOPE_MISMATCH, no grant.
-IMAGE_AUTORUN_SHOPS='tsugute:6'
+# DEV-192 (owner GO 2026-11-07): bicycle (輪 d1-v9, 6 photos) for the owner's one approved run. Listing a shop is not a
+# permission: every grant still needs the owner's switch entry for one job, the use records below and the 20-min grant.
+IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'
 BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
 
 now() {

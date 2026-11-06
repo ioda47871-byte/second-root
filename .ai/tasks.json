@@ -8817,7 +8817,7 @@
     {
       "id": "DEV-191",
       "title": "輪 d1-v9 の研究用の正式成功例の登録と、承認済み写真プロンプトの実行前準備 (SHA 固定・run bundle・intake・権利・OFF の候補、スタブ6枚の離線 E2E。real Codex 0 回、実行できない状態のまま)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-190"
@@ -8879,7 +8879,79 @@
         "その GO によるコード変更 (BICYCLE_RUN_APPROVAL_ID・AUTORUN_SHOPS への移動・aiDemoAllowed) と root の IMAGE_AUTORUN_SHOPS への bicycle:6・switch の1件",
         "実画像の生成後の目視 (brief §6: 振れ取り台・パッチとチューブ・ブレーキ・チェーン・PC/SP の同一性・文字やロゴなし・PC 1440/1920 の鮮明さ)"
       ],
-      "note": "real Codex 0 回、実画像 0 枚、写真はスタブだけで commit なし。輪は AUTORUN_CANDIDATES の OFF の候補で、worker・root ともに拒否。記録は .ai/reviews/DEV-191.md"
+      "note": "real Codex 0 回、実画像 0 枚、写真はスタブだけで commit なし。輪は AUTORUN_CANDIDATES の OFF の候補で、worker・root ともに拒否。記録は .ai/reviews/DEV-191.md PR #233 で develop へ merge した (c543dd3)。"
+    },
+    {
+      "id": "DEV-192",
+      "title": "輪 d1-v9 の AI 写真6枚を1回限りで本生成する実行経路 (worker AUTORUN_SHOPS・root IMAGE_AUTORUN_SHOPS・aiDemoAllowed、実行プロンプトの承認の記録、モック E2E、オーナー用コマンドシート。開発中の real Codex 0 回)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-191"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-192-bicycle-one-time-run",
+      "purpose": "オーナー GO (Issue #193 コメント 6689664215、2026-11-07): 輪 d1-v9 の研究用デモ写真1ジョブ・画像呼び出し最大6回・Codex 1回・15分・再試行なし。実行プロンプト SHA 4b8081e0…7447 (4566 文字) と核の本文 83c9b2c6…5594 を承認、どちらかが変われば失効。PR #233 の writer・intake・rights・swap を再利用し、worker と root の許可を同じコミットにそろえ、厳密な単一承認でだけ1件を処理する。常時の無人実行ではない。実機の操作はオーナーがコマンドシートで行う",
+      "acceptance_criteria": [
+        "bicycle-ai-photos.ts: BICYCLE_RUN_PROMPT_APPROVAL (owner・2026-11-07・6689664215・両 SHA・範囲)。buildBicycleRunPrompt は両方の pin を確かめ、違えば空 (worker が REFUSED_JOB_INVALID)",
+        "autorun-shops.ts: AUTORUN_SHOPS.bicycle (page d1-v9、写真 ID 6つ、photoToSlot、実行プロンプトの SHA、最大6枚、bicycle_ai_photos_v0、intake、rights)。AUTORUN_CANDIDATES と未対応の記録から外す",
+        "image-autorun.ts: BUNDLE_WRITERS に bicycle を足し、結果の形を共通化 (つぐ手の出力と audit は同じ)。ジョブの schema は変えない (自由文・path・URL・shell なし)",
+        "実行の承認 ID はコードに書かない (BICYCLE_RUN_APPROVAL_ID は null)。root の switch の1件・job_id の結び付き・root の原子的な使用記録・20分の boot 限定 grant・worker の一回限りの台帳で使い切る。hook は job の承認 ID を intake に渡す",
+        "photo-swap-shops.ts の輪は aiDemoAllowed: true。DEV-191 のテスト専用の口 (aiDemoCandidate・offlineAiDemoCandidate) は外す",
+        "cycle.sh: IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6' だけ。原子的な消費・照合・grant・lock・STOPPED・再試行なし・jail/pgrep の fail closed・24時間の上限・使用済みのつぐ手 ID の拒否は不変",
+        "テスト: 完全な連鎖でだけ受け付け、root の entry なし・grant なし・SHA/page/slot 違い・使用後・使用済み ID・本文の変更は生成0回で拒否。モックの完全な連鎖が1回だけ動き、6枚の bundle・intake・swap・PC1440/タブレット768/SP390 の描画",
+        "brief §6 に作業台 PC の 1500/1920 の目視 (V7a/V7b)。SR-001 は ai_photo_complete: pending_owner_visual_checks",
+        "docs/operations/bicycle-one-time-run-sheet.md (日本語1枚、(a)〜(i)、門の形、期待の出力)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/bicycle-real-path-off.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/bicycle-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/research/second-root-research-successes.test.ts",
+        "npx vitest run tests/unit/design-agent/autorun-shops.test.ts",
+        "npx vitest run tests/unit/design-agent/image-autorun.test.ts",
+        "npx vitest run tests/unit/design-worker-cycle.test.ts",
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/design-image-poc.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap-bicycle-d1-v9.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/bicycle-ai-photos.ts",
+        "lib/design-agent/design-image/bicycle-photos.ts",
+        "scripts/design-artifact/bicycle-ai-intake.ts (文だけ)",
+        "lib/design-agent/quality-pipeline/photo-swap-shops.ts",
+        "scripts/design-artifact/photo-swap.ts (DEV-191 の口を外す)",
+        "scripts/sales-design-worker/autorun-shops.ts",
+        "scripts/sales-design-worker/image-autorun.ts (bundle の書き手)",
+        "scripts/sales-design-worker/cycle.sh (IMAGE_AUTORUN_SHOPS だけ)",
+        "design-library/success-cases/second-root-research-successes.json・README.md",
+        "docs/design/bicycle-ai-photo-brief.md",
+        "docs/operations/bicycle-one-time-run-sheet.md・image-autorun-approval-sheet.md・image-autorun-wsl-install-prep.md",
+        "tests/unit/design-agent/bicycle-real-path-off.test.ts",
+        "tests/unit/design-agent/quality-pipeline/bicycle-ai-photos.test.ts",
+        "tests/unit/design-agent/research/second-root-research-successes.test.ts",
+        "tests/unit/design-agent/autorun-shops.test.ts",
+        "tests/unit/design-worker-cycle.test.ts",
+        ".ai/",
+        "tests/unit/design-agent/quality-pipeline/photo-swap-bicycle.test.ts・photo-swap-bicycle-d1-v9.test.ts (GO の前の「AI デモ写真を拒否」の前提だけ)"
+      ],
+      "forbidden_scope": [
+        "real Codex・サインイン・systemd・switch・WSL の操作 (オーナーがシートで行う)",
+        "つぐ手の動作、本番・Staging・DB・APPROVED_CAPABILITIES・#224",
+        "認証・ネットワーク・sandbox・model の設定",
+        "timer の enable・常時の無人実行・ほかの店の許可",
+        "実行の承認 ID のコードへの書き込み、使用済み tsugute-photos-20261106-01 の再利用",
+        ".github/workflows・package.json・lockfile"
+      ],
+      "human_approval_triggers": [
+        "PR の Fresh Review・security の再レビュー・必須 CI のあとの merge",
+        "WSL でのコマンドシートの実行 (root clone の更新・claude-stop・使い捨ての ID・1回の起動・OFF への復元)",
+        "実画像のオーナーの目視 (brief §6、1500/1920 を含む)。合格まで SR-001 を AI写真入り完成としない"
+      ],
+      "note": "開発中の real Codex 0 回、実画像 0 枚。輪は worker・root の許可一覧に入ったが、実行にはオーナーの switch の1件・root の grant が要り、timer は無い。記録は .ai/reviews/DEV-192.md"
     }
   ]
 }

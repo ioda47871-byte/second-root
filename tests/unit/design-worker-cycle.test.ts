@@ -850,8 +850,12 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     ["no entry for the approval id", { job: imageJob("tsugute-autorun-0404") }, "IMAGE_GRANT_NO_APPROVAL"],
     ["a scope that differs (7 images)", { job: { ...imageJob(), approval_scope: { shop: "tsugute", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["the switch off (enabled: false)", { enabled: false }, "IMAGE_GRANT_DISABLED"],
-    // DEV-188: root's fixed shop allowlist (IMAGE_AUTORUN_SHOPS): a shop outside it is refused even with a matching entry
-    ["a shop outside the allowlist (輪), entry matching", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "bicycle", max_images: 5, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob(), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 5, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
+    // DEV-188: root's fixed shop allowlist (IMAGE_AUTORUN_SHOPS): a shop outside it is refused even with a matching entry.
+    // DEV-192: 輪 is now listed (bicycle:6, owner GO 2026-11-07), so the outside shop here is ゆげ湯 (sento)
+    ["a shop outside the allowlist (ゆげ湯), entry matching", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "sento", max_images: 5, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob(), shop_id: "sento", approval_scope: { shop: "sento", max_images: 5, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
+    // DEV-192: 輪 above its 6 images, and 輪 under the consumed DEV-185 id (refused for any shop)
+    ["輪 with 7 images, entry matching", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "bicycle", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob(), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
+    ["輪 under the consumed DEV-185 approval id", { entries: [{ approval_id: "tsugute-photos-20261106-01", job_id: JOB_ID, shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob("tsugute-photos-20261106-01"), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_APPROVAL_USED"],
     ["an entry with max_jobs: true (a bool is not 1; L4)", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "tsugute", max_images: 6, max_jobs: true, expires_at: isoAt(T0 + 12 * 3600) }] }, "IMAGE_GRANT_SCOPE_MISMATCH"],
   ] as const)("%s: no grant, nothing used up, the cycle goes on as before", (_, o, code) => {
     const w = imageWorld(o as Parameters<typeof imageWorld>[0]);
@@ -861,6 +865,29 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     expect(w.grants().trim().split("\n")).toEqual(["NO_GRANT", "NO_GRANT"]);
     if (code !== "IMAGE_GRANT_APPROVAL_USED") expect(w.used("approval", APPROVAL)).toBe(false);
     expect(existsSync(join(w.t, "var/lib/sr-design-cycle/image-approval-used/tsugute-photos-20261106-01"))).toBe(false);
+  });
+
+  it("DEV-192: a 輪 job with the owner's one entry gets ONE grant (same atomic use records, 20-min boot-bound grant); a second cycle gets none", () => {
+    const BIKE = "bicycle-run-0001";
+    const bikeJob = { ...imageJob(BIKE, T0 + 2 * 3600), shop_id: "bicycle", page: "d1-v9", slot_ids: ["ph-d", "ph-a", "ph-c", "ph-b", "ph-bench-pc", "ph-bench-sp"], brief_sha256: "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447", approval_scope: { shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 2 * 3600) } };
+    const w = imageWorld({ entries: [{ approval_id: BIKE, job_id: JOB_ID, shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 2 * 3600) }], job: bikeJob });
+    const r = cycle(w);
+    expect(r.out, r.out).toContain(`image grant: IMAGE_GRANT_ISSUED (job ${JOB_ID}`);
+    expect(r.last).toBe("CYCLE_RESULT CYCLE_IMAGE_RUN phase=before_claim job=none exit=0");
+    const seen = w.grants().trim().split("\n");
+    expect(seen[0]).toBe("644");
+    const g = JSON.parse(seen[1]!) as { approval_id: string; job_id: string; issued_at: string; expires_at: string };
+    expect([g.approval_id, g.job_id]).toEqual([BIKE, JOB_ID]);
+    expect(Date.parse(g.expires_at) - Date.parse(g.issued_at)).toBe(20 * 60 * 1000);
+    expect(w.used("approval", BIKE) && w.used("job", JOB_ID)).toBe(true);
+    expect(existsSync(w.grant)).toBe(false);
+    // re-queued after use: no second grant
+    mkdirSync(w.inbox, { recursive: true });
+    writeFileSync(join(w.inbox, `${JOB_ID}.json`), JSON.stringify(bikeJob));
+    nextIdle(w, 2, 1);
+    const r2 = cycle(w);
+    expect(r2.out).toContain(`image grant: IMAGE_GRANT_APPROVAL_USED (job ${JOB_ID})`);
+    expect(w.grants().trim().split("\n").pop()).toBe("NO_GRANT");
   });
 
   it("a group-writable switch file, a job that is a link, and no switch file: no grant", () => {

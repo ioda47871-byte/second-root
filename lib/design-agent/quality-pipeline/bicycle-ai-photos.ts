@@ -1,25 +1,26 @@
 /**
- * DEV-191 (Issue #193, owner approval 2026-11-06, comment 6687410438): the 輪 (bicycle, a FICTIONAL bicycle repair shop)
- * AI demo photos — the pure data, prepared but NOT runnable.
+ * DEV-191 (Issue #193, owner approval 2026-11-06, comment 6687410438) and DEV-192 (owner GO 2026-11-07, comment
+ * 6689664215): the 輪 (bicycle, a FICTIONAL bicycle repair shop) AI demo photos — the pure data.
  *
- * What the owner approved on 2026-11-06: the FULL TEXT of docs/design/bicycle-ai-photo-prompt.txt as it stood at DEV-190
- * (UTF-8 SHA-256 83c9b2c6…5594, 3865 bytes). The file's bytes are not edited: its first lines still say "DRAFT (未承認)",
- * which the owner's decision made historical. The approval is recorded HERE (BICYCLE_PROMPT_APPROVAL) and in
- * docs/design/bicycle-ai-photo-brief.md §5, never by rewriting the approved bytes.
+ * 2026-11-06: the owner approved the FULL TEXT of docs/design/bicycle-ai-photo-prompt.txt as it stood at DEV-190 (UTF-8
+ * SHA-256 83c9b2c6…5594, 3865 bytes). The file's bytes are not edited: its first lines still say "DRAFT (未承認)", which
+ * the owner's decision made historical. That approval is recorded HERE (BICYCLE_PROMPT_APPROVAL), never by rewriting
+ * the approved bytes.
  *
- * What the owner did NOT approve: a real generation run (Codex, the image tool, the ChatGPT quota), the auto-run, 輪 in
- * the worker's AUTORUN_SHOPS or root's IMAGE_AUTORUN_SHOPS, or the swap taking 輪's ai_generated_demo pictures
- * unconditionally. The real gates against a run are the worker's job schema (AUTORUN_SHOP_IDS has no 輪), root's
- * IMAGE_AUTORUN_SHOPS in cycle.sh, and the swap's aiDemoAllowed (false for 輪). Beside them, no generation approval id
- * is recorded here (BICYCLE_RUN_APPROVAL_ID is null, a record, not a gate), the intake accepts
- * none by default, the swap spec keeps aiDemoAllowed: false, and the run prompt below is a CANDIDATE whose SHA the owner
- * must approve with the one-time run.
+ * 2026-11-07 (DEV-192): the owner approved ONE real generation run of the 6 pictures (1 job, at most 6 image calls,
+ * 1 Codex run, 15 minutes, no retry, 輪 d1-v9 only) and the run prompt below (SHA-256 4b8081e0…7447, 4566 chars) —
+ * BICYCLE_RUN_PROMPT_APPROVAL. If EITHER byte sequence changes (the approved text or the run prompt), the approval is
+ * void: buildBicycleRunPrompt then returns "" and the worker refuses the job (its SHA no longer matches the pin). It is
+ * not a standing permission: the run's one-use approval id and expiry are decided by the owner at run time, in root's
+ * config, and used up by root and the worker (no run approval id is written in code: BICYCLE_RUN_APPROVAL_ID stays null).
  *
  * Pinned like つぐ手's prompt (tsugute-ai-photos.ts): SHA-256 and length in code, the 6 fixed photos in call order with
  * their shape, 2× target, 1.5× floor, subject box and per-photo prompt SHA-256 — read back from the approved file and
  * compared, so a changed file fails closed. Nothing here calls a model, a process or the network.
  */
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join as joinPath, resolve as resolvePath } from "node:path";
 import { z } from "zod";
 import { cropReaches } from "./tsugute-ai-photos";
 
@@ -45,10 +46,10 @@ export const BICYCLE_PROMPT_APPROVAL = {
 } as const;
 
 /**
- * The approval id of a real generation run of these 6 pictures. null: none exists. This is a RECORD and the intake's
- * default, not a gate by itself: what stops a run is the worker's job schema (輪 is not in AUTORUN_SHOP_IDS), root's
- * IMAGE_AUTORUN_SHOPS (cycle.sh, 'tsugute:6') and the swap's aiDemoAllowed (false for 輪). A future owner GO sets it
- * together with those (code reviewed, root's config on WSL).
+ * DEV-192: deliberately null — no run approval id is written in code. The one-use id of the one approved run is chosen
+ * by the owner at run time and enforced by root's config entry (bound to one job_id), root's atomic use record, the
+ * boot-bound 20-minute grant and the worker's one-use ledger (as for つぐ手's auto-run jobs). The worker hook passes the
+ * job's own approval id to the intake; called without one, the intake accepts none (this default).
  */
 export const BICYCLE_RUN_APPROVAL_ID: string | null = null;
 
@@ -148,11 +149,11 @@ export function checkApprovedBicyclePrompt(text: string): PromptCheck {
 }
 
 /**
- * The CANDIDATE prompt of a future one-time run: fixed run rules (as つぐ手's run had), then the approved text from its
- * "COMMON:" line to the end, byte for byte. The approved file's 3 leading lines (the historical DRAFT note, which tells a
- * reader not to call any tool) are left out; everything after them is the approved bytes unchanged, which the tests
- * prove by suffix. NOT APPROVED: the owner approves this candidate's SHA-256 (BICYCLE_RUN_PROMPT_CANDIDATE_SHA256) with
- * the one-time run, or it is changed first.
+ * The run prompt of the one-time run: fixed run rules (as つぐ手's run had), then the approved text from its "COMMON:"
+ * line to the end, byte for byte. The approved file's 3 leading lines (the historical DRAFT note, which tells a reader
+ * not to call any tool) are left out; everything after them is the approved bytes unchanged, which the tests prove by
+ * suffix. DEV-191 named it a candidate; DEV-192: the owner approved exactly this SHA-256
+ * (BICYCLE_RUN_PROMPT_CANDIDATE_SHA256, the name kept as the owner's GO quotes it) on 2026-11-07.
  */
 export function buildBicycleRunPromptCandidate(approvedText: string): string {
   const check = checkApprovedBicyclePrompt(approvedText);
@@ -170,9 +171,58 @@ Rules for this run:
 
 ${check.parsed.fromCommon}`;
 }
-/** the candidate run prompt's pins (NOT approved; listed for the owner's one-time GO) */
+/** the run prompt's pins — owner-approved on 2026-11-07 (DEV-192) for the one-time run */
 export const BICYCLE_RUN_PROMPT_CANDIDATE_SHA256 = "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447";
 export const BICYCLE_RUN_PROMPT_CANDIDATE_CHARS = 4566;
+
+/** DEV-192: the owner's GO for ONE real run — its scope and both pinned byte sequences. Void if either changes. */
+export const BICYCLE_RUN_PROMPT_APPROVAL = {
+  approval_record: "bicycle-one-time-run-20261107",
+  scope: "one_time_run_of_6_pictures_not_a_standing_permission",
+  decided_by: "owner",
+  decided_on: "2026-11-07",
+  evidence: "Issue #193 comment 6689664215",
+  shop: "bicycle",
+  page: "d1-v9",
+  jobs: 1,
+  max_image_calls: 6,
+  codex_runs: 1,
+  timeout_minutes: 15,
+  retry: false,
+  run_prompt_sha256: BICYCLE_RUN_PROMPT_CANDIDATE_SHA256,
+  run_prompt_chars: BICYCLE_RUN_PROMPT_CANDIDATE_CHARS,
+  core_prompt_sha256: BICYCLE_PROMPT_SHA256,
+  core_prompt_bytes: BICYCLE_PROMPT_BYTES,
+  void_if_either_byte_sequence_changes: true,
+  /** the one-use run approval id and expiry: chosen by the owner at run time (root's config), never in code */
+  run_approval_id_in_code: false,
+} as const;
+
+const REPO_ROOT = resolvePath(__dirname, "../../..");
+/**
+ * DEV-192: the approved run prompt, built from the approved file in this checkout. Never throws: if the file's bytes,
+ * the built prompt's SHA-256 or its length differ from the pins, the approval is void and it returns "" (whose SHA
+ * matches no pin), so the worker refuses the job before any reservation or generation. `text` is for tests only.
+ */
+export function buildBicycleRunPrompt(text?: string): string {
+  try {
+    const approved = text ?? readFileSync(joinPath(REPO_ROOT, BICYCLE_PROMPT_FILE), "utf8");
+    const run = buildBicycleRunPromptCandidate(approved);
+    return sha256(run) === BICYCLE_RUN_PROMPT_CANDIDATE_SHA256 && run.length === BICYCLE_RUN_PROMPT_CANDIDATE_CHARS ? run : "";
+  } catch {
+    return "";
+  }
+}
+
+/** DEV-192: the approved prompt TEXT from this checkout, or "" when its bytes are not the approved ones (never throws). */
+export function readApprovedBicyclePrompt(): string {
+  try {
+    const text = readFileSync(joinPath(REPO_ROOT, BICYCLE_PROMPT_FILE), "utf8");
+    return checkApprovedBicyclePrompt(text).ok ? text : "";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Whether a picture reaches its photo's 2× target: at least the prompt's "at least W x H" pixels, or a cover crop to the
@@ -192,9 +242,8 @@ export const BICYCLE_DEMO_LABEL = "デモ用のイメージ（AI 生成）。実
 /** the means of a real run (the same jail and CLI as つぐ手's); an offline stub writes its own label instead */
 export const BICYCLE_GENERATOR = "codex-cli image_generation (owner WSL, sr-designgen jail, one run)";
 /**
- * The label of the OFFLINE stub batches the tests write (no model, no tool). The swap's test-only candidate seam
- * (photo-swap.ts offlineAiDemoCandidate) takes 輪's ai_generated_demo pictures ONLY with this generator, so a real
- * picture cannot pass through the seam.
+ * The label of the OFFLINE stub batches the tests write (no model, no tool). The intake accepts it only when a test
+ * passes it explicitly (its default is BICYCLE_GENERATOR alone), so a stub bundle never passes for a real run.
  */
 export const BICYCLE_OFFLINE_STUB_GENERATOR = "offline-stub (test only; no model, no image tool, no network)";
 

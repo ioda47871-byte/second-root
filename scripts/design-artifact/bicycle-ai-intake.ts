@@ -1,9 +1,10 @@
 /**
  * DEV-191 — OFFLINE. The import of 輪's (bicycle, a FICTIONAL shop) AI demo photos into the photo swap (photo-swap.ts),
- * the same steps as つぐ手's (tsugute-ai-intake.ts, whose upscale rule and private-path check it reuses). Prepared, NOT
- * runnable for a real run: no 輪 generation is approved, so by default it accepts NO run approval id
- * (BICYCLE_RUN_APPROVAL_ID is null) and every real bundle is RUN_APPROVAL_UNKNOWN. The offline tests pass their own stub
- * approval id and stub generator.
+ * the same steps as つぐ手's (tsugute-ai-intake.ts, whose upscale rule and private-path check it reuses).
+ * Approval ids: called WITHOUT approvalIds it accepts none (BICYCLE_RUN_APPROVAL_ID is null — no run id is written in
+ * code). DEV-192: the worker's guarded hook (image-autorun.ts) calls it with the one job's own approval id, exactly as it
+ * calls つぐ手's intake; that id has by then been matched to the owner's root config entry and used up by root and the
+ * worker. The offline tests pass their own stub approval id and stub generator.
  *
  * Refuses (nothing written) unless the bundle's manifest.json (bicycle_ai_photos_v0, the bundle writer bicycle-photos.ts)
  *  - is complete: 6 pictures, 6 calls, none failed, the model reported;
@@ -19,8 +20,9 @@
  * `ai_generated_demo`, demo only, public_web false, with the provenance (generator, model, date, prompt SHA-256, approval
  * id), plus <manifest-out>.provenance.json naming each photo's slot, use, prompt SHA-256 and the prompt approval record.
  *
- * The swap itself still refuses these pictures for 輪 (photo-swap-shops.ts aiDemoAllowed: false); only its test-only
- * candidate seam takes stub pictures. Never calls a model, a generator or the network. Nothing is committed.
+ * DEV-192: the swap takes these pictures for 輪 (photo-swap-shops.ts aiDemoAllowed: true, owner GO 2026-11-07); its
+ * rights checks (never a public site, provenance required) are unchanged. Never calls a model, a generator or the
+ * network. Nothing is committed.
  */
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

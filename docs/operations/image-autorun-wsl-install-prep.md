@@ -272,3 +272,9 @@ Issue #193 のオーナーのコメント（DEV-189 の GO）から:
 - timer は not-found（置かれていない）、スイッチ（`/etc/sr-design-worker/image-autorun.json`）は無い = OFF。real Codex は 0 回のまま。
 - `static` を enabled と誤判定した以前の一時的な導入スクリプトは**再利用しない**。確かめるときは §4 の確認（読むだけ）を使う。
 - 追加の root の操作は要らない。§5 の禁止はそのまま。
+
+## 8. 輪の1回限りの実生成（DEV-192 で追記）
+
+- オーナーの GO（2026-11-07、コメント `6689664215`）で、輪 d1-v9 の写真6枚を**1回だけ**生成する経路ができた（worker の `AUTORUN_SHOPS.bicycle`、root の `IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'`）。
+- root の clone を `bb7da4f` から DEV-192 の merge SHA に合わせる差は **`cycle.sh` の1ファイルだけ**（allowlist と照合。unit・`admin.sh`・jail・ops・bridge は同じバイト）。
+- 実機の手順は `docs/operations/bicycle-one-time-run-sheet.md`（読むだけの確認・clone の更新・`claude-stop`・使い捨ての ID・1回の起動・確認・OFF への復元・失敗時）。§5 の禁止のうち、このシートの手順だけを1回に限って行う。timer の enable は今も禁止。

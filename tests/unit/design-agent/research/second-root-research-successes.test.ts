@@ -52,7 +52,10 @@ describe("DEV-191 Second Root research success ledger", () => {
       design_status: "success",
       photo_status: "mock_only",
       real_images_generated: 0,
-      photo_prompt: { sha256: "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594", bytes: 3865, approved: true, real_generation_approved: false },
+      photo_prompt: { sha256: "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594", bytes: 3865, approved: true, real_generation_approved: true },
+      // DEV-192: one approved run, not executed yet; never "AI写真入り完成" until the owner's visual checks pass
+      real_generation: { approval: "one_time_run_only", decided_on: "2026-11-07", evidence: "Issue #193 comment 6689664215", run_prompt_sha256: "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447", executed: false, standing_auto_run: false },
+      ai_photo_complete: "pending_owner_visual_checks",
       approved_for_generation: false,
       approved_for_sales: false,
       approved_for_production: false,

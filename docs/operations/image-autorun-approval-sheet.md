@@ -10,7 +10,7 @@
 | 店舗 | 状態 | ページ・slot | プロンプトの pin |
 | --- | --- | --- | --- |
 | `tsugute`（つぐ手、架空の金継ぎ） | **実装済み**（OFF） | `d1-v10`、6 枠（ph-ware・ph-kake・ph-hibi・ph-dry・ph-hand・ph-desk） | SHA256 `dab7f260…3ed0`・4133 文字（DEV-185 で承認された文面） |
-| `bicycle`（輪、架空の自転車修理） | **未対応** | slot の計測は古い `d1-v2` だけで edges が無い。写真の差し替えがつぐ手専用 | 承認された写真の brief・プロンプトが無い |
+| `bicycle`（輪、架空の自転車修理） | **実装済み**（DEV-192、オーナーの GO 2026-11-07 は**1回限り**。OFF のまま） | `d1-v9`、5 枠・6 枚（ph-d・ph-a・ph-c・ph-b・ph-bench-pc・ph-bench-sp） | 実行プロンプト SHA256 `4b8081e0…7447`・4566 文字（核の本文 `83c9b2c6…5594`）。実行は `docs/operations/bicycle-one-time-run-sheet.md` |
 | `sento`（ゆげ湯、架空の銭湯） | **未対応** | edges が無い。写真の差し替えがつぐ手専用 | 承認された写真の brief・プロンプトが無い |
 
 未対応の店のジョブは worker が `REFUSED_JOB_INVALID`、root が `IMAGE_GRANT_SCOPE_MISMATCH`（grant を出さない）で拒否する。

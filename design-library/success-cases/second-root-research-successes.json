@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "dataset": "second-root-quality-pipeline-research-successes",
-  "as_of": "2026-11-06",
+  "as_of": "2026-11-07",
   "scope": "Second Root's own research pages for FICTIONAL shops, made in the quality pipeline (design-library/research/quality-pipeline/poc). Kept apart from the 30 external research success cases (manifest.json, CP-001..032): those are external research success cases (the frozen manifest.json corpus, guarded at 30 by design-library/intelligence/v01/registration-safety.mjs; concept images, user-supplied images and local PoCs), and a fictional shop's own page is not a reference for other shops.",
   "policy": {
     "not_templates": true,
@@ -54,8 +54,21 @@
         "bytes": 3865,
         "approval_id": "bicycle-photo-prompt-20261106",
         "approved": true,
-        "real_generation_approved": false
+        "real_generation_approved": true
       },
+      "real_generation": {
+        "approval": "one_time_run_only",
+        "decided_by": "owner",
+        "decided_on": "2026-11-07",
+        "evidence": "Issue #193 comment 6689664215",
+        "run_prompt_sha256": "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447",
+        "run_prompt_chars": 4566,
+        "limits": "1 job, at most 6 image calls, 1 Codex run, 15 minutes, no retry, this page only",
+        "executed": false,
+        "standing_auto_run": false
+      },
+      "ai_photo_complete": "pending_owner_visual_checks",
+      "ai_photo_complete_rule": "Never recorded as AI写真入り完成 until the owner passes every check of docs/design/bicycle-ai-photo-brief.md §6 on the real pictures (MOCK and stubs never pass it).",
       "not_claimed": [
         "a finished page with real photos",
         "automatic reproduction by the production B pipeline",
