@@ -221,17 +221,24 @@ export const MIN_SCALE_DEFAULT = SLOT_DENSITY;
  * desktop cap is not guaranteed: the desktop boards keep growing.
  */
 export const EDGE_VIEWPORTS = ["mobile_600", "tablet_1199", "desktop_1920"] as const;
-export type EdgeViewport = (typeof EDGE_VIEWPORTS)[number];
+/**
+ * DEV-189: every range edge a shop's pinned CSS can have. A shop's edge set is three of these, one per range, in this
+ * order (photo-swap-shops.ts): つぐ手 EDGE_VIEWPORTS (tablet 601–1199), 輪 mobile_600 / tablet_999 / desktop_1920
+ * (its tablet range is 601–999). An edges file names its set in `edge_viewports`; without it, EDGE_VIEWPORTS.
+ */
+export const ALL_EDGE_VIEWPORTS = ["mobile_600", "tablet_999", "tablet_1199", "desktop_1920"] as const;
+export type EdgeViewport = (typeof ALL_EDGE_VIEWPORTS)[number];
 export type PlanViewport = SlotViewport | EdgeViewport;
 /** The window each edge is measured at (the height does not change a board's box on the pages measured). */
 export const EDGE_WINDOWS: Record<EdgeViewport, { width: number; height: number }> = {
   mobile_600: { width: 600, height: 900 },
+  tablet_999: { width: 999, height: 900 },
   tablet_1199: { width: 1199, height: 900 },
   desktop_1920: { width: 1920, height: 1080 },
 };
 /** The widest window the desktop scale is checked at: wider screens are not guaranteed. */
 export const DESKTOP_CAP_PX = EDGE_WINDOWS.desktop_1920.width;
-export const EdgeVariant = SlotVariant.extend({ viewport: z.enum(EDGE_VIEWPORTS) });
+export const EdgeVariant = SlotVariant.extend({ viewport: z.enum(ALL_EDGE_VIEWPORTS) });
 export type EdgeVariant = z.infer<typeof EdgeVariant>;
 type AnyVariant = SlotVariant | EdgeVariant;
 
@@ -246,13 +253,21 @@ export const PhotoSlotEdges = z
     copy_sha256: z.string().regex(/^[0-9a-f]{64}$/),
     derived_by: z.literal("scripts/design-artifact/photo-slots.ts --edges"),
     desktop_cap_px: z.literal(DESKTOP_CAP_PX),
+    /** DEV-189: the shop's edge set (one per range, mobile → desktop); absent means EDGE_VIEWPORTS (つぐ手) */
+    edge_viewports: z.array(z.enum(ALL_EDGE_VIEWPORTS)).length(EDGE_VIEWPORTS.length).optional(),
     slots: z
       .array(z.strictObject({ slot_id: z.string().regex(/^ph-[a-z0-9-]{1,40}$/), edges: z.array(EdgeVariant).length(EDGE_VIEWPORTS.length) }))
       .min(1)
       .max(40),
   })
-  .refine((e) => e.slots.every((s) => EDGE_VIEWPORTS.every((v, i) => s.edges[i]?.viewport === v)), "edges in EDGE_VIEWPORTS order");
+  .refine((e) => validEdgeSet(e.edge_viewports ?? EDGE_VIEWPORTS), "an edge set is one mobile, one tablet and the desktop cap, in that order")
+  .refine((e) => e.slots.every((s) => (e.edge_viewports ?? EDGE_VIEWPORTS).every((v, i) => s.edges[i]?.viewport === v)), "edges in the edge set's order");
 export type PhotoSlotEdges = z.infer<typeof PhotoSlotEdges>;
+
+/** One mobile edge, one tablet edge and the desktop cap, in that order. */
+export function validEdgeSet(set: readonly string[]): boolean {
+  return set.length === 3 && set[0] === "mobile_600" && (set[1] === "tablet_999" || set[1] === "tablet_1199") && set[2] === "desktop_1920";
+}
 
 /** The edge variants of each slot, or null when the edges were not measured on the inventory's page. */
 export function edgesFor(inv: PhotoSlotInventory, edges: PhotoSlotEdges): Map<string, EdgeVariant[]> | null {

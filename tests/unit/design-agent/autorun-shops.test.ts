@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_BATCH_IMAGES } from "@/lib/design-agent/design-image/image-once";
+import { SWAP_SHOP_SPECS } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
 import { AI_DEMO_SHOPS, SWAP_SHOPS } from "../../../scripts/design-artifact/photo-swap";
 import { MAX_UPSCALE } from "../../../scripts/design-artifact/tsugute-ai-intake";
 import { AUTORUN_SHOP_IDS, AUTORUN_SHOPS, UNIMPLEMENTED_SHOPS } from "../../../scripts/sales-design-worker/autorun-shops";
@@ -102,9 +103,11 @@ describe("DEV-188 unimplemented shops stay out (未対応)", () => {
     }
   });
 
-  it("the recorded reasons hold: the swap does not take them and their slot inventories have no edges", () => {
+  it("the recorded reasons hold: not auto-run, no AI demo (輪 is a research-only swap shop), and no unsuffixed slot edges", () => {
     for (const id of Object.keys(UNIMPLEMENTED_SHOPS)) {
-      expect((SWAP_SHOPS as readonly string[]).includes(id)).toBe(false);
+      // DEV-189 (owner GO 2026-11-06 item 3): 輪 is in the swap as a research-only shop (mock photos, no AI demo
+      // pictures); ゆげ湯 is not in the swap at all. Neither takes ai_generated_demo pictures nor is an auto-run shop.
+      expect((SWAP_SHOPS as readonly string[]).includes(id)).toBe(id === "bicycle");
       expect(AI_DEMO_SHOPS.has(id)).toBe(false);
       const dir = join(REPO, "design-library/research/quality-pipeline/poc", id);
       expect(existsSync(join(dir, "photo-slots.json"))).toBe(true);
@@ -113,5 +116,17 @@ describe("DEV-188 unimplemented shops stay out (未対応)", () => {
     // 輪: the only measured inventory is of the old d1-v2
     const wa = JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slots.json"), "utf8")) as { page_dir: string };
     expect(wa.page_dir.endsWith("/d1-v2")).toBe(true);
+  });
+
+  it("DEV-189: 輪's research swap is not an approval — no AI demo pictures, no auto-run, a 未承認 brief", () => {
+    expect(SWAP_SHOP_SPECS.bicycle.aiDemoAllowed).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(AUTORUN_SHOPS, "bicycle")).toBe(false);
+    expect(rootAllowlist().bicycle).toBeUndefined();
+    expect(UNIMPLEMENTED_SHOPS.bicycle).toContain("未承認");
+    const brief = readFileSync(join(REPO, "docs/design/bicycle-ai-photo-brief.md"), "utf8");
+    expect(brief).toContain("未承認");
+    // its page inventory is d1-v7, beside the old d1-v2 one (no photo-slot-edges.json without a page suffix)
+    expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slots-d1-v7.json"))).toBe(true);
+    expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slot-edges-d1-v7.json"))).toBe(true);
   });
 });

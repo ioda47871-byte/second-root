@@ -78,8 +78,10 @@ export const AUTORUN_SHOP_IDS = Object.keys(AUTORUN_SHOPS) as [AutorunShopId, ..
  * other unknown shop). Recorded so nobody reads their research pages as ready for generated photos.
  */
 export const UNIMPLEMENTED_SHOPS: Readonly<Record<string, string>> = {
+  // DEV-189: 輪's research page d1-v7 now has a slot inventory + edges and an OFFLINE swap (mock photos only, no AI demo
+  // pictures); the brief is a draft. Still not an auto-run shop.
   bicycle:
-    "輪: slot inventory only for the old d1-v2 (no photo-slot-edges), no owner-approved photo brief or pinned prompt, and the photo swap takes つぐ手 only (SWAP_SHOPS / AI_DEMO_SHOPS / its CSS breakpoints)",
+    "輪: research-only offline swap of d1-v7 (DEV-189, photo-slots-d1-v7.json + edges, mock photos); no owner-approved photo brief or pinned prompt (docs/design/bicycle-ai-photo-brief.md is a 未承認 draft), the swap refuses its ai_generated_demo pictures (not in AI_DEMO_SHOPS), and no run bundle or intake",
   sento:
     "ゆげ湯: no photo-slot-edges, no owner-approved photo brief or pinned prompt, and the photo swap takes つぐ手 only",
 };

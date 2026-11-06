@@ -258,4 +258,17 @@ for n in sr-design-cycle.service sr-design-cycle.timer; do sudo test -e "$BK/$n"
 
 - worker の hook は店ごとの固定の manifest（`scripts/sales-design-worker/autorun-shops.ts`）で動く。root の `cycle.sh` は同じ allowlist（`IMAGE_AUTORUN_SHOPS`、テストで manifest と一致を固定）で job の店を確かめ、無い店は `IMAGE_GRANT_SCOPE_MISMATCH` で grant を出さない。
 - **実装済みは `tsugute`（つぐ手）だけ。** 輪（自転車修理）・ゆげ湯（銭湯）は **未対応**: 写真の差し替え（`photo-swap.ts`）が `tsugute` 専用（`SWAP_SHOPS`・`AI_DEMO_SHOPS`・つぐ手の CSS の breakpoint）、輪の slot の計測は古い版 `d1-v2` のものだけで `photo-slot-edges` が無く、オーナーが承認した写真の brief・プロンプトも無い。
+  - DEV-189 の追記: 輪は研究専用の指定ページ `d1-v7` の slot の計測と端（`photo-slots-d1-v7.json`・`photo-slot-edges-d1-v7.json`）ができ、差し替えは模擬写真でオフラインに通る（`photo-swap-shops.ts` の輪の spec）。それでも **無人実行には未対応のまま**: brief は未承認の草案（`docs/design/bicycle-ai-photo-brief.md`）、輪の `ai_generated_demo` は差し替えが受け付けない、`AUTORUN_SHOPS` にも root の `IMAGE_AUTORUN_SHOPS` にも入れていない。
 - root の clone を §3 の `bb7da4f` に合わせた場合、root の allowlist は #229 の版（`tsugute` だけ）のまま。後の develop の commit に合わせ直すときは §3-2 の差の確認をやり直す。
+
+## 7. 実機の確認済みの状態（2026-11-06、オーナー確認、DEV-189 で追記）
+
+Issue #193 のオーナーのコメント（DEV-189 の GO）から:
+
+> OWNERが root clone `bb7da4fa42817ae1c8f0a2ef86587368e84f418e` にcheckoutし、`sr-design-cycle.service`を設置。`UNIT_SAME`・`UNIT_VERIFY_OK`・`DIRTY_FILES=0`・`ActiveState=inactive`・`UnitFileState=static`・timer not-found・image autorun switch absent (OFF) を実機で確認。`static`を enabled と誤判定した一時install scriptは**再実行しない**。WSLでの追加root操作は不要。
+
+- root の clone は `bb7da4f`、unit は置かれ（`UNIT_SAME`・`UNIT_VERIFY_OK`）、clone に変更なし（`DIRTY_FILES=0`）、service は動いていない（`ActiveState=inactive`）。
+- **`UnitFileState=static` は、この service の正常な「enable されていない」状態である。** unit に `[Install]` の節が無いので `enable` の対象にならず、timer か手で起動されたときだけ動く。enabled ではない。
+- timer は not-found（置かれていない）、スイッチ（`/etc/sr-design-worker/image-autorun.json`）は無い = OFF。real Codex は 0 回のまま。
+- `static` を enabled と誤判定した以前の一時的な導入スクリプトは**再利用しない**。確かめるときは §4 の確認（読むだけ）を使う。
+- 追加の root の操作は要らない。§5 の禁止はそのまま。
