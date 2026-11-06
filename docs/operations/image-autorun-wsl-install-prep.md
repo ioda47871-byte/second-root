@@ -239,3 +239,9 @@ for n in sr-design-cycle.service sr-design-cycle.timer; do sudo test -e "$BK/$n"
 - `sr-design-cycle.service` の start（§3 には含めない。手での `cycle.sh` の実行も、承認した window の外ではしない）
 - jail の再 install（`admin.sh jail-install`/`approve`）、passt・`.wslconfig`・ネットワーク・サインインの変更
 - Production・Staging・DB・Vercel の変更、課金
+
+## 6. 別の店舗への広がり（DEV-188 Phase B の状態）
+
+- worker の hook は店ごとの固定の manifest（`scripts/sales-design-worker/autorun-shops.ts`）で動く。root の `cycle.sh` は同じ allowlist（`IMAGE_AUTORUN_SHOPS`、テストで manifest と一致を固定）で job の店を確かめ、無い店は `IMAGE_GRANT_SCOPE_MISMATCH` で grant を出さない。
+- **実装済みは `tsugute`（つぐ手）だけ。** 輪（自転車修理）・ゆげ湯（銭湯）は **未対応**: 写真の差し替え（`photo-swap.ts`）が `tsugute` 専用（`SWAP_SHOPS`・`AI_DEMO_SHOPS`・つぐ手の CSS の breakpoint）、輪の slot の計測は古い版 `d1-v2` のものだけで `photo-slot-edges` が無く、オーナーが承認した写真の brief・プロンプトも無い。
+- root の clone を §3 の `bb7da4f` に合わせた場合、root の allowlist は #229 の版（`tsugute` だけ）のまま。後の develop の commit に合わせ直すときは §3-2 の差の確認をやり直す。
