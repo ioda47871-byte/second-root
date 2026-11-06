@@ -57,6 +57,8 @@ const REPO = resolve(__dirname, "../..");
 // Everything the worker writes (results, queue, screenshots) is private to the worker user.
 process.umask(0o077);
 const WATCHDOG_GRACE_MS = 60 * 1000;
+/** set by stopNow; the run's deadline then reads as spent, so the claim loop, the image hook and every deadline-bound step start nothing new */
+let stopping = false;
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -226,7 +228,7 @@ async function run(): Promise<number> {
   const budgetSeconds = flag("budget-seconds");
   if (budgetSeconds !== undefined && !/^[1-9][0-9]{0,5}$/.test(budgetSeconds)) usage("--budget-seconds: a positive integer.");
   const runBudgetMs = Math.min(RUN_TIME_BUDGET_MS, budgetSeconds === undefined ? RUN_TIME_BUDGET_MS : Number(budgetSeconds) * 1000);
-  const deadline = new RunDeadline(Date.now() + runBudgetMs);
+  const deadline = new RunDeadline(Date.now() + runBudgetMs, () => (stopping ? Number.POSITIVE_INFINITY : Date.now()));
 
   // Last resort: never outlive the budget (systemd / timeout(1) come after).
   setTimeout(() => stopNow("WORKER_RUN_TIME_BUDGET"), runBudgetMs + WATCHDOG_GRACE_MS).unref();
@@ -319,7 +321,6 @@ async function bridgeSync(direction: "import" | "export", spool: BridgeSpool): P
   }
 }
 
-let stopping = false;
 function stopNow(code: string): void {
   if (stopping) return;
   stopping = true;
@@ -332,6 +333,8 @@ function stopNow(code: string): void {
   removeActiveTempRootsSync();
   // DEV-186: an image job cut off mid-generation leaves no session log or image dir behind (as tsugute-photos.ts)
   void Promise.race([cleanupActiveImageCalls().catch(() => undefined), new Promise((r) => setTimeout(r, 20_000))]).then(() => {
+    // anything started while the cleanup ran
+    killAllBoundedChildren();
     process.stdout.write(`${JSON.stringify({ status: "stopped", code, message: publicMessage(code) })}\n`);
     process.exit(3);
   });

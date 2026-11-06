@@ -28,6 +28,8 @@ JSON
 sudo chmod 0644 /etc/sr-design-worker/image-autorun.json
 ```
 
+エントリの `expires_at` は**書く時点から最大24時間後**にする（それより先の期限のエントリは、ジョブの依頼時刻に関係なく拒否される）。
+
 ジョブ（同じ承認 ID・同じ scope、ファイル名 = エントリの `job_id`）を `~sr-designgen/sr-design-jobs/image-autorun/inbox/<job_id>.json` に置くと、次の worker 実行で処理される。
 
 ## 止める・失効

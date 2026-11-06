@@ -278,6 +278,8 @@ async function oneJob(o: ImageAutorunOptions, q: Q, stateDir: string, audit: (co
   const config = await readSwitch(o.configPath ?? IMAGE_AUTORUN_CONFIG, o.trustedUid ?? 0);
   if (!config) return decide("held", "HELD_AUTORUN_DISABLED", ids);
   const entry = config.approvals.find((a) => a.approval_id === job.approval_id);
+  // re-review L2: the owner's entry itself may not outlive 24 h from now (a standing entry is not a one-use approval)
+  if (entry && Date.parse(entry.expires_at) - nowMs > MAX_APPROVAL_WINDOW_MS) return decide("failed", "REFUSED_LIMIT_EXCEEDED", ids);
   if (!entry || entry.job_id !== jobId || entry.shop !== sc.shop || entry.max_images !== sc.max_images || entry.max_jobs !== sc.max_jobs || entry.expires_at !== sc.expires_at) return decide("failed", "REFUSED_NO_APPROVAL", ids);
   const prompt = shop.buildPrompt();
   if (sha256(prompt) !== job.brief_sha256 || prompt.length !== shop.briefChars) return decide("failed", "REFUSED_JOB_INVALID", ids);

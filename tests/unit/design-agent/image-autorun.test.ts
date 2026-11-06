@@ -223,6 +223,16 @@ describe("DEV-186 refusals (switch ON, mock generator never called)", () => {
     expect(gen).not.toHaveBeenCalled();
   });
 
+  it("an owner entry whose own expires_at is more than 24 h from now: REFUSED_LIMIT_EXCEEDED (re-review L2)", async () => {
+    const far = iso(30 * HOUR);
+    const f = setup({ approvals: [{ approval_id: "tsugute-autorun-test-01", job_id: "job-x", shop: "tsugute", max_images: 6, max_jobs: 1, expires_at: far }] });
+    // the job itself is in its 24 h window; only the owner's entry reaches too far (without the cap: REFUSED_NO_APPROVAL)
+    f.put("job-x", job());
+    const gen = vi.fn<ImageGenerate>(async () => mockBatch());
+    expect((await f.run({ generate: gen }))?.code).toBe("REFUSED_LIMIT_EXCEEDED");
+    expect(gen).not.toHaveBeenCalled();
+  });
+
   it("an approval id already in the shared one-use ledger: REFUSED_APPROVAL_REUSED", async () => {
     const f = setup();
     mkdirSync(join(f.state, "poc-approval-used", "tsugute-autorun-test-01"), { recursive: true });
