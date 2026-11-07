@@ -152,6 +152,44 @@ describe("today queue", () => {
     }
   });
 
+  it("DEV-194: reads the stored sources and channel facts for the card's evidence, and the verdict is sendable", async () => {
+    const ig = await prepare(candidate());
+    const mail = await prepare(emailCandidate());
+    const items = await loadTodayQueue(admin);
+    const byId = Object.fromEntries(items.map((i) => [i.prospectId, i]));
+    expect(byId[ig].evidence.sources.map((s) => [s.field, s.sourceType])).toEqual([["name", "instagram_profile"]]);
+    expect(byId[mail].evidence.sources.map((s) => [s.field, s.sourceType])).toEqual([
+      ["name", "instagram_profile"],
+      ["email", "official_contact"],
+    ]);
+    expect(byId[ig].evidence.contact.sendable).toBe(true);
+    expect(byId[mail].evidence.contact.sendable).toBe(true);
+    expect(byId[mail].evidence.contact.emailProvenance.state).toBe("first_party");
+    expect(byId[ig].evidence.researchedDate).not.toBe("未確認");
+  });
+
+  it("DEV-194: a draft whose stored email provenance is gone, or that matches a later exclusion, is not sendable", async () => {
+    const mail = await prepare(emailCandidate());
+    const ig = await prepare(candidate());
+    await db.query("delete from public.sales_sources where prospect_id = $1 and field = 'email'", [mail]);
+    const { rows } = await db.query<{ instagram_handle: string }>("select instagram_handle from public.sales_prospects where id = $1", [ig]);
+    await db.query("insert into public.sales_exclusions (label, reason, instagram_handle) values ('テスト除外', 'existing_customer', $1)", [rows[0].instagram_handle]);
+    try {
+      const items = await loadTodayQueue(admin);
+      const byId = Object.fromEntries(items.map((i) => [i.prospectId, i]));
+      expect(byId[mail].evidence.contact.sendable).toBe(false);
+      expect(byId[mail].evidence.contact.checks.find((c) => c.id === "channel_rule")?.state).toBe("ng");
+      expect(byId[ig].evidence.contact.sendable).toBe(false);
+      expect(byId[ig].evidence.contact.checks.find((c) => c.id === "exclusion")?.state).toBe("ng");
+      // The database agrees on the provenance: marking the email draft sent is refused.
+      const outreach = byId[mail].outreachId;
+      const { error } = await admin.rpc("sales_mark_sent", { p_outreach_id: outreach });
+      expect(error?.message).toContain("email_not_eligible");
+    } finally {
+      await db.query("delete from public.sales_exclusions where label = 'テスト除外'");
+    }
+  });
+
   it("shows nothing to a non-admin session", async () => {
     await prepare(candidate());
     const outsider = await signedInClient("queue-outsider@test.example.com");

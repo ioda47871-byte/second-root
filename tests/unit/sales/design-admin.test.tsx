@@ -6,6 +6,7 @@ import { todaySelect, type TodayItem } from "@/lib/admin/today";
 import type { ReviewSummary } from "@/lib/design-agent/review-summary";
 import { loadPublicDemo } from "@/lib/sales/demo-data";
 import { DESIGN_STATUSES, type DesignStatus, designErrorLabel } from "@/lib/sales/design";
+import { fixtureEvidence } from "./today-evidence-fixture";
 
 // DEV-030 admin UX: the today card shows the demo's AI design state and,
 // when ready, a direct way to the demo preview. A legacy item (no design
@@ -33,6 +34,7 @@ function item(designStatus: DesignStatus | null, kind: "initial" | "follow_up" =
     designStatus,
     designErrorCode: null,
     designReview: null,
+    evidence: fixtureEvidence(designStatus, kind),
   };
 }
 

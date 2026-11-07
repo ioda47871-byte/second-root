@@ -19,9 +19,19 @@ function cannotCompose(what: string) {
   );
 }
 
+/** DEV-194: a card the server would refuse is never offered a send action. */
+function sendBlocked() {
+  return (
+    <p className={styles.muted} role="status" data-testid="send-blocked">
+      送信できない理由があるため、送信の操作は出していません（上の理由を確認してください）。
+    </p>
+  );
+}
+
 /** The one big action for a queue item: Instagram DM, email, or the one email follow-up. */
 function actionFor(item: TodayItem) {
   if (item.kind === "follow_up") {
+    if (!item.evidence.contact.sendable) return sendBlocked();
     if (item.channel !== "email" || !item.publicEmail || !item.demoToken) return cannotCompose("フォローメール");
     const draft = composeFollowUp({ shopName: item.shopName, publicEmail: item.publicEmail, initialSubject: item.subject, demoToken: item.demoToken });
     try {
@@ -39,6 +49,7 @@ function actionFor(item: TodayItem) {
       </p>
     );
   }
+  if (!item.evidence.contact.sendable) return sendBlocked();
   if (item.kind === "initial" && item.channel === "email" && item.publicEmail && item.demoToken) {
     const draft = {
       to: item.publicEmail,

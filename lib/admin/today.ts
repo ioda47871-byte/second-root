@@ -2,9 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ReviewSummarySchema, type ReviewSummary } from "@/lib/design-agent/review-summary";
 import { aiDesignEnabled, initialSendAllowed, isDesignStatus, type DesignStatus } from "@/lib/sales/design";
+import { emailDigest } from "@/lib/sales/email-digest";
+import { buildTodayEvidence, matchExclusions, type ExclusionRow, type SourceRow, type TodayEvidence } from "@/lib/sales/evidence";
 import { isFollowUpDue } from "@/lib/sales/followup";
 import { selectWorkQueue, type QueueItem } from "@/lib/sales/queue";
-import { LIMITS, type Category, type Channel } from "@/lib/sales/types";
+import { LIMITS, type Category, type Channel, type WebsiteStatus } from "@/lib/sales/types";
 
 // Today's work queue for the admin (MVP_SPEC §3.1, §8): at most 5 actions,
 // due email follow-ups first, then unsent initial drafts, never DNC shops.
@@ -28,6 +30,11 @@ export type TodayItem = QueueItem & {
   designErrorCode: string | null;
   /** DEV-058: the design's review summary (ready / blocked only, re-validated); null otherwise or with the step off. */
   designReview: ReviewSummary | null;
+  /**
+   * DEV-194: why the shop is listed, its sources and research date, and the
+   * contact verdict (the same rules the server applies when it is marked sent).
+   */
+  evidence: TodayEvidence;
 };
 
 // DEV-048: with the AI design step on, drafts waiting for a design must not
@@ -54,16 +61,31 @@ type Row = {
     do_not_contact: boolean;
     instagram_url: string | null;
     public_email: string | null;
+    address: string | null;
+    normalized_name: string | null;
+    normalized_address: string | null;
+    website_status: WebsiteStatus | null;
+    website_domain: string | null;
+    instagram_handle: string | null;
+    recommended_channel: Channel | null;
+    created_at: string | null;
+    sources: SourceRow[] | null;
     demo: DemoRow | DemoRow[] | null;
   } | null;
 };
 
-// With the AI design step off (DEV-030) the query is exactly the legacy one.
+// With the AI design step off (DEV-030) the demo part is exactly the legacy one.
+// DEV-194: the prospect's stored channel facts and its sources are read for the
+// card's evidence, through the same admin session (RLS: admin read only).
 export function todaySelect(design: boolean): string {
   return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
+    address, normalized_name, normalized_address, website_status, website_domain, instagram_handle, recommended_channel, created_at,
+    sources:sales_sources(field, value, source_url, source_type, verified_at),
     demo:sales_demos(public_token, disabled_at${design ? ", design_status, design_error_code, design_review" : ""}))`;
 }
+
+const EXCLUSION_SELECT = "reason, instagram_handle, website_domain, email_digest, normalized_name, normalized_address";
 
 /** DEV-058: a stored summary is shown only on a finished design and only while it is still the agreed shape. */
 function reviewOf(status: DesignStatus | null, value: unknown): ReviewSummary | null {
@@ -92,11 +114,52 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
     dueRows = (res.data ?? []) as unknown as Row[];
   }
 
+  // DEV-194: the admin's exclusion list (admin read only). Persist already
+  // refused excluded shops; this catches an exclusion added after the draft.
+  // A read failure is not hidden: every card's verdict becomes 未確認 (blocked).
+  const allRows = [...dueRows, ...((drafts.data ?? []) as unknown as Row[])];
+  let exclusions: ExclusionRow[] | null = [];
+  if (allRows.length > 0) {
+    const ex = await supabase.from("sales_exclusions").select(EXCLUSION_SELECT);
+    exclusions = ex.error ? null : ((ex.data ?? []) as unknown as ExclusionRow[]);
+  }
+
   const toItem = (row: Row, kind: "initial" | "follow_up"): TodayItem | null => {
     const p = row.prospect;
     if (!p) return null;
     const demo = Array.isArray(p.demo) ? p.demo[0] : p.demo;
     const designStatus = design && demo && isDesignStatus(demo.design_status) ? demo.design_status : null;
+    const demoToken = demo && !demo.disabled_at ? demo.public_token : null;
+    const evidence = buildTodayEvidence({
+      kind,
+      outreachStatus: row.status,
+      channel: row.channel,
+      category: p.category ?? null,
+      ward: p.ward ?? null,
+      address: p.address ?? null,
+      doNotContact: typeof p.do_not_contact === "boolean" ? p.do_not_contact : null,
+      websiteStatus: p.website_status ?? null,
+      websiteDomain: p.website_domain ?? null,
+      instagramUrl: p.instagram_url ?? null,
+      instagramHandle: p.instagram_handle ?? null,
+      publicEmail: p.public_email ?? null,
+      recommendedChannel: p.recommended_channel ?? null,
+      registeredAt: p.created_at ?? null,
+      sources: Array.isArray(p.sources) ? p.sources : null,
+      designEnabled: design,
+      designStatus,
+      demoAvailable: demoToken !== null,
+      exclusion: matchExclusions(
+        {
+          instagramHandle: p.instagram_handle ?? null,
+          websiteDomain: p.website_domain ?? null,
+          emailDigest: p.public_email ? emailDigest(p.public_email) : null,
+          normalizedName: p.normalized_name ?? null,
+          normalizedAddress: p.normalized_address ?? null,
+        },
+        exclusions,
+      ),
+    });
     return {
       kind,
       prospectId: row.prospect_id,
@@ -112,7 +175,7 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
       instagramUrl: p.instagram_url,
       publicEmail: p.public_email,
       // A disabled demo would be a dead link: no send action is offered.
-      demoToken: demo && !demo.disabled_at ? demo.public_token : null,
+      demoToken,
       sentAt: row.sent_at,
       designStatus,
       designErrorCode:
@@ -121,6 +184,7 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
           : null,
       designReview: kind === "initial" ? reviewOf(designStatus, demo?.design_review) : null,
       sendable: kind === "follow_up" || initialSendAllowed(design, designStatus),
+      evidence,
     };
   };
 
