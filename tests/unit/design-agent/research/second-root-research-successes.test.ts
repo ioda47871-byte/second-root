@@ -39,7 +39,7 @@ describe("DEV-191 Second Root research success ledger", () => {
     expect(LEDGER.policy).toEqual({ not_templates: true, not_added_to_external_case_count: true, not_fed_to_generators_automatically: true, release_or_deployment_approval: false, old_versions_kept_unedited: true });
   });
 
-  it("輪 d1-v9: the merged page (PR #232, 38e396e), byte for byte; the owner's decision; design success with MOCK photos only", () => {
+  it("輪 d1-v9: the merged page (PR #232, 38e396e), byte for byte; the owner's decisions; AI-photo demo complete, owner-approved (DEV-193)", () => {
     const r = LEDGER.records.find((x) => x.id === "SR-001")!;
     expect(r).toMatchObject({
       shop: "bicycle",
@@ -47,15 +47,16 @@ describe("DEV-191 Second Root research success ledger", () => {
       merge_commit: "38e396eedf2de3f7472fd29052036b8ca0f7541e",
       merged_pr: 232,
       owner_decision: { decided_by: "owner", decided_on: "2026-11-06", evidence: "Issue #193 comment 6687410438" },
-      success_scope: "design_structure_only",
+      success_scope: "design_structure_and_ai_photo_demo_complete",
       viewports: ["desktop_1440", "tablet_768", "mobile_390"],
       design_status: "success",
-      photo_status: "mock_only",
-      real_images_generated: 0,
+      photo_status: "ai_generated_demo_owner_approved_complete",
+      real_images_generated: 6,
       photo_prompt: { sha256: "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594", bytes: 3865, approved: true, real_generation_approved: true },
-      // DEV-192: one approved run, not executed yet; never "AI写真入り完成" until the owner's visual checks pass
-      real_generation: { approval: "one_time_run_only", decided_on: "2026-11-07", evidence: "Issue #193 comment 6689664215", run_prompt_sha256: "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447", executed: false, standing_auto_run: false },
-      ai_photo_complete: "pending_owner_visual_checks",
+      // DEV-192 one approved run, executed once (DONE, 6 image calls); DEV-193: the owner adopted the AI-photo version (6703047826)
+      real_generation: { approval: "one_time_run_only", decided_on: "2026-11-07", evidence: "Issue #193 comment 6689664215", run_prompt_sha256: "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447", executed: true, standing_auto_run: false, execution_result: "DONE", image_tool_calls: 6, job_id: "job-bicycle-20261106201051-2bba09", worker_commit: "334f771fed0c953158aefc3926a208adf8a8ddc5", images_private: true, switch_off_verified: true },
+      ai_photo_complete: "owner_approved",
+      ai_photo_final_decision: { decided_by: "owner", decided_on: "2026-11-07", decision: "adopt_ai_photo_complete_research_success", evidence: "Issue #193 comment 6703047826", scope: "private ai_generated_demo study only" },
       approved_for_generation: false,
       approved_for_sales: false,
       approved_for_production: false,
@@ -65,7 +66,8 @@ describe("DEV-191 Second Root research success ledger", () => {
     expect(r.page_dir).toBe(inv.page_dir);
     expect(r.page_hashes).toEqual({ html_sha256: inv.html_sha256, css_sha256: inv.css_sha256, copy_sha256: inv.copy_sha256 });
     for (const [f, h] of [["index.html", r.page_hashes.html_sha256], ["style.css", r.page_hashes.css_sha256], ["copy.json", r.page_hashes.copy_sha256]] as const) expect(sha(readFileSync(join(REPO, r.page_dir, f))), f).toBe(h);
-    expect(r.not_claimed).toEqual(["a finished page with real photos", "automatic reproduction by the production B pipeline", "published to Production or any public site", "a real shop or merchant approval"]);
+    expect(r.not_claimed).toEqual(["automatic reproduction by the production B pipeline", "published to Production or any public site", "a real shop or merchant approval", "real merchant photographs (the photos are ai_generated_demo)"]);
+    expect(r.image_rights_status).toMatch(/ai_generated_demo; demo only; public_web=false/);
   });
 
   it("old versions are kept (every fidelity version of 輪 is listed and exists); d1-v9's README carries the appended SR-001 status line", () => {
