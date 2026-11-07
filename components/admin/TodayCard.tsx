@@ -72,6 +72,14 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
         </p>
       )}
       <div className={styles.actions}>{action}</div>
+      {/* DEV-194 review M1: a blocked follow-up has no send action and no 詳細 controls,
+          so it would hold a slot for weeks. The existing DNC control (with its own
+          confirmation) is the one way to take it off the list. */}
+      {item.kind === "follow_up" && !verdict.sendable && (
+        <div data-testid="follow-up-dnc">
+          <DncControl prospectId={item.prospectId} doNotContact={false} />
+        </div>
+      )}
       <details className={styles.details}>
         <summary>詳細</summary>
         <p>

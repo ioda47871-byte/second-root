@@ -3,6 +3,7 @@ import { initialSendAllowed, type DesignStatus } from "./design";
 import { checkTarget, type TargetRejection } from "./eligibility";
 import { EXCLUSION_REASON_LABEL, type ExclusionReason } from "./exclusions";
 import { FIRST_PARTY_SOURCE_TYPES, SOURCE_FIELDS, type Category, type Channel, type SourceField, type SourceType, type WebsiteStatus } from "./types";
+import { normalizeEmail } from "./normalize";
 import { isSafeHttpUrl } from "./url";
 
 // DEV-194: why a shop is on today's list, where its facts come from, and
@@ -95,12 +96,18 @@ export type ExclusionRow = {
   normalized_address: string | null;
 };
 
-/** The prospect's dedupe keys, normalised at ingest (the same columns persist compares). */
+/**
+ * The prospect's keys, normalised at ingest. Persist compares the same four
+ * kinds of key, but on the candidate as submitted: its email digest covers any
+ * email the candidate sent, first-party or not, and that is not stored. Here
+ * the email side is the digests of what is stored: the public email and the
+ * values of the prospect's `field = 'email'` source rows (DEV-194 review L2).
+ */
 export type ExclusionKeys = {
   instagramHandle: string | null;
   websiteDomain: string | null;
-  /** lib/sales/email-digest.ts of the stored public email, computed by the server. */
-  emailDigest: string | null;
+  /** lib/sales/email-digest.ts of each stored email (normalised), computed by the server. */
+  emailDigests: string[];
   normalizedName: string | null;
   normalizedAddress: string | null;
 };
@@ -229,7 +236,22 @@ export function mapSources(rows: SourceRow[] | null): SourceEvidence[] {
   return out.sort((a, b) => order(a.field) - order(b.field) || (Date.parse(b.verifiedAt) || 0) - (Date.parse(a.verifiedAt) || 0));
 }
 
-/** The admin's exclusion list against the prospect's keys (the same four keys persist compares). */
+/** The emails a prospect has stored (public email + email source rows), normalised and de-duplicated. */
+export function storedEmails(publicEmail: string | null, sources: SourceRow[] | null): string[] {
+  const raw = [publicEmail, ...(sources ?? []).filter((r) => r?.field === "email").map((r) => r.value)];
+  const out = new Set<string>();
+  for (const v of raw) {
+    const n = typeof v === "string" ? normalizeEmail(v) : null;
+    if (n) out.add(n);
+  }
+  return [...out];
+}
+
+/**
+ * The admin's exclusion list against the prospect's stored keys (the four
+ * kinds persist compares; see ExclusionKeys for the email difference).
+ * `rows` is null when the list could not be read completely: 未確認.
+ */
 export function matchExclusions(keys: ExclusionKeys, rows: ExclusionRow[] | null): ExclusionCheck {
   if (!rows) return { state: "unchecked" };
   const reasons = new Set<ExclusionReason>();
@@ -237,7 +259,7 @@ export function matchExclusions(keys: ExclusionKeys, rows: ExclusionRow[] | null
     const hit =
       (r.instagram_handle !== null && r.instagram_handle === keys.instagramHandle) ||
       (r.website_domain !== null && r.website_domain === keys.websiteDomain) ||
-      (r.email_digest !== null && r.email_digest === keys.emailDigest) ||
+      (r.email_digest !== null && keys.emailDigests.includes(r.email_digest)) ||
       (r.normalized_name !== null &&
         r.normalized_name === keys.normalizedName &&
         r.normalized_address !== null &&
@@ -425,7 +447,8 @@ export function buildTodayEvidence(input: EvidenceInput): TodayEvidence {
       : input.websiteStatus === "present"
         ? "公式サイトはあり"
         : `公式サイトの有無は${UNCONFIRMED}で`;
-  const reach = input.recommendedChannel ? `${CHANNEL_LABEL[input.recommendedChannel]}で連絡できる候補` : `連絡経路が${UNCONFIRMED}の候補`;
+  // Only the stored recommendation: whether it can be sent now is the verdict's job (DEV-194 review L3).
+  const reach = input.recommendedChannel ? `推奨チャネルは${CHANNEL_LABEL[input.recommendedChannel]}の候補` : `推奨チャネルが${UNCONFIRMED}の候補`;
   const summary = `${where}。${site}、${reach}。`;
 
   const present = new Set(sources.map((s) => s.field));

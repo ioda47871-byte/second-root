@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TodayItem } from "@/lib/admin/today";
 import { buildTodayEvidence, UNCONFIRMED, type EvidenceInput } from "@/lib/sales/evidence";
+import { emailDigest } from "@/lib/sales/email-digest";
+import { EXCLUSION_ROWS_PER_CARD, postgrestInList } from "@/lib/admin/today";
 import { eligibleEmailInput, eligibleInstagramInput } from "./today-evidence-fixture";
 
 // DEV-194: the today card shows the contact verdict with its reasons and the
@@ -94,7 +96,7 @@ describe("today card: evidence", () => {
   it("shows the selection, the sources with links and dates, and the checks", async () => {
     const html = await pageHtml(eligibleEmailInput());
     expect(html).toContain('data-testid="today-evidence"');
-    expect(html).toContain("名古屋市中区のパン屋。公式サイトはあり、メールで連絡できる候補。");
+    expect(html).toContain("名古屋市中区のパン屋。公式サイトはあり、推奨チャネルはメールの候補。");
     expect(html).toContain(`改善の仮説</dt><dd>${UNCONFIRMED}（保存されていません）`);
     expect(html).toContain('data-field="email" data-source-type="official_contact"');
     expect(html).toContain('href="https://test-shop.example.com/contact" target="_blank" rel="noopener noreferrer nofollow"');
@@ -114,7 +116,7 @@ describe("today card: evidence", () => {
 });
 
 describe("loadTodayQueue reads the evidence through the admin session", () => {
-  type Call = { table: string; select?: string; eqs: Array<[string, unknown]> };
+  type Call = { table: string; select?: string; eqs: Array<[string, unknown]>; or?: string; limit?: number };
 
   function fakeClient(opts: { exclusions: { data: unknown[] | null; error: unknown } }) {
     const calls: Call[] = [];
@@ -167,8 +169,15 @@ describe("loadTodayQueue reads the evidence through the admin session", () => {
             return chain;
           },
           in: () => chain,
+          or(f: string) {
+            call.or = f;
+            return chain;
+          },
           order: () => chain,
-          limit: () => chain,
+          limit(n: number) {
+            call.limit = n;
+            return chain;
+          },
           then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve(result).then(resolve, reject),
         };
         return chain;
@@ -185,7 +194,12 @@ describe("loadTodayQueue reads the evidence through the admin session", () => {
     expect(drafts.select).toContain("sources:sales_sources(field, value, source_url, source_type, verified_at)");
     expect(drafts.select).toContain("recommended_channel");
     expect(drafts.eqs).toContainEqual(["prospect.do_not_contact", false]);
-    expect(calls.map((c) => c.table)).toContain("sales_exclusions");
+    // Review L1: only this card's keys are asked for, with a bound.
+    const ex = calls.find((c) => c.table === "sales_exclusions")!;
+    expect(ex.or).toBe(
+      `website_domain.in.("test-shop.example.com"),email_digest.in.("${emailDigest("info@test-shop.example.com")}"),normalized_name.in.("てすと工房")`,
+    );
+    expect(ex.limit).toBe(EXCLUSION_ROWS_PER_CARD);
     expect(items).toHaveLength(1);
     expect(items[0].evidence.contact.sendable).toBe(true);
     expect(items[0].evidence.sources.map((s) => s.field)).toEqual(["name", "address", "email"]);
@@ -210,5 +224,44 @@ describe("loadTodayQueue reads the evidence through the admin session", () => {
     const [i] = await loadTodayQueue(client as never);
     expect(i.evidence.contact.sendable).toBe(false);
     expect(i.evidence.contact.checks.find((c) => c.id === "exclusion")?.state).toBe("unconfirmed");
+  });
+
+  it("review L1: a read that reaches the per-card bound may be cut off, so it is 未確認 (not sendable)", async () => {
+    const { loadTodayQueue } = await vi.importActual<typeof import("@/lib/admin/today")>("@/lib/admin/today");
+    const filler = { reason: "other", instagram_handle: null, website_domain: null, email_digest: null, normalized_name: "てすと工房", normalized_address: "愛知県名古屋市別区" };
+    const { client } = fakeClient({ exclusions: { data: Array.from({ length: EXCLUSION_ROWS_PER_CARD }, () => filler), error: null } });
+    const [i] = await loadTodayQueue(client as never);
+    expect(i.evidence.contact.checks.find((c) => c.id === "exclusion")?.state).toBe("unconfirmed");
+    expect(i.evidence.contact.sendable).toBe(false);
+  });
+});
+
+describe("postgrestInList", () => {
+  it("quotes every value so commas, brackets, quotes and backslashes stay literal", () => {
+    expect(postgrestInList(["a,b", 'c"d', "e\\f", "(g)"])).toBe('("a,b","c\\"d","e\\\\f","(g)")');
+  });
+});
+
+describe("review M1: a blocked follow-up is never a dead end", () => {
+  it("shows the existing DNC control and a hint that names it", async () => {
+    const html = await pageHtml(eligibleEmailInput({ kind: "follow_up", outreachStatus: "sent", exclusion: { state: "match", reasons: ["existing_customer"] } }));
+    expect(html).not.toContain("フォローメールを作成");
+    expect(html).toContain('data-testid="follow-up-dnc"');
+    expect(html).toContain("営業不要（DNC）にする");
+    expect(html).toContain("下の「営業不要（DNC）にする」で一覧から外せます");
+  });
+
+  it("a sendable follow-up keeps only its send action (no extra DNC control)", async () => {
+    const html = await pageHtml(eligibleEmailInput({ kind: "follow_up", outreachStatus: "sent" }));
+    expect(html).toContain("フォローメールを作成");
+    expect(html).not.toContain('data-testid="follow-up-dnc"');
+    expect(html).not.toContain("営業不要（DNC）にする");
+  });
+
+  it("a blocked initial points to the 詳細 controls it really has", async () => {
+    const html = await pageHtml(eligibleInstagramInput({ recommendedChannel: "email" }));
+    expect(html).toContain("「詳細」の「見送る」か「営業不要（DNC）にする」");
+    expect(html).toContain('data-testid="skip-draft"');
+    expect(html).not.toContain('data-testid="follow-up-dnc"');
   });
 });

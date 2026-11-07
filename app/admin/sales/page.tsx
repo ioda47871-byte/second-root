@@ -19,11 +19,19 @@ function cannotCompose(what: string) {
   );
 }
 
-/** DEV-194: a card the server would refuse is never offered a send action. */
-function sendBlocked() {
+/**
+ * DEV-194: a card the server would refuse is never offered a send action.
+ * The hint names only the controls the card really has (review M1): a
+ * follow-up card shows 営業不要（DNC） under this note; an initial card has
+ * 見送る and 営業不要（DNC） in 詳細.
+ */
+function sendBlocked(kind: TodayItem["kind"]) {
   return (
     <p className={styles.muted} role="status" data-testid="send-blocked">
       送信できない理由があるため、送信の操作は出していません（上の理由を確認してください）。
+      {kind === "follow_up"
+        ? "送らない場合は、下の「営業不要（DNC）にする」で一覧から外せます。"
+        : "送らない場合は、「詳細」の「見送る」か「営業不要（DNC）にする」で一覧から外せます。"}
     </p>
   );
 }
@@ -31,7 +39,7 @@ function sendBlocked() {
 /** The one big action for a queue item: Instagram DM, email, or the one email follow-up. */
 function actionFor(item: TodayItem) {
   if (item.kind === "follow_up") {
-    if (!item.evidence.contact.sendable) return sendBlocked();
+    if (!item.evidence.contact.sendable) return sendBlocked("follow_up");
     if (item.channel !== "email" || !item.publicEmail || !item.demoToken) return cannotCompose("フォローメール");
     const draft = composeFollowUp({ shopName: item.shopName, publicEmail: item.publicEmail, initialSubject: item.subject, demoToken: item.demoToken });
     try {
@@ -49,7 +57,7 @@ function actionFor(item: TodayItem) {
       </p>
     );
   }
-  if (!item.evidence.contact.sendable) return sendBlocked();
+  if (!item.evidence.contact.sendable) return sendBlocked("initial");
   if (item.kind === "initial" && item.channel === "email" && item.publicEmail && item.demoToken) {
     const draft = {
       to: item.publicEmail,

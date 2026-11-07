@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { emailDigest } from "@/lib/sales/email-digest";
 import {
   buildTodayEvidence,
+  storedEmails,
   contactVerdict,
   formatJstDate,
   mapSources,
@@ -182,9 +183,17 @@ describe("missing data reads 未確認", () => {
   });
 
   it("the summary restates stored fields only", () => {
-    expect(buildTodayEvidence(eligibleInstagramInput()).summary).toBe("名古屋市中区のパン屋。公式サイトが見つからず、Instagramで連絡できる候補。");
-    expect(buildTodayEvidence(eligibleEmailInput({ category: "cafe", ward: "東区" })).summary).toBe("名古屋市東区のカフェ。公式サイトはあり、メールで連絡できる候補。");
+    expect(buildTodayEvidence(eligibleInstagramInput()).summary).toBe("名古屋市中区のパン屋。公式サイトが見つからず、推奨チャネルはInstagramの候補。");
+    expect(buildTodayEvidence(eligibleEmailInput({ category: "cafe", ward: "東区" })).summary).toBe("名古屋市東区のカフェ。公式サイトはあり、推奨チャネルはメールの候補。");
     expect(buildTodayEvidence(eligibleEmailInput({ websiteStatus: "unknown", websiteDomain: null })).summary).toContain(`公式サイトの有無は${UNCONFIRMED}`);
+    expect(buildTodayEvidence(eligibleEmailInput({ recommendedChannel: null })).summary).toContain(`推奨チャネルが${UNCONFIRMED}の候補`);
+  });
+
+  it("review L3: the summary never claims the shop can be contacted when the verdict says it cannot", () => {
+    const blocked = buildTodayEvidence(eligibleEmailInput({ sources: [] }));
+    expect(blocked.contact.sendable).toBe(false);
+    expect(blocked.summary).not.toMatch(/連絡できる/);
+    expect(blocked.summary).toContain("推奨チャネルはメールの候補");
   });
 
   it("an email without a first-party source reads 出典未確認", () => {
@@ -237,7 +246,7 @@ describe("exclusion list match (the four keys persist compares)", () => {
   const keys = {
     instagramHandle: "test_shop",
     websiteDomain: "test-shop.example.com",
-    emailDigest: emailDigest("info@test-shop.example.com"),
+    emailDigests: [emailDigest("info@test-shop.example.com")],
     normalizedName: "てすと工房",
     normalizedAddress: "愛知県名古屋市中区てすと町1-1",
   };
@@ -264,8 +273,21 @@ describe("exclusion list match (the four keys persist compares)", () => {
 
   it("name needs the address too; null keys never match; an unreadable list is unchecked", () => {
     expect(matchExclusions(keys, [row({ normalized_name: "てすと工房", normalized_address: "愛知県名古屋市東区別町" })])).toEqual({ state: "clear" });
-    expect(matchExclusions({ ...keys, instagramHandle: null, websiteDomain: null, emailDigest: null }, [row({ instagram_handle: "other" })])).toEqual({ state: "clear" });
+    expect(matchExclusions({ ...keys, instagramHandle: null, websiteDomain: null, emailDigests: [] }, [row({ instagram_handle: "other" })])).toEqual({ state: "clear" });
     expect(matchExclusions(keys, [])).toEqual({ state: "clear" });
     expect(matchExclusions(keys, null)).toEqual({ state: "unchecked" });
+  });
+
+  it("review L2: digests every stored email — the public email and the email source rows — normalised", () => {
+    const sources = [
+      { field: "email", value: " Shop@Test-Shop.example.com ", source_url: "https://test-shop.example.com/contact", source_type: "official_contact", verified_at: "2026-10-01T00:00:00Z" },
+      { field: "email", value: "info@test-shop.example.com", source_url: "https://test-shop.example.com/", source_type: "official_site", verified_at: "2026-10-01T00:00:00Z" },
+      { field: "name", value: "x@y.example.com", source_url: "https://test-shop.example.com/", source_type: "official_site", verified_at: "2026-10-01T00:00:00Z" },
+      { field: "email", value: "not an email", source_url: "https://test-shop.example.com/", source_type: "official_site", verified_at: "2026-10-01T00:00:00Z" },
+    ];
+    expect(storedEmails("info@test-shop.example.com", sources)).toEqual(["info@test-shop.example.com", "shop@test-shop.example.com"]);
+    expect(storedEmails(null, null)).toEqual([]);
+    const onlySource = { ...keys, emailDigests: storedEmails(null, sources).map(emailDigest) };
+    expect(matchExclusions(onlySource, [row({ email_digest: emailDigest("shop@test-shop.example.com") })])).toEqual({ state: "match", reasons: ["existing_customer"] });
   });
 });
