@@ -471,3 +471,16 @@
   color: var(--danger);
   font-weight: 700;
 }
+
+/* DEV-195: the text to be approved / sent, shown before the send step. */
+.sendPreview {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.sendPreview textarea {
+  width: 100%;
+  box-sizing: border-box;
+}

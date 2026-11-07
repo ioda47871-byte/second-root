@@ -41,9 +41,12 @@ test("shows an unsent draft with channel, state and folded details", async ({ pa
   await expect(card.getByTestId("channel-badge")).toHaveText("Instagram");
   await expect(card.getByTestId("state-badge")).toBeVisible();
   await expect(card.getByTestId("state-badge")).toHaveText("未送信");
-  await expect(card.getByText("E2E テスト用の営業文です。")).toBeHidden();
+  // DEV-195: the text to be approved is shown with the send action; the stored draft stays folded in 詳細.
+  await expect(card.getByTestId("send-preview")).toBeVisible();
+  const folded = card.locator("details p", { hasText: "E2E テスト用の営業文です。" });
+  await expect(folded).toBeHidden();
   await card.getByText("詳細").click();
-  await expect(card.getByText("E2E テスト用の営業文です。")).toBeVisible();
+  await expect(folded).toBeVisible();
   await expect(card.getByRole("link", { name: "デモを確認" })).toHaveAttribute("href", `/admin/preview/${draft.prospectId}`);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
@@ -107,4 +110,44 @@ test("DEV-048: refuses to skip a draft that was sent in the meantime (stale page
   await expect(card.getByRole("alert")).toContainText("すでに送信済みか見送り済み");
   const { rows } = await db.query("select status from public.sales_outreaches where prospect_id = $1 and kind = 'initial'", [draft.prospectId]);
   expect(rows).toEqual([{ status: "sent" }]);
+});
+
+test("DEV-195: edits the draft before approving; the edit is kept with its history and the text to approve follows it", async ({ page }) => {
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByText("詳細", { exact: true }).click();
+  await card.getByTestId("edit-draft").click();
+  await card.getByLabel(/^本文/).fill("オーナーが書き直した E2E の本文です。");
+  await card.getByTestId("save-draft").click();
+  await expect(card.getByTestId("draft-edited")).toBeVisible();
+  await expect(card.getByLabel("送る文面")).toHaveValue(/オーナーが書き直した E2E の本文です。/);
+  const { rows } = await db.query(
+    "select o.draft_version, o.body, e.previous_body from public.sales_outreaches o join public.sales_outreach_draft_edits e on e.outreach_id = o.id where o.id = $1",
+    [draft.outreachId],
+  );
+  expect(rows).toEqual([{ draft_version: 2, body: "オーナーが書き直した E2E の本文です。", previous_body: "はじめまして。E2E テスト用の営業文です。" }]);
+  // A link is refused (the demo URL is added automatically).
+  await card.getByTestId("edit-draft").click();
+  await card.getByLabel(/^本文/).fill("詳しくは https://example.com を見てください。");
+  await card.getByTestId("save-draft").click();
+  await expect(card.getByTestId("draft-editor").getByRole("alert")).toContainText("URL");
+});
+
+test("DEV-195: the owner records an improvement hypothesis; it shows who wrote it, and nothing stored reads 未確認", async ({ page }) => {
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByText("選んだ理由・出典・連絡の可否").click();
+  await expect(card.getByTestId("evidence-hypothesis")).toContainText("未確認");
+  await card.getByTestId("edit-insight-improvement_hypothesis").click();
+  await card.getByLabel(/^改善の仮説/).fill("メニューと地図を1ページにまとめる");
+  await card.getByTestId("save-insight-improvement_hypothesis").click();
+  await expect(card.getByTestId("evidence-hypothesis")).toContainText("メニューと地図を1ページにまとめる");
+  await expect(card.getByTestId("evidence-hypothesis")).toContainText("記入: オーナー");
+  await expect(card.getByTestId("evidence-rationale")).toContainText("未確認");
+  const { rows } = await db.query("select kind, body, source from public.sales_prospect_insights where prospect_id = $1", [draft.prospectId]);
+  expect(rows).toEqual([{ kind: "improvement_hypothesis", body: "メニューと地図を1ページにまとめる", source: "owner" }]);
 });

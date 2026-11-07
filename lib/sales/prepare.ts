@@ -1,8 +1,10 @@
 import { decideChannel, hasFirstPartyEmail } from "./channel";
 import { checkpointProblem } from "./checkpoint";
+import { containsContactOrLink, DEFAULT_EMAIL_SUBJECT } from "./draft";
 import { emailDigest } from "./email-digest";
 import { checkTarget } from "./eligibility";
 import type { VerifiedCandidateInput } from "./ingest-schema";
+import { preparedInsights, type PreparedInsights } from "./insights";
 import { nagoyaWard, normalizeAddress, normalizeEmail, normalizeName } from "./normalize";
 import { TEMPLATE_BY_CATEGORY, type Channel, type SourceField, type SourceType } from "./types";
 import { isOfficialSiteCandidate, parseInstagramProfile, websiteKey } from "./url";
@@ -45,6 +47,12 @@ export type PreparedCandidate = {
   sources: PreparedSource[];
   demo: { template: string; content: DemoContent };
   outreach: { subject: string | null; body: string };
+  /**
+   * DEV-195: the optional selection rationale / improvement hypothesis as
+   * submitted (only the ones that pass lib/sales/insights.ts; the key is
+   * absent when there are none). Stored by persist with the run as source.
+   */
+  insights?: PreparedInsights;
 };
 
 /** Only verified, public facts. Never email, notes, scores or outcomes (MVP_SPEC §7). */
@@ -79,17 +87,7 @@ export type Preparation =
   | { stage: "pending"; candidate: PreparedCandidate }
   | { stage: "rejected"; reason: RejectionReason };
 
-const DEFAULT_EMAIL_SUBJECT = "ホームページのご提案（Second Root）";
-
-// Contact details and links never go into facts shown on a demo.
-const EMAIL_LIKE = /[^\s@＠]+[@＠][^\s@＠]+\.[^\s@＠]+/;
-const LINK_LIKE = /(https?:|www\.|\b[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|net|org|jp|co|me|io|info|biz|shop|link|site)\b)/i;
 const MAX_FACT_FUTURE_MS = 24 * 60 * 60 * 1000;
-
-function containsContactOrLink(value: string): boolean {
-  const s = value.normalize("NFKC");
-  return EMAIL_LIKE.test(s) || LINK_LIKE.test(s);
-}
 
 const reject = (reason: RejectionReason): Preparation => ({ stage: "rejected", reason });
 
@@ -221,6 +219,11 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
       body: input.message.body,
     },
   };
+
+  // DEV-195: optional notes. A note that does not pass is dropped (shown as
+  // 未確認), never fixed up, and never rejects the shop.
+  const insights = preparedInsights(input.insights);
+  if (insights) candidate.insights = insights;
 
   if (checkpointProblem(candidate) !== null) return reject("unsafe_content");
   return { stage: "pending", candidate };

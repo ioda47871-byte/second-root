@@ -45,6 +45,10 @@ function item(input: EvidenceInput): TodayItem {
     designErrorCode: null,
     designReview: null,
     evidence: buildTodayEvidence(input),
+    draftVersion: 1,
+    editedAt: null,
+    instagramHandle: input.instagramHandle,
+    approval: null,
   };
 }
 
@@ -56,12 +60,15 @@ async function pageHtml(input: EvidenceInput): Promise<string> {
 
 describe("today page: the send action follows the verdict", () => {
   it("sendable cards keep their action and a 送信できます badge", async () => {
+    // DEV-195: the first step of the send action is the approval of the exact text.
     const ig = await pageHtml(eligibleInstagramInput());
-    expect(ig).toContain("DMを送る");
+    expect(ig).toContain('data-testid="send-flow"');
+    expect(ig).toContain("この内容で送信を承認");
     expect(ig).toContain('data-sendable="true"');
     expect(ig).not.toContain('data-testid="send-blocked"');
     const mail = await pageHtml(eligibleEmailInput());
-    expect(mail).toContain("メールを作成");
+    expect(mail).toContain('data-testid="send-flow"');
+    expect(mail).toContain("この内容で送信を承認");
     expect(mail).not.toContain('data-testid="contact-blockers"');
   });
 
@@ -74,6 +81,8 @@ describe("today page: the send action follows the verdict", () => {
     ["a follow-up whose email lost its provenance", eligibleEmailInput({ kind: "follow_up", outreachStatus: "sent", sources: [] })],
   ])("%s: no send action, a 送信できません badge with reasons", async (_name, input) => {
     const html = await pageHtml(input);
+    expect(html).not.toContain('data-testid="send-flow"');
+    expect(html).not.toContain("この内容で送信を承認");
     expect(html).not.toContain("DMを送る");
     expect(html).not.toContain("メールを作成");
     expect(html).not.toContain("フォローメールを作成");
@@ -87,8 +96,59 @@ describe("today page: the send action follows the verdict", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     const html = await pageHtml(eligibleInstagramInput({ designEnabled: true, designStatus: "pending" }));
     expect(html).toContain('data-testid="design-wait"');
+    expect(html).not.toContain('data-testid="send-flow"');
     expect(html).not.toContain("DMを送る");
     expect(html).toContain("AIデザインの完成を待っています");
+  });
+});
+
+describe("PR #239 M2: an opened approval keeps its controls when the card is no longer sendable", () => {
+  it("excluded or DNC after opening: the confirm / withdraw controls and a warning instead of send-blocked", async () => {
+    for (const input of [
+      eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } }),
+      eligibleInstagramInput({ doNotContact: true, demoAvailable: false }),
+    ]) {
+      state.items = [
+        {
+          ...item(input),
+          approval: {
+            id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            state: "send_opened",
+            channel: "instagram",
+            recipient: "test_shop",
+            subject: null,
+            body: "本文",
+            approvedAt: "2026-11-07T01:00:00Z",
+            approvedLabel: "2026/11/07 10:00",
+            openedLabel: "2026/11/07 10:10",
+            staleReasons: [],
+          },
+        },
+      ];
+      const { default: TodayPage } = await import("@/app/admin/sales/page");
+      const html = renderToStaticMarkup(await TodayPage());
+      expect(html).not.toContain('data-testid="send-blocked"');
+      expect(html).toContain('data-testid="approval-blocked"');
+      expect(html).toContain('data-testid="confirm-sent"');
+      expect(html).toContain('data-testid="withdraw-approval"');
+      expect(html).not.toContain("DMを送る");
+    }
+  });
+
+  it("an approved but not opened approval is not kept: the card stays send-blocked", async () => {
+    state.items = [
+      {
+        ...item(eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } })),
+        approval: {
+          id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", state: "approved", channel: "instagram", recipient: "test_shop", subject: null, body: "本文",
+          approvedAt: "2026-11-07T01:00:00Z", approvedLabel: "2026/11/07 10:00", openedLabel: null, staleReasons: [],
+        },
+      },
+    ];
+    const { default: TodayPage } = await import("@/app/admin/sales/page");
+    const html = renderToStaticMarkup(await TodayPage());
+    expect(html).toContain('data-testid="send-blocked"');
+    expect(html).not.toContain('data-testid="confirm-sent"');
   });
 });
 

@@ -195,7 +195,7 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
   - どちらの側も link を辿らない・通常ファイル・link 数 1・サイズ上限・strict schema で読む。worker は自分の job id と一致しない job を取り込まない。
   - **worker（と jail の中の process）は結果を偽れる**（残るリスク）。できるのは、bridge が渡した自分の job について `ready`（`checkProfile` を通る enum だけの profile）・`blocked`・`failed` を選ぶことだけ。別の demo には届かない（bridge の ledger が worker の job id と server の job id を対応させ、server が job id で demo を特定する）。文字・画像・URL は送れない。符号は既知のものだけ（他は `WORKER_FAILED`）。
 - **送信の抑止**
-  - flag 有効で `pending` / `processing` の demo は、管理画面に送信ボタンを出さず、「送信済み」の server action でも拒否する。DB の `sales_mark_sent` は変えていない（flag が DB から見えないため。管理者本人が RPC を直接呼ぶ場合だけ通る）。
+  - flag 有効で `pending` / `processing` の demo は、管理画面に送信ボタンを出さず、「送信済み」の server action でも拒否する。DEV-195 から DB も拒否する: 送信の承認・送信画面を開く・送信済みの関数は `p_design_enabled`（server が flag を渡す）が true のとき `design_pending` で断る（flag は DB から見えないため、管理者本人が false を渡して RPC を直接呼ぶ場合だけ通る）。
 - **jail に見せるのは spool の 2 つの directory だけ**（DEV-031、2026-10-09 人間承認の boundary 拡張）
   - `jail.properties` に `BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker` と `BindPaths=-/srv/sr-design-bridge/from-worker` の 2 行だけを足した。
   - それ以外の `/srv`・bridge の利用者の home（token・state）・Supabase・host の filesystem・network の境界は変えていない。`jail.test.ts` が `/srv` の設定の全体と bind の全体を固定し、probe は `/home/sr-designbridge` が見えれば止まる。

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import pg from "pg";
+import { composeInitialSend, type InitialSend } from "@/lib/admin/initial-send";
 
 // Shared helpers for integration tests against the local Supabase stack.
 // Everything here uses fictional shops and example.com addresses only.
@@ -29,6 +30,9 @@ export function anonClient(): SupabaseClient {
 }
 
 const SALES_TABLES = [
+  "sales_outreach_approvals",
+  "sales_outreach_draft_edits",
+  "sales_prospect_insights",
   "sales_ig_sends",
   "sales_ig_drafts",
   "sales_ig_messages",
@@ -152,4 +156,62 @@ export async function verifiedRun(runId: string, candidates: Record<string, Reco
     p_phase: "verified",
     p_payload: { order: Object.keys(candidates), candidates },
   });
+}
+
+/**
+ * DEV-195: the initial message of an outreach composed exactly as the today
+ * card composes it (lib/admin/initial-send.ts), from what the database holds now.
+ */
+export async function composedSnapshot(outreachId: string): Promise<InitialSend & { draftVersion: number }> {
+  const { rows } = await db.query(
+    `select o.channel, o.subject, o.body, o.draft_version, p.name, p.public_email, p.instagram_url, p.instagram_handle,
+            d.public_token, d.disabled_at
+       from public.sales_outreaches o join public.sales_prospects p on p.id = o.prospect_id
+       left join public.sales_demos d on d.prospect_id = p.id
+      where o.id = $1`,
+    [outreachId],
+  );
+  const r = rows[0];
+  const composed = composeInitialSend({
+    channel: r.channel,
+    shopName: r.name,
+    subject: r.subject,
+    body: r.body,
+    publicEmail: r.public_email,
+    instagramUrl: r.instagram_url,
+    instagramHandle: r.instagram_handle,
+    demoToken: r.disabled_at ? null : r.public_token,
+  });
+  if (!composed) throw new Error("cannot compose the initial message");
+  return { ...composed, draftVersion: r.draft_version as number };
+}
+
+/** sales_approve_outreach with the composed snapshot (the today card's 「この内容で送信を承認」). */
+export async function approve(client: SupabaseClient, outreachId: string, design = false) {
+  const snap = await composedSnapshot(outreachId);
+  return client.rpc("sales_approve_outreach", {
+    p_outreach_id: outreachId,
+    p_draft_version: snap.draftVersion,
+    p_subject: snap.subject,
+    p_body: snap.body,
+    p_design_enabled: design,
+  });
+}
+
+/**
+ * The whole manual send as the admin does it: approve → open the send screen
+ * → 手動で送信済み. Returns the result of sales_mark_sent.
+ */
+export async function approveAndMarkSent(client: SupabaseClient, outreachId: string) {
+  const approved = await approve(client, outreachId);
+  if (approved.error) return approved;
+  const approvalId = (approved.data as { approval_id: string }).approval_id;
+  const channel = (await db.query("select channel from public.sales_outreaches where id = $1", [outreachId])).rows[0].channel;
+  const opened = await client.rpc("sales_mark_send_opened", {
+    p_approval_id: approvalId,
+    p_via: channel === "email" ? "mailto" : "instagram_profile",
+    p_design_enabled: false,
+  });
+  if (opened.error) return opened;
+  return client.rpc("sales_mark_sent", { p_outreach_id: outreachId, p_approval_id: approvalId, p_design_enabled: false });
 }

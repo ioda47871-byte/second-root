@@ -114,9 +114,11 @@ describe("contact verdict: server-rule parity", () => {
     expect(contactVerdict(input).sendable).toBe(true);
   });
 
-  it("marks only the UI's own checks as not server-enforced", () => {
+  it("marks only the UI's own checks as not server-enforced (DEV-195: the exclusion list and the initial demo are enforced by the database)", () => {
     const ids = contactVerdict(eligibleInstagramInput({ designEnabled: true })).checks.filter((c) => !c.serverEnforced).map((c) => c.id);
-    expect(ids.sort()).toEqual(["demo_link", "exclusion"]);
+    expect(ids).toEqual([]);
+    const followUp = contactVerdict(eligibleEmailInput({ kind: "follow_up", outreachStatus: "sent" })).checks.filter((c) => !c.serverEnforced).map((c) => c.id);
+    expect(followUp).toEqual(["demo_link"]);
   });
 
   it("always lists the manual pre-send check of the channel as unconfirmed, without changing sendable", () => {
@@ -148,6 +150,20 @@ describe("the database rules this mirrors are still the ones in the migrations",
   });
   it("sales_mark_sent accepts only a drafted initial", () => {
     expect(sql("20260927000200_sales_admin_mark_sent.sql")).toContain("if o.kind <> 'initial' or o.status <> 'drafted' then");
+    expect(sql("20261107000000_sales_send_approval.sql")).toContain("if o.kind <> 'initial' or o.status <> 'drafted' then");
+  });
+  it("DEV-195: the eligibility check refuses an excluded shop, and the send guards refuse a missing demo and a pending design", () => {
+    const m = sql("20261107000000_sales_send_approval.sql");
+    const channel = m.slice(m.indexOf("create function public.sales_assert_channel_eligible"), m.indexOf("create or replace function public.sales_assert_outreach_eligible"));
+    const eligible = m.slice(m.indexOf("create or replace function public.sales_assert_outreach_eligible"), m.indexOf("create or replace function public.sales_check_outreach_update"));
+    expect(eligible).toContain("if p.do_not_contact then");
+    expect(eligible).toContain("perform public.sales_assert_channel_eligible(p_prospect_id, p_kind, p_channel);");
+    expect(channel).toContain("not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null)");
+    expect(channel).toContain("not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email))");
+    expect(channel).toContain("if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then");
+    expect(eligible).toContain("if public.sales_prospect_excluded(p.id) then");
+    expect(m).toContain("if not found or (d.disabled_at is not null and v_block is distinct from 'do_not_contact') then");
+    expect(m).toContain("if coalesce(p_design_enabled, false) and d.design_status in ('pending', 'processing') then");
   });
 });
 
