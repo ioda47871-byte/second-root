@@ -37,17 +37,17 @@
         "decided_on": "2026-11-06",
         "evidence": "Issue #193 comment 6687410438"
       },
-      "success_scope": "design_structure_only",
+      "success_scope": "design_structure_and_ai_photo_demo_complete",
       "viewports": [
         "desktop_1440",
         "tablet_768",
         "mobile_390"
       ],
-      "verified_with": "MOCK photos (offline E2E, tests/unit/design-agent/quality-pipeline/photo-swap-bicycle-d1-v9.test.ts)",
+      "verified_with": "MOCK photo structure E2E; 6 real Codex-generated AI demo photographs integrated offline; PC 1440 / tablet 768 / mobile 390 captures; read-only 1500 and 1920 viewport visual review",
       "design_status": "success",
-      "photo_status": "mock_only",
-      "real_images_generated": 0,
-      "image_rights_status": "no real image exists; MOCK photos are test-time stubs, never committed; a future AI demo picture would be ai_generated_demo, demo only, not public web",
+      "photo_status": "ai_generated_demo_owner_approved_complete",
+      "real_images_generated": 6,
+      "image_rights_status": "ai_generated_demo; demo only; public_web=false; photographs/manifest/rights provenance retained in private WSL output, not committed or published; fictional shop, not real merchant photos",
       "photo_prompt": {
         "file": "docs/design/bicycle-ai-photo-prompt.txt",
         "sha256": "83c9b2c628873d645a78145065a5ff5befeab7f406555b79649f1f44d8275594",
@@ -64,13 +64,19 @@
         "run_prompt_sha256": "4b8081e02c08e1d0842c27bf28afab2bc647a9c80acce8464c23acf20e6d7447",
         "run_prompt_chars": 4566,
         "limits": "1 job, at most 6 image calls, 1 Codex run, 15 minutes, no retry, this page only",
-        "executed": false,
-        "standing_auto_run": false
+        "executed": true,
+        "standing_auto_run": false,
+        "executed_on": "2026-11-07",
+        "execution_result": "DONE",
+        "image_tool_calls": 6,
+        "job_id": "job-bicycle-20261106201051-2bba09",
+        "worker_commit": "334f771fed0c953158aefc3926a208adf8a8ddc5",
+        "images_private": true,
+        "switch_off_verified": true
       },
-      "ai_photo_complete": "pending_owner_visual_checks",
+      "ai_photo_complete": "owner_approved",
       "ai_photo_complete_rule": "Never recorded as AI写真入り完成 until the owner passes every check of docs/design/bicycle-ai-photo-brief.md §6 on the real pictures (MOCK and stubs never pass it).",
       "not_claimed": [
-        "a finished page with real photos",
         "automatic reproduction by the production B pipeline",
         "published to Production or any public site",
         "a real shop or merchant approval"
@@ -91,11 +97,69 @@
         "d1-v8-opt-hub-glyph"
       ],
       "previous_versions_status": "kept unedited; not adopted (d1-v8-opt-hub-disc, cta-hero and check-horizontal were approved as parts of d1-v9)",
-      "pending_human_checks": "docs/design/bicycle-ai-photo-brief.md §6 (after a real generation only)",
+      "pending_human_checks": "completed by owner's final adoption, 2026-11-07; see photo_visual_review and Issue #193 comment 6703047826",
       "approved_for_generation": false,
       "approved_for_sales": false,
       "approved_for_production": false,
-      "website_deployed": false
+      "website_deployed": false,
+      "ai_photo_final_decision": {
+        "decided_by": "owner",
+        "decided_on": "2026-11-07",
+        "decision": "adopt_ai_photo_complete_research_success",
+        "evidence": "Issue #193 comment 6703047826",
+        "scope": "private ai_generated_demo study only"
+      },
+      "photo_visual_review": {
+        "brief": "docs/design/bicycle-ai-photo-brief.md §6",
+        "status": "owner_approved_after_visual_review",
+        "preliminary_reviewer": "ChatGPT",
+        "check_items": [
+          "V1",
+          "V2",
+          "V3",
+          "V4",
+          "V5",
+          "V6",
+          "V7",
+          "V7a",
+          "V7b",
+          "V8"
+        ],
+        "source_issue_comments": [
+          6697356296,
+          6702718720,
+          6703047826
+        ],
+        "viewports": [
+          "desktop_1440",
+          "tablet_768",
+          "mobile_390",
+          "desktop_1500",
+          "desktop_1920"
+        ],
+        "desktop_bench_upscale": {
+          "original_px": [
+            1448,
+            1086
+          ],
+          "result_px": [
+            2032,
+            1524
+          ],
+          "factor": 1.403,
+          "method": "sharp-lanczos3"
+        },
+        "offline_render_result": {
+          "widths_checked": [
+            1440,
+            1500,
+            1920
+          ],
+          "horizontal_overflow": false,
+          "all_images_loaded": true
+        },
+        "image_regeneration_required": false
+      }
     },
     {
       "id": "SR-C01",
