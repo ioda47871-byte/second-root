@@ -22,13 +22,17 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
     <li className={styles.card} data-testid="today-item">
       <h2 className={styles.itemTitle}>{item.shopName}</h2>
       <div className={styles.badges}>
-        <span className={styles.badge}>{CHANNEL_LABEL[item.channel]}</span>
+        <span className={styles.badge} data-testid="channel-badge">
+          {CHANNEL_LABEL[item.channel]}
+        </span>
         {item.kind === "follow_up" ? (
-          <span className={`${styles.badge} ${styles.badgeWarn}`}>
+          <span className={`${styles.badge} ${styles.badgeWarn}`} data-testid="state-badge">
             フォロー（初回から{item.sentAt ? daysSince(item.sentAt, now) : "-"}日）
           </span>
         ) : (
-          <span className={styles.badge}>未送信</span>
+          <span className={styles.badge} data-testid="state-badge">
+            未送信
+          </span>
         )}
         {item.kind === "initial" && item.designStatus && (
           <span
