@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "SR-002",
+  "shop": "kintokiyu",
+  "shop_display_name": "金時湯",
+  "status": "owner_formal_research_success_example",
+  "decision": {
+    "quote": "成功例とします",
+    "date": "2026-11-07",
+    "scope": "single_generated_design_composite_only"
+  },
+  "approved_asset": {
+    "filename": "金時湯_地下水の物語.png",
+    "type": "image/png",
+    "bytes": 2950110,
+    "dimensions": {
+      "width": 1448,
+      "height": 1086
+    },
+    "sha256": "da08c7981d26f269e73408edb0f12d631f1fd19071f4e7853138086795392695",
+    "storage": {
+      "kind": "ChatGPT Library",
+      "path": "/セカンドルート/SR-002_Kintokiyu_approved_composite.png",
+      "archive_path": "/セカンドルート/SecondRoot_SR002_Kintokiyu_approved_20261107.zip",
+      "github_binary_committed": false
+    },
+    "render_type": "single_combined_pc_and_mobile_visual_mockup",
+    "independent_responsive_tests_passed": false
+  },
+  "review": {
+    "owner_research_success": true,
+    "score_25": "not_scored",
+    "merchant_authorization": false,
+    "production_use": false,
+    "automatic_training_or_generation": false
+  },
+  "papertrail": "design-library/success-cases/SR-002-Kintokiyu.md",
+  "asset_integrity": {
+    "local_png_decoded": true,
+    "local_zip_hashes_verified": true,
+    "git_binary_verified": false,
+    "claude_zip_import_verified": false
+  }
+}
