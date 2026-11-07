@@ -2,20 +2,24 @@
   "schema_version": 1,
   "dataset": "second-root-quality-pipeline-research-successes",
   "as_of": "2026-11-07",
-  "scope": "Second Root's own research pages for FICTIONAL shops, made in the quality pipeline (design-library/research/quality-pipeline/poc). Kept apart from the 30 external research success cases (manifest.json, CP-001..032): those are external research success cases (the frozen manifest.json corpus, guarded at 30 by design-library/intelligence/v01/registration-safety.mjs; concept images, user-supplied images and local PoCs), and a fictional shop's own page is not a reference for other shops.",
+  "scope": "Second Rootの自主研究で正式採用されたSRシリーズ。既存CP-001..032（計30件）は凍結した別コーパス。SR-001は架空店のローカルWeb実装研究、SR-002は実在銭湯の非公式静止画像研究。種別・承認範囲とバイナリ検証範囲をそれぞれ保持し、他店テンプレートや営業用素材として自動投入しない。",
   "policy": {
     "not_templates": true,
     "not_added_to_external_case_count": true,
     "not_fed_to_generators_automatically": true,
     "release_or_deployment_approval": false,
-    "old_versions_kept_unedited": true
+    "old_versions_kept_unedited": true,
+    "real_merchant_research_requires_rights_review": true,
+    "external_shop_merchant_authorization_not_inferred_from_owner_approval": true,
+    "asset_bytes_required_for_visual_reuse": true,
+    "automatic_generator_promotion_requires_separate_review": true
   },
   "counts": {
-    "formal_success_examples": 1,
+    "formal_success_examples": 2,
     "success_example_candidates": 1,
     "external_research_success_cases": 30,
-    "all_research_success_records": 31,
-    "note": "all_research_success_records = the 30 external cases (manifest.json) + this ledger's formal success examples. Candidates are not counted as successes."
+    "all_research_success_records": 32,
+    "note": "30件の既存CP外部研究成功例（凍結）+ SR-001, SR-002 の正式SR採用2件。SR-C01等の候補は成功数に含めない。"
   },
   "records": [
     {
@@ -129,6 +133,63 @@
       "approved_for_sales": false,
       "approved_for_production": false,
       "website_deployed": false
+    },
+    {
+      "id": "SR-002",
+      "shop": "kintokiyu",
+      "shop_display_name": "金時湯（実在銭湯・名古屋）",
+      "status": "owner_formal_research_success_example",
+      "adopted_version": "2026-11-07 final composite: 金時湯_地下水の物語.png",
+      "owner_decision": {
+        "decided_by": "owner",
+        "decided_on": "2026-11-07",
+        "evidence": "this conversation: owner explicitly stated 『成功例とします』 after reviewing the final composite; GitHub permanent message URL not archived",
+        "quote": "成功例とします"
+      },
+      "study_type": "real_merchant_unofficial_visual_concept",
+      "success_scope": "owner-approved composite image design only; not real shop approval, not independent PC/mobile render validation",
+      "design_status": "success",
+      "photo_status": "ai_generated_concept_unverified_realism",
+      "real_images_generated": 1,
+      "image_rights_status": "ChatGPT-generated concept image; likeness of real bathhouse/brand is not merchant-authorized. Not licensed for merchant commercial representation.",
+      "assets": {
+        "approved_image_file": "金時湯_地下水の物語.png",
+        "approved_image_sha256": "da08c7981d26f269e73408edb0f12d631f1fd19071f4e7853138086795392695",
+        "approved_image_bytes": 2950110,
+        "approved_image_width": 1448,
+        "approved_image_height": 1086,
+        "source_storage": "ChatGPT Library /セカンドルート/SR-002_Kintokiyu_approved_composite.png",
+        "validated_zip_storage": "ChatGPT Library /セカンドルート/SecondRoot_SR002_Kintokiyu_approved_20261107.zip",
+        "github_binary_uploaded": false,
+        "claude_ingestion_verified": false
+      },
+      "study_record": "design-library/success-cases/SR-002-Kintokiyu.md",
+      "image_manifest": "design-library/success-cases/sr-assets/SR-002/asset-manifest.json",
+      "visual_mechanism": "1928/1960頃/現在の水平方向の建物史 + 中央の地下120mの垂直井戸 + 地上浴場が連続する大きな建物断面。案内は入浴券状の下段。",
+      "known_failure_modes": [
+        "hero_plus_generic_cards",
+        "120m_reduced_to_tiny_infographic",
+        "overdecorated_retro_ai_poster",
+        "fake_facilities_and_unverified_ai_text",
+        "mobile_not_independently_rendered"
+      ],
+      "viewports": [
+        "PC view pictured inside 1448x1086 composite image",
+        "mobile view pictured inside the same composite image"
+      ],
+      "pc_mobile_independently_built_or_tested": false,
+      "html_css_impl_verified": false,
+      "website_deployed": false,
+      "merchant_authorized": false,
+      "approved_for_generation": false,
+      "approved_for_sales": false,
+      "approved_for_production": false,
+      "automatic_promotion_allowed": false,
+      "further_checks": [
+        "validate real bathhouse history, exact facilities, fees, text and image rights",
+        "provide zip and verify SHA256 before Claude analysis",
+        "build independent 1440/768/390 HTML/CSS renders before production"
+      ]
     }
   ]
 }
