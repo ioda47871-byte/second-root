@@ -3,8 +3,9 @@ import pg from "pg";
 import { seedDraft } from "../support/seed-demo";
 import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
 
-// DMを送る → copy + open Instagram (stubbed, never the real site) → back →
-// 送信済み. Opening Instagram alone must not mark anything sent.
+// この内容で送信を承認 → DMを送る (copy + open Instagram, stubbed, never the
+// real site) → back → 手動で送信済みにする (DEV-195). Opening Instagram is
+// recorded as 「送信画面を開いた」 and never marks anything sent.
 
 test.describe.configure({ mode: "serial" });
 
@@ -31,7 +32,7 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/admin\/sales$/);
 }
 
-test("copies the DM, opens Instagram, and only 送信済み records the send", async ({ page, context, baseURL }) => {
+test("approves the DM, copies it and opens Instagram, and only 手動で送信済み records the send", async ({ page, context, baseURL }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL });
   // Never contact the real Instagram from tests.
   await context.route(/instagram\.com/, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<p>stub</p>" }));
@@ -40,6 +41,8 @@ test("copies the DM, opens Instagram, and only 送信済み records the send", a
   await login(page);
 
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await expect(card.getByRole("button", { name: "DMを送る" })).toHaveCount(0);
+  await card.getByTestId("approve-send").click();
   const [popup] = await Promise.all([context.waitForEvent("page"), card.getByRole("button", { name: "DMを送る" }).click()]);
   expect(popup.url()).toMatch(/^https:\/\/www\.instagram\.com\/e2e_[a-z0-9]+\/$/);
   await popup.close();
@@ -49,14 +52,38 @@ test("copies the DM, opens Instagram, and only 送信済み records the send", a
   expect(clip).toContain(`/demo/${draft.token}`);
   expect(clip).toContain("公式サイトではありません");
 
-  // Opened but not confirmed: still unsent, demo still private.
-  let { rows } = await db.query("select status from public.sales_outreaches where id = $1", [draft.outreachId]);
-  expect(rows[0].status).toBe("drafted");
+  // Opened but not confirmed: recorded as opened, still unsent, demo still private.
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  let { rows } = await db.query(
+    "select a.state, a.opened_via, a.body, o.status from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id where a.outreach_id = $1",
+    [draft.outreachId],
+  );
+  expect(rows).toEqual([{ state: "send_opened", opened_via: "instagram_profile", body: clip, status: "drafted" }]);
   expect((await page.request.get(`/demo/${draft.token}`)).status()).toBe(404);
 
-  await card.getByRole("button", { name: "送信済み" }).click();
+  await card.getByRole("button", { name: "手動で送信済みにする" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   ({ rows } = await db.query("select status from public.sales_outreaches where id = $1", [draft.outreachId]));
   expect(rows[0].status).toBe("sent");
   expect((await page.request.get(`/demo/${draft.token}`)).status()).toBe(200);
+});
+
+test("送らなかった: a withdrawn approval records no send and the draft can be approved again", async ({ page, context, baseURL }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL });
+  await context.route(/instagram\.com/, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<p>stub</p>" }));
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByTestId("approve-send").click();
+  const [popup] = await Promise.all([context.waitForEvent("page"), card.getByRole("button", { name: "DMを送る" }).click()]);
+  await popup.close();
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  await card.getByTestId("withdraw-approval").click();
+  await expect(card.getByTestId("approve-send")).toBeVisible();
+  const { rows } = await db.query(
+    "select a.state, a.superseded_reason, o.status from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id where a.outreach_id = $1",
+    [draft.outreachId],
+  );
+  expect(rows).toEqual([{ state: "superseded", superseded_reason: "withdrawn", status: "drafted" }]);
 });

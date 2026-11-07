@@ -56,6 +56,18 @@ export const verifiedCandidateInput = z.strictObject({
     subject: z.string().trim().max(100).nullable().optional(),
     body: text(1200),
   }),
+  /**
+   * DEV-195 (optional, backwards compatible): why this shop was chosen and
+   * what could be improved for it, in Operational Claude's own words. Only
+   * what was actually found; omit rather than guess. Stored with the run as
+   * the source; shown as 未確認 when absent.
+   */
+  insights: z
+    .strictObject({
+      selectionRationale: z.string().max(1000).optional(),
+      improvementHypothesis: z.string().max(1000).optional(),
+    })
+    .optional(),
 });
 export type VerifiedCandidateInput = z.infer<typeof verifiedCandidateInput>;
 

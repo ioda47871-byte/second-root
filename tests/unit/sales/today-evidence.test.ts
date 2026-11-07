@@ -114,9 +114,11 @@ describe("contact verdict: server-rule parity", () => {
     expect(contactVerdict(input).sendable).toBe(true);
   });
 
-  it("marks only the UI's own checks as not server-enforced", () => {
+  it("marks only the UI's own checks as not server-enforced (DEV-195: the exclusion list and the initial demo are enforced by the database)", () => {
     const ids = contactVerdict(eligibleInstagramInput({ designEnabled: true })).checks.filter((c) => !c.serverEnforced).map((c) => c.id);
-    expect(ids.sort()).toEqual(["demo_link", "exclusion"]);
+    expect(ids).toEqual([]);
+    const followUp = contactVerdict(eligibleEmailInput({ kind: "follow_up", outreachStatus: "sent" })).checks.filter((c) => !c.serverEnforced).map((c) => c.id);
+    expect(followUp).toEqual(["demo_link"]);
   });
 
   it("always lists the manual pre-send check of the channel as unconfirmed, without changing sendable", () => {
@@ -148,6 +150,18 @@ describe("the database rules this mirrors are still the ones in the migrations",
   });
   it("sales_mark_sent accepts only a drafted initial", () => {
     expect(sql("20260927000200_sales_admin_mark_sent.sql")).toContain("if o.kind <> 'initial' or o.status <> 'drafted' then");
+    expect(sql("20261107000000_sales_send_approval.sql")).toContain("if o.kind <> 'initial' or o.status <> 'drafted' then");
+  });
+  it("DEV-195: the eligibility check refuses an excluded shop, and the send guards refuse a missing demo and a pending design", () => {
+    const m = sql("20261107000000_sales_send_approval.sql");
+    const eligible = m.slice(m.indexOf("create or replace function public.sales_assert_outreach_eligible"), m.indexOf("create function public.sales_outreach_recipient"));
+    expect(eligible).toContain("if p.do_not_contact then");
+    expect(eligible).toContain("not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null)");
+    expect(eligible).toContain("not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email))");
+    expect(eligible).toContain("if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then");
+    expect(eligible).toContain("if public.sales_prospect_excluded(p.id) then");
+    expect(m).toContain("if not found or d.disabled_at is not null then");
+    expect(m).toContain("if coalesce(p_design_enabled, false) and d.design_status in ('pending', 'processing') then");
   });
 });
 

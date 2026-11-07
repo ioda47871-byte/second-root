@@ -45,6 +45,10 @@ function item(input: EvidenceInput): TodayItem {
     designErrorCode: null,
     designReview: null,
     evidence: buildTodayEvidence(input),
+    draftVersion: 1,
+    editedAt: null,
+    instagramHandle: input.instagramHandle,
+    approval: null,
   };
 }
 
@@ -56,12 +60,15 @@ async function pageHtml(input: EvidenceInput): Promise<string> {
 
 describe("today page: the send action follows the verdict", () => {
   it("sendable cards keep their action and a 送信できます badge", async () => {
+    // DEV-195: the first step of the send action is the approval of the exact text.
     const ig = await pageHtml(eligibleInstagramInput());
-    expect(ig).toContain("DMを送る");
+    expect(ig).toContain('data-testid="send-flow"');
+    expect(ig).toContain("この内容で送信を承認");
     expect(ig).toContain('data-sendable="true"');
     expect(ig).not.toContain('data-testid="send-blocked"');
     const mail = await pageHtml(eligibleEmailInput());
-    expect(mail).toContain("メールを作成");
+    expect(mail).toContain('data-testid="send-flow"');
+    expect(mail).toContain("この内容で送信を承認");
     expect(mail).not.toContain('data-testid="contact-blockers"');
   });
 
@@ -74,6 +81,8 @@ describe("today page: the send action follows the verdict", () => {
     ["a follow-up whose email lost its provenance", eligibleEmailInput({ kind: "follow_up", outreachStatus: "sent", sources: [] })],
   ])("%s: no send action, a 送信できません badge with reasons", async (_name, input) => {
     const html = await pageHtml(input);
+    expect(html).not.toContain('data-testid="send-flow"');
+    expect(html).not.toContain("この内容で送信を承認");
     expect(html).not.toContain("DMを送る");
     expect(html).not.toContain("メールを作成");
     expect(html).not.toContain("フォローメールを作成");
@@ -87,6 +96,7 @@ describe("today page: the send action follows the verdict", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     const html = await pageHtml(eligibleInstagramInput({ designEnabled: true, designStatus: "pending" }));
     expect(html).toContain('data-testid="design-wait"');
+    expect(html).not.toContain('data-testid="send-flow"');
     expect(html).not.toContain("DMを送る");
     expect(html).toContain("AIデザインの完成を待っています");
   });

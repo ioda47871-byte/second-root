@@ -1,10 +1,12 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ReviewSummarySchema, type ReviewSummary } from "@/lib/design-agent/review-summary";
+import { liveApproval, type ApprovalRow, type ApprovalView } from "@/lib/sales/approval";
 import { aiDesignEnabled, initialSendAllowed, isDesignStatus, type DesignStatus } from "@/lib/sales/design";
 import { emailDigest } from "@/lib/sales/email-digest";
 import { buildTodayEvidence, matchExclusions, storedEmails, type ExclusionCheck, type ExclusionKeys, type ExclusionRow, type SourceRow, type TodayEvidence } from "@/lib/sales/evidence";
 import { isFollowUpDue } from "@/lib/sales/followup";
+import { mapInsights, type InsightRow } from "@/lib/sales/insights";
 import { selectWorkQueue, type QueueItem } from "@/lib/sales/queue";
 import { LIMITS, type Category, type Channel, type WebsiteStatus } from "@/lib/sales/types";
 
@@ -35,6 +37,13 @@ export type TodayItem = QueueItem & {
    * contact verdict (the same rules the server applies when it is marked sent).
    */
   evidence: TodayEvidence;
+  /** DEV-195: the draft revision (bumped by every edit); an approval is for one revision. */
+  draftVersion: number;
+  /** DEV-195: when the owner last edited the draft (null: as prepared). */
+  editedAt: string | null;
+  instagramHandle: string | null;
+  /** DEV-195: the live send approval (approved / send_opened) of an initial draft, if any. */
+  approval: ApprovalView | null;
 };
 
 // DEV-048: with the AI design step on, drafts waiting for a design must not
@@ -54,6 +63,9 @@ type Row = {
   body: string;
   sent_at: string | null;
   created_at: string;
+  draft_version: number | null;
+  edited_at: string | null;
+  approvals: ApprovalRow[] | null;
   prospect: {
     name: string;
     category: Category;
@@ -70,6 +82,7 @@ type Row = {
     recommended_channel: Channel | null;
     created_at: string | null;
     sources: SourceRow[] | null;
+    insights: InsightRow[] | null;
     demo: DemoRow | DemoRow[] | null;
   } | null;
 };
@@ -77,11 +90,15 @@ type Row = {
 // With the AI design step off (DEV-030) the demo part is exactly the legacy one.
 // DEV-194: the prospect's stored channel facts and its sources are read for the
 // card's evidence, through the same admin session (RLS: admin read only).
+// DEV-195: the draft revision, the send approvals and the stored notes too
+// (migration 20261107000000, which must be applied before this code runs).
 export function todaySelect(design: boolean): string {
-  return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
+  return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at, draft_version, edited_at,
+  approvals:sales_outreach_approvals(id, state, channel, recipient, subject, body, draft_version, demo_token, approved_at, opened_at, opened_via),
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
     address, normalized_name, normalized_address, website_status, website_domain, instagram_handle, recommended_channel, created_at,
     sources:sales_sources(field, value, source_url, source_type, verified_at),
+    insights:sales_prospect_insights(kind, body, source, run_id, written_at),
     demo:sales_demos(public_token, disabled_at${design ? ", design_status, design_error_code, design_review" : ""}))`;
 }
 
@@ -176,7 +193,9 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
       designStatus,
       demoAvailable: demoToken !== null,
       exclusion,
+      insights: mapInsights(Array.isArray(p.insights) ? p.insights : null),
     });
+    const draftVersion = typeof row.draft_version === "number" ? row.draft_version : 1;
     const item: Omit<TodayItem, "evidence"> = {
       kind,
       prospectId: row.prospect_id,
@@ -201,6 +220,18 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
           : null,
       designReview: kind === "initial" ? reviewOf(designStatus, demo?.design_review) : null,
       sendable: kind === "follow_up" || initialSendAllowed(design, designStatus),
+      draftVersion,
+      editedAt: row.edited_at ?? null,
+      instagramHandle: p.instagram_handle ?? null,
+      approval:
+        kind === "initial"
+          ? liveApproval(Array.isArray(row.approvals) ? row.approvals : null, {
+              channel: row.channel,
+              draftVersion,
+              recipient: row.channel === "email" ? (p.public_email ?? null) : (p.instagram_handle ?? null),
+              demoToken,
+            })
+          : null,
     };
     return { item, keys, evidence };
   };

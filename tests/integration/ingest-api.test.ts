@@ -100,6 +100,17 @@ describe("run lifecycle through the API", () => {
     expect(fetchSpy).toHaveBeenCalled();
   });
 
+  it("DEV-195: stores optional notes as submitted (run as source), drops one that does not pass, and still prepares the shop", async () => {
+    const withNotes = { ...verifiedInput(), insights: { selectionRationale: "公式サイトがなく Instagram だけで案内している", improvementHypothesis: "連絡先 owner@example.com を載せる" } };
+    const { runId, run } = await fullRun([withNotes, verifiedEmailInput()]);
+    expect(run.candidates.map((c: { stage: string }) => c.stage)).toEqual(["outreach_ready", "outreach_ready"]);
+    const { rows } = await db.query("select kind, body, source, run_id from public.sales_prospect_insights");
+    expect(rows).toEqual([{ kind: "selection_rationale", body: "公式サイトがなく Instagram だけで案内している", source: "ingest", run_id: runId }]);
+    // Unknown fields inside the notes are still refused as a whole (strict schema).
+    const res = await call({ action: "checkpoint", runId: randomUUID(), phase: "verified", candidates: [{ ...verifiedInput(), insights: { note: "x" } }] });
+    expect(res.status).toBe(400);
+  });
+
   it("returns the stored result when a completed run is re-sent", async () => {
     const shop = verifiedInput();
     const { runId } = await fullRun([shop]);

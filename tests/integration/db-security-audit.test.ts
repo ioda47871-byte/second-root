@@ -89,6 +89,48 @@ describe("database security audit", () => {
     ]);
   });
 
+  it("DEV-195: the approval, draft-edit and note tables are admin-read only; the send functions are admin RPCs and the guards server-only", async () => {
+    const { rows: tables } = await db.query(`
+      select c.relname, c.relrowsecurity as rls,
+             has_table_privilege('authenticated', c.oid, 'SELECT') as authed_read,
+             has_table_privilege('authenticated', c.oid, 'INSERT') or has_table_privilege('authenticated', c.oid, 'UPDATE')
+               or has_table_privilege('authenticated', c.oid, 'DELETE') as authed_write,
+             has_table_privilege('anon', c.oid, 'SELECT') as anon_read,
+             (select count(*)::int from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) as policies,
+             (select count(*)::int from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname and p.cmd = 'SELECT') as read_policies
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname in ('sales_outreach_approvals', 'sales_outreach_draft_edits', 'sales_prospect_insights')
+      order by c.relname`);
+    expect(tables).toEqual(
+      ["sales_outreach_approvals", "sales_outreach_draft_edits", "sales_prospect_insights"].map((relname) => ({
+        relname, rls: true, authed_read: true, authed_write: false, anon_read: false, policies: 1, read_policies: 1,
+      })),
+    );
+    const { rows } = await db.query(`
+      select p.proname, p.prosecdef,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed,
+             has_function_privilege('anon', p.oid, 'EXECUTE') as anon
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in (
+        'sales_update_outreach_draft', 'sales_approve_outreach', 'sales_mark_send_opened', 'sales_withdraw_approval',
+        'sales_mark_sent', 'sales_set_prospect_insight',
+        'sales_send_guards', 'sales_prospect_excluded', 'sales_demo_version', 'sales_outreach_recipient',
+        'sales_approval_is_current', 'sales_bump_draft_version', 'sales_check_approval_write')
+      order by p.proname`);
+    const rpcs = ["sales_approve_outreach", "sales_mark_send_opened", "sales_mark_sent", "sales_set_prospect_insight", "sales_update_outreach_draft", "sales_withdraw_approval"];
+    expect(rows).toEqual(
+      rows.map((r) => r.proname).sort().map((proname) =>
+        rpcs.includes(proname) ? { proname, prosecdef: true, authed: true, anon: false } : { proname, prosecdef: false, authed: false, anon: false },
+      ),
+    );
+    expect(rows).toHaveLength(13);
+    // The one-argument 送信済み (no approval) is gone.
+    const { rows: markSent } = await db.query(
+      "select pg_get_function_identity_arguments(p.oid) as args from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'sales_mark_sent'",
+    );
+    expect(markSent).toEqual([{ args: "p_outreach_id uuid, p_approval_id uuid, p_design_enabled boolean" }]);
+  });
+
   it("checks the admin first in every SECURITY DEFINER function the signed-in role can call", async () => {
     const { rows } = await db.query(`
       select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

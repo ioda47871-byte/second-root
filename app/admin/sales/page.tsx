@@ -1,12 +1,13 @@
 import EmailSend from "@/components/admin/EmailSend";
-import InstagramSend from "@/components/admin/InstagramSend";
+import InitialSend from "@/components/admin/InitialSend";
 import TodayCard from "@/components/admin/TodayCard";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
-import { composeFollowUp, DEFAULT_SUBJECT } from "@/lib/admin/followup";
-import { demoUrl, loadTodayQueue, type TodayItem } from "@/lib/admin/today";
+import { composeFollowUp } from "@/lib/admin/followup";
+import { approvedSendLink, composeInitialSend } from "@/lib/admin/initial-send";
+import { loadTodayQueue, type TodayItem } from "@/lib/admin/today";
 import { aiDesignEnabled, initialSendAllowed } from "@/lib/sales/design";
-import { buildMailto, composeDm, composeEmailBody, instagramOpenUrl } from "@/lib/sales/messages";
+import { buildMailto } from "@/lib/sales/messages";
 import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -58,32 +59,42 @@ function actionFor(item: TodayItem) {
     );
   }
   if (!item.evidence.contact.sendable) return sendBlocked("initial");
-  if (item.kind === "initial" && item.channel === "email" && item.publicEmail && item.demoToken) {
-    const draft = {
-      to: item.publicEmail,
-      subject: item.subject ?? DEFAULT_SUBJECT,
-      body: composeEmailBody({ shopName: item.shopName, message: item.body, demoUrl: demoUrl(item.demoToken) }),
-    };
-    try {
-      return <EmailSend outreachId={item.outreachId} mailto={buildMailto(draft)} draft={draft} />;
-    } catch {
-      return cannotCompose("メール");
-    }
-  }
-  if (item.kind === "initial" && item.channel === "instagram" && item.instagramUrl && item.demoToken) {
-    try {
-      return (
-        <InstagramSend
-          outreachId={item.outreachId}
-          dmText={composeDm({ message: item.body, demoUrl: demoUrl(item.demoToken) })}
-          instagramUrl={instagramOpenUrl(item.instagramUrl)}
-        />
-      );
-    } catch {
-      return cannotCompose("DM");
-    }
-  }
-  return null;
+  // DEV-195: approve the exact text → open the owner's own app → confirm the
+  // manual send. The same composer builds the text shown, approved and sent.
+  const composed = composeInitialSend({
+    channel: item.channel,
+    shopName: item.shopName,
+    subject: item.subject,
+    body: item.body,
+    publicEmail: item.publicEmail,
+    instagramUrl: item.instagramUrl,
+    instagramHandle: item.instagramHandle,
+    demoToken: item.demoToken,
+  });
+  if (!composed) return cannotCompose(item.channel === "email" ? "メール" : "DM");
+  const approval = item.approval;
+  return (
+    <InitialSend
+      outreachId={item.outreachId}
+      draftVersion={item.draftVersion}
+      composed={{ channel: composed.channel, recipient: composed.recipient, subject: composed.subject, body: composed.body }}
+      approval={
+        approval
+          ? {
+              id: approval.id,
+              state: approval.state,
+              recipient: approval.recipient,
+              subject: approval.subject,
+              body: approval.body,
+              approvedLabel: approval.approvedLabel,
+              openedLabel: approval.openedLabel,
+              staleReasons: approval.staleReasons,
+              link: approvedSendLink(approval, item.instagramUrl),
+            }
+          : null
+      }
+    />
+  );
 }
 
 export default async function TodayPage() {

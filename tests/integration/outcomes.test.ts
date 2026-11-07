@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadPublicDemo } from "@/lib/sales/demo-data";
-import { anonClient, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
+import { anonClient, approveAndMarkSent, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
 
 // 返信 → 商談 → 成約 / 失注, decline vs DNC (MVP_SPEC §5, §6).
 
@@ -17,7 +17,7 @@ async function sentOutreach() {
   await rpc("sales_run_finalize", { p_run_id: runId });
   const { rows } = await db.query("select id from public.sales_outreaches where prospect_id = $1", [prospect_id]);
   const outreachId = rows[0].id as string;
-  expect((await admin.rpc("sales_mark_sent", { p_outreach_id: outreachId })).error).toBeNull();
+  expect((await approveAndMarkSent(admin, outreachId)).error).toBeNull();
   const token = (await db.query("select public_token from public.sales_demos where prospect_id = $1", [prospect_id])).rows[0].public_token;
   return { outreachId, prospectId: prospect_id, token };
 }

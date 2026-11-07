@@ -35,6 +35,7 @@ vi.mock("@/lib/admin/today", async (original) => ({
 }));
 
 const OUTREACH = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+const APPROVAL = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff";
 
 beforeEach(() => {
   state.rpc.mockReset();
@@ -47,7 +48,7 @@ describe("markSent", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     state.designStatus = status;
     const { markSent } = await import("@/app/admin/sales/_actions/send");
-    expect(await markSent(OUTREACH)).toEqual({ ok: false, error: "AIデザインの完成前のため送信済みにできません。" });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: false, error: "AIデザインの完成前のため送信済みにできません。" });
     expect(state.rpc).not.toHaveBeenCalled();
   });
 
@@ -55,15 +56,16 @@ describe("markSent", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     state.designStatus = status;
     const { markSent } = await import("@/app/admin/sales/_actions/send");
-    expect(await markSent(OUTREACH)).toEqual({ ok: true });
-    expect(state.rpc).toHaveBeenCalledWith("sales_mark_sent", { p_outreach_id: OUTREACH });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true });
+    expect(state.rpc).toHaveBeenCalledWith("sales_mark_sent", { p_outreach_id: OUTREACH, p_approval_id: APPROVAL, p_design_enabled: true });
   });
 
   it("with the step off, does not look at the design at all (legacy)", async () => {
     state.designStatus = "pending";
     const { markSent } = await import("@/app/admin/sales/_actions/send");
-    expect(await markSent(OUTREACH)).toEqual({ ok: true });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true });
     expect(state.rpc).toHaveBeenCalledTimes(1);
+    expect(state.rpc).toHaveBeenCalledWith("sales_mark_sent", { p_outreach_id: OUTREACH, p_approval_id: APPROVAL, p_design_enabled: false });
   });
 });
 
@@ -88,6 +90,10 @@ function item(designStatus: DesignStatus | null): TodayItem {
     designErrorCode: null,
     designReview: null,
     evidence: fixtureEvidence(designStatus),
+    draftVersion: 1,
+    editedAt: null,
+    instagramHandle: "test_shop",
+    approval: null,
   };
 }
 
@@ -102,20 +108,20 @@ describe("today screen action", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     const html = await todayHtml(status);
     expect(html).toContain('data-testid="design-wait"');
-    expect(html).not.toContain("DMを送る");
+    expect(html).not.toContain('data-testid="send-flow"');
   });
 
   it.each([null, "ready", "blocked", "failed"] as const)("%s with the step on: the DM action as before", async (status) => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     const html = await todayHtml(status);
     expect(html).not.toContain('data-testid="design-wait"');
-    expect(html).toContain("DMを送る");
+    expect(html).toContain('data-testid="send-flow"');
   });
 
   it("with the step off, the DM action whatever the stored state", async () => {
     const html = await todayHtml("pending");
     expect(html).not.toContain('data-testid="design-wait"');
-    expect(html).toContain("DMを送る");
+    expect(html).toContain('data-testid="send-flow"');
   });
 });
 

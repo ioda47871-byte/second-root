@@ -60,7 +60,7 @@ test("offers one follow-up mailto 5 days after the email and records it on 送�
     (await db.query("select status from public.sales_outreaches where prospect_id = $1 and kind = 'follow_up'", [draft.prospectId])).rows;
   expect(await followUps()).toEqual([]);
 
-  await card.getByRole("button", { name: "送信済み" }).click();
+  await card.getByRole("button", { name: "手動で送信済みにする" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   expect(await followUps()).toEqual([{ status: "sent" }]);
   // What is recorded is exactly what the mailto carried.

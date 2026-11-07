@@ -6,13 +6,14 @@ import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
 // Mobile QA across every admin page (DEV-018): at the narrowest supported
 // width (320px, iPhone SE 1st gen) and a common one (375px), with long
 // unbroken shop names, every card state present and the interactive states
-// opened (email fallback, reply form, 失注 confirmation), no page scrolls
+// opened (send approval and confirm step, reply form, 失注 confirmation), no page scrolls
 // sideways, every page has one h1 and the current nav item, tap targets are
 // big enough, and nothing logs a console error.
 
 let db: pg.Pool;
 const seeded: string[] = [];
 let ADMIN: ReturnType<typeof usersFor>["admin"];
+let emailDraftName = "";
 
 const LONG = "とても長い店名の小さなベーカリー".repeat(3) + "x".repeat(40);
 
@@ -36,7 +37,7 @@ test.beforeAll(async ({}, testInfo) => {
 
   // Today: an Instagram draft, an email draft and a due email follow-up.
   await track(seedDraft(db, "長い営業文。".repeat(40)));
-  await track(seedEmailDraft(db));
+  emailDraftName = (await track(seedEmailDraft(db))).name;
   await markSent(await track(seedEmailDraft(db)), "now() - interval '6 days'");
   // Replies (sent) and meetings (replied, meeting).
   await markSent(await track(seedDraft(db)));
@@ -68,12 +69,16 @@ async function login(page: Page) {
 /** Opens the interactive states of one card of each kind, without leaving the page. */
 async function openStates(page: Page, path: string) {
   if (path === "/admin/sales") {
-    const mail = page.getByTestId("today-item").filter({ has: page.getByRole("link", { name: "メールを作成" }) }).first();
-    await mail.getByRole("link", { name: "メールを作成" }).evaluate((a) => {
+    // DEV-195: approve the email draft (once per seed), then open the mail app → the confirm step.
+    const mail = page.getByTestId("today-item").filter({ hasText: emailDraftName });
+    if ((await mail.getByTestId("approve-send").count()) > 0) await mail.getByTestId("approve-send").click();
+    const link = mail.getByRole("link", { name: "メールを作成", exact: true });
+    await expect(link).toBeVisible();
+    await link.evaluate((a) => {
       a.addEventListener("click", (e) => e.preventDefault(), { once: true });
       a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    await expect(mail.getByRole("button", { name: "送信済み" })).toBeVisible();
+    await expect(mail.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
   }
   if (path === "/admin/sales/replies") {
     const card = page.getByTestId("reply-item").filter({ hasText: LONG }).first();

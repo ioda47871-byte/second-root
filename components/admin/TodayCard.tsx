@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import type { TodayItem } from "@/lib/admin/today";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
 import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL, designErrorLabel, reviewAxisLines, reviewSummaryLine } from "@/lib/sales/design";
+import { formatJstDateTime } from "@/lib/sales/evidence";
 import DncControl from "./DncControl";
+import DraftEditor from "./DraftEditor";
 import SkipDraft from "./SkipDraft";
 import TodayEvidencePanel from "./TodayEvidencePanel";
 import styles from "./admin.module.css";
@@ -103,12 +105,21 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
           <>
             {item.subject && <p>件名: {item.subject}</p>}
             <p className={styles.message}>{item.body}</p>
+            <DraftEditor
+              outreachId={item.outreachId}
+              draftVersion={item.draftVersion}
+              channel={item.channel}
+              subject={item.subject}
+              body={item.body}
+              editedLabel={item.editedAt ? `${formatJstDateTime(item.editedAt)} に編集` : null}
+              locked={item.approval?.state === "send_opened"}
+            />
             <SkipDraft outreachId={item.outreachId} />
             <DncControl prospectId={item.prospectId} doNotContact={false} />
           </>
         )}
       </details>
-      <TodayEvidencePanel evidence={item.evidence} />
+      <TodayEvidencePanel evidence={item.evidence} prospectId={item.prospectId} />
     </li>
   );
 }

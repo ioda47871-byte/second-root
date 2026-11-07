@@ -35,6 +35,10 @@ function item(designStatus: DesignStatus | null, kind: "initial" | "follow_up" =
     designErrorCode: null,
     designReview: null,
     evidence: fixtureEvidence(designStatus, kind),
+    draftVersion: 1,
+    editedAt: null,
+    instagramHandle: "test_shop",
+    approval: null,
   };
 }
 
