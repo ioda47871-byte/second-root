@@ -626,15 +626,67 @@ describe("PR #239 M2: a send confirmed after the shop became DNC / excluded", ()
 });
 
 describe("PR #239 L2: a closed outreach retires its approval", () => {
-  it("見送る (sales_mark_lost) supersedes a live approval, and its recipient no longer counts as a duplicate", async () => {
+  it("見送る (sales_mark_lost) supersedes an unopened approval, and its recipient no longer counts as a duplicate", async () => {
     const [a, b] = await prepare(candidate(), candidate());
     const handleA = await handleOf(a.prospectId);
-    const id = await approvedAndOpened(a.outreachId);
+    const id = approvalIdOf(await approve(admin, a.outreachId));
     expect((await admin.rpc("sales_mark_lost", { p_outreach_id: a.outreachId, p_reason: "見送り" })).error).toBeNull();
     expect((await approvals(a.outreachId))[0]).toMatchObject({ id, state: "superseded", superseded_reason: "outreach_closed" });
     expect((await markSent(admin, a.outreachId, id)).error?.message).toContain("invalid_transition");
     await db.query("update public.sales_prospects set instagram_handle = 'moved_away_2', instagram_url = 'https://www.instagram.com/moved_away_2/' where id = $1", [a.prospectId]);
     await db.query("update public.sales_prospects set instagram_handle = $2, instagram_url = $3 where id = $1", [b.prospectId, handleA, `https://www.instagram.com/${handleA}/`]);
     expect((await approve(admin, b.outreachId)).error).toBeNull();
+  });
+});
+
+describe("PR #239 re-review", () => {
+  it("L4b: 見送る is refused while an approval is send_opened; settled first, it works", async () => {
+    const shop = await one(candidate());
+    const id = await approvedAndOpened(shop.outreachId);
+    expect((await admin.rpc("sales_mark_lost", { p_outreach_id: shop.outreachId, p_reason: "見送り" })).error?.message).toContain("approval_open");
+    expect(await outreach(shop.outreachId)).toMatchObject({ status: "drafted" });
+    expect((await approvals(shop.outreachId))[0]).toMatchObject({ state: "send_opened" });
+    expect((await admin.rpc("sales_withdraw_approval", { p_approval_id: id })).error).toBeNull();
+    expect((await admin.rpc("sales_mark_lost", { p_outreach_id: shop.outreachId, p_reason: "見送り" })).error).toBeNull();
+    expect((await approvals(shop.outreachId))[0]).toMatchObject({ state: "superseded", superseded_reason: "withdrawn" });
+  });
+
+  it("L3: a sent or superseded approval is final (sent_at, sent_by, blocked_after_open included)", async () => {
+    const [sent, gone] = await prepare(candidate(), candidate());
+    expect((await approveAndMarkSent(admin, sent.outreachId)).error).toBeNull();
+    const goneId = await approvedAndOpened(gone.outreachId);
+    expect((await admin.rpc("sales_withdraw_approval", { p_approval_id: goneId })).error).toBeNull();
+    for (const set of ["sent_at = now() - interval '1 day'", "sent_by = gen_random_uuid()", "blocked_after_open = 'excluded'", "open_count = open_count + 1"]) {
+      await expect(db.query(`update public.sales_outreach_approvals set ${set} where outreach_id = $1`, [sent.outreachId]), set).rejects.toThrow(/approval_final_immutable/);
+    }
+    await expect(db.query("update public.sales_outreach_approvals set superseded_reason = 'reapproved' where id = $1", [goneId])).rejects.toThrow(/approval_final_immutable/);
+    // The flag cannot be put on an approval that is not being confirmed.
+    const [open] = await prepare(candidate());
+    const openId = await approvedAndOpened(open.outreachId);
+    await expect(db.query("update public.sales_outreach_approvals set blocked_after_open = 'excluded' where id = $1", [openId])).rejects.toThrow(/approval_final_immutable|sales_outreach_approvals_blocked/);
+  });
+
+  it("L1: removing an exclusion waits for an in-flight 送信済み (same lock), so the confirm never fails on a mismatch", async () => {
+    const shop = await one(candidate());
+    const id = await approvedAndOpened(shop.outreachId);
+    await exclude({ instagram_handle: await handleOf(shop.prospectId) });
+    const exclusionId = (await db.query("select id from public.sales_exclusions limit 1")).rows[0].id;
+    const tx = await db.connect();
+    let removal: Promise<{ error: unknown }> | null = null;
+    try {
+      await tx.query("begin");
+      // Holds the outreach row as a 送信済み in progress would, after reading the block reason.
+      await tx.query("select pg_advisory_xact_lock_shared(hashtext('second_root_sales_exclusions'))");
+      removal = start(admin.rpc("sales_remove_exclusion", { p_id: exclusionId }));
+      await waitForLockWaiter();
+      expect((await db.query("select count(*)::int as n from public.sales_exclusions")).rows[0].n).toBe(1);
+      await tx.query("commit");
+      expect((await removal).error).toBeNull();
+    } finally {
+      await tx.query("rollback").catch(() => undefined);
+      tx.release();
+    }
+    // And end to end: confirm right after removal is a normal send (no flag).
+    expect((await markSent(admin, shop.outreachId, id)).data).toMatchObject({ status: "sent", blocked_after_open: null });
   });
 });

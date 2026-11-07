@@ -43,19 +43,30 @@ test("approve the exact text, then the mailto pre-fills everything; opening is r
   // Step 1: the exact recipient and text are shown before anything can be opened.
   await expect(card.getByTestId("send-recipient")).toHaveText(draft.email);
   await expect(card.getByLabel("送る文面")).toHaveValue(/E2E メール本文です。/);
-  await expect(card.getByRole("link", { name: "メールを作成" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "メールを作成" })).toHaveCount(0);
   await card.getByTestId("approve-send").click();
 
-  // Step 2: approved (recorded with the snapshot), still unsent.
-  const link = card.getByRole("link", { name: "メールを作成" });
+  // Step 2: approved (recorded with the snapshot), still unsent. No mailto is in
+  // the page yet: メールを作成 is a button (PR #239 re-review L4a).
+  const link = card.getByRole("button", { name: "メールを作成" });
   await expect(link).toBeVisible();
+  await expect(card.locator('a[href^="mailto:"]')).toHaveCount(0);
   let { rows } = await db.query(
     "select a.state, a.recipient, a.subject, a.body, a.mode, o.status from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id where a.outreach_id = $1",
     [draft.outreachId],
   );
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ state: "approved", recipient: draft.email, subject: "ホームページのご提案", mode: "manual", status: "drafted" });
-  const href = (await link.getAttribute("href"))!;
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toHaveCount(0);
+  // Opening the mail app records 「送信画面を開いた」 first (never a send), and
+  // only then hands the approved mailto to the device (captured here).
+  await link.click();
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  const opened = await openedMailto(page);
+  expect(opened).toHaveLength(1);
+  const href = opened[0]!;
+  // The visible fallback link appears only now, with the same mailto.
+  await expect(card.getByTestId("mail-fallback")).toHaveAttribute("href", href);
   expect(href.startsWith(`mailto:${draft.email}?`)).toBe(true);
   const params = new URLSearchParams(href.slice(href.indexOf("?") + 1));
   expect([...params.keys()]).toEqual(["subject", "body"]);
@@ -68,13 +79,6 @@ test("approve the exact text, then the mailto pre-fills everything; opening is r
   expect(body).toContain("公式サイトではありません");
   expect(body).toContain("以後ご連絡いたしません");
   expect(body).toContain("Second Root");
-  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toHaveCount(0);
-
-  // Opening the mail app records 「送信画面を開いた」 first (never a send), and
-  // only then hands the approved mailto to the device (captured here).
-  await link.click();
-  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
-  expect(await openedMailto(page)).toEqual([href]);
   ({ rows } = await db.query(
     "select a.state, a.opened_via, o.status from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id where a.outreach_id = $1",
     [draft.outreachId],
@@ -104,7 +108,7 @@ test("says why when the email cannot be composed, and offers nothing to send", a
   await login(page);
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
   await expect(card.getByRole("alert")).toContainText("メールを作成できません");
-  await expect(card.getByRole("link", { name: "メールを作成" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "メールを作成" })).toHaveCount(0);
   await expect(card.getByTestId("approve-send")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "送信済み" })).toHaveCount(0);
 });
@@ -116,7 +120,7 @@ test("PR #239 M1: an exclusion added after approval stops the mail app from open
   await login(page);
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
   await card.getByTestId("approve-send").click();
-  const link = card.getByRole("link", { name: "メールを作成" });
+  const link = card.getByRole("button", { name: "メールを作成" });
   await expect(link).toBeVisible();
   // Excluded from another tab after the card rendered.
   await db.query("insert into public.sales_exclusions (label, reason, website_domain) values ('E2E 除外', 'existing_customer', $1)", [draft.email.split("@")[1]]);
@@ -124,6 +128,7 @@ test("PR #239 M1: an exclusion added after approval stops the mail app from open
     await link.click();
     await expect(card.getByRole("alert")).toContainText("除外リスト");
     expect(await openedMailto(page)).toEqual([]);
+    await expect(card.locator('a[href^="mailto:"]')).toHaveCount(0);
     const { rows } = await db.query("select state, opened_at from public.sales_outreach_approvals where outreach_id = $1", [draft.outreachId]);
     expect(rows).toEqual([{ state: "approved", opened_at: null }]);
   } finally {
@@ -138,17 +143,37 @@ test("PR #239 M2: opened, then the shop became DNC: the card keeps the confirm s
   await login(page);
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
   await card.getByTestId("approve-send").click();
-  await card.getByRole("link", { name: "メールを作成" }).click();
+  await card.getByRole("button", { name: "メールを作成" }).click();
   await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
   // The owner sent it; meanwhile the shop is marked DNC (which also disables the demo).
   await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'admin_manual', dnc_set_at = now() where id = $1", [draft.prospectId]);
   await db.query("update public.sales_demos set disabled_at = now() where prospect_id = $1", [draft.prospectId]);
   await page.reload();
   await expect(card.getByTestId("approval-blocked")).toBeVisible();
-  await expect(card.getByRole("link", { name: "メールを作成" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "メールを作成" })).toHaveCount(0);
   await expect(card.getByTestId("withdraw-approval")).toBeVisible();
   await card.getByRole("button", { name: "手動で送信済みにする" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   const { rows } = await db.query("select status, blocked_after_open from public.sales_outreaches where id = $1", [draft.outreachId]);
   expect(rows).toEqual([{ status: "sent", blocked_after_open: "do_not_contact" }]);
+});
+
+test("PR #239 re-review L4b: 見送る is refused while the send screen is open, with the reason", async ({ page }) => {
+  const draft = await seedEmailDraft(db);
+  seeded.push(draft.prospectId);
+  await captureMailto(page);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByTestId("approve-send").click();
+  await card.getByRole("button", { name: "メールを作成" }).click();
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  await card.getByText("詳細", { exact: true }).click();
+  await card.getByTestId("skip-draft").click();
+  await card.getByRole("button", { name: "はい、見送る" }).click();
+  await expect(card.getByRole("alert").filter({ hasText: "送信画面を開いた承認" })).toBeVisible();
+  const { rows } = await db.query(
+    "select o.status, a.state from public.sales_outreaches o join public.sales_outreach_approvals a on a.outreach_id = o.id where o.id = $1",
+    [draft.outreachId],
+  );
+  expect(rows).toEqual([{ status: "drafted", state: "send_opened" }]);
 });

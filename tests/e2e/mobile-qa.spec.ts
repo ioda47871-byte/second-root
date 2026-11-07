@@ -73,7 +73,7 @@ async function openStates(page: Page, path: string) {
     // DEV-195: approve the email draft (once per seed), then open the mail app → the confirm step.
     const mail = page.getByTestId("today-item").filter({ hasText: emailDraftName });
     if ((await mail.getByTestId("approve-send").count()) > 0) await mail.getByTestId("approve-send").click();
-    const link = mail.getByRole("link", { name: "メールを作成", exact: true });
+    const link = mail.getByRole("button", { name: "メールを作成", exact: true });
     await expect(link).toBeVisible();
     await link.click();
     await expect(mail.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();

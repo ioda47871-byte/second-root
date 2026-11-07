@@ -24,6 +24,10 @@ async function call(fn: string, args: Record<string, unknown>): Promise<OutcomeR
       return { ok: false, error: "この返信はすでに別の種類で記録されています。画面を再読み込みしてください。" };
     }
     if (error.message.includes("refusal_requires_decline")) return { ok: false, error: "「今後の連絡を拒否」は「断り」のときだけ選べます。" };
+    // PR #239 re-review L4b: an opened send is settled before the draft can be closed.
+    if (error.message.includes("approval_open")) {
+      return { ok: false, error: "送信画面を開いた承認があります。送った場合は「手動で送信済みにする」、送らなかった場合は「送らなかった」を先に押してください。" };
+    }
     return { ok: false, error: "記録できませんでした。画面を再読み込みしてください。" };
   }
   revalidatePath("/admin/sales", "layout");

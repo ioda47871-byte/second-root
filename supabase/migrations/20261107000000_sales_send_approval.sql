@@ -168,6 +168,15 @@ begin
          old.demo_version, old.snapshot_sha256, old.approved_by, old.approved_at) then
     raise exception 'approval_snapshot_immutable' using errcode = 'check_violation';
   end if;
+  -- PR #239 re-review L3: a sent or superseded approval is final — nothing
+  -- on it changes any more (sent_at, sent_by, blocked_after_open included).
+  if old.state in ('sent', 'superseded') and new is distinct from old then
+    raise exception 'approval_final_immutable' using errcode = 'check_violation';
+  end if;
+  if new.blocked_after_open is distinct from old.blocked_after_open
+     and not (old.state = 'send_opened' and new.state = 'sent') then
+    raise exception 'approval_final_immutable' using errcode = 'check_violation';
+  end if;
   if new.state <> old.state and not (
        (old.state = 'approved' and new.state in ('send_opened', 'superseded'))
        or (old.state = 'send_opened' and new.state in ('sent', 'superseded'))) then
@@ -1135,7 +1144,7 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- PR #239 L2: closing an outreach as lost (見送る, or any later loss)
--- retires its live approval, so the approval no longer counts as a live
+-- retires its unopened approval (an opened one must be settled first: L4b), so the approval no longer counts as a live
 -- recipient for the duplicate check. Unchanged from 20260927000300 otherwise.
 -- ---------------------------------------------------------------------------
 
@@ -1153,12 +1162,40 @@ begin
   if o.status = 'lost' then
     return jsonb_build_object('outreach_id', o.id, 'status', o.status, 'replayed', true);
   end if;
+  -- PR #239 re-review L4b: the owner may already have sent the opened text.
+  -- That is settled first (手動で送信済み / 送らなかった), never lost silently.
+  if exists (select 1 from public.sales_outreach_approvals a where a.outreach_id = o.id and a.state = 'send_opened') then
+    raise exception 'approval_open' using errcode = 'P0001';
+  end if;
   update public.sales_outreaches
     set status = 'lost', closed_at = now(), lost_reason = nullif(left(coalesce(p_reason, ''), 500), '')
     where id = o.id;
   update public.sales_outreach_approvals
     set state = 'superseded', superseded_at = now(), superseded_reason = 'outreach_closed'
-    where outreach_id = o.id and state in ('approved', 'send_opened');
+    where outreach_id = o.id and state = 'approved';
   return jsonb_build_object('outreach_id', o.id, 'status', 'lost', 'replayed', false);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- PR #239 re-review L1: removing an exclusion takes the same exclusive lock as
+-- adding one, so it cannot commit between sales_mark_sent reading the block
+-- reason and the outreach trigger reading it again. Unchanged from
+-- 20261018000000 otherwise (create or replace keeps the grants).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.sales_remove_exclusion(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.sales_assert_admin();
+  perform pg_advisory_xact_lock(hashtext('second_root_sales_exclusions'));
+  delete from public.sales_exclusions where id = p_id;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
 end;
 $$;

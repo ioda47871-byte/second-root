@@ -63,6 +63,12 @@ export default function InitialSend({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /**
+   * PR #239 re-review L4a: the mailto exists in the page only after the server
+   * recorded the opening (some browsers, e.g. iOS Safari, may not follow the
+   * programmatic hand-over after an await; this visible link is the fallback).
+   */
+  const [recordedMailto, setRecordedMailto] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   const run = (action: () => Promise<{ ok: true } | { ok: false; error: string }>) => {
@@ -116,14 +122,15 @@ export default function InitialSend({
   const blocked = approval.state === "send_opened" && blockedWarning !== null && blockedWarning.length > 0;
   const canOpen = !stale && !blocked && approval.link !== null;
 
-  const openMailApp = (e: { preventDefault(): void }) => {
-    e.preventDefault();
+  const openMailApp = () => {
     if (!approval.link) return;
     const link = approval.link;
     setError(null);
+    setRecordedMailto(null);
     start(async () => {
       const outcome = await openMail(link, deps(approval.id));
       if (outcome.kind === "refused") refused(outcome.error);
+      else setRecordedMailto(link);
     });
   };
 
@@ -178,9 +185,11 @@ export default function InitialSend({
         </p>
       ) : blocked ? null : approval.link ? (
         composed.channel === "email" ? (
-          <a className={styles.primaryLink} href={approval.link} onClick={openMailApp} aria-disabled={pending || undefined}>
+          // A button, not a mailto link: middle-click / long-press "open link"
+          // cannot skip the server's record (PR #239 re-review L4a).
+          <button type="button" className={styles.primary} onClick={openMailApp} disabled={pending} data-testid="open-mail">
             メールを作成
-          </a>
+          </button>
         ) : (
           <button type="button" className={styles.primary} onClick={openDm} disabled={pending}>
             DMを送る
@@ -190,6 +199,11 @@ export default function InitialSend({
         <p className={styles.error} role="alert">
           送信画面を開けません。画面を再読み込みしてください。
         </p>
+      )}
+      {canOpen && recordedMailto && composed.channel === "email" && (
+        <a className={styles.linkButton} href={recordedMailto} data-testid="mail-fallback">
+          メールアプリが開かない場合: メールアプリを開く
+        </a>
       )}
       {canOpen && (
         <button type="button" className={styles.linkButton} onClick={copy} disabled={pending}>

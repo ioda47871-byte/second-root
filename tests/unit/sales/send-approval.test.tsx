@@ -298,10 +298,12 @@ describe("InitialSend: approve → open → confirm", () => {
     expect(html).not.toContain("手動で送信済みにする");
   });
 
-  it("approved: the mail app link from the approved text, no confirm yet", () => {
+  it("approved: a メールを作成 button and no mailto in the page until the server recorded the opening; no confirm yet", () => {
     const html = render(approval());
     expect(html).toContain('data-step="approved"');
-    expect(html).toContain('href="mailto:info@test-shop.example.com?subject=x&amp;body=y"');
+    expect(html).toContain('data-testid="open-mail"');
+    expect(html).not.toContain("mailto:");
+    expect(html).not.toContain('data-testid="mail-fallback"');
     expect(html).toContain("メールを作成");
     expect(html).not.toContain("手動で送信済みにする");
     expect(html).toContain("送らなかった");
@@ -414,5 +416,18 @@ describe("PR #239 M2: an opened approval of a shop that became DNC / excluded", 
     );
     expect(status).toEqual({ kind: "blocked" });
     expect(followUpStatusLabel(status)).toContain("フォローなし");
+  });
+});
+
+describe("PR #239 re-review L4b: 見送る while the send screen is open", () => {
+  it("shows the reason the database gives (approval_open)", async () => {
+    const { skipDraft } = await import("@/app/admin/sales/_actions/outcomes");
+    state.row = { status: "drafted", kind: "initial" };
+    state.rpc.mockResolvedValue({ data: null, error: { message: "approval_open" } });
+    expect(await skipDraft(OUTREACH, "")).toEqual({
+      ok: false,
+      error: "送信画面を開いた承認があります。送った場合は「手動で送信済みにする」、送らなかった場合は「送らなかった」を先に押してください。",
+    });
+    expect(state.rpc).toHaveBeenCalledWith("sales_mark_lost", { p_outreach_id: OUTREACH, p_reason: null });
   });
 });
