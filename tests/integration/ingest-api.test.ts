@@ -106,8 +106,19 @@ describe("run lifecycle through the API", () => {
     expect(run.candidates.map((c: { stage: string }) => c.stage)).toEqual(["outreach_ready", "outreach_ready"]);
     const { rows } = await db.query("select kind, body, source, run_id from public.sales_prospect_insights");
     expect(rows).toEqual([{ kind: "selection_rationale", body: "公式サイトがなく Instagram だけで案内している", source: "ingest", run_id: runId }]);
-    // Unknown fields inside the notes are still refused as a whole (strict schema).
-    const res = await call({ action: "checkpoint", runId: randomUUID(), phase: "verified", candidates: [{ ...verifiedInput(), insights: { note: "x" } }] });
+  });
+
+  it("PR #239 L4: notes of the wrong shape (unknown keys, non-strings, over 1000 characters) are dropped, never a reason to refuse the checkpoint", async () => {
+    const odd = [
+      { ...verifiedInput(), insights: { note: "x", selectionRationale: 42 } },
+      { ...verifiedInput(), insights: { improvementHypothesis: "長".repeat(1500) } },
+      { ...verifiedInput(), insights: "just a string" },
+    ];
+    const { run } = await fullRun(odd);
+    expect(run.candidates.map((c: { stage: string }) => c.stage)).toEqual(["outreach_ready", "outreach_ready", "outreach_ready"]);
+    expect(await count("sales_prospect_insights")).toBe(0);
+    // The candidate itself is still validated strictly.
+    const res = await call({ action: "checkpoint", runId: randomUUID(), phase: "verified", candidates: [{ ...verifiedInput(), unknownField: "x" }] });
     expect(res.status).toBe(400);
   });
 

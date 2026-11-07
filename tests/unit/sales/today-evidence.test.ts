@@ -154,13 +154,15 @@ describe("the database rules this mirrors are still the ones in the migrations",
   });
   it("DEV-195: the eligibility check refuses an excluded shop, and the send guards refuse a missing demo and a pending design", () => {
     const m = sql("20261107000000_sales_send_approval.sql");
-    const eligible = m.slice(m.indexOf("create or replace function public.sales_assert_outreach_eligible"), m.indexOf("create function public.sales_outreach_recipient"));
+    const channel = m.slice(m.indexOf("create function public.sales_assert_channel_eligible"), m.indexOf("create or replace function public.sales_assert_outreach_eligible"));
+    const eligible = m.slice(m.indexOf("create or replace function public.sales_assert_outreach_eligible"), m.indexOf("create or replace function public.sales_check_outreach_update"));
     expect(eligible).toContain("if p.do_not_contact then");
-    expect(eligible).toContain("not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null)");
-    expect(eligible).toContain("not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email))");
-    expect(eligible).toContain("if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then");
+    expect(eligible).toContain("perform public.sales_assert_channel_eligible(p_prospect_id, p_kind, p_channel);");
+    expect(channel).toContain("not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null)");
+    expect(channel).toContain("not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email))");
+    expect(channel).toContain("if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then");
     expect(eligible).toContain("if public.sales_prospect_excluded(p.id) then");
-    expect(m).toContain("if not found or d.disabled_at is not null then");
+    expect(m).toContain("if not found or (d.disabled_at is not null and v_block is distinct from 'do_not_contact') then");
     expect(m).toContain("if coalesce(p_design_enabled, false) and d.design_status in ('pending', 'processing') then");
   });
 });

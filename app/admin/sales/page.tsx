@@ -49,32 +49,42 @@ function actionFor(item: TodayItem) {
       return cannotCompose("フォローメール");
     }
   }
-  // DEV-030: a demo still waiting for or getting its AI design is not sent
-  // yet (the link would show a page that is about to change).
-  if (item.kind === "initial" && !initialSendAllowed(aiDesignEnabled(), item.designStatus)) {
-    return (
-      <p className={styles.muted} role="status" data-testid="design-wait">
-        AIデザインの完成を待っています。完成するまで送信できません。
-      </p>
-    );
+  // PR #239 M2: once the send screen was opened, the owner may already have
+  // sent it. Its controls (手動で送信済みにする / 送らなかった) stay on the card
+  // whatever has changed since, with a warning when the shop can no longer be
+  // contacted; the database still decides what it records.
+  const approval = item.approval;
+  const opened = approval?.state === "send_opened";
+  if (!opened) {
+    // DEV-030: a demo still waiting for or getting its AI design is not sent
+    // yet (the link would show a page that is about to change).
+    if (!initialSendAllowed(aiDesignEnabled(), item.designStatus)) {
+      return (
+        <p className={styles.muted} role="status" data-testid="design-wait">
+          AIデザインの完成を待っています。完成するまで送信できません。
+        </p>
+      );
+    }
+    if (!item.evidence.contact.sendable) return sendBlocked("initial");
   }
-  if (!item.evidence.contact.sendable) return sendBlocked("initial");
   // DEV-195: approve the exact text → open the owner's own app → confirm the
   // manual send. The same composer builds the text shown, approved and sent.
-  const composed = composeInitialSend({
-    channel: item.channel,
-    shopName: item.shopName,
-    subject: item.subject,
-    body: item.body,
-    publicEmail: item.publicEmail,
-    instagramUrl: item.instagramUrl,
-    instagramHandle: item.instagramHandle,
-    demoToken: item.demoToken,
-  });
+  const composed = opened
+    ? { channel: item.channel, recipient: approval.recipient, subject: approval.subject, body: approval.body }
+    : composeInitialSend({
+        channel: item.channel,
+        shopName: item.shopName,
+        subject: item.subject,
+        body: item.body,
+        publicEmail: item.publicEmail,
+        instagramUrl: item.instagramUrl,
+        instagramHandle: item.instagramHandle,
+        demoToken: item.demoToken,
+      });
   if (!composed) return cannotCompose(item.channel === "email" ? "メール" : "DM");
-  const approval = item.approval;
   return (
     <InitialSend
+      blockedWarning={opened && !item.evidence.contact.sendable ? item.evidence.contact.blockers : null}
       outreachId={item.outreachId}
       draftVersion={item.draftVersion}
       composed={{ channel: composed.channel, recipient: composed.recipient, subject: composed.subject, body: composed.body }}

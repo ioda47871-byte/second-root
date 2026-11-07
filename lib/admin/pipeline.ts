@@ -30,10 +30,12 @@ type Row = {
   sent_at: string | null;
   replied_at: string | null;
   meeting_at: string | null;
+  /** PR #239 M2 (migration 20261107000000). */
+  blocked_after_open?: string | null;
   prospect: { name: string; do_not_contact: boolean; demo?: DemoRow | DemoRow[] | null } | null;
 };
 
-const COLUMNS = "id, prospect_id, channel, status, reply_type, sent_at, replied_at, meeting_at";
+const COLUMNS = "id, prospect_id, channel, status, reply_type, sent_at, replied_at, meeting_at, blocked_after_open";
 
 function toItem(r: Row): PipelineItem {
   return {
@@ -160,6 +162,7 @@ export async function loadAwaitingReplies(supabase: SupabaseClient, now: Date = 
           hasFollowUp: hasFollowUp.has(item.prospectId),
           doNotContact: item.doNotContact,
           demoPublic,
+          blockedAfterOpen: Boolean(r.blocked_after_open),
         },
         now,
       ),

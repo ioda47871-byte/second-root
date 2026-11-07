@@ -68,14 +68,24 @@ describe("sales_mark_sent", () => {
     expect(second.data).toMatchObject({ status: "sent", replayed: true, sent_at: first.data.sent_at });
   });
 
-  it("refuses a DNC shop", async () => {
+  it("refuses a DNC shop (before the send screen was opened)", async () => {
+    const { outreachId, prospectId } = await prepare(candidate());
+    const approved = await approve(admin, outreachId);
+    const approvalId = (approved.data as { approval_id: string }).approval_id;
+    await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'explicit_refusal', dnc_set_at = now() where id = $1", [prospectId]);
+    expect((await admin.rpc("sales_mark_send_opened", { p_approval_id: approvalId, p_via: "mailto", p_design_enabled: false })).error?.message).toMatch(/do_not_contact/);
+    expect((await markSent(admin, outreachId, approvalId)).error?.message).toMatch(/not_opened/);
+    const { rows } = await db.query("select status from public.sales_outreaches where id = $1", [outreachId]);
+    expect(rows[0].status).toBe("drafted");
+  });
+
+  it("PR #239 M2: a send confirmed from send_opened after the shop became DNC is recorded with the flag, not refused", async () => {
     const { outreachId, prospectId } = await prepare(candidate());
     const approvalId = await openedApproval(outreachId);
     await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'explicit_refusal', dnc_set_at = now() where id = $1", [prospectId]);
-    const { error } = await markSent(admin, outreachId, approvalId);
-    expect(error?.message).toMatch(/do_not_contact/);
-    const { rows } = await db.query("select status from public.sales_outreaches where id = $1", [outreachId]);
-    expect(rows[0].status).toBe("drafted");
+    const { data, error } = await markSent(admin, outreachId, approvalId);
+    expect(error).toBeNull();
+    expect(data).toMatchObject({ status: "sent", blocked_after_open: "do_not_contact" });
   });
 
   it("DEV-195: the one-argument version no longer exists (no send without an approval)", async () => {

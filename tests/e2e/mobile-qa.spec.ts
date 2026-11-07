@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
 import { seedDraft, seedEmailDraft } from "../support/seed-demo";
 import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
+import { captureMailto } from "./support/mailto";
 
 // Mobile QA across every admin page (DEV-018): at the narrowest supported
 // width (320px, iPhone SE 1st gen) and a common one (375px), with long
@@ -74,10 +75,7 @@ async function openStates(page: Page, path: string) {
     if ((await mail.getByTestId("approve-send").count()) > 0) await mail.getByTestId("approve-send").click();
     const link = mail.getByRole("link", { name: "メールを作成", exact: true });
     await expect(link).toBeVisible();
-    await link.evaluate((a) => {
-      a.addEventListener("click", (e) => e.preventDefault(), { once: true });
-      a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
+    await link.click();
     await expect(mail.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
   }
   if (path === "/admin/sales/replies") {
@@ -108,6 +106,7 @@ for (const width of [320, 375]) {
     });
     page.on("pageerror", (e) => errors.push(e.message));
     await page.setViewportSize({ width, height: 800 });
+    await captureMailto(page);
     await login(page);
 
     for (const [path, title, testId, minItems] of PAGES) {

@@ -8,6 +8,8 @@ import { buildTodayEvidence, formatJstDateTime, UNCONFIRMED } from "@/lib/sales/
 import { verifiedCandidateInput } from "@/lib/sales/ingest-schema";
 import { checkInsight, mapInsights, preparedInsights } from "@/lib/sales/insights";
 import { DEMO_DISCLAIMER, DM_OPT_OUT, EMAIL_OPT_OUT } from "@/lib/sales/messages";
+import { followUpStatus, followUpStatusLabel } from "@/lib/sales/followup";
+import { copyText, openInstagram, openMail, type OpenDeps } from "@/lib/sales/open-send";
 import { prepareCandidate } from "@/lib/sales/prepare";
 import { verifiedInput } from "./ingest-fixtures";
 import { eligibleInstagramInput } from "./today-evidence-fixture";
@@ -102,7 +104,16 @@ describe("selection rationale / improvement hypothesis", () => {
     expect(withNotes.stage).toBe("pending");
     if (withNotes.stage === "pending") expect(withNotes.candidate.insights).toEqual({ selection_rationale: "Instagram だけで案内" });
 
-    expect(verifiedCandidateInput.safeParse({ ...plain, insights: { other: "x" } }).success).toBe(false);
+    // PR #239 L4: a note of the wrong shape is dropped, never a reason to refuse the candidate.
+    for (const insights of [{ other: "x" }, { selectionRationale: 42 }, "text", ["a"], null, { improvementHypothesis: "長".repeat(1500) }]) {
+      const input = { ...plain, insights };
+      expect(verifiedCandidateInput.safeParse(input).success, JSON.stringify(insights).slice(0, 40)).toBe(true);
+      const p = prepareCandidate(verifiedCandidateInput.parse(input));
+      expect(p.stage === "pending" && "insights" in p.candidate).toBe(false);
+    }
+    expect(preparedInsights({ other: "x", improvementHypothesis: "地図を載せる" })).toEqual({ improvement_hypothesis: "地図を載せる" });
+    // The rest of the candidate is still strict.
+    expect(verifiedCandidateInput.safeParse({ ...plain, unknownField: "x" }).success).toBe(false);
     expect(preparedInsights({ improvementHypothesis: "長".repeat(400) })).toBeUndefined();
     expect(preparedInsights(undefined)).toBeUndefined();
   });
@@ -312,5 +323,96 @@ describe("InitialSend: approve → open → confirm", () => {
     expect(html).not.toContain("メールを作成");
     expect(html).not.toContain('data-testid="confirm-sent"');
     expect(html).toContain('data-testid="withdraw-approval"');
+  });
+});
+
+describe("PR #239 M1: the send screen opens only after the server agreed", () => {
+  function deps(result: { ok: true } | { ok: false; error: string }) {
+    const calls: string[] = [];
+    const d: OpenDeps = {
+      record: vi.fn(async (via) => {
+        calls.push(`record:${via}`);
+        return result;
+      }),
+      openExternal: vi.fn((url: string) => void calls.push(`open:${url}`)),
+      copy: vi.fn(async (text: string) => void calls.push(`copy:${text}`)),
+    };
+    return { d, calls };
+  }
+  const win = () => {
+    const calls: string[] = [];
+    return { calls, w: { navigate: (u: string) => void calls.push(`navigate:${u}`), close: () => void calls.push("close") } };
+  };
+
+  it("email: records first, then hands the mailto over; nothing on a refusal", async () => {
+    const ok = deps({ ok: true });
+    expect(await openMail("mailto:a@example.com?x", ok.d)).toEqual({ kind: "opened" });
+    expect(ok.calls).toEqual(["record:mailto", "open:mailto:a@example.com?x"]);
+    const no = deps({ ok: false, error: SEND_ERROR_LABEL.excluded });
+    expect(await openMail("mailto:a@example.com?x", no.d)).toEqual({ kind: "refused", error: SEND_ERROR_LABEL.excluded });
+    expect(no.calls).toEqual(["record:mailto"]);
+    const thrown = deps({ ok: true });
+    thrown.d.record = vi.fn(async () => {
+      throw new Error("network");
+    });
+    expect((await openMail("mailto:x", thrown.d)).kind).toBe("refused");
+    expect(thrown.d.openExternal).not.toHaveBeenCalled();
+  });
+
+  it("Instagram: the blank window goes to the profile only after the record; on a refusal it is closed and nothing is copied", async () => {
+    const ok = deps({ ok: true });
+    const okWin = win();
+    expect(await openInstagram("https://www.instagram.com/test_shop/", "本文", okWin.w, ok.d)).toEqual({ kind: "opened", copied: true });
+    expect(ok.calls).toEqual(["record:instagram_profile", "copy:本文"]);
+    expect(okWin.calls).toEqual(["navigate:https://www.instagram.com/test_shop/"]);
+    const no = deps({ ok: false, error: SEND_ERROR_LABEL.do_not_contact });
+    const noWin = win();
+    expect(await openInstagram("https://www.instagram.com/test_shop/", "本文", noWin.w, no.d)).toEqual({ kind: "refused", error: SEND_ERROR_LABEL.do_not_contact });
+    expect(no.calls).toEqual(["record:instagram_profile"]);
+    expect(noWin.calls).toEqual(["close"]);
+  });
+
+  it("copy: records first, then copies; nothing on a refusal", async () => {
+    const ok = deps({ ok: true });
+    expect(await copyText("本文", ok.d)).toEqual({ kind: "opened", copied: true });
+    expect(ok.calls).toEqual(["record:copy", "copy:本文"]);
+    const no = deps({ ok: false, error: "x" });
+    expect((await copyText("本文", no.d)).kind).toBe("refused");
+    expect(no.calls).toEqual(["record:copy"]);
+  });
+});
+
+describe("PR #239 M2: an opened approval of a shop that became DNC / excluded", () => {
+  const blocked: ApprovalProps = {
+    id: APPROVAL,
+    state: "send_opened",
+    recipient: "test_shop",
+    subject: null,
+    body: "本文",
+    approvedLabel: "2026/11/07 10:00",
+    openedLabel: "2026/11/07 10:10・Instagram を開いた",
+    staleReasons: [],
+    link: "https://www.instagram.com/test_shop/",
+  };
+  const igComposed: ComposedMessage = { channel: "instagram", recipient: "test_shop", subject: null, body: "本文" };
+
+  it("keeps 手動で送信済みにする and 送らなかった with a warning, but offers no way to open the send screen again", () => {
+    const html = renderToStaticMarkup(
+      <InitialSend outreachId={OUTREACH} draftVersion={1} composed={igComposed} approval={blocked} blockedWarning={["営業不要（DNC）: 営業不要（DNC）の店舗です"]} />,
+    );
+    expect(html).toContain('data-testid="approval-blocked"');
+    expect(html).toContain('data-testid="confirm-sent"');
+    expect(html).toContain('data-testid="withdraw-approval"');
+    expect(html).not.toContain("DMを送る");
+    expect(html).not.toContain("文面をコピー");
+  });
+
+  it("the follow-up state of such an outreach is 「フォローなし」", () => {
+    const status = followUpStatus(
+      { channel: "email", status: "sent", sentAt: new Date("2026-10-01T00:00:00Z"), hasFollowUp: false, doNotContact: false, demoPublic: true, blockedAfterOpen: true },
+      new Date("2026-11-07T00:00:00Z"),
+    );
+    expect(status).toEqual({ kind: "blocked" });
+    expect(followUpStatusLabel(status)).toContain("フォローなし");
   });
 });

@@ -41,17 +41,21 @@ export type PreparedInsights = Partial<Record<InsightKind, string>>;
 
 /**
  * The ingest input's optional notes → the ones that may be stored. A note
- * that does not pass is dropped (never fixed up); undefined when none is left,
- * so a candidate without notes is prepared exactly as before.
+ * that does not pass (not a string, too long, contact details, links, unsafe
+ * content) is dropped, never fixed up, and unknown keys are ignored (PR #239
+ * L4); undefined when none is left, so a candidate without notes is prepared
+ * exactly as before.
  */
-export function preparedInsights(input: { selectionRationale?: string; improvementHypothesis?: string } | undefined): PreparedInsights | undefined {
-  if (!input) return undefined;
+export function preparedInsights(input: unknown): PreparedInsights | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const raw = input as Record<string, unknown>;
   const out: PreparedInsights = {};
   for (const [kind, value] of [
-    ["selection_rationale", input.selectionRationale],
-    ["improvement_hypothesis", input.improvementHypothesis],
+    ["selection_rationale", raw.selectionRationale],
+    ["improvement_hypothesis", raw.improvementHypothesis],
   ] as const) {
-    if (typeof value !== "string") continue;
+    // Only an own string property; anything else (and any other key) is ignored.
+    if (typeof value !== "string" || value.length > 2000) continue;
     const checked = checkInsight(value);
     if (checked.ok && checked.body) out[kind] = checked.body;
   }

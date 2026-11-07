@@ -155,6 +155,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | status | `drafted` / `sent` / `replied` / `meeting` / `won` / `lost`（`followed_up` という状態は持たず、フォローは `kind=follow_up` の別行） |
 | sent_at, replied_at, reply_type | reply_type: `interested` / `question` / `meeting_request` / `decline` / `other` |
 | won_amount_jpy | status=`won` のとき必須（check） |
+| blocked_after_open | PR #239 M2: 送信画面を開いた後に営業不要（DNC）/ 除外になり、それでもオーナーが「手動で送信済み」にした初回だけ、その時の理由（`do_not_contact` / `excluded`）。drafted → sent の遷移でだけ書け、店舗の今の状態と一致しなければ拒否（trigger）。この初回のフォローは view `sales_followup_due` にも `sales_mark_follow_up_sent` にも出ない（DNC / 除外が後で外れても） |
 | draft_version, edited_at, edited_by | DEV-195: 文面の版（1 から。subject / body が変わると trigger `sales_outreaches_draft_version` が必ず進める）と、オーナーが最後に編集した時刻・人 |
 
 ### sales_outreach_draft_edits（文面の編集履歴、DEV-195）
@@ -185,6 +186,9 @@ unique(normalized_name, normalized_address) による重複防止。
 - 承認の記録（snapshot の列）は変更できない（trigger）。outreach あたり生きている（`approved` / `send_opened` / `sent`）承認は 1 件だけ（partial unique index）。
 - 関数（すべて SECURITY DEFINER・最初に管理者を確認・`authenticated` だけに EXECUTE）: `sales_approve_outreach(outreach, 版, subject, body, design_enabled)` / `sales_mark_send_opened(approval, via, design_enabled)` / `sales_withdraw_approval(approval)` / `sales_mark_sent(outreach, approval, design_enabled)`（旧 `sales_mark_sent(uuid)` は削除。承認なしに送信済みにする経路は無い）。
 - 照合（`sales_send_guards`、承認・送信画面を開く・送信済みのたびに）: 下書きの状態・DNC・連絡経路の条件・推奨チャネル・除外リスト（`sales_assert_outreach_eligible` に追加。下書き作成・送信済み・フォローの trigger でも効く）・宛先の有無・同じ宛先の重複（ほかの outreach の生きている承認）・デモの有無と無効化・AIデザイン待ち（`design_enabled` は server が `SALES_AI_DESIGN_ENABLED` を渡す）。送信済みは加えて、承認が `send_opened` で、版・宛先・デモの版が今と同じこと（`sales_approval_is_current`）。
+- PR #239 M2: `send_opened` からの送信済みに限り、DNC / 除外は拒否せず `blocked_after_open` として記録する（オーナーが既に送ったかもしれないため）。DNC が無効にしたデモもこの時だけは拒否の理由にしない。連絡経路の条件・重複・デザイン・snapshot の一致・同じ承認・管理者は従来どおり拒否する。承認と「送信画面を開く」は何も緩めない。
+- PR #239 L2: `sales_mark_lost`（見送る・失注）は生きている承認を `superseded(outreach_closed)` にする（重複の照合に残らない）。
+- PR #239 M1: 画面は「送信画面を開いた」の記録（全照合）が通ってからだけ、mailto を渡す / 空で開いた窓を Instagram へ進める / 文面をコピーする。断られたら何も開かない。
 - 同時実行: すべての関数が最初に outreach の行を `FOR UPDATE` で取り、続けて prospect の行（DNC と直列）・demo の行を取る。`sales_add_exclusion` は advisory lock（`second_root_sales_exclusions`）を排他で、照合は共有で取るので、除外の追加と進行中の送信は交わらない（先に確定した除外は必ず見え、後の除外は送信の終わりを待つ）。
 - 承認の本文は server action が DB から組み立て直したもの（`lib/admin/initial-send.ts`）で、オーナーに表示した文面と違えば承認しない。DB は、本文が保存された下書き・このデモの URL・注記（「貴店の公式サイトではありません。」）・配信停止の文（「以後ご連絡いたしません。」）を含むことを確かめる。
 
@@ -195,7 +199,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | body | 1〜300 文字。メールの形は不可 |
 | source, run_id, written_by, written_at | 出所: `ingest`（run_id = その run）か `owner`（written_by = 管理者） |
 
-- ingest: verified 候補の任意の `insights: { selectionRationale?, improvementHypothesis? }`（strict。無い payload は従来どおり）。`lib/sales/insights.ts` の規則（300 文字・連絡先や URL・HTML / 鍵の形は不可）を通ったものだけを checkpoint に残し、persist が `source = ingest` で保存する。通らないものは捨てる（候補は拒否しない。直さない）。
+- ingest: verified 候補の任意の `insights: { selectionRationale?, improvementHypothesis? }`（無い payload は従来どおり）。PR #239 L4: `insights` の形が違っても（文字列以外・未知の key・1000 文字超など）checkpoint は拒否せず、その note を捨てるだけ。候補のほかの項目は従来どおり strict。`lib/sales/insights.ts` の規則（300 文字・連絡先や URL・HTML / 鍵の形は不可）を通ったものだけを checkpoint に残し、persist が `source = ingest` で保存する。通らないものは捨てる（候補は拒否しない。直さない）。
 - オーナー: `sales_set_prospect_insight(prospect, kind, body)`（SECURITY DEFINER）。空なら削除（「未確認」に戻る）。
 - 読み取りは管理者だけ（RLS）。画面は値と出所（「記入: オーナー・2026/11/07 10:05」、JST）を出し、無ければ「未確認」。
 

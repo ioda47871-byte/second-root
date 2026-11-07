@@ -41,11 +41,14 @@ export type FollowUpStatus =
   | { kind: "demo_unavailable" }
   | { kind: "instagram" }
   | { kind: "dnc" }
+  /** PR #239 M2: the first message was confirmed after the shop became DNC / excluded: never followed up. */
+  | { kind: "blocked" }
   | { kind: "none" };
 
-export function followUpStatus(input: FollowUpInput & { demoPublic: boolean }, now: Date): FollowUpStatus {
+export function followUpStatus(input: FollowUpInput & { demoPublic: boolean; blockedAfterOpen?: boolean }, now: Date): FollowUpStatus {
   if (input.channel !== "email") return { kind: "instagram" };
   if (input.hasFollowUp) return { kind: "sent" };
+  if (input.blockedAfterOpen) return { kind: "blocked" };
   if (input.doNotContact) return { kind: "dnc" };
   if (input.status !== "sent" || input.sentAt === null) return { kind: "none" };
   // No public demo (none, disabled or expired): the follow-up would carry a
@@ -72,6 +75,8 @@ export function followUpStatusLabel(status: FollowUpStatus): string {
       return "Instagram はフォローなし";
     case "dnc":
       return "DNC のためフォローなし";
+    case "blocked":
+      return "送信の後に営業不要・除外になったためフォローなし";
     case "none":
       return "フォロー対象外";
   }

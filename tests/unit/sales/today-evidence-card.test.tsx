@@ -102,6 +102,56 @@ describe("today page: the send action follows the verdict", () => {
   });
 });
 
+describe("PR #239 M2: an opened approval keeps its controls when the card is no longer sendable", () => {
+  it("excluded or DNC after opening: the confirm / withdraw controls and a warning instead of send-blocked", async () => {
+    for (const input of [
+      eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } }),
+      eligibleInstagramInput({ doNotContact: true, demoAvailable: false }),
+    ]) {
+      state.items = [
+        {
+          ...item(input),
+          approval: {
+            id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            state: "send_opened",
+            channel: "instagram",
+            recipient: "test_shop",
+            subject: null,
+            body: "本文",
+            approvedAt: "2026-11-07T01:00:00Z",
+            approvedLabel: "2026/11/07 10:00",
+            openedLabel: "2026/11/07 10:10",
+            staleReasons: [],
+          },
+        },
+      ];
+      const { default: TodayPage } = await import("@/app/admin/sales/page");
+      const html = renderToStaticMarkup(await TodayPage());
+      expect(html).not.toContain('data-testid="send-blocked"');
+      expect(html).toContain('data-testid="approval-blocked"');
+      expect(html).toContain('data-testid="confirm-sent"');
+      expect(html).toContain('data-testid="withdraw-approval"');
+      expect(html).not.toContain("DMを送る");
+    }
+  });
+
+  it("an approved but not opened approval is not kept: the card stays send-blocked", async () => {
+    state.items = [
+      {
+        ...item(eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } })),
+        approval: {
+          id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", state: "approved", channel: "instagram", recipient: "test_shop", subject: null, body: "本文",
+          approvedAt: "2026-11-07T01:00:00Z", approvedLabel: "2026/11/07 10:00", openedLabel: null, staleReasons: [],
+        },
+      },
+    ];
+    const { default: TodayPage } = await import("@/app/admin/sales/page");
+    const html = renderToStaticMarkup(await TodayPage());
+    expect(html).toContain('data-testid="send-blocked"');
+    expect(html).not.toContain('data-testid="confirm-sent"');
+  });
+});
+
 describe("today card: evidence", () => {
   it("shows the selection, the sources with links and dates, and the checks", async () => {
     const html = await pageHtml(eligibleEmailInput());

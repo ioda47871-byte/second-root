@@ -3,14 +3,16 @@
 import { useState, useTransition } from "react";
 import { approveSend, markSendOpened, markSent, withdrawApproval } from "@/app/admin/sales/_actions/send";
 import { APPROVAL_STATE_LABEL, type OpenedVia } from "@/lib/sales/approval";
+import { copyText, openInstagram, openMail, type OpenDeps, type PendingWindow } from "@/lib/sales/open-send";
 import type { Channel } from "@/lib/sales/types";
 import styles from "./admin.module.css";
 
 // DEV-195: the manual send of an initial message, in three steps the
 // database records separately (MVP_SPEC §4):
 //   1. この内容で送信を承認 — the exact recipient / subject / body shown here.
-//   2. メールを作成 / DMを送る / 文面をコピー — opens the owner's own app. This
-//      is recorded as 「送信画面を開いた」, never as a send.
+//   2. メールを作成 / DMを送る / 文面をコピー — opens the owner's own app, but
+//      only after the server recorded 「送信画面を開いた」 (every guard runs
+//      again first; PR #239 M1). It is never recorded as a send.
 //   3. 手動で送信済みにする — only after the owner really sent it.
 // Nothing is sent by the system. The approved text is what the mail app /
 // clipboard receives.
@@ -47,11 +49,17 @@ export default function InitialSend({
   draftVersion,
   composed,
   approval,
+  blockedWarning = null,
 }: {
   outreachId: string;
   draftVersion: number;
   composed: ComposedMessage;
   approval: ApprovalProps | null;
+  /**
+   * PR #239 M2: an opened approval whose shop is now DNC / excluded. Only the
+   * confirm (if it really was sent) and 送らなかった are offered.
+   */
+  blockedWarning?: string[] | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -65,15 +73,19 @@ export default function InitialSend({
     });
   };
 
-  const recordOpened = (via: OpenedVia) => {
-    if (!approval) return;
-    setError(null);
-    start(async () => {
-      const result = await markSendOpened(approval.id, via);
-      if (!result.ok) setError(`${result.error} この内容では送らないでください。`);
-    });
-  };
+  const deps = (approvalId: string): OpenDeps => ({
+    record: (via: OpenedVia) => markSendOpened(approvalId, via),
+    openExternal: (url: string) => {
+      // A transient link, so the device hands the URL to the mail app.
+      const a = document.createElement("a");
+      a.href = url;
+      a.rel = "noopener noreferrer";
+      a.click();
+    },
+    copy: (text: string) => navigator.clipboard.writeText(text),
+  });
 
+  const refused = (message: string) => setError(`${message} この内容では送らないでください。`);
   const errorLine = error && (
     <p className={styles.error} role="alert">
       {error}
@@ -101,32 +113,50 @@ export default function InitialSend({
   }
 
   const stale = approval.staleReasons.length > 0;
-  const copy = () => {
-    navigator.clipboard.writeText(approval.body).then(
-      () => {
-        setNote("文面をコピーしました。");
-        recordOpened("copy");
-      },
-      () => setNote("コピーできませんでした。上の欄を選択してコピーしてください。"),
-    );
+  const blocked = approval.state === "send_opened" && blockedWarning !== null && blockedWarning.length > 0;
+  const canOpen = !stale && !blocked && approval.link !== null;
+
+  const openMailApp = (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    if (!approval.link) return;
+    const link = approval.link;
+    setError(null);
+    start(async () => {
+      const outcome = await openMail(link, deps(approval.id));
+      if (outcome.kind === "refused") refused(outcome.error);
+    });
   };
 
-  // Both the copy and the new tab start synchronously inside the tap, so
-  // mobile browsers (iOS Safari) keep treating them as user-initiated.
+  const copy = () => {
+    setError(null);
+    start(async () => {
+      const outcome = await copyText(approval.body, deps(approval.id));
+      if (outcome.kind === "refused") refused(outcome.error);
+      else setNote(outcome.copied ? "文面をコピーしました。" : "コピーできませんでした。上の欄を選択してコピーしてください。");
+    });
+  };
+
+  // A blank window opens synchronously inside the tap (popup blockers keep
+  // allowing it); it goes to the profile only after the server agreed.
   const openDm = () => {
     if (!approval.link) return;
-    let copied: Promise<void>;
-    try {
-      copied = navigator.clipboard.writeText(approval.body);
-    } catch {
-      copied = Promise.reject(new Error("clipboard unavailable"));
-    }
-    copied.then(
-      () => setNote("営業文をコピーしました。プロフィールに「DM不可」「営業お断り」等がないか確認してから貼り付けて送信してください。"),
-      () => setNote("コピーできませんでした。上の欄の文面を選択してコピーし、Instagram で送信してください。"),
-    );
-    window.open(approval.link, "_blank", "noopener,noreferrer");
-    recordOpened("instagram_profile");
+    const link = approval.link;
+    const win = window.open("", "_blank");
+    if (win) win.opener = null;
+    const pending: PendingWindow | null = win
+      ? { navigate: (url) => win.location.replace(url), close: () => win.close() }
+      : null;
+    setError(null);
+    start(async () => {
+      const outcome = await openInstagram(link, approval.body, pending, deps(approval.id));
+      if (outcome.kind === "refused") refused(outcome.error);
+      else
+        setNote(
+          outcome.copied
+            ? "営業文をコピーしました。プロフィールに「DM不可」「営業お断り」等がないか確認してから貼り付けて送信してください。"
+            : "コピーできませんでした。上の欄の文面を選択してコピーし、Instagram で送信してください。",
+        );
+    });
   };
 
   return (
@@ -136,17 +166,23 @@ export default function InitialSend({
         {approval.openedLabel && <>・開いた {approval.openedLabel}</>}
       </p>
       <Preview message={{ channel: composed.channel, recipient: approval.recipient, subject: approval.subject, body: approval.body }} />
+      {blocked && (
+        <p className={styles.error} role="alert" data-testid="approval-blocked">
+          送信画面を開いた後に、この店舗は送れない状態になりました（{blockedWarning!.join("・")}）。もう送らないでください。
+          開いた後に実際に送った場合だけ「手動で送信済みにする」を押してください（送れない状態だったことも記録され、フォローは出ません）。送っていなければ「送らなかった」を押してください。
+        </p>
+      )}
       {stale ? (
         <p className={styles.error} role="alert" data-testid="approval-stale">
           この承認は使えません（{approval.staleReasons.join("・")}）。「送らなかった」で取り消してから、もう一度承認してください。
         </p>
-      ) : approval.link ? (
+      ) : blocked ? null : approval.link ? (
         composed.channel === "email" ? (
-          <a className={styles.primaryLink} href={approval.link} onClick={() => recordOpened("mailto")}>
+          <a className={styles.primaryLink} href={approval.link} onClick={openMailApp} aria-disabled={pending || undefined}>
             メールを作成
           </a>
         ) : (
-          <button type="button" className={styles.primary} onClick={openDm}>
+          <button type="button" className={styles.primary} onClick={openDm} disabled={pending}>
             DMを送る
           </button>
         )
@@ -155,8 +191,8 @@ export default function InitialSend({
           送信画面を開けません。画面を再読み込みしてください。
         </p>
       )}
-      {!stale && (
-        <button type="button" className={styles.linkButton} onClick={copy}>
+      {canOpen && (
+        <button type="button" className={styles.linkButton} onClick={copy} disabled={pending}>
           文面をコピー
         </button>
       )}

@@ -26,6 +26,11 @@
 --      confirms they really sent it). sales_mark_sent now requires an opened
 --      approval whose snapshot still matches the draft, the recipient and the
 --      demo. Nothing records a send on its own.
+--      PR #239 review (M2): a send the owner confirms from send_opened is
+--      recorded even if a DNC / exclusion was committed after the send screen
+--      was opened (it may really have gone out); the outreach and the
+--      approval carry blocked_after_open, and no follow-up is ever offered or
+--      recorded for it. Nothing is relaxed for approving or for opening.
 --   5. Selection rationale and improvement hypothesis, with provenance
 --      (ingest run or owner, who, when). Optional; never filled in by the
 --      database.
@@ -39,7 +44,11 @@
 alter table public.sales_outreaches
   add column draft_version integer not null default 1 check (draft_version >= 1),
   add column edited_at timestamptz,
-  add column edited_by uuid;
+  add column edited_by uuid,
+  -- PR #239 M2: confirmed from send_opened while the shop was already DNC /
+  -- excluded (the reason at confirm time). Never followed up.
+  add column blocked_after_open text check (blocked_after_open in ('do_not_contact', 'excluded')),
+  add constraint sales_outreaches_blocked_after_open check (blocked_after_open is null or (kind = 'initial' and status <> 'drafted'));
 
 -- Any change of the text (by the edit function, or anything else) moves the
 -- revision on, so an approval of the earlier text can never be confirmed.
@@ -114,7 +123,9 @@ create table public.sales_outreach_approvals (
   sent_at timestamptz,
   sent_by uuid,
   superseded_at timestamptz,
-  superseded_reason text check (superseded_reason in ('draft_edited', 'reapproved', 'withdrawn')),
+  superseded_reason text check (superseded_reason in ('draft_edited', 'reapproved', 'withdrawn', 'outreach_closed')),
+  -- PR #239 M2: set only when a confirmed send was already blocked (DNC / exclusion).
+  blocked_after_open text check (blocked_after_open in ('do_not_contact', 'excluded')),
   constraint sales_outreach_approvals_subject
     check ((channel = 'email') = (subject is not null)),
   constraint sales_outreach_approvals_opened
@@ -122,7 +133,9 @@ create table public.sales_outreach_approvals (
   constraint sales_outreach_approvals_sent
     check ((state = 'sent') = (sent_at is not null and sent_by is not null)),
   constraint sales_outreach_approvals_superseded
-    check ((state = 'superseded') = (superseded_at is not null and superseded_reason is not null))
+    check ((state = 'superseded') = (superseded_at is not null and superseded_reason is not null)),
+  constraint sales_outreach_approvals_blocked
+    check (blocked_after_open is null or state = 'sent')
 );
 
 -- At most one live (or sent) approval per outreach: two concurrent approvals
@@ -260,6 +273,45 @@ as $$
   )
 $$;
 
+-- DNC first, then the exclusion list: why a shop must not be contacted now
+-- (null when neither applies).
+create function public.sales_outreach_block_reason(p_prospect_id uuid)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select case
+    when p.do_not_contact then 'do_not_contact'
+    when public.sales_prospect_excluded(p.id) then 'excluded'
+  end
+  from public.sales_prospects p where p.id = p_prospect_id
+$$;
+
+-- The channel rules of 20260927000000 (instagram / email / recommended channel).
+create function public.sales_assert_channel_eligible(p_prospect_id uuid, p_kind text, p_channel text)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  p public.sales_prospects%rowtype;
+begin
+  select * into p from public.sales_prospects where id = p_prospect_id;
+  if p_channel = 'instagram'
+     and not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null) then
+    raise exception 'instagram_not_eligible' using errcode = 'check_violation';
+  end if;
+  if p_channel = 'email'
+     and not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email)) then
+    raise exception 'email_not_eligible' using errcode = 'check_violation';
+  end if;
+  if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then
+    raise exception 'channel_mismatch' using errcode = 'check_violation';
+  end if;
+end;
+$$;
+
 -- Unchanged from 20260927000000 except the exclusion check (DEV-195). The
 -- triggers run it when a draft is created, when it is marked sent and when a
 -- follow-up is recorded, so an excluded shop is refused on every path.
@@ -275,20 +327,61 @@ begin
   if p.do_not_contact then
     raise exception 'do_not_contact' using errcode = 'check_violation';
   end if;
-  if p_channel = 'instagram'
-     and not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null) then
-    raise exception 'instagram_not_eligible' using errcode = 'check_violation';
-  end if;
-  if p_channel = 'email'
-     and not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email)) then
-    raise exception 'email_not_eligible' using errcode = 'check_violation';
-  end if;
-  if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then
-    raise exception 'channel_mismatch' using errcode = 'check_violation';
-  end if;
+  perform public.sales_assert_channel_eligible(p_prospect_id, p_kind, p_channel);
   if public.sales_prospect_excluded(p.id) then
     raise exception 'excluded' using errcode = 'check_violation';
   end if;
+end;
+$$;
+
+-- Outreach state machine: unchanged from 20260927000000 except PR #239 M2.
+-- blocked_after_open is written only on the drafted → sent transition, and
+-- then (only then) the DNC / exclusion check of that transition is replaced
+-- by the channel rules alone: sales_mark_sent sets it only for an opened,
+-- still-current approval whose shop became DNC / excluded meanwhile.
+create or replace function public.sales_check_outreach_update()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  allowed boolean;
+begin
+  if new.prospect_id <> old.prospect_id or new.kind <> old.kind or new.channel <> old.channel
+     or new.run_id is distinct from old.run_id or new.created_at <> old.created_at then
+    raise exception 'outreach_identity_immutable' using errcode = 'check_violation';
+  end if;
+  if new.blocked_after_open is distinct from old.blocked_after_open
+     and not (old.status = 'drafted' and new.status = 'sent' and old.blocked_after_open is null) then
+    raise exception 'blocked_after_open_immutable' using errcode = 'check_violation';
+  end if;
+
+  if new.status = old.status then
+    return new;
+  end if;
+
+  allowed := case old.status
+    when 'drafted' then new.status in ('sent', 'lost')
+    when 'sent' then new.status in ('replied', 'lost')
+    when 'replied' then new.status in ('meeting', 'lost')
+    when 'meeting' then new.status in ('won', 'lost')
+    else false
+  end;
+  if not allowed then
+    raise exception 'invalid_transition:%->%', old.status, new.status using errcode = 'check_violation';
+  end if;
+
+  if new.status = 'sent' then
+    if new.blocked_after_open is not null then
+      if public.sales_outreach_block_reason(new.prospect_id) is distinct from new.blocked_after_open then
+        raise exception 'blocked_after_open_mismatch' using errcode = 'check_violation';
+      end if;
+      perform public.sales_assert_channel_eligible(new.prospect_id, new.kind, new.channel);
+    else
+      perform public.sales_assert_outreach_eligible(new.prospect_id, new.kind, new.channel);
+    end if;
+  end if;
+  return new;
 end;
 $$;
 
@@ -310,7 +403,11 @@ $$;
 -- and cannot deadlock with each other.
 --   p_design_enabled: SALES_AI_DESIGN_ENABLED as the server reads it (the flag
 --   lives in the server's environment, not in the database).
-create function public.sales_send_guards(o public.sales_outreaches, p_design_enabled boolean)
+--   p_confirm_opened: PR #239 M2, only from sales_mark_sent for an opened
+--   approval. DNC and the exclusion list do not refuse (the caller records
+--   them as blocked_after_open), nor does the demo DNC disabled; every other
+--   guard still does.
+create function public.sales_send_guards(o public.sales_outreaches, p_design_enabled boolean, p_confirm_opened boolean)
 returns public.sales_demos
 language plpgsql
 set search_path = ''
@@ -318,6 +415,7 @@ as $$
 declare
   d public.sales_demos;
   v_recipient text;
+  v_block text;
 begin
   if o.kind <> 'initial' or o.status <> 'drafted' then
     raise exception 'invalid_transition' using errcode = 'P0001';
@@ -327,8 +425,13 @@ begin
   perform pg_advisory_xact_lock_shared(hashtext('second_root_sales_exclusions'));
   -- A concurrent DNC (sales_set_dnc locks the same row) is seen after the wait.
   perform 1 from public.sales_prospects where id = o.prospect_id for update;
-  -- DNC, channel rules, recommended channel and the exclusion list.
-  perform public.sales_assert_outreach_eligible(o.prospect_id, o.kind, o.channel);
+  if coalesce(p_confirm_opened, false) then
+    v_block := public.sales_outreach_block_reason(o.prospect_id);
+    perform public.sales_assert_channel_eligible(o.prospect_id, o.kind, o.channel);
+  else
+    -- DNC, channel rules, recommended channel and the exclusion list.
+    perform public.sales_assert_outreach_eligible(o.prospect_id, o.kind, o.channel);
+  end if;
 
   v_recipient := public.sales_outreach_recipient(o.prospect_id, o.channel);
   if v_recipient is null then
@@ -346,7 +449,9 @@ begin
   end if;
 
   select * into d from public.sales_demos where prospect_id = o.prospect_id for update;
-  if not found or d.disabled_at is not null then
+  -- (Setting DNC disables the demo: that alone does not stop recording a
+  -- send that already happened.)
+  if not found or (d.disabled_at is not null and v_block is distinct from 'do_not_contact') then
     raise exception 'demo_unavailable' using errcode = 'P0001';
   end if;
   if coalesce(p_design_enabled, false) and d.design_status in ('pending', 'processing') then
@@ -381,7 +486,9 @@ begin
     'public.sales_demo_version(public.sales_demos)',
     'public.sales_prospect_excluded(uuid)',
     'public.sales_outreach_recipient(uuid, text)',
-    'public.sales_send_guards(public.sales_outreaches, boolean)',
+    'public.sales_send_guards(public.sales_outreaches, boolean, boolean)',
+    'public.sales_outreach_block_reason(uuid)',
+    'public.sales_assert_channel_eligible(uuid, text, text)',
     'public.sales_approval_is_current(public.sales_outreach_approvals, public.sales_outreaches, public.sales_demos)'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated', fn);
@@ -475,7 +582,7 @@ begin
   if o.draft_version is distinct from p_draft_version then
     raise exception 'stale_snapshot' using errcode = 'P0001';
   end if;
-  d := public.sales_send_guards(o, p_design_enabled);
+  d := public.sales_send_guards(o, p_design_enabled, false);
 
   if (o.channel = 'email' and p_subject is distinct from o.subject)
      or (o.channel = 'instagram' and p_subject is not null) then
@@ -551,7 +658,7 @@ begin
   if a.state = 'superseded' then
     raise exception 'stale_snapshot' using errcode = 'P0001';
   end if;
-  d := public.sales_send_guards(o, p_design_enabled);
+  d := public.sales_send_guards(o, p_design_enabled, false);
   if not public.sales_approval_is_current(a, o, d) then
     raise exception 'stale_snapshot' using errcode = 'P0001';
   end if;
@@ -613,6 +720,7 @@ declare
   a public.sales_outreach_approvals;
   d public.sales_demos;
   sent timestamptz := now();
+  v_block text;
 begin
   perform public.sales_assert_admin();
   select * into o from public.sales_outreaches where id = p_outreach_id for update;
@@ -624,7 +732,8 @@ begin
     raise exception 'approval_required' using errcode = 'P0001';
   end if;
   if o.status = 'sent' and a.state = 'sent' then
-    return jsonb_build_object('outreach_id', o.id, 'status', o.status, 'sent_at', o.sent_at, 'approval_id', a.id, 'replayed', true);
+    return jsonb_build_object('outreach_id', o.id, 'status', o.status, 'sent_at', o.sent_at, 'approval_id', a.id,
+                              'blocked_after_open', o.blocked_after_open, 'replayed', true);
   end if;
   if o.kind <> 'initial' or o.status <> 'drafted' then
     raise exception 'invalid_transition' using errcode = 'P0001';
@@ -635,18 +744,25 @@ begin
   if a.state <> 'send_opened' then
     raise exception 'stale_snapshot' using errcode = 'P0001';
   end if;
-  d := public.sales_send_guards(o, p_design_enabled);
+  -- PR #239 M2: from send_opened the owner may already have sent it, so a
+  -- DNC / exclusion committed since is recorded (blocked_after_open), not
+  -- refused. Every other guard and the snapshot check still refuse.
+  d := public.sales_send_guards(o, p_design_enabled, true);
   if not public.sales_approval_is_current(a, o, d) then
     raise exception 'stale_snapshot' using errcode = 'P0001';
   end if;
+  v_block := public.sales_outreach_block_reason(o.prospect_id);
 
-  update public.sales_outreaches set status = 'sent', sent_at = sent where id = o.id;
+  update public.sales_outreaches set status = 'sent', sent_at = sent, blocked_after_open = v_block where id = o.id;
   update public.sales_demos
     set expires_at = sent + interval '30 days'
     where prospect_id = o.prospect_id and expires_at is null;
-  update public.sales_outreach_approvals set state = 'sent', sent_at = sent, sent_by = auth.uid() where id = a.id;
+  update public.sales_outreach_approvals
+    set state = 'sent', sent_at = sent, sent_by = auth.uid(), blocked_after_open = v_block
+    where id = a.id;
 
-  return jsonb_build_object('outreach_id', o.id, 'status', 'sent', 'sent_at', sent, 'approval_id', a.id, 'replayed', false);
+  return jsonb_build_object('outreach_id', o.id, 'status', 'sent', 'sent_at', sent, 'approval_id', a.id,
+                            'blocked_after_open', v_block, 'replayed', false);
 end;
 $$;
 
@@ -928,5 +1044,121 @@ begin
   result := jsonb_build_object('stage', 'outreach_ready', 'prospect_id', new_prospect);
   perform public.sales_run_set_stage(r, p_key, result);
   return jsonb_build_object('key', p_key) || result;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- PR #239 M2: an initial send recorded as blocked_after_open is never
+-- followed up — not offered (view) and not recorded (function), even if the
+-- DNC is cleared or the exclusion removed later.
+-- ---------------------------------------------------------------------------
+
+-- Unchanged from 20260927000500 except `o.blocked_after_open is null`.
+create or replace view public.sales_followup_due
+with (security_invoker = true)
+as
+select o.id as outreach_id, o.prospect_id, o.sent_at
+from public.sales_outreaches o
+join public.sales_prospects p on p.id = o.prospect_id
+join public.sales_demos d on d.prospect_id = o.prospect_id
+where o.kind = 'initial'
+  and o.channel = 'email'
+  and o.status = 'sent'
+  and o.blocked_after_open is null
+  and not p.do_not_contact
+  and o.sent_at <= now() - interval '5 days'
+  and d.disabled_at is null
+  and d.expires_at is not null
+  and (d.keep_alive or d.expires_at > now())
+  and not exists (
+    select 1 from public.sales_outreaches f
+    where f.prospect_id = o.prospect_id and f.kind = 'follow_up' and f.status = 'sent'
+  );
+
+revoke all on public.sales_followup_due from public, anon, authenticated;
+grant select on public.sales_followup_due to authenticated, service_role;
+
+-- Unchanged from 20260927000500 except the blocked_after_open refusal.
+-- (create or replace keeps the existing grants.)
+create or replace function public.sales_mark_follow_up_sent(p_outreach_id uuid, p_body text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  o public.sales_outreaches;
+  f public.sales_outreaches;
+  d public.sales_demos;
+  sent timestamptz := now();
+  v_subject text;
+begin
+  perform public.sales_assert_admin();
+  o := public.sales_lock_initial(p_outreach_id);
+
+  select * into f from public.sales_outreaches where prospect_id = o.prospect_id and kind = 'follow_up';
+  if found and f.status = 'sent' then
+    return jsonb_build_object('outreach_id', f.id, 'status', f.status, 'sent_at', f.sent_at, 'replayed', true);
+  end if;
+
+  if o.blocked_after_open is not null then
+    raise exception 'blocked_after_open' using errcode = 'P0001';
+  end if;
+  if o.channel <> 'email' or o.status <> 'sent' or o.sent_at > sent - interval '5 days' then
+    raise exception 'not_due' using errcode = 'P0001';
+  end if;
+  select * into d from public.sales_demos where prospect_id = o.prospect_id;
+  if not found or d.disabled_at is not null or d.expires_at is null or not (d.keep_alive or d.expires_at > sent) then
+    raise exception 'demo_unavailable' using errcode = 'P0001';
+  end if;
+  if p_body is null or char_length(p_body) > 4000
+     or strpos(p_body, '/demo/' || d.public_token) = 0
+     or strpos(p_body, '以後ご連絡いたしません') = 0 then
+    raise exception 'invalid_body' using errcode = '22023';
+  end if;
+  -- Same rule as followUpSubject (lib/sales/messages.ts).
+  v_subject := coalesce(o.subject, 'ホームページのご提案（Second Root）');
+  v_subject := case when v_subject like 'Re:%' then left(v_subject, 200) else 'Re: ' || left(v_subject, 196) end;
+
+  if f.id is null then
+    insert into public.sales_outreaches (prospect_id, kind, channel, subject, body)
+      values (o.prospect_id, 'follow_up', 'email', v_subject, p_body)
+      returning * into f;
+  else
+    update public.sales_outreaches set subject = v_subject, body = p_body where id = f.id;
+  end if;
+  update public.sales_outreaches set status = 'sent', sent_at = sent where id = f.id;
+
+  return jsonb_build_object('outreach_id', f.id, 'status', 'sent', 'sent_at', sent, 'replayed', false);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- PR #239 L2: closing an outreach as lost (見送る, or any later loss)
+-- retires its live approval, so the approval no longer counts as a live
+-- recipient for the duplicate check. Unchanged from 20260927000300 otherwise.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.sales_mark_lost(p_outreach_id uuid, p_reason text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  o public.sales_outreaches;
+begin
+  perform public.sales_assert_admin();
+  o := public.sales_lock_initial(p_outreach_id);
+  if o.status = 'lost' then
+    return jsonb_build_object('outreach_id', o.id, 'status', o.status, 'replayed', true);
+  end if;
+  update public.sales_outreaches
+    set status = 'lost', closed_at = now(), lost_reason = nullif(left(coalesce(p_reason, ''), 500), '')
+    where id = o.id;
+  update public.sales_outreach_approvals
+    set state = 'superseded', superseded_at = now(), superseded_reason = 'outreach_closed'
+    where outreach_id = o.id and state in ('approved', 'send_opened');
+  return jsonb_build_object('outreach_id', o.id, 'status', 'lost', 'replayed', false);
 end;
 $$;

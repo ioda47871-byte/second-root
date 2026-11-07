@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
 import { seedEmailDraft } from "../support/seed-demo";
 import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
+import { captureMailto, openedMailto } from "./support/mailto";
 
 // この内容で送信を承認 → メールを作成 (mailto with everything pre-filled; the
 // human presses Send in their mail app, nothing is sent by the system; the
@@ -35,6 +36,7 @@ async function login(page: Page) {
 test("approve the exact text, then the mailto pre-fills everything; opening is recorded apart from 手動で送信済み", async ({ page }) => {
   const draft = await seedEmailDraft(db);
   seeded.push(draft.prospectId);
+  await captureMailto(page);
   await login(page);
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
 
@@ -68,13 +70,11 @@ test("approve the exact text, then the mailto pre-fills everything; opening is r
   expect(body).toContain("Second Root");
   await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toHaveCount(0);
 
-  // Opening the mail app records 「送信画面を開いた」, never a send.
-  // Click without letting the browser hand mailto: to an external app.
-  await link.evaluate((a) => {
-    a.addEventListener("click", (e) => e.preventDefault(), { once: true });
-    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-  });
+  // Opening the mail app records 「送信画面を開いた」 first (never a send), and
+  // only then hands the approved mailto to the device (captured here).
+  await link.click();
   await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  expect(await openedMailto(page)).toEqual([href]);
   ({ rows } = await db.query(
     "select a.state, a.opened_via, o.status from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id where a.outreach_id = $1",
     [draft.outreachId],
@@ -107,4 +107,48 @@ test("says why when the email cannot be composed, and offers nothing to send", a
   await expect(card.getByRole("link", { name: "メールを作成" })).toHaveCount(0);
   await expect(card.getByTestId("approve-send")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "送信済み" })).toHaveCount(0);
+});
+
+test("PR #239 M1: an exclusion added after approval stops the mail app from opening", async ({ page }) => {
+  const draft = await seedEmailDraft(db);
+  seeded.push(draft.prospectId);
+  await captureMailto(page);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByTestId("approve-send").click();
+  const link = card.getByRole("link", { name: "メールを作成" });
+  await expect(link).toBeVisible();
+  // Excluded from another tab after the card rendered.
+  await db.query("insert into public.sales_exclusions (label, reason, website_domain) values ('E2E 除外', 'existing_customer', $1)", [draft.email.split("@")[1]]);
+  try {
+    await link.click();
+    await expect(card.getByRole("alert")).toContainText("除外リスト");
+    expect(await openedMailto(page)).toEqual([]);
+    const { rows } = await db.query("select state, opened_at from public.sales_outreach_approvals where outreach_id = $1", [draft.outreachId]);
+    expect(rows).toEqual([{ state: "approved", opened_at: null }]);
+  } finally {
+    await db.query("delete from public.sales_exclusions where label = 'E2E 除外'");
+  }
+});
+
+test("PR #239 M2: opened, then the shop became DNC: the card keeps the confirm step with a warning and records the flag", async ({ page }) => {
+  const draft = await seedEmailDraft(db);
+  seeded.push(draft.prospectId);
+  await captureMailto(page);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByTestId("approve-send").click();
+  await card.getByRole("link", { name: "メールを作成" }).click();
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  // The owner sent it; meanwhile the shop is marked DNC (which also disables the demo).
+  await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'admin_manual', dnc_set_at = now() where id = $1", [draft.prospectId]);
+  await db.query("update public.sales_demos set disabled_at = now() where prospect_id = $1", [draft.prospectId]);
+  await page.reload();
+  await expect(card.getByTestId("approval-blocked")).toBeVisible();
+  await expect(card.getByRole("link", { name: "メールを作成" })).toHaveCount(0);
+  await expect(card.getByTestId("withdraw-approval")).toBeVisible();
+  await card.getByRole("button", { name: "手動で送信済みにする" }).click();
+  await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
+  const { rows } = await db.query("select status, blocked_after_open from public.sales_outreaches where id = $1", [draft.outreachId]);
+  expect(rows).toEqual([{ status: "sent", blocked_after_open: "do_not_contact" }]);
 });

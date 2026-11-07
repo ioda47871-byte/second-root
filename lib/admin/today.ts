@@ -92,9 +92,10 @@ type Row = {
 // card's evidence, through the same admin session (RLS: admin read only).
 // DEV-195: the draft revision, the send approvals and the stored notes too
 // (migration 20261107000000, which must be applied before this code runs).
-export function todaySelect(design: boolean): string {
+// PR #239 M2: `openedOnly` reads only drafts with an opened approval (inner join).
+export function todaySelect(design: boolean, openedOnly = false): string {
   return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at, draft_version, edited_at,
-  approvals:sales_outreach_approvals(id, state, channel, recipient, subject, body, draft_version, demo_token, approved_at, opened_at, opened_via),
+  approvals:sales_outreach_approvals${openedOnly ? "!inner" : ""}(id, state, channel, recipient, subject, body, draft_version, demo_token, approved_at, opened_at, opened_via),
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
     address, normalized_name, normalized_address, website_status, website_domain, instagram_handle, recommended_channel, created_at,
     sources:sales_sources(field, value, source_url, source_type, verified_at),
@@ -143,12 +144,17 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
   const SELECT = todaySelect(design);
   // Due follow-ups are computed in SQL (view sales_followup_due), so nothing
   // is truncated before filtering; at most `limit` of each kind is needed.
-  const [due, drafts] = await Promise.all([
+  // PR #239 M2: a draft whose send screen was opened stays on the list until
+  // the owner confirms or withdraws it — even if the shop became DNC /
+  // excluded since (the owner may already have sent it). These come first.
+  const [due, drafts, opened] = await Promise.all([
     supabase.from("sales_followup_due").select("outreach_id").order("sent_at").limit(limit),
     supabase.from("sales_outreaches").select(SELECT).eq("kind", "initial").eq("status", "drafted")
       .eq("prospect.do_not_contact", false).order("created_at").limit(design ? DESIGN_DRAFT_SCAN : limit),
+    supabase.from("sales_outreaches").select(todaySelect(design, true)).eq("kind", "initial").eq("status", "drafted")
+      .eq("approvals.state", "send_opened").order("created_at").limit(limit),
   ]);
-  if (due.error || drafts.error) throw new Error("queue_unavailable");
+  if (due.error || drafts.error || opened.error) throw new Error("queue_unavailable");
   const dueIds = (due.data ?? []).map((r) => r.outreach_id as string);
   let dueRows: Row[] = [];
   if (dueIds.length > 0) {
@@ -229,7 +235,9 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
               channel: row.channel,
               draftVersion,
               recipient: row.channel === "email" ? (p.public_email ?? null) : (p.instagram_handle ?? null),
-              demoToken,
+              // The stored token, even if the demo was disabled since (DNC disables
+              // it): the database decides whether the approval is still usable.
+              demoToken: demo ? demo.public_token : null,
             })
           : null,
     };
@@ -252,9 +260,13 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
   // keys (DEV-194 review L1). Admin read only (RLS). Persist already refused
   // excluded shops; this catches an exclusion added after the draft. A failed
   // or possibly incomplete read is not hidden: that card's verdict is 未確認.
-  const pending = [...followUpItems, ...initialItems].filter((i): i is Pending => i !== null);
+  const openedIds = new Set(((opened.data ?? []) as unknown as Row[]).map((r) => r.id));
+  const openedItems = ((opened.data ?? []) as unknown as Row[]).map((r) => toItem(r, "initial")).filter((i): i is Pending => i !== null);
+  const pending = [...followUpItems, ...initialItems.filter((i) => !i || !openedIds.has(i.item.outreachId))].filter((i): i is Pending => i !== null);
   const byItem = new Map(pending.map((pd) => [pd.item, pd]));
-  const shown = selectWorkQueue(pending.map((pd) => pd.item), limit);
+  for (const pd of openedItems) byItem.set(pd.item, pd);
+  const shownOpened = openedItems.slice(0, limit).map((pd) => pd.item);
+  const shown = [...shownOpened, ...selectWorkQueue(pending.map((pd) => pd.item), limit - shownOpened.length)];
   return Promise.all(
     shown.map(async (item) => {
       const pd = byItem.get(item)!;

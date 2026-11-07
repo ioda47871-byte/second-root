@@ -143,6 +143,8 @@ export async function markFollowUpSent(outreachId: string): Promise<SendResult> 
       ? "この店舗は営業不要（DNC）のため送信済みにできません。"
       : error.message.includes("excluded")
         ? "除外リストに一致するため送信済みにできません。"
+      : error.message.includes("blocked_after_open")
+        ? "初回の送信が営業不要・除外の後に記録されたため、フォローはできません。"
       : error.message.includes("not_due")
         ? "フォローの条件（初回から5日・返信なし）を満たしていません。画面を再読み込みしてください。"
         : error.message.includes("demo_unavailable")

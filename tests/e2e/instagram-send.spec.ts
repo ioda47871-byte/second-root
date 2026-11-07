@@ -43,9 +43,11 @@ test("approves the DM, copies it and opens Instagram, and only 手動で送信�
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
   await expect(card.getByRole("button", { name: "DMを送る" })).toHaveCount(0);
   await card.getByTestId("approve-send").click();
+  // PR #239 M1: a blank window opens in the tap and goes to the profile only after the server recorded the opening.
   const [popup] = await Promise.all([context.waitForEvent("page"), card.getByRole("button", { name: "DMを送る" }).click()]);
-  expect(popup.url()).toMatch(/^https:\/\/www\.instagram\.com\/e2e_[a-z0-9]+\/$/);
+  await popup.waitForURL(/^https:\/\/www\.instagram\.com\/e2e_[a-z0-9]+\/$/);
   await popup.close();
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain("E2E テスト用の営業文です。");
@@ -77,8 +79,8 @@ test("送らなかった: a withdrawn approval records no send and the draft can
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
   await card.getByTestId("approve-send").click();
   const [popup] = await Promise.all([context.waitForEvent("page"), card.getByRole("button", { name: "DMを送る" }).click()]);
-  await popup.close();
   await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  await popup.close();
   await card.getByTestId("withdraw-approval").click();
   await expect(card.getByTestId("approve-send")).toBeVisible();
   const { rows } = await db.query(
@@ -86,4 +88,28 @@ test("送らなかった: a withdrawn approval records no send and the draft can
     [draft.outreachId],
   );
   expect(rows).toEqual([{ state: "superseded", superseded_reason: "withdrawn", status: "drafted" }]);
+});
+
+test("PR #239 M1: a DNC set after approval stops Instagram from opening and nothing is copied", async ({ page, context, baseURL }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL });
+  let instagramRequests = 0;
+  await context.route(/instagram\.com/, (route) => {
+    instagramRequests += 1;
+    return route.fulfill({ status: 200, contentType: "text/html", body: "<p>stub</p>" });
+  });
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  await page.evaluate(() => navigator.clipboard.writeText("before"));
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByTestId("approve-send").click();
+  await expect(card.getByRole("button", { name: "DMを送る" })).toBeVisible();
+  await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'admin_manual', dnc_set_at = now() where id = $1", [draft.prospectId]);
+  const [popup] = await Promise.all([context.waitForEvent("page"), card.getByRole("button", { name: "DMを送る" }).click()]);
+  await popup.waitForEvent("close");
+  await expect(card.getByRole("alert")).toContainText("営業不要（DNC）");
+  expect(instagramRequests).toBe(0);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("before");
+  const { rows } = await db.query("select state, opened_at from public.sales_outreach_approvals where outreach_id = $1", [draft.outreachId]);
+  expect(rows).toEqual([{ state: "approved", opened_at: null }]);
 });
