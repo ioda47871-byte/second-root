@@ -8884,7 +8884,7 @@
     {
       "id": "DEV-192",
       "title": "輪 d1-v9 の AI 写真6枚を1回限りで本生成する実行経路 (worker AUTORUN_SHOPS・root IMAGE_AUTORUN_SHOPS・aiDemoAllowed、実行プロンプトの承認の記録、モック E2E、オーナー用コマンドシート。開発中の real Codex 0 回)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-191"
@@ -8953,7 +8953,98 @@
         "WSL でのコマンドシートの実行 (root clone の更新・claude-stop・使い捨ての ID・1回の起動・OFF への復元)",
         "実画像のオーナーの目視 (brief §6、1500/1920 を含む)。合格まで SR-001 を AI写真入り完成としない"
       ],
-      "note": "開発中の real Codex 0 回、実画像 0 枚。輪は worker・root の許可一覧に入ったが、実行にはオーナーの switch の1件・root の grant が要り、timer は無い。記録は .ai/reviews/DEV-192.md"
+      "note": "開発中の real Codex 0 回、実画像 0 枚。輪は worker・root の許可一覧に入ったが、実行にはオーナーの switch の1件・root の grant が要り、timer は無い。記録は .ai/reviews/DEV-192.md。PR #234 merged (334f771)"
+    },
+    {
+      "id": "DEV-193",
+      "title": "SR-001「輪」AI写真入り完成版の最終確認と正式採用の台帳記録 (研究用成功例、ai_generated_demo 6枚、デモ専用・非公開・本番ではない)",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-192"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "record/sr001-ai-photo-complete-20261107",
+      "purpose": "オーナーが Issue #193 コメント 6703047826 (2026-11-07) で SR-001「輪」の AI写真入り完成版を正式採用。台帳 (second-root-research-successes.json)・brief の V1〜V8 の根拠・台帳テストを更新して記録する",
+      "acceptance_criteria": [
+        "second-root-research-successes.json の SR-001 に AI写真入り完成版の採用 (日付・コメント 6703047826、ai_generated_demo 6枚、デモ専用・public_web false・本番ではない) を記録",
+        "docs/design/bicycle-ai-photo-brief.md の V1〜V8 の根拠の記述を更新",
+        "台帳テストを更新して通す"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/research/second-root-research-successes.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/success-cases/second-root-research-successes.json",
+        "docs/design/bicycle-ai-photo-brief.md",
+        "tests/unit/design-agent/research/second-root-research-successes.test.ts"
+      ],
+      "forbidden_scope": [
+        "本番・Staging・DB・公開",
+        "real Codex の再実行",
+        ".github/workflows・package.json・lockfile"
+      ],
+      "human_approval_triggers": [
+        "オーナーの採用判断 (Issue #193 コメント 6703047826 で済み)"
+      ],
+      "note": "PR #236 merged (35fe85c)。台帳の項目は DEV-194 の branch で done として追加"
+    },
+    {
+      "id": "DEV-194",
+      "title": "今日のカードに選定理由・出典と調査日・連絡の可否 (理由と未確認) を表示し、送信の UI をサーバーの送信済み判定と一致させる (型付きの view model。DB 変更・実送信なし)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-193"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-194-today-card-evidence",
+      "purpose": "Issue #235 (North Star) の計画の第1段、オーナー GO 2026-11-07。/admin/sales の「今日」のカードで、なぜ候補なのか・事実の出典と調査日・連絡できるか (推奨チャネル・メールの出所・Instagram・DNC/除外・対象条件) を確認できるようにする。欠けた情報は「未確認」。サーバーが断るカードを送信可能に見せない。後のデモ確認・文面編集・送信承認が再利用できる型 (TodayEvidence / ContactVerdict) を作る",
+      "acceptance_criteria": [
+        "lib/sales/evidence.ts: TodayEvidence / ContactVerdict / SourceEvidence (純粋関数)。選定理由は保存された列 (地域・業種・website_status・推奨チャネル・メールの出所・Instagram) だけから作り、改善の仮説は保存が無いので常に 未確認",
+        "連絡の可否は sales_mark_sent・sales_assert_outreach_eligible・markSent (AIデザイン)・sales_mark_follow_up_sent と1対1。UI 独自の上乗せはデモのリンクと除外リスト (作成後の登録) だけで、どちらも厳しくする方向",
+        "lib/admin/today.ts: 同じ admin セッション (RLS) で sales_prospects の列と sales_sources を読み、sales_exclusions と照合 (読めなければ 未確認 = 送信不可)。DNC の絞り込み・5件上限・並び順は不変",
+        "TodayCard: 送信の可否バッジと理由、折りたたみの「選んだ理由・出典・連絡の可否」。page.tsx: 送信不可のカードには送信の操作を出さない",
+        ".ai/tasks.json: DEV-192 done・DEV-193 done 追加・DEV-194 review。記録 .ai/reviews/DEV-194.md"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/sales/today-evidence.test.ts",
+        "npx vitest run tests/unit/sales/today-evidence-card.test.tsx",
+        "npx vitest run tests/unit/sales/design-admin.test.tsx",
+        "npx vitest run tests/unit/sales/design-send-gate.test.tsx",
+        "npm run test:integration -- tests/integration/today-queue.test.ts (CI、ローカル Supabase が要る)"
+      ],
+      "allowed_scope": [
+        "lib/sales/evidence.ts",
+        "lib/admin/today.ts",
+        "components/admin/TodayCard.tsx",
+        "components/admin/TodayEvidencePanel.tsx",
+        "components/admin/admin.module.css",
+        "app/admin/sales/page.tsx",
+        "tests/unit/sales/today-evidence.test.ts",
+        "tests/unit/sales/today-evidence-card.test.tsx",
+        "tests/unit/sales/today-evidence-fixture.ts",
+        "tests/unit/sales/design-admin.test.tsx",
+        "tests/unit/sales/design-send-gate.test.tsx",
+        "tests/integration/today-queue.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-194.md"
+      ],
+      "forbidden_scope": [
+        "DB migration",
+        "実送信・送信の自動化",
+        "認証・dedupe・DNC・除外・5件上限の緩和",
+        "service role の利用・クライアントへの露出",
+        ".github/workflows・package.json・lockfile"
+      ],
+      "human_approval_triggers": [
+        "PR のレビュー・必須 CI のあとの merge",
+        "選定理由 (改善仮説) を保存する列の追加 (DB migration、別承認)",
+        "sales_mark_sent に除外リストの照合を足す (DB migration、別承認)"
+      ],
+      "note": "記録は .ai/reviews/DEV-194.md"
     }
   ]
 }

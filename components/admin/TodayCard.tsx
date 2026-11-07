@@ -4,6 +4,7 @@ import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
 import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL, designErrorLabel, reviewAxisLines, reviewSummaryLine } from "@/lib/sales/design";
 import DncControl from "./DncControl";
 import SkipDraft from "./SkipDraft";
+import TodayEvidencePanel from "./TodayEvidencePanel";
 import styles from "./admin.module.css";
 
 // One item of today's queue: shop, channel, minimal state and one big
@@ -16,17 +17,22 @@ function daysSince(iso: string, now: Date): number {
 }
 
 export default function TodayCard({ item, now, action }: { item: TodayItem; now: Date; action: ReactNode }) {
+  const verdict = item.evidence.contact;
   return (
     <li className={styles.card} data-testid="today-item">
       <h2 className={styles.itemTitle}>{item.shopName}</h2>
       <div className={styles.badges}>
-        <span className={styles.badge}>{CHANNEL_LABEL[item.channel]}</span>
+        <span className={styles.badge} data-testid="channel-badge">
+          {CHANNEL_LABEL[item.channel]}
+        </span>
         {item.kind === "follow_up" ? (
-          <span className={`${styles.badge} ${styles.badgeWarn}`}>
+          <span className={`${styles.badge} ${styles.badgeWarn}`} data-testid="state-badge">
             フォロー（初回から{item.sentAt ? daysSince(item.sentAt, now) : "-"}日）
           </span>
         ) : (
-          <span className={styles.badge}>未送信</span>
+          <span className={styles.badge} data-testid="state-badge">
+            未送信
+          </span>
         )}
         {item.kind === "initial" && item.designStatus && (
           <span
@@ -37,7 +43,22 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
             {DESIGN_STATUS_LABEL[item.designStatus]}
           </span>
         )}
+        {/* DEV-194: the same rules the server applies when this is marked sent. */}
+        <span
+          className={`${styles.badge} ${verdict.sendable ? styles.badgeOk : styles.badgeNg}`}
+          data-testid="contact-verdict"
+          data-sendable={verdict.sendable ? "true" : "false"}
+        >
+          {verdict.badge}
+        </span>
       </div>
+      {!verdict.sendable && (
+        <ul className={styles.blockers} data-testid="contact-blockers">
+          {verdict.blockers.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+      )}
       {item.kind === "initial" && item.designStatus === "ready" && (
         <a className={styles.secondary} href={`/admin/preview/${item.prospectId}`} data-testid="design-preview">
           AIデザインのデモを確認
@@ -55,6 +76,14 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
         </p>
       )}
       <div className={styles.actions}>{action}</div>
+      {/* DEV-194 review M1: a blocked follow-up has no send action and no 詳細 controls,
+          so it would hold a slot for weeks. The existing DNC control (with its own
+          confirmation) is the one way to take it off the list. */}
+      {item.kind === "follow_up" && !verdict.sendable && (
+        <div data-testid="follow-up-dnc">
+          <DncControl prospectId={item.prospectId} doNotContact={false} />
+        </div>
+      )}
       <details className={styles.details}>
         <summary>詳細</summary>
         <p>
@@ -79,6 +108,7 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
           </>
         )}
       </details>
+      <TodayEvidencePanel evidence={item.evidence} />
     </li>
   );
 }

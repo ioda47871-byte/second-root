@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TodayItem } from "@/lib/admin/today";
 import type { DesignStatus } from "@/lib/sales/design";
+import { fixtureEvidence } from "./today-evidence-fixture";
 
 // DEV-030: with the AI design step on, a first message whose demo is still
 // waiting for (pending) or getting (processing) its design is neither offered
@@ -86,6 +87,7 @@ function item(designStatus: DesignStatus | null): TodayItem {
     designStatus,
     designErrorCode: null,
     designReview: null,
+    evidence: fixtureEvidence(designStatus),
   };
 }
 

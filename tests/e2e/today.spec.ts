@@ -36,8 +36,11 @@ test("shows an unsent draft with channel, state and folded details", async ({ pa
   await login(page);
   const card = page.getByTestId("today-item").filter({ hasText: draft.name });
   await expect(card).toBeVisible();
-  await expect(card.getByText("Instagram")).toBeVisible();
-  await expect(card.getByText("未送信")).toBeVisible();
+  // DEV-194: the folded evidence repeats words like "Instagram" and 未送信, so the badges are addressed directly.
+  await expect(card.getByTestId("channel-badge")).toBeVisible();
+  await expect(card.getByTestId("channel-badge")).toHaveText("Instagram");
+  await expect(card.getByTestId("state-badge")).toBeVisible();
+  await expect(card.getByTestId("state-badge")).toHaveText("未送信");
   await expect(card.getByText("E2E テスト用の営業文です。")).toBeHidden();
   await card.getByText("詳細").click();
   await expect(card.getByText("E2E テスト用の営業文です。")).toBeVisible();

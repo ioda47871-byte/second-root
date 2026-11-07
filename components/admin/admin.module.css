@@ -395,3 +395,79 @@
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
+
+/* DEV-194: the today card's contact verdict and folded evidence. */
+.badgeNg {
+  background: #fbe7e3;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.badgeOk {
+  font-weight: 700;
+}
+
+.blockers {
+  margin: -4px 0 12px;
+  padding: 8px 12px 8px 28px;
+  background: #fbe7e3;
+  color: var(--danger);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.evidence {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.evidenceTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.evidenceList {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.evidenceList > div {
+  display: grid;
+  grid-template-columns: 7.5em 1fr;
+  gap: 8px;
+}
+
+.evidenceList dt {
+  color: var(--muted);
+}
+
+.evidenceList dd {
+  margin: 0;
+}
+
+.evidenceList > div[data-unconfirmed] dd {
+  color: #7a4b00;
+}
+
+.evidenceSources,
+.evidenceChecks {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.checkOk {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.checkNg {
+  color: var(--danger);
+  font-weight: 700;
+}
