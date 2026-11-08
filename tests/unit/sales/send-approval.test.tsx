@@ -404,6 +404,10 @@ describe("PR #239 M2: an opened approval of a shop that became DNC / excluded", 
     );
     expect(html).toContain('data-testid="approval-blocked"');
     expect(html).toContain('data-testid="confirm-sent"');
+    // Owner decision 2026-11-08: an after-the-fact record only, with no send action.
+    expect(html).toContain("送信済みの事実を記録（事後記録）");
+    expect(html).not.toContain("手動で送信済みにする");
+    expect(html).not.toContain("メールを作成");
     expect(html).toContain('data-testid="withdraw-approval"');
     expect(html).not.toContain("DMを送る");
     expect(html).not.toContain("文面をコピー");

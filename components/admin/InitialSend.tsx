@@ -175,8 +175,8 @@ export default function InitialSend({
       <Preview message={{ channel: composed.channel, recipient: approval.recipient, subject: approval.subject, body: approval.body }} />
       {blocked && (
         <p className={styles.error} role="alert" data-testid="approval-blocked">
-          送信画面を開いた後に、この店舗は送れない状態になりました（{blockedWarning!.join("・")}）。もう送らないでください。
-          開いた後に実際に送った場合だけ「手動で送信済みにする」を押してください（送れない状態だったことも記録され、フォローは出ません）。送っていなければ「送らなかった」を押してください。
+          送信画面を開いた後に、この店舗は送れない状態になりました（{blockedWarning!.join("・")}）。もう送らないでください。ここから送る操作はありません。
+          開いた後に実際に送っていた場合だけ「送信済みの事実を記録（事後記録）」を押してください。送れない状態だったことも一緒に記録され、この店舗へのフォローは出ません（禁止）。送っていなければ「送らなかった」を押してください。
         </p>
       )}
       {stale ? (
@@ -215,7 +215,7 @@ export default function InitialSend({
       </p>
       {approval.state === "send_opened" && !stale && (
         <>
-          <p className={styles.muted}>送信したら「手動で送信済みにする」を押してください。開いただけでは送信済みになりません。</p>
+          {!blocked && <p className={styles.muted}>送信したら「手動で送信済みにする」を押してください。開いただけでは送信済みになりません。</p>}
           <button
             type="button"
             className={styles.secondary}
@@ -223,7 +223,7 @@ export default function InitialSend({
             data-testid="confirm-sent"
             onClick={() => run(() => markSent(outreachId, approval.id))}
           >
-            {pending ? "記録中…" : "手動で送信済みにする"}
+            {pending ? "記録中…" : blocked ? "送信済みの事実を記録（事後記録）" : "手動で送信済みにする"}
           </button>
         </>
       )}

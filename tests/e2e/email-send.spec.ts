@@ -152,7 +152,11 @@ test("PR #239 M2: opened, then the shop became DNC: the card keeps the confirm s
   await expect(card.getByTestId("approval-blocked")).toBeVisible();
   await expect(card.getByRole("button", { name: "メールを作成" })).toHaveCount(0);
   await expect(card.getByTestId("withdraw-approval")).toBeVisible();
-  await card.getByRole("button", { name: "手動で送信済みにする" }).click();
+  // 事後記録 only: no send / open / copy action is offered for a blocked shop.
+  await expect(card.getByRole("button", { name: "文面をコピー" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toHaveCount(0);
+  await expect(card.getByTestId("approval-blocked")).toContainText("事後記録");
+  await card.getByRole("button", { name: "送信済みの事実を記録（事後記録）" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   const { rows } = await db.query("select status, blocked_after_open from public.sales_outreaches where id = $1", [draft.outreachId]);
   expect(rows).toEqual([{ status: "sent", blocked_after_open: "do_not_contact" }]);
