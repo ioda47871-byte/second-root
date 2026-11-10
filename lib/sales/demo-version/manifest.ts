@@ -3,6 +3,12 @@
  * one uploaded demo version (B方式 page + photos + renders), the URL path ↔ manifest name mapping, the size limits,
  * the normalised bundle hash and the byte checks the server's finalize runs on every object.
  *
+ * PRODUCER CONTRACT (review round 2 L2): every photo and render must be packaged as sRGB with NO ICC profile and NO
+ * metadata — the worker converts to sRGB and strips ICC, EXIF, XMP, IPTC and comments before packaging (e.g. sharp
+ * `.toColorspace("srgb")` without `.withMetadata()` / `.keepIccProfile()`). The server does not convert anything: a
+ * JPEG with APP2 (ICC) or any segment other than those decoding needs, any byte after EOI, or a WebP with an ICCP /
+ * EXIF / XMP chunk or their VP8X flags is refused (`FILE_IMAGE_METADATA`), fail closed.
+ *
  * Pure: no I/O, no env, no network. The caller reads the bytes (Storage, upload body) and passes them in.
  */
 import { createHash } from "node:crypto";
@@ -235,7 +241,8 @@ export function hasImageMetadata(b: Uint8Array): boolean {
       while (b[i] === 0xff && b[i + 1] === 0xff) i++;
       if (i + 1 >= b.length) return true;
       const m = b[i + 1]!;
-      if (m === 0xd9) return false; // EOI
+      // EOI ends the file: any byte after it (a trailer, an appended file) is refused (review round 2 L1)
+      if (m === 0xd9) return i + 2 !== b.length;
       if (m >= 0xd0 && m <= 0xd7) {
         i += 2;
         continue;

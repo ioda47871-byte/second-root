@@ -52,7 +52,13 @@ export type HtmlSafetyCode =
   | "CSS_SYNTAX_SUSPICIOUS"
   | "CSS_TEXT_IN_CSS"
   | "CSS_FONT_SHORTHAND"
-  | "CSS_FONT_FAMILY_NOT_ALLOWED";
+  | "CSS_FONT_FAMILY_NOT_ALLOWED"
+  | "HTML_TOO_LARGE"
+  | "HTML_TOO_DEEP"
+  | "HTML_TOO_MANY_ELEMENTS"
+  | "HTML_TOO_MANY_ATTRIBUTES"
+  | "CSS_TOO_LARGE"
+  | "CSS_TOO_COMPLEX";
 
 export type HtmlSafetyFinding = { code: HtmlSafetyCode; detail?: string };
 
@@ -131,6 +137,110 @@ const STRING_PROPERTIES = new Set(["font-family", "grid-template-areas", "grid-t
 /** Properties that draw text: no string, no attr(), no var() (a custom property could carry a string). */
 const TEXT_PROPERTIES = new Set(["content", "quotes", "list-style", "list-style-type", "text-overflow", "text-emphasis", "text-emphasis-style", "hyphenate-character", "-webkit-hyphenate-character", "string-set", "counter-reset", "counter-set", "counter-increment"]);
 
+/**
+ * Review round 2 M1: input limits checked by linear scans BEFORE the slow paths (parse5 on deep nesting; the copied
+ * first-pass regexes of the rule core, whose `url(` and comment patterns are quadratic on crafted input). Over a limit,
+ * the check refuses with a fixed code and never runs the slow path. The rule core stays byte-identical to its source.
+ */
+export const ARTIFACT_INPUT_LIMITS = {
+  /** chars (the manifest allows 384 KiB of bytes; a UTF-8 page never has more chars than bytes) */
+  htmlChars: 384 * 1024,
+  cssChars: 256 * 1024,
+  /** open-element depth by the linear tag scan (the research pages stay under 20) */
+  depth: 512,
+  /** start tags (the research pages have under 400) */
+  elements: 8000,
+  /** attributes in one start tag, counted outside quoted values (whitespace around "=" may count extra) */
+  attributesPerTag: 64,
+  /** `url(` in one stylesheet, after escapes are decoded (the research pages have at most 9) */
+  cssUrls: 200,
+  /** `url(` in one attribute value */
+  attributeUrls: 8,
+  /** `/*` after the last `*` `/` (each unclosed one makes the rule core's comment regex scan to the end) */
+  unclosedComments: 4,
+} as const;
+
+/** Elements that never open a level: HTML void elements, and (only when written `/>`) the allowed SVG elements. */
+const VOID_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
+
+/**
+ * A linear scan of the tags: total length, the number of start tags and the open depth. An approximation of the tree
+ * builder that errs towards counting deeper (an HTML element written `<div/>` still opens a level, as in the parser).
+ */
+export function htmlShapeProblem(html: string): "HTML_TOO_LARGE" | "HTML_TOO_DEEP" | "HTML_TOO_MANY_ELEMENTS" | "HTML_TOO_MANY_ATTRIBUTES" | null {
+  if (html.length > ARTIFACT_INPUT_LIMITS.htmlChars) return "HTML_TOO_LARGE";
+  let depth = 0;
+  let elements = 0;
+  let i = html.indexOf("<");
+  while (i !== -1 && i < html.length) {
+    const next = html[i + 1];
+    if (html.startsWith("<!--", i)) {
+      const end = html.indexOf("-->", i + 4);
+      if (end === -1) break;
+      i = html.indexOf("<", end + 3);
+      continue;
+    }
+    const close = next === "/";
+    const nameStart = close ? i + 2 : i + 1;
+    if (!/[A-Za-z]/.test(html[nameStart] ?? "")) {
+      i = html.indexOf("<", i + 1);
+      continue;
+    }
+    let j = nameStart;
+    while (j < html.length && /[A-Za-z0-9:-]/.test(html[j]!)) j++;
+    const name = html.slice(nameStart, j).toLowerCase();
+    // the tag's end: the first ">" outside a quoted value; attribute starts counted on the way (parse5's duplicate-
+    // attribute check is quadratic in the attributes of one tag)
+    let gt = -1;
+    let quote: string | null = null;
+    let attributes = 0;
+    for (let k = j; k < html.length; k++) {
+      const ch = html[k]!;
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === ">") {
+        gt = k;
+        break;
+      } else if (!/[\t\n\f\r /]/.test(ch) && /[\t\n\f\r /]/.test(html[k - 1]!)) {
+        attributes++;
+        if (attributes > ARTIFACT_INPUT_LIMITS.attributesPerTag) return "HTML_TOO_MANY_ATTRIBUTES";
+      }
+    }
+    if (gt === -1) break;
+    if (close) depth = Math.max(0, depth - 1);
+    else {
+      elements++;
+      if (elements > ARTIFACT_INPUT_LIMITS.elements) return "HTML_TOO_MANY_ELEMENTS";
+      const selfClosed = html[gt - 1] === "/" && SVG_ELEMENTS.has(name);
+      if (!VOID_ELEMENTS.has(name) && !selfClosed) {
+        depth++;
+        if (depth > ARTIFACT_INPUT_LIMITS.depth) return "HTML_TOO_DEEP";
+      }
+    }
+    i = html.indexOf("<", gt + 1);
+  }
+  return null;
+}
+
+/** Counts a regex's matches (linear: the patterns below have no nested quantifiers). */
+const count = (s: string, re: RegExp) => {
+  let n = 0;
+  const it = s.matchAll(re);
+  while (!it.next().done) n++;
+  return n;
+};
+
+/** Review round 2 M1: whether a stylesheet is over the limits that keep the rule core's regexes linear in practice. */
+export function cssComplexityProblem(css: string): "CSS_TOO_LARGE" | "CSS_TOO_COMPLEX" | null {
+  if (css.length > ARTIFACT_INPUT_LIMITS.cssChars) return "CSS_TOO_LARGE";
+  const decoded = decodeEscapes(css);
+  if (count(decoded, /url\s*\(/gi) > ARTIFACT_INPUT_LIMITS.cssUrls) return "CSS_TOO_COMPLEX";
+  const lastClose = decoded.lastIndexOf("*/");
+  if (count(lastClose === -1 ? decoded : decoded.slice(lastClose + 2), /\/\*/g) > ARTIFACT_INPUT_LIMITS.unclosedComments) return "CSS_TOO_COMPLEX";
+  return null;
+}
+
 type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
 
@@ -147,6 +257,13 @@ export function checkArtifactHtml(html: string, css: string, photoUrls: Readonly
   const texts: string[] = [];
   let stylesheets = 0;
 
+  // review round 2 M1: parse5 is slow on pathological nesting; a linear pre-scan refuses it before parsing (fail closed)
+  const shape = htmlShapeProblem(html);
+  if (shape) {
+    add(shape);
+    findings.push(...checkArtifactCss(css, photoUrls));
+    return { ok: false, findings: dedupe(findings), texts };
+  }
   const doc = parse(html);
   // iterative walk (a deeply nested page must not overflow the stack); <template> content is walked too
   const stack: Node[] = [doc];
@@ -214,7 +331,9 @@ function checkElement(el: Element, photoUrls: ReadonlySet<string>, add: (c: Html
     const decoded = decodeEscapes(a.value);
     if (a.name !== "style" && /url\s*\(/i.test(decoded)) {
       if (a.value.includes("\\")) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: escaped`);
-      for (const t of cssUrls(decoded)) if (!allowedUrl(t, photoUrls)) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: ${t}`);
+      // the rule core's cssUrls is quadratic on many `url(`: over the limit, refuse without running it
+      if (count(decoded, /url\s*\(/gi) > ARTIFACT_INPUT_LIMITS.attributeUrls) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: too many url(`);
+      else for (const t of cssUrls(decoded)) if (!allowedUrl(t, photoUrls)) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: ${t}`);
     }
     if ((URL_ATTRIBUTES.includes(a.name) || ARTIFACT_EXTRA_URL_ATTRIBUTES.includes(a.name)) && !(tag === "link" && a.name === "href")) {
       const values = a.name === "srcset" ? a.value.split(",").map((s) => trimAsciiWs(s).split(/[\t\n\f\r ]+/)[0] ?? "") : [trimAsciiWs(a.value)];
@@ -235,6 +354,9 @@ function checkElement(el: Element, photoUrls: ReadonlySet<string>, add: (c: Html
  */
 export function checkArtifactCss(css: string, photoUrls: ReadonlySet<string>): HtmlSafetyFinding[] {
   const out: HtmlSafetyFinding[] = [];
+  // over a limit, refuse without running the rule core's quadratic-on-crafted-input regexes, or anything else
+  const complexity = cssComplexityProblem(css);
+  if (complexity) return [{ code: complexity }];
   for (const p of cssProblems(css, photoUrls)) {
     const code: HtmlSafetyCode = p === "css @import" ? "CSS_IMPORT" : p === "css code execution" ? "CSS_CODE_EXECUTION" : p.startsWith("css url") ? "CSS_URL_NOT_ALLOWED" : "CSS_IMAGE_FUNCTION";
     out.push({ code, detail: ascii(p) });
@@ -329,12 +451,19 @@ function fontProblems(decls: ReturnType<typeof cssDeclarations>): HtmlSafetyFind
   const custom = new Map<string, string[]>();
   for (const d of decls) if (d.prop.startsWith("--")) custom.set(d.prop, [...(custom.get(d.prop) ?? []), d.value]);
   // a font list, or var(--x) whose every definition is (through at most 4 levels of var())
+  // memoised per (property, depth): a chain of custom properties defined many times stays linear (review round 2)
+  const memo = new Map<string, boolean>();
   const ok = (value: string, depth: number): boolean => {
     const v = value.replace(/!\s*important\s*$/i, "").trim();
     const m = /^var\(\s*(--[A-Za-z0-9_-]+)\s*\)$/.exec(v);
     if (m) {
+      const key = `${m[1]}|${depth}`;
+      const known = memo.get(key);
+      if (known !== undefined) return known;
       const defs = custom.get(m[1]!);
-      return depth < 4 && defs !== undefined && defs.every((d) => ok(d, depth + 1));
+      const r = depth < 4 && defs !== undefined && defs.every((d) => ok(d, depth + 1));
+      memo.set(key, r);
+      return r;
     }
     return !/var\(/i.test(v) && isAllowedFontList(v);
   };

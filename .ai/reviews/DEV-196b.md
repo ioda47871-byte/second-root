@@ -86,3 +86,19 @@
 ### 結果
 
 `tests/unit/sales/demo-version` 11 ファイル・330 件、`tests/unit/sales` + `ai-tasks` 40 ファイル・1036 件 すべて通過。`tsc --noEmit`・eslint・`check:secrets` 問題なし。phase2f / comp-impl の isolation と guardrails は通過 (phase2f/isolation の「recorded route B answer」1 件は従来どおり Chromium が無いため)。
+
+## レビュー 2 回目 (再レビュー、3ee4134: C0 H0 M1 L2) への対応
+
+1 回目の指摘はすべて修正済み・全 probe が止まることを確認済みとされた。新しい指摘への対応。回帰テストは `tests/unit/sales/demo-version/review-round-2.test.ts` (14 件)。遅い入力は**上限で先に拒否する** (固定の符号を返し、遅い経路を走らせない) ので、テストは符号を確かめ、時間は余裕のある上限 (3 秒) を後ろ盾にする (修正後は数 ms〜数十 ms)。修正前のライブラリに戻して流すと、同期の遅い経路のため 280 秒で打ち切りになった (= 落ちる)。
+
+- **M1 (遅い入力)**: `html-safety.ts` に `ARTIFACT_INPUT_LIMITS` と線形の事前検査を足した。上限を超えたら遅い経路を呼ばずに拒否する (fail closed)。
+  - CSS (`cssComplexityProblem`): 256 KiB を超える → `CSS_TOO_LARGE`。escape を decode した後の `url(` が 200 を超える、または最後の `*/` より後の `/*` が 4 を超える → `CSS_TOO_COMPLEX`。rule core の `cssUrls` (`[^"')\s]*`) とコメントの正規表現は、作った入力で二次になるため、この検査を通ったときだけ呼ぶ。`rule-core.ts` は元のソースと**バイト単位で同じまま** (parity test はそのまま意味を持つ)。`"url(".repeat(64000)` は修正前 19.9 秒 → 約 20 ms で `CSS_TOO_COMPLEX`。
+  - 属性: 1 つの属性値の `url(` が 8 を超えたら `cssUrls` を呼ばずに `HTML_ATTRIBUTE_URL` (`too many url(`)。
+  - HTML (`htmlShapeProblem`、parse5 の前): 384 KiB を超える → `HTML_TOO_LARGE`。線形のタグの走査で、開いた要素の深さが 512 を超える → `HTML_TOO_DEEP`、開始タグが 8000 を超える → `HTML_TOO_MANY_ELEMENTS`、1 つの開始タグの属性 (引用の外で数える) が 64 を超える → `HTML_TOO_MANY_ATTRIBUTES` (parse5 の重複属性の検査は 1 タグの属性数について二次。3 万属性で約 1.7 秒を実測)。HTML の `<div/>` は parser と同じく深さを増やす。`/>` で閉じたとみなすのは許可した SVG 要素と void 要素だけ。`"<div>".repeat(76000)` は修正前 33.5 秒 → 数 ms で `HTML_TOO_DEEP`。研究の頁 (要素は最大約 380、深さは 20 未満、`url(` は最大 9) は通る。
+  - あわせて、`font-family` の `var()` の解決を (custom property, 深さ) で memo した (同じ名前を何度も定義した連鎖が指数的にならないように)。
+- **L1 (JPEG の EOI の後)**: EOI の後に 1 バイトでもあれば metadata とみなし拒否 (WebP は以前から拒否)。
+- **L2 (作る側の約束)**: ICC は JPEG (APP2) でも WebP (ICCP・VP8X の旗) でも拒否する (fail closed)。**作る側 (worker) は、包む前に画像を sRGB に変換し、ICC と全 metadata (EXIF・XMP・IPTC・コメント) を落とすこと**。server は変換しない。`manifest.ts` の冒頭にこの約束を書いた (仕様の文書は変えていない。DEV-196e の photo-swap の書き出しで守る)。
+
+### 結果
+
+`tests/unit/sales/demo-version` 12 ファイル・344 件、`tests/unit/sales` + `ai-tasks` + `guardrails` + comp-impl の isolation 43 ファイル・1062 件 すべて通過。`tsc --noEmit`・eslint・`check:secrets` 問題なし。
