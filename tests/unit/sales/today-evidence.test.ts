@@ -209,8 +209,14 @@ describe("the database rules this mirrors are still the ones in the migrations",
     const m = sql("20261110000000_sales_send_stale_after_block.sql");
     expect(m).toContain("if o.kind <> 'initial' or o.status <> 'drafted' then");
     expect(m).toContain("raise exception 'not_opened'");
+    // A normal send: the guards and the current snapshot of 20261107000000.
     expect(m).toContain("d := public.sales_send_guards(o, p_design_enabled, true);");
-    expect(m).toContain("if v_stale and (v_block is null or a.draft_version <> o.draft_version or a.channel <> o.channel) then");
+    expect(m).toContain("if not coalesce(public.sales_approval_is_current(a, o, d), false) then");
+    // After a block: same text revision and channel, channel rules on the recorded recipient, demo, design.
+    expect(m).toContain("if a.draft_version <> o.draft_version or a.channel <> o.channel then");
+    expect(m).toContain("perform public.sales_assert_recorded_channel(o.prospect_id, o.kind, o.channel, a.recipient);");
+    expect(m).toContain("perform public.sales_assert_recorded_channel(new.prospect_id, new.kind, new.channel, v_recipient);");
+    expect(m).toContain("if coalesce(p_design_enabled, false) and d.design_status in ('pending', 'processing') then");
     expect(m).toContain("check (not stale_at_send or (state = 'sent' and blocked_after_open is not null))");
     expect(m).not.toMatch(/drop function/i);
   });

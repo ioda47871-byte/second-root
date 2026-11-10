@@ -237,7 +237,7 @@ export default function InitialSend({
         staleRecordable ? (
           <p className={styles.error} role="alert" data-testid="approval-stale" data-recordable="true">
             承認の後に内容が変わりました（{approval.staleReasons.join("・")}）。この承認でもう送らないでください。
-            送れない状態（営業不要・除外）の後に実際に送っていた場合だけ、承認した内容（開いた内容）のまま記録でき、内容が変わっていたことも一緒に記録されます。
+            送れない状態（営業不要・除外）の後に実際に送っていた場合だけ、記録を試せます。記録できるかはサーバーが確かめ、記録できれば承認した内容（開いた内容）のまま、内容が変わっていたことも一緒に記録されます。記録できない場合は理由を表示します。
           </p>
         ) : (
           <p className={styles.error} role="alert" data-testid="approval-stale">

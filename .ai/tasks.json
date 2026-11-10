@@ -9142,7 +9142,7 @@
         "unknown では新しい送信の操作 (承認・開く・メール・DM・コピー) を出さない。『送信できるか確認できませんでした。再読み込みしてください』を出す",
         "開いた承認が unknown (または DNC・除外以外の確定した理由) のとき: ブロックを主張しない文言で『送信済みの事実を記録』だけを出し、DB が取引の中で判定する。事後記録・フォロー禁止の文言は DNC・除外の確定のときだけ",
         "送信済みの後は、DB が保存した状態 (通常の送信 / blocked_after_open / stale_at_send) を sales_mark_sent の結果から画面に出す (SendRecordNotice)。結果の形が想定外なら『確認できませんでした』と言い、通常の送信と推測しない",
-        "migration 20261110000000_sales_send_stale_after_block.sql (forward-only、どの hosted DB にも未適用): sales_outreach_approvals.stale_at_send (check: sent かつ blocked_after_open のときだけ) と sales_mark_sent の create or replace (同じ引数・grant)。ブロック後で、文面の版とチャネルが承認と同じなら、デモ・宛先が変わっていても承認の snapshot のまま記録する。ブロック無しの古い snapshot・文面の変更・ほかの照合はすべて従来どおり拒否、フォローは禁止のまま",
+        "migration 20261110000000_sales_send_stale_after_block.sql (forward-only、どの hosted DB にも未適用): sales_outreach_approvals.stale_at_send (check: sent かつ blocked_after_open のときだけ) と sales_mark_sent の create or replace (同じ引数・grant)。ブロック後で、文面の版とチャネルが承認と同じなら、デモ・宛先が変わっていても (宛先が消えた・重複も) 承認の snapshot と宛先のまま記録する (連絡経路の条件は承認の宛先で判定、trigger sales_check_outreach_update も同じ)。ブロック無しの古い snapshot・文面の変更・デモ・デザイン待ち・未オープンは従来どおり拒否、フォローは禁止のまま",
         "台帳: DEV-195 の acceptance_criteria[0] を『Staging 適用済み (2026-11-10)、Production 未適用』に直し、DEV-195 を done に",
         "docs/MVP_SPEC.md §4 に3状態と安全側の規則を書く。記録 .ai/reviews/DEV-197.md (表示と記録の食い違いの監査・営業判断への影響の再評価を含む)"
       ],
@@ -9176,10 +9176,10 @@
       ],
       "human_approval_triggers": [
         "PR のレビュー・必須 CI のあとの merge",
-        "Staging DB への migration 20261110000000 の適用 (別承認。merge 後、適用までの Staging では stale_at_send を返さないので、画面は通常どおり、ブロック後の古い snapshot は従来どおり拒否)",
+        "Staging DB への migration 20261110000000 の適用 (別承認)。DEV-195 と同じく、この PR の merge と Staging への適用は一緒に行う (オーナーの承認のもとで merge の直前か直後に適用する)。適用前の develop の Preview では、ブロック後の古い承認に事後記録のボタンが出るが旧関数は stale_snapshot で断る (画面は『サーバーが確かめる』とだけ言い、理由を表示する。誤った記録はできない)",
         "Production DB への適用 (別承認。DEV-195 の migration と一緒に)"
       ],
-      "note": "記録は .ai/reviews/DEV-197.md"
+      "note": "記録は .ai/reviews/DEV-197.md。PR #242 (draft)。独立レビュー 1回目 (a232e1f: C0/H0/M0/L2) に対応: L1 ブロック後の事後記録は店舗の今の宛先 (消えた・重複) で断らず承認の宛先で記録、L2 merge と Staging への 20261110000000 の適用は一緒に行う"
     }
   ]
 }

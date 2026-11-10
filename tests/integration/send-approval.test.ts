@@ -703,6 +703,76 @@ describe("DEV-197 (DEV-195 final review L2): a real send after a block is record
     expect((await db.query("select count(*)::int as n from public.sales_outreaches where prospect_id = $1 and kind = 'follow_up'", [shop.prospectId])).rows[0].n).toBe(0);
   });
 
+  const followUpRefused = async (shop: { prospectId: string; outreachId: string }) => {
+    await db.query("update public.sales_outreaches set sent_at = now() - interval '6 days' where id = $1", [shop.outreachId]);
+    const due = await admin.from("sales_followup_due").select("outreach_id").eq("outreach_id", shop.outreachId);
+    expect(due.error).toBeNull();
+    expect(due.data).toEqual([]);
+    const token = (await db.query("select public_token from public.sales_demos where prospect_id = $1", [shop.prospectId])).rows[0].public_token;
+    const res = await admin.rpc("sales_mark_follow_up_sent", { p_outreach_id: shop.outreachId, p_body: `フォロー\nhttp://127.0.0.1/demo/${token}\n以後ご連絡いたしません。` });
+    expect(res.error).not.toBeNull();
+    expect((await db.query("select count(*)::int as n from public.sales_outreaches where prospect_id = $1 and kind = 'follow_up'", [shop.prospectId])).rows[0].n).toBe(0);
+  };
+
+  it("review round 1 L1: the public email cleared after the block — recorded with the approval's own recipient, no follow-up", async () => {
+    const [shop] = await prepare(emailCandidate());
+    const id = await approvedAndOpened(shop.outreachId);
+    const sentTo = (await approvals(shop.outreachId))[0].recipient as string;
+    expect((await admin.rpc("sales_set_dnc", { p_prospect_id: shop.prospectId })).error).toBeNull();
+    // A table check ties recommended_channel = 'email' to the public email, so both go.
+    await db.query("update public.sales_prospects set public_email = null, recommended_channel = null where id = $1", [shop.prospectId]);
+    const res = await markSent(admin, shop.outreachId, id);
+    expect(res.error).toBeNull();
+    expect(res.data).toMatchObject({ status: "sent", blocked_after_open: "do_not_contact", stale_at_send: true, replayed: false });
+    expect((await approvals(shop.outreachId))[0]).toMatchObject({ state: "sent", recipient: sentTo, blocked_after_open: "do_not_contact", stale_at_send: true });
+    expect((await db.query("select status, blocked_after_open from public.sales_outreaches where id = $1", [shop.outreachId])).rows[0]).toEqual({ status: "sent", blocked_after_open: "do_not_contact" });
+    await followUpRefused(shop);
+  });
+
+  it("review round 1 L1: the public email changed to an address another outreach's approval uses, after the block — recorded, no follow-up", async () => {
+    const [a, b] = await prepare(emailCandidate(), emailCandidate());
+    const idA = await approvedAndOpened(a.outreachId);
+    const sentTo = (await approvals(a.outreachId))[0].recipient as string;
+    expect((await approve(admin, b.outreachId)).error).toBeNull();
+    const taken = (await approvals(b.outreachId))[0].recipient as string;
+    // B's shop moved to another address; A's shop now lists the address B's live approval holds.
+    await db.query(
+      "insert into public.sales_sources (prospect_id, field, value, source_url, source_type, verified_at) values ($1, 'email', 'moved@b-shop.example.com', 'https://b-shop.example.com/contact', 'official_contact', now())",
+      [b.prospectId],
+    );
+    await db.query("update public.sales_prospects set public_email = 'moved@b-shop.example.com' where id = $1", [b.prospectId]);
+    await db.query(
+      "insert into public.sales_sources (prospect_id, field, value, source_url, source_type, verified_at) values ($1, 'email', $2, 'https://a-shop.example.com/contact', 'official_contact', now())",
+      [a.prospectId, taken],
+    );
+    await db.query("update public.sales_prospects set public_email = $2 where id = $1", [a.prospectId, taken]);
+    // Before the block this is a duplicate and stale: refused, nothing recorded.
+    expect((await markSent(admin, a.outreachId, idA)).error?.message).toMatch(/duplicate_recipient|stale_snapshot/);
+    await exclude({ website_domain: await domainOf(a.prospectId) });
+    const res = await markSent(admin, a.outreachId, idA);
+    expect(res.error).toBeNull();
+    expect(res.data).toMatchObject({ status: "sent", blocked_after_open: "excluded", stale_at_send: true });
+    expect((await approvals(a.outreachId))[0]).toMatchObject({ state: "sent", recipient: sentTo, blocked_after_open: "excluded", stale_at_send: true });
+    // B's approval is untouched.
+    expect((await approvals(b.outreachId))[0]).toMatchObject({ state: "approved", recipient: taken });
+    await followUpRefused(a);
+  });
+
+  it("review round 1 L1 limit: after a block, the recorded address must keep its first-party source; the outreach trigger checks the same", async () => {
+    const [shop, direct] = await prepare(emailCandidate(), emailCandidate());
+    const id = await approvedAndOpened(shop.outreachId);
+    expect((await admin.rpc("sales_set_dnc", { p_prospect_id: shop.prospectId })).error).toBeNull();
+    await db.query("update public.sales_prospects set public_email = null, recommended_channel = null where id = $1", [shop.prospectId]);
+    await db.query("delete from public.sales_sources where prospect_id = $1 and field = 'email'", [shop.prospectId]);
+    expect((await markSent(admin, shop.outreachId, id)).error?.message).toContain("email_not_eligible");
+    expect(await outreach(shop.outreachId)).toMatchObject({ status: "drafted" });
+    // Written past the function: a flagged sent transition without a sent approval is refused.
+    await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'admin_manual', dnc_set_at = now() where id = $1", [direct.prospectId]);
+    await expect(
+      db.query("update public.sales_outreaches set status = 'sent', sent_at = now(), blocked_after_open = 'do_not_contact' where id = $1", [direct.outreachId]),
+    ).rejects.toThrow(/approval_required/);
+  });
+
   it("stale_at_send can only sit on a sent approval recorded after a block (check constraint)", async () => {
     const [opened] = await prepare(candidate());
     const id = await approvedAndOpened(opened.outreachId);

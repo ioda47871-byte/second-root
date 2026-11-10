@@ -488,6 +488,9 @@ describe("DEV-197: an opened approval follows the three send states; the stored 
     expect(html).toContain('data-testid="approval-stale"');
     expect(html).toContain('data-recordable="true"');
     expect(html).toContain("変わっていたことも一緒に記録されます");
+    // Review round 1 L2: never a promise the server may not keep (e.g. before its migration).
+    expect(html).toContain("記録できるかはサーバーが確かめ");
+    expect(html).toContain("記録できない場合は理由を表示します");
     expect(html).toContain('data-testid="confirm-sent"');
     expect(html).toContain("送信済みの事実を記録（事後記録）");
     expect(html).toContain('data-testid="withdraw-approval"');
