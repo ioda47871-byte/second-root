@@ -216,34 +216,61 @@ export function checkFileBytes(entry: ManifestFile, bytes: Uint8Array): { ok: tr
   return codes.size ? { ok: false, codes: [...codes] } : { ok: true };
 }
 
-/** EXIF or XMP in a JPEG (APP1) or WebP (VP8X flags, EXIF / XMP chunks). */
+/**
+ * §5.2 "EXIF・GPS なし" (review round 1 L3): true unless the image holds only what decoding needs. An ALLOWLIST:
+ *  - JPEG: SOI, APP0 "JFIF", APP14 "Adobe", DQT, DHT, DAC, DRI, SOF*, SOS (+ its entropy-coded data and RSTn), EOI.
+ *    Any other segment — APP1 (EXIF / XMP), APP2 (ICC), APP13 (IPTC / Photoshop), other APPn, COM — is metadata.
+ *  - WebP: the chunks VP8, VP8L, ALPH and VP8X with at most the alpha flag. EXIF, XMP, ICCP, animation and unknown
+ *    chunks (or their VP8X flags) are metadata.
+ * A malformed structure also answers true (fail closed). Anything that is neither JPEG nor WebP answers false (the
+ * format check refuses it).
+ */
 export function hasImageMetadata(b: Uint8Array): boolean {
   const ascii = (at: number, n: number) => String.fromCharCode(...b.subarray(at, at + n));
   if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
     let i = 2;
-    while (i + 4 <= b.length && b[i] === 0xff) {
+    while (i < b.length) {
+      if (b[i] !== 0xff) return true;
+      // fill bytes
+      while (b[i] === 0xff && b[i + 1] === 0xff) i++;
+      if (i + 1 >= b.length) return true;
       const m = b[i + 1]!;
-      if (m === 0xda || m === 0xd9) break;
-      if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7) || m === 0x01 || m === 0xff) {
-        i += m === 0xff ? 1 : 2;
+      if (m === 0xd9) return false; // EOI
+      if (m >= 0xd0 && m <= 0xd7) {
+        i += 2;
         continue;
       }
+      if (i + 4 > b.length) return true;
       const len = (b[i + 2]! << 8) | b[i + 3]!;
-      if (len < 2) return true;
-      if (m === 0xe1) return true; // APP1: EXIF or XMP
+      if (len < 2 || i + 2 + len > b.length) return true;
+      const body = i + 4;
+      const decodeSegment =
+        m === 0xdb || m === 0xc4 || m === 0xcc || m === 0xdd || m === 0xda ||
+        (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) ||
+        (m === 0xe0 && len >= 7 && ascii(body, 5) === "JFIF\0") ||
+        (m === 0xee && len >= 7 && ascii(body, 5) === "Adobe");
+      if (!decodeSegment) return true;
       i += 2 + len;
+      if (m === 0xda) {
+        // entropy-coded data: up to the next marker that is not a stuffed 0x00 or a restart marker
+        while (i + 1 < b.length && !(b[i] === 0xff && b[i + 1] !== 0x00 && !(b[i + 1]! >= 0xd0 && b[i + 1]! <= 0xd7))) i++;
+        if (i + 1 >= b.length) return false; // truncated after the scan: no metadata seen
+      }
     }
     return false;
   }
-  if (b.length >= 21 && ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") {
-    if (ascii(12, 4) === "VP8X" && (b[20]! & 0x0c) !== 0) return true; // EXIF (0x08) or XMP (0x04) flag
-    for (let i = 12; i + 8 <= b.length; ) {
+  if (b.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") {
+    for (let i = 12; i < b.length; ) {
+      if (i + 8 > b.length) return true;
       const id = ascii(i, 4);
-      if (id === "EXIF" || id === "XMP ") return true;
-      const size = b[i + 4]! | (b[i + 5]! << 8) | (b[i + 6]! << 16) | (b[i + 7]! << 24);
-      if (size < 0) return true;
+      const size = (b[i + 4]! | (b[i + 5]! << 8) | (b[i + 6]! << 16) | (b[i + 7]! << 24)) >>> 0;
+      if (i + 8 + size > b.length) return true;
+      if (id === "VP8X") {
+        if (size < 10 || (b[i + 8]! & ~0x10) !== 0) return true; // only the alpha flag (0x10)
+      } else if (id !== "VP8 " && id !== "VP8L" && id !== "ALPH") return true;
       i += 8 + size + (size & 1);
     }
+    return false;
   }
   return false;
 }

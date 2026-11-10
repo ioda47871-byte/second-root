@@ -42,6 +42,23 @@ describe("rule-core parity with its sources", () => {
     expect(core.PAGE_FONT_GENERIC_FAMILIES).toEqual(JSON.parse(generic![1]!));
   });
 
+  // review round 1 L4: the body of cssProblems' non-canonical branch (the first pass on the text as written) is the
+  // same source text. The server intentionally DIVERGES only by ADDING checks outside rule-core (css-scan.ts, the
+  // allowlists and the no-text rule in html-safety.ts, in place of Chromium's second pass): the shared first pass
+  // itself must stay identical, so it is compared as text here and as behaviour below.
+  it("cssProblems' first pass is copied verbatim (source text, comments aside)", () => {
+    const body = (src: string) => {
+      const lines = src.split("\n");
+      const start = lines.findIndex((l) => l.trim() === "const decoded = decodeEscapes(css);");
+      expect(start).toBeGreaterThan(0);
+      const out: string[] = [];
+      for (let j = start; lines[j]!.trim() !== "return out;"; j++) if (!lines[j]!.trim().startsWith("//")) out.push(lines[j]!.trim());
+      return out;
+    };
+    expect(body(CORE)).toEqual(body(SAFETY));
+    expect(body(CORE)).toHaveLength(6);
+  });
+
   // the non-canonical branch of cssProblems, and the helpers, behave identically on a CSS corpus
   const POC = "design-library/research/quality-pipeline/poc";
   const research = readdirSync(POC).flatMap((shop) => {

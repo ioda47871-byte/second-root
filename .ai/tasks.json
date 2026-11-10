@@ -9230,7 +9230,7 @@
         "DEV-196j: Storage の object の削除 (復元できない)",
         "Production への適用と共有の開始 (それぞれ別の承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-196.md。仕様 docs/design/DEV-196-demo-admin-spec.md。PR #241 merged (8fe0f80)。独立レビュー 4 回、最終 C0/H0/M0/L1 (L1 は台帳の範囲: この PR は DEV-195 / DEV-197 の項目と .ai/reviews/DEV-197.md も保守した)。CI 11/11。オーナー決定 2026-11-10 (仕様 §15) を反映。この PR はどの段の実装も承認しない (DEV-196a・DEV-196b だけ承認済み、DEV-196c 以降は未承認)"
+      "note": "記録は .ai/reviews/DEV-196.md。仕様 docs/design/DEV-196-demo-admin-spec.md。PR #241 merged (8fe0f80)。独立レビュー 4 回、最終 C0/H0/M0/L1 (L1 は台帳の範囲: この PR は DEV-197 を done にし、DEV-197 の note を更新し、.ai/reviews/DEV-197.md に Staging の節を足した)。CI 11/11。オーナー決定 2026-11-10 (仕様 §15) を反映。この PR はどの段の実装も承認しない (DEV-196a・DEV-196b だけ承認済み、DEV-196c 以降は未承認)"
     },
     {
       "id": "DEV-196b",

@@ -17,6 +17,8 @@ import type { ViewScope } from "./manifest";
 
 export const VIEW_TOKEN_TTL_SECONDS: Readonly<Record<ViewScope, number>> = { a: 15 * 60, p: 30 * 60 };
 export const VIEW_TOKEN_MIN_KEY_BYTES = 32;
+/** Clock skew tolerated between the signer and the verifier on the lifetime cap only (never on expiry). */
+export const VIEW_TOKEN_SIGNER_SKEW_SECONDS = 5;
 export const VIEW_TOKEN_MAX_LENGTH = 400;
 /** Domain separation: an HMAC made with the same key for another purpose cannot be replayed as a view token. */
 const DOMAIN = "second-root/demo-view-token/v1.";
@@ -72,7 +74,8 @@ export function verifyViewToken(o: { token: string; pathScope: ViewScope; now: D
   if (payload.scope !== o.pathScope) return { ok: false, reason: "TOKEN_SCOPE_MISMATCH" };
   const now = Math.floor(o.now.getTime() / 1000);
   if (payload.exp <= now) return { ok: false, reason: "TOKEN_EXPIRED" };
-  if (payload.exp - now > VIEW_TOKEN_TTL_SECONDS[payload.scope]) return { ok: false, reason: "TOKEN_LIFETIME_TOO_LONG" };
+  // a signer a few seconds ahead must not break a fresh token (review round 1 L2); expiry itself stays strict
+  if (payload.exp - now > VIEW_TOKEN_TTL_SECONDS[payload.scope] + VIEW_TOKEN_SIGNER_SKEW_SECONDS) return { ok: false, reason: "TOKEN_LIFETIME_TOO_LONG" };
   return { ok: true, payload };
 }
 

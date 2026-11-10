@@ -130,10 +130,12 @@ describe("XSS / exfiltration corpus (T1・T2・T3: every one is refused)", () =>
 describe("CSS helpers", () => {
   it("splits declarations outside strings and comments", () => {
     expect(cssDeclarations('a:hover { content: "a;b}"; /* font: x; */ color: red } @media (max-width: 600px) { .b { --x: "Noto Sans JP", serif } }')).toEqual([
-      { prop: "content", value: '"a;b}"' },
-      { prop: "color", value: "red" },
-      { prop: "--x", value: '"Noto Sans JP", serif' },
+      { prop: "content", value: '"a;b}"', raw: '"a;b}"' },
+      { prop: "color", value: "red", raw: "red" },
+      { prop: "--x", value: '"Noto Sans JP", serif', raw: '"Noto Sans JP", serif' },
     ]);
+    // an escaped comment marker is an identifier character, never a comment
+    expect(cssDeclarations("a{x:\\2f\\2a} b{background:red} c{y:\\2a\\2f}").map((d) => d.prop)).toEqual(["x", "background", "y"]);
   });
   it("reads font lists", () => {
     expect(isAllowedFontList('"Noto Serif JP", "IPAMincho", serif')).toBe(true);

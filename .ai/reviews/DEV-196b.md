@@ -66,3 +66,23 @@
 3. **copy record の運び方**: §5.2 の key と bucket の型に `copy.json` が無い。`checkArtifactCopy` は copy record を引数で受ける (配信しない)。包みの中で運ぶか、DB に置くかを DEV-196c / 196e で決める。
 4. **再直列化 (§14 Q8)**: 今は検めた HTML をそのまま配る前提。parse5 で再直列化して配るかは、DEV-196d で Chromium との差分テスト (§13、browser の job) と一緒に決める。
 5. **送信承認の照合 (§9.2)** の純粋な部分 (`demo_version_unavailable` などの符号の導出) は DEV-196f に残した (DB の関数と一緒に)。
+
+## レビュー 1 回目 (独立のセキュリティレビュー、0bdd8ef: C0 H0 M3 L4) への対応
+
+各 probe に回帰テストを足した (`tests/unit/sales/demo-version/review-round-1.test.ts`、45 件)。修正前のライブラリ (HEAD の `html-safety.ts`・`manifest.ts`・`csp.ts`・`view-token.ts`) に戻して流し、probe の 36 件がすべて落ちることを確かめてから修正に戻した (通った 9 件は「許すものは許す」の対照と、修正前から成り立つ性質)。
+
+- **M1 (url() の見落とし)**: `css-scan.ts` を新設。CSS Syntax §4 に沿った token の走査 (コメントは文字列の外の生の `/*` だけ、escape は token の単位で decode、文字列中の backslash-newline は行の継続、引用なしの url token、bad string / bad url / 文字列の外の backslash-newline は `CSS_SYNTAX_SUSPICIOUS` で拒否)。stylesheet と、CSS として解析される属性の両方に掛ける。probe (a) 文字列の中の `/*`、(b) `\2f\2a`、(c) `url('https://e\⏎x')` はすべて `CSS_URL_NOT_ALLOWED`。読み込む at-rule (`@namespace`・`@counter-style` など) と url() 以外の画像関数 (`cross-fade` など) もここで拒否。header の「規則は緩めない」は誤りだったので、Chromium の 2 回目 (再直列化した CSS) の代わりにこの走査を置く、と書き直した。
+- **M2 (SVG 属性の escape)**: SVG の presentation 属性 (`fill`・`filter`・`mask`・`clip-path`・`marker-*`・`font-family` など、`CSS_ATTRIBUTES`) は `\` を含めば `HTML_ATTRIBUTE_ESCAPE`、値に token の走査を掛け、`font-family` は許可一覧。全属性で escape を decode してから `url(` を探す。
+- **M3 (CSS の文字・属性の文字)**: 空でない文字列は `font-family`・`grid-template(-areas)`・`grid`・font feature 系・custom property だけ (url() の引数は URL として別に検査)。`content`・`quotes`・list marker・`text-overflow` などは文字列・`attr()`・`var()` を持てない (`CSS_TEXT_IN_CSS`)。研究の頁は `content: ""` だけなので通る。見える属性 (`alt`・`title`・`aria-label`・`aria-description`・`placeholder` など) の値は `texts` に入り、語の規則と `checkArtifactCopy` (`UNVERIFIED_COPY`) が見る。
+- **L1 (blocklist)**: 要素と属性を**許可一覧**にした (`ALLOWED_ELEMENTS`・global / 要素ごと / SVG の属性)。blocklist (`FORBIDDEN_ELEMENTS`・`URL_ATTRIBUTES`) は 2 枚目として残す。`attributionsrc` ほかを URL 属性に足した (`ARTIFACT_EXTRA_URL_ATTRIBUTES`)。`feImage`・form の部品・`video` などは許可一覧に無い。`Permissions-Policy` に `attribution-reporting=()`・`browsing-topics=()`・`interest-cohort=()`。研究の頁 (bicycle・sento) は通り続ける。
+- **L2 (時計のずれ)**: 寿命の上限だけに 5 秒の猶予 (`VIEW_TOKEN_SIGNER_SKEW_SECONDS`)。期限切れの判定は厳密なまま。
+- **L3 (画像の metadata)**: `hasImageMetadata` を許可一覧にした。JPEG は SOI・APP0 "JFIF"・APP14 "Adobe"・DQT・DHT・DAC・DRI・SOF*・SOS (+ entropy data・RSTn)・EOI だけ。APP1 / APP2 (ICC) / APP13 (IPTC) / ほかの APPn / COM (scan の間も) は metadata。WebP は VP8・VP8L・ALPH と alpha の旗だけの VP8X。EXIF・XMP・ICCP・animation・未知の chunk・ファイルより長い chunk は metadata (fail closed)。
+- **L4 (parity)**: `cssProblems` の 1 回目 (非 canonical の枝) の本文を source の文字列で比較するテストを足した。server の差は rule-core の**外で足すだけ** (css-scan・許可一覧・文字の規則) で、共有の 1 回目は文字列と挙動の両方で同一、とテストのコメントに書いた。
+
+### 台帳
+
+- DEV-196 の note の L1 の記述を直した: #241 が台帳で行ったのは DEV-197 を done にし、DEV-197 の note を更新し、`.ai/reviews/DEV-197.md` に Staging の節を足したことだけ (DEV-195 は #241 の前から develop で done)。
+
+### 結果
+
+`tests/unit/sales/demo-version` 11 ファイル・330 件、`tests/unit/sales` + `ai-tasks` 40 ファイル・1036 件 すべて通過。`tsc --noEmit`・eslint・`check:secrets` 問題なし。phase2f / comp-impl の isolation と guardrails は通過 (phase2f/isolation の「recorded route B answer」1 件は従来どおり Chromium が無いため)。

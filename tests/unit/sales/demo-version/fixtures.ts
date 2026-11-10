@@ -16,9 +16,29 @@ export function webp(width: number, height: number, flags = 0): Uint8Array {
   return new Uint8Array(b);
 }
 
-/** A minimal JPEG: SOI, optional APP1 Exif, SOF0 with the size, EOI. */
-export function jpeg(width: number, height: number, o: { exif?: boolean } = {}): Uint8Array {
+/** One JPEG segment: marker + length + ASCII/bytes body. */
+export const segment = (marker: number, body: string | number[]) => {
+  const bytes = typeof body === "string" ? [...Buffer.from(body, "latin1")] : body;
+  const len = bytes.length + 2;
+  return [0xff, marker, len >> 8, len & 0xff, ...bytes];
+};
+
+/** A WebP from chunks: [fourcc, body bytes]. */
+export function webpChunks(chunks: Array<[string, number[]]>): Uint8Array {
+  const body: number[] = [...Buffer.from("WEBP", "latin1")];
+  for (const [id, data] of chunks) {
+    const size = data.length;
+    body.push(...Buffer.from(id, "latin1"), size & 0xff, (size >> 8) & 0xff, (size >> 16) & 0xff, (size >> 24) & 0xff, ...data);
+    if (size & 1) body.push(0);
+  }
+  const n = body.length;
+  return new Uint8Array([...Buffer.from("RIFF", "latin1"), n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff, ...body]);
+}
+
+/** A minimal JPEG: SOI, optional APP1 Exif, extra segments, SOF0 with the size, a tiny scan, EOI. */
+export function jpeg(width: number, height: number, o: { exif?: boolean; segments?: number[][]; scan?: boolean } = {}): Uint8Array {
   const parts: number[] = [0xff, 0xd8];
+  for (const s of o.segments ?? []) parts.push(...s);
   if (o.exif) {
     // APP1 "Exif\0\0" + a little-endian TIFF header with no IFD entries
     const tiff = [0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
@@ -27,6 +47,8 @@ export function jpeg(width: number, height: number, o: { exif?: boolean } = {}):
     parts.push(0xff, 0xe1, len >> 8, len & 0xff, ...body);
   }
   parts.push(0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1);
+  // SOS header + entropy data with a stuffed 0xFF00 and a restart marker
+  if (o.scan) parts.push(...segment(0xda, [1, 1, 0, 0, 0x3f, 0]), 0x12, 0xff, 0x00, 0x34, 0xff, 0xd0, 0x56);
   parts.push(0xff, 0xd9);
   return new Uint8Array(parts);
 }

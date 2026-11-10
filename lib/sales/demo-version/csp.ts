@@ -94,6 +94,8 @@ export const ARTIFACT_PERMISSIONS_POLICY = [
   "accelerometer=()", "autoplay=()", "camera=()", "display-capture=()", "encrypted-media=()", "fullscreen=()", "geolocation=()",
   "gyroscope=()", "magnetometer=()", "microphone=()", "midi=()", "payment=()", "picture-in-picture=()", "publickey-credentials-get=()",
   "screen-wake-lock=()", "usb=()", "xr-spatial-tracking=()", "clipboard-read=()", "clipboard-write=()",
+  // review round 1 L1: no ad attribution or topics from an artifact
+  "attribution-reporting=()", "browsing-topics=()", "interest-cohort=()",
 ].join(", ");
 
 /**
