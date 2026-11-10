@@ -81,7 +81,7 @@ Second Root server (Vercel) ── service role ──► private bucket `sales-
      │  finalize: 再ハッシュ・HTML/CSS の規則・書体・画像の頭・権利 → status = draft (未承認) / rejected
      │
      ├─ /admin/sales/demos/[prospectId]  (管理者セッション)   版の一覧・系譜・PC1440 / SP390・品質承認・取り消し
-     │      └─ <iframe sandbox> → /demo-frame/a/<管理者用 view token>/index.html   (15 分、版 1 つ)
+     │      └─ <iframe sandbox> → /demo-frame/a/<管理者用 view token>/index.html   (15 分、版 1 つ。URL の index.html = manifest の page/index.html、§5.2)
      │
      ├─ /admin/sales (今日)  DEV-195 の送信承認: 「品質承認済みの版」を snapshot に固定
      │
@@ -126,8 +126,8 @@ RLS・権限は既存の型 (SECURITY §2) に従う: RLS 有効、anon の権�
 | `worker_checks` | jsonb null、strict・≤ 2KB | worker の申告 (助言。`checkPrototype`・描画の検査・構造記述子) |
 | `structure_descriptor` | jsonb null、strict・≤ 2KB | 計測した構造記述子 (`lib/design-agent/structure`。hero・flow・節の型など。§7.5) |
 | `rights_summary` | jsonb null、strict・≤ 1KB | §8.4 |
-| `share_eligible` | boolean not null default false | 共有 URL に出してよい版か (server が §8.3 から導く。check: true なら全画像が共有可) |
-| `renders` | jsonb null | `pc_1440` / `sp_390` の描画画像の manifest 上の名前と sha256 (§7.2) |
+| `share_eligible` | boolean not null default false | 共有 URL に出してよい版か (server が §8.3 から導く表示用の cache。check: DEV-196a の承認までは写真 0 枚のときだけ true。送信の照合はこの値を使わず導き直す、§9.2) |
+| `renders` | jsonb null | `desktop_1440` / `mobile_390` (と店の spec が描くなら `tablet_768`) の描画画像 (WebP) の manifest 上の名前と sha256 (§5.2・§7.2) |
 | `expires_at` | timestamptz not null | 管理画面で見られる期限 (未送信のまま放置された版の掃除。既定は作成 + 60 日、§14 Q4) |
 | `revoked_at`, `revoked_by`, `revoke_code` | null 可、`revoke_code ~ '^[A-Z][A-Z0-9_]{2,47}$'` | 取り消し (§6.6)。取り消した版は管理者プレビューでも共有でも出ない |
 | `created_at`, `validated_at` | timestamptz | |
@@ -230,7 +230,7 @@ draft / approved / superseded ──期限 (expires_at、未送信のときだ�
 
 ### 5.1 bucket
 
-- **非公開の bucket を 1 つ**: `sales-demo-versions` (`public = false`、`file_size_limit` 4MiB、`allowed_mime_types` = `text/html`, `text/css`, `image/webp`, `image/jpeg`, `image/png`)。
+- **非公開の bucket を 1 つ**: `sales-demo-versions` (`public = false`、`file_size_limit` 4MiB、`allowed_mime_types` = `text/html`, `text/css`, `image/webp`, `image/jpeg`)。
 - `storage.objects` に anon・authenticated の policy を**作らない**。読み書きは service role (server) だけ。管理者もバイト列は server の route を通してだけ見る。
 - 公開 bucket・公開 URL・CDN は作らない。
 
@@ -240,11 +240,23 @@ draft / approved / superseded ──期限 (expires_at、未送信のときだ�
 v1/<demo_id>/<version_id>/page/index.html
 v1/<demo_id>/<version_id>/page/style.css
 v1/<demo_id>/<version_id>/page/photos/<slot>-<range>.<webp|jpg>      range = desktop | tablet | mobile
-v1/<demo_id>/<version_id>/renders/pc_1440.<jpg|webp>
-v1/<demo_id>/<version_id>/renders/sp_390.<jpg|webp>
+v1/<demo_id>/<version_id>/renders/desktop_1440.webp
+v1/<demo_id>/<version_id>/renders/tablet_768.webp          (店の spec が tablet を描くときだけ。輪は描く)
+v1/<demo_id>/<version_id>/renders/mobile_390.webp
 ```
 
 - key は manifest と server が決める。URL の path は key にならない (route は manifest の名前と完全一致したものだけを、manifest の sha256 から引く)。
+- **URL の path と manifest の名前の対応 (これが唯一の正本。§3・§6.4・§6.7 はこれに従う)**:
+
+  | URL (`/demo-frame/<scope>/<token>/` の後) | manifest の名前 | scope |
+  |---|---|---|
+  | `index.html` | `page/index.html` | `a`・`p` |
+  | `style.css` | `page/style.css` | `a`・`p` |
+  | `photos/<name>` | `page/photos/<name>` | `a`・`p` |
+  | `renders/<name>` | `renders/<name>` | `a` だけ |
+
+  つまり頁のファイルは URL から `page/` を**外した**名前で出す (server が URL の X を manifest の `page/X` に写す)。HTML の相対 URL (`style.css`・`photos/…`) は書き換えずにそのまま解決する。`page/` の下に許すのは `index.html`・`style.css`・`photos/*` だけなので、`renders/` と名前がぶつからない。
+- **描画画像の形式**: photo-swap が出す全頁の PNG (`desktop_1440.png`・`mobile_390.png`、輪は `tablet_768` も) を、worker の包みの段で**WebP (固定の品質・metadata なし) に変換**して `renders/<viewport>.webp` にする。元の PNG の sha256 は `worker_checks` に残す (追跡用)。PNG は受けない (全頁の PNG は 1 枚で数 MB〜十数 MB になり、1 ファイル 4MiB の上限と Vercel の要求の上限を超えるため)。bucket の `allowed_mime_types` にも PNG を入れない。
 - **入れないもの**: `rights.private.json`、`.intake/`、`swap-manifest.json`、pipeline の記録、所有者名、同意の記録の参照、private path、prompt の本文、モデル名。出所は DB の `sales_demo_images.provenance` にだけ書く (§8.2)。Storage の object metadata にも書かない。
 - SVG ファイルは受けない (単独で開かれた `image/svg+xml` はスクリプトを動かせる)。HTML の中の inline SVG は B方式の規則の範囲で可。
 - 画像は配信用に正規化してから包む: 各 range の枠の最大の辺の 2 倍まで縮め、WebP / JPEG、EXIF・GPS なし。1 枚 ≤ 2MB・各辺 ≤ 4096px。HTML ≤ 384KiB・CSS ≤ 256KiB (B方式の上限と同じ)・ファイル ≤ 40・合計 ≤ 15MiB。正規化しないと 1 枚が数 MB になり、Vercel の応答の上限と転送量を超える (§11.3)。
@@ -262,7 +274,7 @@ v1/<demo_id>/<version_id>/renders/sp_390.<jpg|webp>
 | 成果物の route | `/demo-frame/a/<view token>/<path>` | `/demo-frame/p/<view token>/<path>` |
 | view token の発行 | 管理者の頁を描くたびに server が発行 (15 分) | 外枠の頁を描くたびに server が発行 (30 分) |
 | token が指せるもの | 1 つの版 (`draft` / `approved` / `superseded`)。取り消し・期限切れは不可 | **送信済みの承認が固定した 1 つの版だけ** (§9.4)。`share_eligible` かつ取り消しなし |
-| 見えるもの | 版の全ファイル (AI 画像を含む)、PC1440 / SP390 の描画、検査の符号、権利の要約、系譜、品質承認の操作 | 版の `page/` だけ (`renders/` は出さない)。注記と footer は**信頼できる外枠**が出す (MVP_SPEC §7「Second Root による提案用デモであり、店舗公式サイトではない」) |
+| 見えるもの | 版の全ファイル (AI 画像を含む)、PC1440 / SP390 (と tablet 768) の描画、検査の符号、権利の要約、系譜、品質承認の操作 | 版の頁のファイル (`index.html`・`style.css`・`photos/*`) だけ (`renders/` は出さない)。注記と footer は**信頼できる外枠**が出す (MVP_SPEC §7「Second Root による提案用デモであり、店舗公式サイトではない」) |
 | 見えないもの | 権利の参照・出所の生の値 (画面には enum と要約だけ) | 営業メモ・メール・内部評価・成約・内部 ID・secret (MVP_SPEC §7)、版の番号・系譜・検査結果・権利の記録、ほかの版 |
 | 版がないとき | 「デモの版はまだありません」(既存の React プレビューはそのまま) | 既存の React のデモ (template / DesignProfile) のまま。**未承認の版へは決して落ちない** |
 
@@ -291,8 +303,8 @@ v1/<demo_id>/<version_id>/renders/sp_390.<jpg|webp>
 2. token の形・HMAC (定数時間)・`exp`・scope が path と一致。
 3. DB (service role): 版が存在し、`status` が scope に許された状態で、`revoked_at` が null、期限内。
 4. scope `p`: さらに demo が `isDemoPublic` を満たし、`sales_outreach_approvals` の `sent` の行がこの版を固定していて (§9.4)、`share_eligible` が true で、版の全画像の `rights_status` が共有可 (§8.3、配信のたびに再評価)。
-5. `path` が manifest の名前と完全一致 (scope `p` は `page/` 以下だけ)。`..`・query・符号化の抜け道は manifest の照合で落ちる。
-6. `Sec-Fetch-Dest` があれば役割と照合 (HTML は `iframe` / `document`、CSS は `style`、画像は `image`)。
+5. URL の path を §5.2 の対応表で manifest の名前に写し、その名前が manifest に完全一致で在ること (scope `p` は `index.html`・`style.css`・`photos/*` だけ、`renders/*` は 404)。`..`・query・符号化の抜け道は対応表と manifest の照合で落ちる。
+6. `Sec-Fetch-Dest` を役割と照合する。CSS は `style`、画像は `image`。HTML は **scope `p` では `iframe` だけ** (無い・`document` などは 404。外枠の注記 (MVP_SPEC §7) なしに頁だけを直接開けないようにするため。`Sec-Fetch-Dest` を送らない古いブラウザでは枠の中が空になるが、fail closed を選ぶ)。scope `a` は `iframe` (無ければ許す。管理者だけの道で、CSP の `sandbox` が後ろ盾)。
 7. Storage から読み、sha256 を manifest と照合してから返す。
 
 ### 6.5 署名付き URL を使わない理由
@@ -319,7 +331,7 @@ server の route なら、取り消しは次の要求から効き、ヘッダも
 
 | ヘッダ | HTML | CSS | 画像 |
 |---|---|---|---|
-| `Content-Type` | `text/html; charset=utf-8` | `text/css; charset=utf-8` | manifest の値 (`image/webp` / `image/jpeg`。描画は管理者用だけ `image/png` 可)。magic bytes で確かめた後 |
+| `Content-Type` | `text/html; charset=utf-8` | `text/css; charset=utf-8` | manifest の値 (`image/webp` / `image/jpeg`。描画画像は WebP で scope `a` だけ)。magic bytes で確かめた後 |
 | `X-Content-Type-Options` | `nosniff` | `nosniff` | `nosniff` |
 | `Content-Security-Policy` | 下記 | `default-src 'none'` | `default-src 'none'` |
 | `Cache-Control` | `private, no-store` | `private, no-store` | `private, no-store` |
@@ -330,7 +342,7 @@ server の route なら、取り消しは次の要求から効き、ヘッダも
 
 - `X-Frame-Options` は付けない (iframe に入れるため)。代わりに CSP の `frame-ancestors 'self'`。
 - `Cross-Origin-Resource-Policy: same-origin` は付けない (opaque origin の文書からの画像の要求が止まる)。
-- HTML の CSP (要求ごとに組む。`'self'` の意味は opaque origin の中でブラウザごとに揺れたため、host と path で書く):
+- HTML の CSP (要求ごとに組む。`'self'` の意味は opaque origin の中でブラウザごとに揺れたため、host と path で書く)。path は §5.2 の対応表の **URL 側** (`page/` を外した名前) で、server が manifest の `page/style.css`・`page/photos/*` に写す:
 
 ```
 default-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none';
@@ -366,7 +378,7 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 
 ### 7.2 PC 1440 と SP 390 の確かめ方
 
-- worker が描いた全頁の画像 (`renders/pc_1440`、`renders/sp_390`) を版に含める。端末に IPA などの書体が無い (Windows・iOS) と、ブラウザの生の頁は書体が変わるため、**オーナーが判断する基準は描画画像**にする。
+- worker が描いた全頁の画像 (`renders/desktop_1440.webp`・`renders/mobile_390.webp`、店の spec が描くなら `renders/tablet_768.webp`。§5.2) を版に含める。desktop と mobile は必須 (無い版は品質承認できない)、tablet は任意 (あれば並べる)。端末に IPA などの書体が無い (Windows・iOS) と、ブラウザの生の頁は書体が変わるため、**オーナーが判断する基準は描画画像**にする。
 - 管理画面は 1 画面に 3 つを並べる: (1) PC1440 の描画画像、(2) SP390 の描画画像、(3) 生の頁の iframe (幅 1440 を縮小した枠と、幅 390 の枠を切り替え)。スマホで開いたときは SP を先に出す。
 - オーナーの確認項目 (品質承認の `checklist`、enum の ok / ng):
   1. 店名・業種が正しい (Identity Lock。別の店名・別業種の混入なし)
@@ -428,7 +440,7 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 | `ai_demo_internal` | `ai_generated_demo`。`ai_provenance` があり `demo_only: true` | ○ (「AI 生成のデモ画像を含む (デモ専用・共有不可)」の固定の帯) | **×** |
 | `owner_provided_internal` / `shop_provided_internal` | 人の写真。編集・切り抜き・商用は可だが `public_web` が false か店舗の書面の確認が無い | ○ | × |
 | `licensed_terms_pinned_internal` | 利用規約の sha256 を固定した素材。`public_web` が false | ○ | × |
-| `share_cleared` | 人の写真か規約固定の素材で、`public_web=true`・店舗の書面の確認あり (`client_confirmed_at`)・期限内・実在の人物を写さない | ○ | ○ |
+| `share_cleared` | 人の写真か規約固定の素材で、`public_web=true`・店舗の書面の確認あり (`client_confirmed_at`)・期限内・実在の人物を写さない | ○ | **DEV-196a で MVP_SPEC §7 を変えた後だけ** ○ (それまでは ×、§8.3) |
 | `ai_share_approved` | (予約) AI 画像を共有する仕様変更と、画像ごとのオーナーの決定の後だけ。**今は DB の check で書けない** | ○ | 今は × |
 | `expired` | `rights_expiry` を過ぎた (配信のたびに日付で判定) | × | × |
 | `revoked` | 苦情・誤り・取り下げ | × | × |
@@ -448,6 +460,7 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 - **今は使わない (共有 URL には出さない)**。根拠: MVP_SPEC §7「AI 生成・架空の店舗写真は使わない」(DEV-070)、SECURITY §6、`checkPhotoRights` の `AI_DEMO_NOT_FOR_PUBLIC_SITE`。
 - さらに、実店舗の商品・店内・職人を AI で描くと、**店舗の事実を作る**ことになる (Identity Lock・事実パックの規則に反する)。
 - 管理者プレビューで AI 画像入りの版を見ることは、架空の店 (つぐ手・輪) の研究としては今も可。実店舗の prospect に AI 画像入りの版を作ること自体を許すかどうかは、オーナーの判断 (§14 Q1)。決まるまでは、実店舗の版の画像は `share_cleared` か「画像なし」(B方式の文字・色・レイアウト・CSS の形・inline SVG だけ) に限る案を推す。
+- **AI 画像だけでなく、どの写真も今は共有 URL に出せない**。MVP_SPEC §7 は「公開 demo には今も写真を出さない」とし、コードも `PUBLIC_DEMO_ASSETS_ENABLED = false` である。したがって `share_cleared` の写真を共有 URL に出すことも、**DEV-196a での MVP_SPEC §7 の変更 (Protected Scope、オーナーの承認)** が先に要る。それまでは、共有できる版は**写真 0 枚の版だけ** (`share_eligible` は「写真が 0 枚」のときだけ true、DB の check でも強制) とし、`share_cleared` は承認の後に有効にする予約の値として扱う。
 - 仕様を変える場合 (Protected Scope) の最小の条件: MVP_SPEC §7 の改訂、店の事実を描かない画像 (質感・抽象・道具の一般形など) に限る規則、実店舗向けの新しいラベルの文 (今の `AI_DEMO_PUBLIC_LABEL` は「架空の店」と書いてある)、画像ごとの `owner_ai_share_decision_at/by`、外枠が出すラベル (成果物の HTML には任せない)。
 
 ### 8.4 `rights_summary` (版ごと、server が導く)
@@ -479,12 +492,17 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 | `demo_version_id` | 送るデモの版 (null = 版の機能を使わない legacy のデモ) |
 | `demo_bundle_sha256` | その版の `bundle_sha256` |
 | `demo_quality_review_id` | その版の `active` な `approved` の品質承認 |
-| `demo_share_eligible` | 承認した時点の `share_eligible` |
+| `demo_share_eligible` | 承認した時点の `share_eligible` (記録用。照合には使わない、§9.2) |
+| `demo_unavailable_after_open` | `send_opened` からの送信済みのときだけ、その時デモが出せなかった理由 (`rights_expired` / `version_expired` / `revoked_urgent` など、案。§9.5) |
 
-`sales_send_guards` (承認・送信画面を開く・送信済みのたび) に足す照合:
+`sales_send_guards` (承認・送信画面を開く・送信済みのたび) に足す照合。**保存された旗 (`share_eligible`・`rights_summary`・品質承認の `state = active`・`status`) を信用せず、照合のその時点で元の行から導き直す** (保存値は画面の表示用の cache にすぎない):
 
-- `sales_demos.approved_version_id` があるなら、それが `approved`・取り消しなし・期限内・品質承認が `active`。
-- 本文にデモ URL を含む送信は、`share_eligible` が true の版のときだけ (false なら `demo_not_shareable` で断る。今の DEV-195 の本文は常にデモ URL を含むので、実際には「共有可の版が要る」)。
+- 版: `sales_demos.approved_version_id` があるなら、その版の `status = approved`・`revoked_at` が null・`expires_at > now()`。
+- 品質承認: その版の品質承認の行が `decision = approved`・`withdrawn` でも `invalidated` でもない・snapshot (`bundle_sha256`・`facts_sha256`) が今の版と今の事実に一致。
+- 事実: 今の `sales_demos.content` から server と同じ式で計算した hash (`facts_sha256` = sha256 of `content` の正規化した text。worker の申告ではなく server が `begin` の時点で DB から計算して保存する) が版の `facts_sha256` と一致。
+- 権利: 版が使う全画像 (`sales_demo_version_files` → `sales_demo_images`) について、`revoked_at` が null・`rights_expiry` が null か今日 (JST の暦日) 以降・`rights_status` が共有可 (§8.1)。**期限は日付が過ぎるだけで変わるので、保存した `share_eligible` は見ない**。1 枚でも外れれば `demo_not_shareable`。
+- 本文にデモ URL を含む送信は、上の権利の照合を通る版のときだけ (今の DEV-195 の本文は常にデモ URL を含むので、実際には「共有可の版が要る」)。
+- 照合の符号: `demo_version_unavailable` (版・期限・取り消し)・`demo_quality_not_approved` (品質承認)・`demo_facts_changed` (事実)・`demo_not_shareable` (権利)。どれも承認と「送信画面を開く」では拒否。「送信済み」での扱いは §9.5。
 - 版の機能が有効で、`approved_version_id` が null の demo は: (案 A) 既存の React のデモで送れる (今と同じ) / (案 B) 版の承認が要る。最初は案 A を推す (§14 Q3)。
 
 ### 9.3 `sales_demo_version(d)` の拡張 (既存の照合に版の変化を拾わせる)
@@ -492,6 +510,8 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 - 今の `demo_version` は `public_token`・`template`・`content`・`design_status`・`design_profile` の sha256 で、**版の差し替えに気づかない**。
 - 提案: `approved_version_id` が null でないときだけ、配列の末尾に `approved_version_id` とその `bundle_sha256` を足す。null のときは今と**同じ hash** になるので、既存の承認 (版を使わない demo) は無効にならない。
 - これで `sales_approval_is_current` が、承認の後に版が変わった (新しい版を承認した・取り消した) ことを今の仕組みのまま拒否する。
+- **取り消しと hash**: 版の取り消し (`revoked_at` を立てる) と品質承認の取り下げは、同じ transaction で `sales_demos.approved_version_id` を **null に戻す**。hash は legacy の形 (5 要素) に戻り、取り消した版を含む hash を持つ承認とは一致しなくなる。新しい版の承認は `approved_version_id` を新しい版に置き換えるので、やはり hash が変わる。権利の期限切れ・画像の取り消しは `approved_version_id` を変えない (時間で起きることは書き込みを伴わないため) ので、§9.2 の導き直しの照合で拒否する。
+- hash を変える操作 (新しい版の承認・版の取り消し・品質承認の取り下げ) は、§9.5 のとおり `send_opened` の承認があるあいだ拒否する。
 
 ### 9.4 何が何を無効にするか
 
@@ -508,6 +528,18 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 
 - **送った後は頁を変えない** (ARCHITECTURE §10.1 の `ALREADY_SENT` と同じ考え)。共有 URL は `sales_outreach_approvals` の `sent` の行の `demo_version_id` が指す版**だけ**を出し、「最新の版」は決して出さない。
 - 送信済みの版は掃除の対象にしない (期限は共有の期限に従う)。
+- 上の表の「送信承認」の列のうち、`send_opened` の行は §9.5 が優先する (`send_opened` のあいだは hash を変える操作そのものを拒否する)。
+
+### 9.5 `send_opened` のあいだの扱い (DEV-195 の不変条件を壊さない)
+
+`send_opened` は「オーナーが自分のアプリで送ったかもしれない」状態である (DEV-195 PR #239 M2)。ここでデモの版が変わると `sales_mark_sent` が `demo_version` の不一致で拒否され、**実際の送信の事実が記録できず**、相手のリンクも 404 になる。原則 (DEV-195・DEV-197): **実際の送信の事実を失わない。画面の表示と記録を食い違わせない。**
+
+1. **hash を変える管理者の操作は `approval_open` で断る**: 新しい版の品質承認 (`approved_version_id` の差し替え)・版の取り消し・品質承認の取り下げ・その版を使う画像の権利の取り消し。その prospect / demo の承認に `send_opened` が 1 件でもあれば、関数は何も書かずに `approval_open` を返す。画面は「送信画面を開いた送信があります。先に『手動で送信済み』か『取り下げ』を選んでください」と出す。
+2. **時間で起きる変化 (権利の期限切れ・版の `expires_at`)** は断れない。`send_opened` からの「送信済み」に限り、§9.2 の版・権利・品質・事実の照合は**拒否せず記録する**: 承認の行に `demo_unavailable_after_open` (`rights_expired` / `version_expired` など、案) を残して `sent` にする (DNC の `blocked_after_open` と同じ型)。共有 URL は配信のたびの再評価で 404 になり、管理画面は「送信済み (デモは非公開: 権利の期限切れ)」と出す。記録と表示は一致する。承認と「送信画面を開く」は従来どおり拒否する (何も緩めない)。
+3. **急ぎの取り消し (権利の苦情・安全)** は別の関数 `sales_urgent_revoke_demo_version(version, reason)` (案、管理者だけ) にする:
+   - `send_opened` の承認があれば、まずその 1 件ごとにオーナーが決着させる: 実際に送ったなら「手動で送信済み」(上の 2 と同じく `demo_unavailable_after_open = revoked_urgent` を残して `sent`)、送っていないなら DEV-195 の `sales_withdraw_approval` で取り下げ。決着していない `send_opened` が残る間、この関数も `approval_open` で断る (勝手に sent にも withdrawn にもしない)。
+   - 決着の後に、同じ transaction で版の `revoked_at` を立て、`approved_version_id` を null にし、品質承認を `invalidated(version_revoked)` にする。送信済みの相手のリンクは 404 になり、管理画面は「送信済み (デモは取り消し済み)」と出す。
+   - 画像の権利の急ぎの取り消しも同じ手順 (その画像を使う全版について決着 → 取り消し)。
 
 ---
 
@@ -584,7 +616,9 @@ sr-designbridge      ── 読む (link なし・link 数 1・上限・strict s
 | T15 | 成功例の写し (画像・構造) | 禁止の hash の集合・`TOO_CLOSE_TO_REFERENCE` の印 | unit: 成功例の画像は `FORBIDDEN_SOURCE_HASH` |
 | T16 | 匿名の要求で DB への書き込みや費用が増える (DoS) | 共有の view token は HMAC で DB に書かない・応答は小さく (正規化)・Vercel の既存の保護 | 負荷は手動確認。統合: 共有の外枠を開いても DB の行が増えない |
 | T17 | 出所・モデル名・同意の参照がリポジトリや公開側に漏れる | DB の管理者だけの列・strict schema・`toPublicPhotoRecord`・secret の検査 | unit: 包みの schema が private の key を表現できない。`npm run check:secrets` |
-| T18 | 品質承認を飛ばした送信 | 送信承認の DB の照合に品質承認を足す・`sales_demo_version` の拡張 | 統合: 未承認の版・取り消した版・権利の変わった版では `sales_approve_outreach` / `sales_mark_sent` が拒否 |
+| T18 | 品質承認を飛ばした送信・期限の切れた権利での送信 | 送信承認の DB の照合で版・品質・事実・権利 (期限を含む) を毎回導き直す (§9.2)・`sales_demo_version` の拡張・取り消しで `approved_version_id` を null に | 統合: 未承認の版・取り消した版・権利の取り消し・**日付を進めて権利の期限が切れた**版・事実の変わった版で `sales_approve_outreach` / `sales_mark_send_opened` が拒否 |
+| T19 | 管理者用 view token (scope `a`) は cookie の無い **bearer URL** で、漏れると未承認の下書き (AI 画像を含む) が 15 分見える | **受け入れるリスク**として記録。対策: 15 分の短い期限、1 つの版 (1 店舗) だけ、管理者の頁でだけ発行、URL を log に出さない (route は token を記録せず、エラーにも出さない)、`Referrer-Policy: no-referrer`、`no-store`、版の取り消しと鍵の rotate で止められる、共有用 (`p`) とは scope で分離 | unit: 期限切れ・別の版・scope `p` の route では 404。log の検査: token が出力されない |
+| T20 | `send_opened` のあいだに版が変わり、実際の送信が記録できない | hash を変える操作は `approval_open` で拒否、時間による変化は記録して送信済みに、急ぎの取り消しは先に決着 (§9.5) | 統合: `send_opened` の間の新しい版の承認・取り消し・取り下げは `approval_open`。権利の期限切れ後も `sales_mark_sent` は `demo_unavailable_after_open` を残して成功し、共有 URL は 404 |
 
 ### 11.2 noindex の方針
 
@@ -608,14 +642,14 @@ sr-designbridge      ── 読む (link なし・link 数 1・上限・strict s
 | 段 | 内容 | 実行時の影響 | 必要なオーナーの承認 | 状態 |
 |---|---|---|---|---|
 | **DEV-196** (この PR) | 仕様と安全設計 (docs だけ) | なし | PR のレビューと merge | review |
-| DEV-196a | Protected Scope の文書: MVP_SPEC §7 / §11.1・ARCHITECTURE・SECURITY に版のデモの規則を書く | なし | **MVP の変更 (Protected Scope)**、AI 画像の方針 (§14 Q1) | 未承認 |
+| DEV-196a | Protected Scope の文書: MVP_SPEC §7 / §11.1・ARCHITECTURE・SECURITY に版のデモの規則を書く。共有 URL に写真を出すか (`PUBLIC_DEMO_ASSETS_ENABLED`) もここで決める | なし | **MVP の変更 (Protected Scope)**、写真の共有の可否、AI 画像の方針 (§14 Q1) | 未承認 |
 | DEV-196b | 純粋なライブラリ (offline): manifest の schema と正規化 hash、規則の核の切り出しと server の HTML 解析器、CSP の組み立て、view token、権利の導出、事実の照合 | なし (呼ぶ側が無い) | **依存の追加** (HTML 解析器。`package.json` / lockfile、レビュー記録) | 未承認 |
 | DEV-196c | migration (ローカルだけ): §4 の表・関数・RLS・trigger・bucket、`supabase/config.toml` の Storage を有効 | 適用するまで無し | **DB 変更の作成**。Storage の有効化 (ローカル・CI の Supabase) | 未承認 |
 | DEV-196d | server (旗は既定で無効): アップロードの API、`/demo-frame/a/…` の route、`/admin/sales/demos/[prospectId]` (版の一覧・系譜・PC1440 / SP390・品質承認・取り消し) | 旗が無効の間は 404 / 503 | **新しい環境変数** (`SALES_DEMO_VERSIONS_ENABLED`・`SALES_DEMO_VIEW_SIGNING_KEY`。値の設定は人) | 未承認 |
 | DEV-196e | WSL: photo-swap の配信用の書き出し・包み・bridge のアップロードの mode・cycle の任意の段 | conf の旗を立てるまで無し | **WSL の commit の承認と導入** (`admin.sh approve`、root の conf)。jail・`.wslconfig`・timer は変えない | 未承認 |
 | DEV-196f | DEV-195 との結合: 送信承認の列の追加・`sales_send_guards` の照合・`sales_demo_version` の拡張 | 適用するまで無し | **DB 変更** (DEV-195 の表と関数の変更) | 未承認 |
 | DEV-196g | 共有 URL: `/demo/[publicToken]` の外枠と `/demo-frame/p/…` (`share_eligible` の版だけ) | 旗 `SALES_DEMO_SHARE_ENABLED` が無効の間は今のまま | **公開 (publishing)**。別の origin の要否 (§14 Q2、Domain / DNS) | 未承認 |
-| DEV-196h | Staging: DEV-196c / f の migration と bucket の適用、旗を Staging だけ有効、**架空の** prospect (example.com) に SR-001「輪」d1-v9 を 1 回アップロードし、オーナーが PC とスマホで確かめる | Staging だけ・管理者だけ | **Staging DB への適用**、**Storage bucket の作成**、Staging の環境変数、WSL のアップロード 1 回 | 未承認 |
+| DEV-196h | Staging: DEV-196c / f の migration と bucket の適用、旗を Staging だけ有効、**架空の** prospect (example.com) に SR-001「輪」d1-v9 を 1 回アップロードし、オーナーが PC とスマホで確かめる。AI 写真の扱い: `checkPhotoRights` は `aiDemoAllowed` が無いと `ai_generated_demo` を `AI_DEMO_NOT_ALLOWED` で拒否し、許すのは `photo-swap.ts` の `AI_DEMO_SHOPS` (つぐ手・輪の研究頁) だけ。server の finalize に同じ許可を持ち込むなら、**その 1 つの架空の Staging prospect の id だけ**を server 側の許可一覧に入れ (scope `a` だけ、共有不可は不変)、その追加を別の承認にする。承認が無ければ写真なしの d1-v9 (placeholder の板のまま) を上げる | Staging だけ・管理者だけ | **Staging DB への適用**、**Storage bucket の作成**、Staging の環境変数、WSL のアップロード 1 回、(AI 写真を載せるなら) 架空の prospect 1 件への AI 画像の許可 | 未承認 |
 | DEV-196i | 自動生成 worker の接続 (§10): job の表・claim・lease・受け入れの承認 | 旗が無効の間は無し | **画像生成 (1 回ごと)**、Codex の実行、worker の常時運転 (timer) | 未承認 |
 | DEV-196j | 保持期限の掃除 (管理者の操作。timer にしない)・使用量の表示 | — | **復元できないデータの削除** (Storage の object) | 未承認 |
 | (後) | Production への適用・共有の開始 | 本番 | **Production の DB・Storage・環境変数・公開** (それぞれ別の承認) | 未承認 |
