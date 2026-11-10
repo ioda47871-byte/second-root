@@ -51,6 +51,20 @@ describe("staging verification", () => {
     expect(failed).toEqual({ authenticated_can_read: ["sales_prospects"], service_role_can_write: ["sales_outreaches:INSERT"] });
   });
 
+  it("[fail-closed] DEV-196c: catches a storage policy for signed-in users and versioned sharing switched on", async () => {
+    const { results } = await withRollback(async (query) => {
+      await query("create policy demo_leak on storage.objects for select to authenticated using (bucket_id = 'sales-demo-versions')");
+      await query("create or replace function public.sales_demo_versioned_sharing_enabled() returns boolean language sql immutable set search_path = '' as $$ select true $$");
+      await query("alter table public.sales_demo_versions drop constraint sales_demo_versions_share_eligible_check");
+      return runChecks(query, local);
+    });
+    const failed = Object.fromEntries(results.filter((r: { ok: boolean }) => !r.ok).map((r: { id: string; items: string[] }) => [r.id, r.items]));
+    expect(failed).toEqual({
+      storage_no_client_policies: ["objects:demo_leak"],
+      demo_version_sharing_disabled: ["function sales_demo_versioned_sharing_enabled", "check sales_demo_versions.share_eligible"],
+    });
+  });
+
   it("[fail-closed] catches a migration missing from the history", async () => {
     const { results } = await withRollback(async (query) => {
       await query(`delete from supabase_migrations.schema_migrations where version = '${last.version}'`);

@@ -236,6 +236,35 @@ export const SECURITY_CHECKS = [
             and regexp_replace(p.prosrc, '--[^\\n]*', '', 'g')
                 !~* '^\\s*(declare\\s.*?)?begin\\s+(perform\\s+public\\.sales_assert_admin\\(\\)|if\\s+not\\s+public\\.is_sales_admin\\(\\))'`,
   },
+  {
+    // DEV-196c (spec §5.1, T4): demo artifacts are read only by the server
+    // (service role). No storage policy may give anon / signed-in users (or
+    // PUBLIC) any access, and none may name the demo bucket.
+    id: "storage_no_client_policies",
+    title: "no storage policy grants anon / signed-in users access (demo artifacts are service-role only)",
+    sql: `select p.tablename || ':' || p.policyname as item from pg_policies p
+          where p.schemaname = 'storage'
+            and (p.roles && array['anon', 'authenticated', 'public']::name[]
+                 or coalesce(p.qual, '') ilike '%sales-demo-versions%' or coalesce(p.with_check, '') ilike '%sales-demo-versions%')`,
+  },
+  {
+    // DEV-196c: versioned demos are not shared until the dedicated artifact
+    // origin exists (spec §6.8, DEV-196g): both switches stay constant false,
+    // and no version claims to be share-eligible.
+    id: "demo_version_sharing_disabled",
+    title: "versioned demo sharing and photo sharing are switched off in the database",
+    sql: `select 'function ' || p.proname as item from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname in ('sales_demo_versioned_sharing_enabled', 'sales_demo_share_photos_enabled')
+            and regexp_replace(lower(p.prosrc), '\\s', '', 'g') <> 'selectfalse'
+          union all
+          select 'check sales_demo_versions.share_eligible' as item
+          where exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                        where n.nspname = 'public' and c.relname = 'sales_demo_versions')
+            and not exists (select 1 from pg_constraint k join pg_class c on c.oid = k.conrelid
+                            join pg_namespace n on n.oid = c.relnamespace
+                            where n.nspname = 'public' and c.relname = 'sales_demo_versions' and k.contype = 'c'
+                              and pg_get_constraintdef(k.oid) ilike '%NOT share_eligible%')`,
+  },
 ];
 
 /**
