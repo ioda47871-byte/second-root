@@ -33,8 +33,8 @@ export class PrototypeUnsafe extends Error {
   }
 }
 
-const FORBIDDEN_ELEMENTS = ["script", "iframe", "frame", "frameset", "object", "embed", "applet", "form", "base", "portal", "foreignobject", "animate", "set", "animatemotion", "animatetransform", "noscript"];
-const URL_ATTRIBUTES = ["href", "src", "srcset", "poster", "data", "action", "formaction", "background", "xlink:href", "ping", "cite", "longdesc", "manifest", "icon", "lowsrc", "dynsrc", "codebase", "archive"];
+export const FORBIDDEN_ELEMENTS = ["script", "iframe", "frame", "frameset", "object", "embed", "applet", "form", "base", "portal", "foreignobject", "animate", "set", "animatemotion", "animatetransform", "noscript"];
+export const URL_ATTRIBUTES = ["href", "src", "srcset", "poster", "data", "action", "formaction", "background", "xlink:href", "ping", "cite", "longdesc", "manifest", "icon", "lowsrc", "dynsrc", "codebase", "archive"];
 
 /** url() targets in a CSS text, quoted strings understood (a ")" inside quotes does not end the url). */
 export function cssUrls(css: string): string[] {
@@ -46,9 +46,9 @@ export function cssUrls(css: string): string[] {
 }
 
 /** A url() target a prototype may use: a declared asset, or an in-page reference (#id, e.g. an inline SVG filter). */
-const allowedUrl = (target: string, assets: ReadonlySet<string>) => assets.has(target) || /^#[A-Za-z0-9_-]+$/.test(target);
+export const allowedUrl = (target: string, assets: ReadonlySet<string>) => assets.has(target) || /^#[A-Za-z0-9_-]+$/.test(target);
 
-const decodeEscapes = (css: string) =>
+export const decodeEscapes = (css: string) =>
   css.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_m, hex: string | undefined, ch: string | undefined) =>
     hex ? String.fromCodePoint(Math.min(parseInt(hex, 16) || 0xfffd, 0x10ffff)) : (ch ?? ""),
   );

@@ -73,10 +73,10 @@ export const PAGE_FONT_FAMILIES = [
   "BIZ UDPGothic", "BIZ UDPMincho", "Zen Kaku Gothic New", "Zen Old Mincho", "Shippori Mincho",
   "Inter", "DejaVu Sans", "DejaVu Serif", "Liberation Sans", "Liberation Serif", "Helvetica Neue", "Helvetica", "Arial", "Georgia", "Times New Roman",
 ] as const;
-const GENERIC = ["serif", "sans-serif", "system-ui", "ui-serif", "ui-sans-serif"];
+export const PAGE_FONT_GENERIC_FAMILIES = ["serif", "sans-serif", "system-ui", "ui-serif", "ui-sans-serif"];
 const fontFamilyItem = (t: Term): boolean => {
   if (t.t === "string") return (PAGE_FONT_FAMILIES as readonly string[]).includes(t.v);
-  if (t.t === "ident") return GENERIC.includes(t.v.toLowerCase()) || (PAGE_FONT_FAMILIES as readonly string[]).includes(t.v);
+  if (t.t === "ident") return PAGE_FONT_GENERIC_FAMILIES.includes(t.v.toLowerCase()) || (PAGE_FONT_FAMILIES as readonly string[]).includes(t.v);
   return false;
 };
 
