@@ -9184,7 +9184,7 @@
     {
       "id": "DEV-196",
       "title": "店舗ごとの高品質デモを営業の管理画面につなぐ仕様と安全設計 (版と系譜・管理者プレビューと共有 URL の分離・非公開 Storage・CSP/sandbox・画像の権利の enum・worker 接続・品質承認と送信承認の分離。docs だけ、コード・DB 変更なし)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-195"
@@ -9232,7 +9232,55 @@
         "DEV-196j: Storage の object の削除 (復元できない)",
         "Production への適用と共有の開始 (それぞれ別の承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-196.md。この PR はどの段の実装も承認しない"
+      "note": "記録は .ai/reviews/DEV-196.md。仕様 docs/design/DEV-196-demo-admin-spec.md。PR #241 merged (8fe0f80)。独立レビュー 4 回、最終 C0/H0/M0/L1 (L1 は台帳の範囲: この PR は DEV-197 を done にし、DEV-197 の note を更新し、.ai/reviews/DEV-197.md に Staging の節を足した)。CI 11/11。オーナー決定 2026-11-10 (仕様 §15) を反映。この PR はどの段の実装も承認しない (DEV-196a・DEV-196b だけ承認済み、DEV-196c 以降は未承認)"
+    },
+    {
+      "id": "DEV-196b",
+      "title": "店舗デモの版の offline の純粋なライブラリ (manifest・B方式の HTML/CSS 検査・CSP・HMAC の view token・権利の導出・版と共有の規則・品質の 7 項目)",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-196b-demo-lib",
+      "purpose": "DEV-196 仕様 (docs/design/DEV-196-demo-admin-spec.md) §12 の DEV-196b (オーナー決定 2026-11-10 で承認、offline だけ)。版のデモを DB・Storage・route につなぐ前に、server が使う規則を純粋な関数とテストで固める。呼ぶ側はまだ無い",
+      "acceptance_criteria": [
+        "lib/sales/demo-version/manifest.ts: §5.2 のファイル名と URL ↔ manifest の対応 (URL は page/ を外す、renders/ は scope a だけ)、役割・content type・大きさの上限、正規化した bundle_sha256、bytes の再ハッシュ・magic bytes・画素数・EXIF/XMP の拒否",
+        "lib/sales/demo-version/html-safety.ts (parse5) + rule-core.ts: §7.3 の B方式の規則 (script・on*・javascript:・外部 URL・form/iframe/object・style 属性/要素・@import・@font-face・外への url()・書体の許可一覧・注文/予約/カート/テスト)。rule-core は phase2f の prototype-safety と comp-impl の書体一覧の逐語の写しで、rule-core-parity.test.ts が差分を検出する (両ディレクトリの import 境界は変えない)。研究の fidelity 頁 (bicycle・sento) は通り、XSS の corpus は落ちる",
+        "lib/sales/demo-version/csp.ts: §6.7 の HTML の CSP (sandbox 指令つき) と応答ヘッダ、§6.8 の配信 origin (共有 p は専用の別 origin だけ、無ければ 404)、外枠の frame-src (管理者だけ、別 origin が無い間 'self')、Sec-Fetch-Dest",
+        "lib/sales/demo-version/view-token.ts: HMAC-SHA256 の view token (a 15 分・p 30 分、scope と path の照合、定数時間の比較、寿命の上限)。鍵は引数で、env を読まない",
+        "lib/sales/demo-version/ai-concept-rights.ts + rights.ts: §8.1・§8.3.1。photo_rights_v0 は checkPhotoRights (変えない) から導き、実店舗の AI 概念画像は別の schema ai_concept_rights_v0 と checkAiConceptRights。fail closed (unknown は不可)、AI 画像は共有不可、写真は今は共有 URL に出さない (写真 0 枚の版だけ共有可)、期限は JST の暦日",
+        "lib/sales/demo-version/version-state.ts: §4.6 の状態の許可、共有は sent の承認が固定した版だけ (取り消し・期限切れ・共有不可は 404、ほかの版や React のデモへ落ちない)、send_opened の間の hash を変える操作は approval_open、保持 (未送信 60 日・送信済みは共有の後 30 日)",
+        "lib/sales/demo-version/quality.ts: §7.2 の 7 項目 (全部 ok + PC1440/SP390 の描画を見たときだけ承認)、類似は警告だけ (構造の計算は structure の境界のため呼ぶ側が渡す)",
+        "lib/sales/demo-version/copy-check.ts: §7.4 の copy record と事実パックの照合 (UNVERIFIED_COPY)",
+        "依存は parse5 8.0.1 (exact) の 1 つだけ。記録 .ai/reviews/DEV-196b.md"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/sales (tests/unit/sales/demo-version を含む)",
+        "npx vitest run tests/unit/design-agent/phase2f/isolation.test.ts tests/unit/design-agent/comp-impl/isolation.test.ts tests/unit/guardrails.test.ts tests/unit/ai-tasks.test.ts",
+        "npx tsc --noEmit・eslint・npm run check:secrets・npm audit --omit=dev"
+      ],
+      "allowed_scope": [
+        "lib/sales/demo-version/* (新規)",
+        "tests/unit/sales/demo-version/* (新規)",
+        "package.json・package-lock.json (parse5 の 1 つだけ)",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-196b.md"
+      ],
+      "forbidden_scope": [
+        "DB・migration・Storage・環境変数・route・画面への配線 (DEV-196c 以降、未承認)",
+        "lib/design-agent の変更 (checkPhotoRights・AI_DEMO_SHOPS・prototype-safety・page-css・structure は変えない) と import 境界の isolation test の緩和",
+        "書体の許可一覧・B方式の規則・MVP_SPEC §7 の写真の規則の緩和",
+        ".github/workflows・parse5 以外の依存の追加"
+      ],
+      "human_approval_triggers": [
+        "PR のレビュー・必須 CI のあとの merge",
+        "DEV-196c 以降 (DB・Storage・Staging・画像生成・公開・Production) はそれぞれ別の承認",
+        "lib/sales/demo-version を phase2f / comp-impl / structure の importer として認めるか (認めれば rule-core の写しを re-export にでき、類似の計算も呼べる)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196b.md。つぐ手の fidelity 頁は書体 \"IPA明朝\" が PAGE_FONT_FAMILIES に無いため CSS_FONT_FAMILY_NOT_ALLOWED で落ちる (一覧は広げていない) PR #243 を 6489c5f で merge (2026-11-10)。独立レビュー 5 回 (セキュリティ: CSS/SVG の url() 迂回、Identity Lock のテキスト経路、parse5 による深さ・要素数の制限、二次時間の入力、作業量の budget を修正)、最終 C0/H0/M0/L0。CI 11/11。依存は parse5 8.0.1 (MIT、entities 8.1.0 のみ) を追加。どの経路にもつないでいない (DB・Storage・通信なし)。"
     },
     {
       "id": "DEV-196a",
