@@ -9128,7 +9128,7 @@
     {
       "id": "DEV-197",
       "title": "送信できるか判定できないときは安全側に倒し、表示・サーバーの処理・保存した記録を食い違わせない (DEV-195 最終レビュー L1〜L3: 送信の3状態・ブロック後の古い snapshot の事後記録・台帳の文言)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-195"
@@ -9179,7 +9179,58 @@
         "Staging DB への migration 20261110000000 の適用 (別承認)。DEV-195 と同じく、この PR の merge と Staging への適用は一緒に行う (オーナーの承認のもとで merge の直前か直後に適用する)。適用前の develop の Preview では、ブロック後の古い承認に事後記録のボタンが出るが旧関数は stale_snapshot で断る (画面は『サーバーが確かめる』とだけ言い、理由を表示する。誤った記録はできない)",
         "Production DB への適用 (別承認。DEV-195 の migration と一緒に)"
       ],
-      "note": "記録は .ai/reviews/DEV-197.md。PR #242 (draft)。独立レビュー 1回目 (a232e1f: C0/H0/M0/L2) に対応: L1 ブロック後の事後記録は店舗の今の宛先 (消えた・重複) で断らず承認の宛先で記録、L2 merge と Staging への 20261110000000 の適用は一緒に行う"
+      "note": "記録は .ai/reviews/DEV-197.md。PR #242 merged (c57b7d6)。Staging DB への migration 20261110000000 の適用 2026-11-10。DB のセキュリティ確認 13/13・架空データでの確認 140/140 (回帰 93 + 新規 47、rollback、残りなし)・CI 11/11・最終レビュー C0/H0/M0/L0"
+    },
+    {
+      "id": "DEV-196",
+      "title": "店舗ごとの高品質デモを営業の管理画面につなぐ仕様と安全設計 (版と系譜・管理者プレビューと共有 URL の分離・非公開 Storage・CSP/sandbox・画像の権利の enum・worker 接続・品質承認と送信承認の分離。docs だけ、コード・DB 変更なし)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-195"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-196-demo-admin-spec",
+      "purpose": "Issue #235 (North Star) の計画の第3段。オーナーの 7 つの要求 (版と系譜、店らしさと PC1440/SP390、プレビューと共有の分離、安全と脅威モデル、自動生成 worker との接続、AI 画像の権利と出所、品質承認と送信承認の分離) に答える仕様を、今のコードで確かめた事実の上に書く。実装は小さな PR (DEV-196a〜j) に分け、各段のオーナー承認を明記する",
+      "acceptance_criteria": [
+        "docs/design/DEV-196-demo-admin-spec.md (日本語): 範囲と範囲外、今の状態 (ファイル参照つき)、データモデルの提案 (migration ではない)、状態機械、route と認証、Storage の配置、安全と脅威モデル (脅威 → 対策 → テスト)、権利のモデル、品質の確かめ方、DEV-195 との結び付け、worker の接続、段階の計画と各段の承認 (未承認を明記)、テストの方針、オーナーへの問い",
+        "7 つの要求それぞれに対応する節がある (付録の対応表)",
+        "成功例 30 件と SR-001「輪」は参照としてだけ使い、相手のデモに写さないことを明記",
+        "Identity Lock・事実パック (不明は未確認)・B方式の JS/通信/書体/asset の制約・CSS と書体の許可一覧を緩めない",
+        "コード・migration・workflow・package/lockfile・画像・非公開の JSON や権利のファイルの変更なし。リポジトリのファイルにモデル名を書かない",
+        ".ai/reviews/DEV-196.md に 7 つの要求に対する自己点検"
+      ],
+      "required_tests": [
+        "なし (docs だけ。tasks.json が JSON として読めること)"
+      ],
+      "allowed_scope": [
+        "docs/design/DEV-196-demo-admin-spec.md",
+        ".ai/tasks.json (DEV-196 の項目の追加だけ)",
+        ".ai/reviews/DEV-196.md"
+      ],
+      "forbidden_scope": [
+        "コード・supabase/migrations・supabase/config.toml",
+        ".github/workflows・package.json・lockfile",
+        "画像・非公開の JSON・権利のファイル",
+        "DB・Storage・Staging・Production・Vercel・WSL への適用や接続",
+        "DEV-195 の項目の編集 (別の PR が更新する)",
+        "MVP_SPEC / ARCHITECTURE / SECURITY の変更 (DEV-196a でオーナーの承認の後)"
+      ],
+      "human_approval_triggers": [
+        "この仕様 PR のレビューと merge",
+        "DEV-196a: MVP_SPEC §7 などの変更 (Protected Scope) と実店舗の AI 画像の方針",
+        "DEV-196b: HTML 解析器の依存の追加",
+        "DEV-196c / 196f: DB 変更 (migration の作成)",
+        "DEV-196d: 新しい環境変数 (旗と view token の署名鍵)",
+        "DEV-196e: WSL の commit の承認と導入",
+        "DEV-196g: 共有 URL の公開、別の origin (Domain / DNS)",
+        "DEV-196h: Staging DB への適用、Storage bucket の作成、Staging の環境変数",
+        "DEV-196i: 画像生成 (1 回ごと)、Codex の実行、worker の常時運転",
+        "DEV-196j: Storage の object の削除 (復元できない)",
+        "Production への適用と共有の開始 (それぞれ別の承認)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196.md。この PR はどの段の実装も承認しない"
     }
   ]
 }
