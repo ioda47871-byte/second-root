@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { composeFollowUp } from "@/lib/admin/followup";
 import { composedFor, designWaiting, loadInitial } from "@/lib/admin/initial-send";
-import { errorCode, OPENED_VIA, sendErrorMessage, type OpenedVia } from "@/lib/sales/approval";
+import { errorCode, OPENED_VIA, recordedSend, sendErrorMessage, type OpenedVia, type RecordedSend } from "@/lib/sales/approval";
 import { aiDesignEnabled } from "@/lib/sales/design";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -19,6 +19,8 @@ import { createAuthClient } from "@/lib/supabase/server";
 // demo, design gate) at each step.
 
 export type SendResult = { ok: true } | { ok: false; error: string };
+/** DEV-197: 送信済み also returns what the database stored (null when its result had an unexpected shape). */
+export type MarkSentResult = { ok: true; recorded: RecordedSend | null } | { ok: false; error: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOT_FOUND: SendResult = { ok: false, error: "対象が見つかりません。画面を再読み込みしてください。" };
@@ -80,10 +82,12 @@ export async function withdrawApproval(approvalId: string): Promise<SendResult> 
  * 手動で送信済みにする (MVP_SPEC §4): only after the owner really sent the
  * approved message from their own app. The database records it only for an
  * opened approval whose snapshot still matches, after every guard again.
+ * DEV-197: after a DNC / exclusion it also records an opened approval whose
+ * demo / recipient changed (never a changed text), flagged stale_at_send.
  */
-export async function markSent(outreachId: string, approvalId: string): Promise<SendResult> {
+export async function markSent(outreachId: string, approvalId: string): Promise<MarkSentResult> {
   await requireAdmin();
-  if (!UUID.test(outreachId) || !UUID.test(approvalId)) return NOT_FOUND;
+  if (!UUID.test(outreachId) || !UUID.test(approvalId)) return { ok: false, error: "対象が見つかりません。画面を再読み込みしてください。" };
   const supabase = await createAuthClient();
   // DEV-030: with the AI design step on, a demo still waiting for or getting
   // its design cannot be marked sent (the same rule as the today screen).
@@ -92,7 +96,7 @@ export async function markSent(outreachId: string, approvalId: string): Promise<
     if (!row) return { ok: false, error: "送信済みにできませんでした。画面を再読み込みしてください。" };
     if (designWaiting(row)) return { ok: false, error: "AIデザインの完成前のため送信済みにできません。" };
   }
-  const { error } = await supabase.rpc("sales_mark_sent", { p_outreach_id: outreachId, p_approval_id: approvalId, p_design_enabled: aiDesignEnabled() });
+  const { data, error } = await supabase.rpc("sales_mark_sent", { p_outreach_id: outreachId, p_approval_id: approvalId, p_design_enabled: aiDesignEnabled() });
   if (error) {
     const message = errorCode(error.message) === "do_not_contact"
       ? "この店舗は営業不要（DNC）のため送信済みにできません。"
@@ -100,7 +104,9 @@ export async function markSent(outreachId: string, approvalId: string): Promise<
     return { ok: false, error: message };
   }
   revalidatePath("/admin/sales");
-  return { ok: true };
+  // DEV-197: what the database stored (a normal send, or an after-the-fact
+  // record with blocked_after_open), so the card says that and not its guess.
+  return { ok: true, recorded: recordedSend(data) };
 }
 
 type FollowUpRow = {

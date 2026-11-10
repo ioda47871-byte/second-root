@@ -58,6 +58,12 @@ export type ApprovalView = {
   openedLabel: string | null;
   /** Reasons the approval no longer matches the draft (the database refuses to use it then). */
   staleReasons: string[];
+  /**
+   * DEV-197: the outreach's text revision or channel is no longer the
+   * approval's. The database never records such an approval as sent, not even
+   * after a block (a demo / recipient change can be, see RecordedSend).
+   */
+  textStale?: boolean;
 };
 
 export type ApprovalContext = {
@@ -80,6 +86,7 @@ export function liveApproval(rows: ApprovalRow[] | null | undefined, ctx: Approv
   const row = (rows ?? []).find((r) => r && isState(r.state) && (r.state === "approved" || r.state === "send_opened"));
   if (!row || (row.channel !== "email" && row.channel !== "instagram")) return null;
   const staleReasons: string[] = [];
+  const textStale = row.channel !== ctx.channel || row.draft_version !== ctx.draftVersion;
   if (row.channel !== ctx.channel) staleReasons.push("チャネルが変わりました");
   if (row.draft_version !== ctx.draftVersion) staleReasons.push("承認の後に文面が編集されました");
   if (row.recipient !== ctx.recipient) staleReasons.push("承認の後に宛先が変わりました");
@@ -95,6 +102,7 @@ export function liveApproval(rows: ApprovalRow[] | null | undefined, ctx: Approv
     approvedLabel: formatJstDateTime(row.approved_at),
     openedLabel: row.opened_at ? `${formatJstDateTime(row.opened_at)}${isVia(row.opened_via) ? `・${OPENED_VIA_LABEL[row.opened_via]}` : ""}` : null,
     staleReasons,
+    textStale,
   };
 }
 
@@ -131,4 +139,50 @@ export const SEND_ERROR_LABEL: Readonly<Record<string, string>> = {
 export function sendErrorMessage(message: string | undefined, fallback = "記録できませんでした。画面を再読み込みしてください。"): string {
   const code = errorCode(message);
   return Object.hasOwn(SEND_ERROR_LABEL, code) ? SEND_ERROR_LABEL[code]! : fallback;
+}
+
+export const BLOCKED_AFTER_OPEN = ["do_not_contact", "excluded"] as const;
+export type BlockedAfterOpen = (typeof BLOCKED_AFTER_OPEN)[number];
+
+export const BLOCKED_AFTER_OPEN_LABEL: Record<BlockedAfterOpen, string> = {
+  do_not_contact: "営業不要（DNC）",
+  excluded: "除外リストに一致",
+};
+
+/**
+ * DEV-197: what the database stored for 送信済み (sales_mark_sent's result).
+ * The card shows this after the call, never its own guess: the database
+ * checks DNC and the exclusion list inside its transaction.
+ */
+export type RecordedSend = {
+  /** null: a normal send. Otherwise the send was recorded after the shop became DNC / excluded. */
+  blockedAfterOpen: BlockedAfterOpen | null;
+  /** Recorded after a block although the demo / recipient changed since approval (the approval's snapshot is what was sent). */
+  staleAtSend: boolean;
+  replayed: boolean;
+};
+
+/** sales_mark_sent's jsonb → RecordedSend, or null when its shape is not the expected one. */
+export function recordedSend(data: unknown): RecordedSend | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const r = data as Record<string, unknown>;
+  if (r.status !== "sent" || !Object.hasOwn(r, "blocked_after_open")) return null;
+  const blocked = r.blocked_after_open;
+  if (blocked !== null && !(BLOCKED_AFTER_OPEN as readonly unknown[]).includes(blocked)) return null;
+  // Absent before migration 20261110000000: that function never recorded a stale snapshot.
+  if (r.stale_at_send !== undefined && typeof r.stale_at_send !== "boolean") return null;
+  const staleAtSend = r.stale_at_send === true;
+  if (staleAtSend && blocked === null) return null;
+  return { blockedAfterOpen: blocked as BlockedAfterOpen | null, staleAtSend, replayed: r.replayed === true };
+}
+
+/** The owner's words for what was stored. An unexpected result says so; it is never guessed to be a normal send. */
+export function recordedSendMessage(r: RecordedSend | null): string {
+  if (!r) return "送信済みとして記録しました。ただし、記録の内容（通常の送信か事後記録か）をこの画面で確認できませんでした。履歴で確認してください。";
+  if (r.blockedAfterOpen === null) return "手動で送信済みとして記録しました（通常の送信）。";
+  const lines = [
+    `送信済みの事実を事後記録しました。送信画面を開いた後に「${BLOCKED_AFTER_OPEN_LABEL[r.blockedAfterOpen]}」になっていたことも記録されています。この店舗へのフォローは出ません（禁止）。`,
+  ];
+  if (r.staleAtSend) lines.push("承認の後にデモか宛先が変わっていたため、承認した内容（開いた内容）のまま記録し、変わっていたことも記録しました。");
+  return lines.join("");
 }

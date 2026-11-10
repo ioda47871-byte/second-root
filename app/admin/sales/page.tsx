@@ -1,5 +1,6 @@
 import EmailSend from "@/components/admin/EmailSend";
 import InitialSend from "@/components/admin/InitialSend";
+import SendRecordNotice from "@/components/admin/SendRecordNotice";
 import TodayCard from "@/components/admin/TodayCard";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
@@ -7,6 +8,7 @@ import { composeFollowUp } from "@/lib/admin/followup";
 import { approvedSendLink, composeInitialSend } from "@/lib/admin/initial-send";
 import { loadTodayQueue, type TodayItem } from "@/lib/admin/today";
 import { aiDesignEnabled, initialSendAllowed } from "@/lib/sales/design";
+import type { SendState } from "@/lib/sales/evidence";
 import { buildMailto } from "@/lib/sales/messages";
 import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
@@ -26,10 +28,14 @@ function cannotCompose(what: string) {
  * follow-up card shows 営業不要（DNC） under this note; an initial card has
  * 見送る and 営業不要（DNC） in 詳細.
  */
-function sendBlocked(kind: TodayItem["kind"]) {
+function sendBlocked(kind: TodayItem["kind"], state: SendState) {
+  // DEV-197: 未確認 (unknown) is not a confirmed reason: say that it could not
+  // be checked, and still offer nothing to send (fail closed).
   return (
-    <p className={styles.muted} role="status" data-testid="send-blocked">
-      送信できない理由があるため、送信の操作は出していません（上の理由を確認してください）。
+    <p className={styles.muted} role="status" data-testid="send-blocked" data-send-state={state}>
+      {state === "unknown"
+        ? "送信できるか確認できませんでした（上の「未確認」の項目）。再読み込みしてください。確認できるまで送信の操作は出しません。"
+        : "送信できない理由があるため、送信の操作は出していません（上の理由を確認してください）。"}
       {kind === "follow_up"
         ? "送らない場合は、下の「営業不要（DNC）にする」で一覧から外せます。"
         : "送らない場合は、「詳細」の「見送る」か「営業不要（DNC）にする」で一覧から外せます。"}
@@ -40,7 +46,7 @@ function sendBlocked(kind: TodayItem["kind"]) {
 /** The one big action for a queue item: Instagram DM, email, or the one email follow-up. */
 function actionFor(item: TodayItem) {
   if (item.kind === "follow_up") {
-    if (!item.evidence.contact.sendable) return sendBlocked("follow_up");
+    if (!item.evidence.contact.sendable) return sendBlocked("follow_up", item.evidence.contact.state);
     if (item.channel !== "email" || !item.publicEmail || !item.demoToken) return cannotCompose("フォローメール");
     const draft = composeFollowUp({ shopName: item.shopName, publicEmail: item.publicEmail, initialSubject: item.subject, demoToken: item.demoToken });
     try {
@@ -65,8 +71,18 @@ function actionFor(item: TodayItem) {
         </p>
       );
     }
-    if (!item.evidence.contact.sendable) return sendBlocked("initial");
+    if (!item.evidence.contact.sendable) return sendBlocked("initial", item.evidence.contact.state);
   }
+  // DEV-197: for an opened approval the words follow the three states. Only a
+  // confirmed DNC / exclusion may claim the after-the-fact record (that is what
+  // the database stores as blocked_after_open); anything else not sendable is
+  // a check the card cannot settle, and the database decides.
+  const contact = item.evidence.contact;
+  const blockedWarning = opened && contact.block === "confirmed" ? contact.blockers : null;
+  const checkWarning =
+    opened && contact.state !== "sendable" && contact.block !== "confirmed"
+      ? { state: contact.state, reasons: contact.blockers, blockPossible: contact.block === "unknown" }
+      : null;
   // DEV-195: approve the exact text → open the owner's own app → confirm the
   // manual send. The same composer builds the text shown, approved and sent.
   const composed = opened
@@ -84,7 +100,8 @@ function actionFor(item: TodayItem) {
   if (!composed) return cannotCompose(item.channel === "email" ? "メール" : "DM");
   return (
     <InitialSend
-      blockedWarning={opened && !item.evidence.contact.sendable ? item.evidence.contact.blockers : null}
+      blockedWarning={blockedWarning}
+      checkWarning={checkWarning}
       outreachId={item.outreachId}
       draftVersion={item.draftVersion}
       composed={{ channel: composed.channel, recipient: composed.recipient, subject: composed.subject, body: composed.body }}
@@ -99,6 +116,7 @@ function actionFor(item: TodayItem) {
               approvedLabel: approval.approvedLabel,
               openedLabel: approval.openedLabel,
               staleReasons: approval.staleReasons,
+              textStale: approval.textStale ?? true,
               link: approvedSendLink(approval, item.instagramUrl),
             }
           : null
@@ -124,21 +142,25 @@ export default async function TodayPage() {
     );
   }
 
+  // DEV-197: SendRecordNotice wraps everything (also the empty list) so the
+  // notice of what was stored survives the card leaving the list.
   return (
     <>
       <h1 className={styles.h1}>今日やること</h1>
-      <p className={styles.count}>
-        {items.length} / {LIMITS.workQueue} 件
-      </p>
-      {items.length === 0 ? (
-        <p className={styles.muted}>今日の作業はありません。</p>
-      ) : (
-        <ul className={styles.list}>
-          {items.map((item) => (
-            <TodayCard key={`${item.kind}-${item.outreachId}`} item={item} now={now} action={actionFor(item)} />
-          ))}
-        </ul>
-      )}
+      <SendRecordNotice>
+        <p className={styles.count}>
+          {items.length} / {LIMITS.workQueue} 件
+        </p>
+        {items.length === 0 ? (
+          <p className={styles.muted}>今日の作業はありません。</p>
+        ) : (
+          <ul className={styles.list}>
+            {items.map((item) => (
+              <TodayCard key={`${item.kind}-${item.outreachId}`} item={item} now={now} action={actionFor(item)} />
+            ))}
+          </ul>
+        )}
+      </SendRecordNotice>
     </>
   );
 }

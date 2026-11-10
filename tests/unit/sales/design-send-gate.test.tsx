@@ -56,14 +56,14 @@ describe("markSent", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
     state.designStatus = status;
     const { markSent } = await import("@/app/admin/sales/_actions/send");
-    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true, recorded: null });
     expect(state.rpc).toHaveBeenCalledWith("sales_mark_sent", { p_outreach_id: OUTREACH, p_approval_id: APPROVAL, p_design_enabled: true });
   });
 
   it("with the step off, does not look at the design at all (legacy)", async () => {
     state.designStatus = "pending";
     const { markSent } = await import("@/app/admin/sales/_actions/send");
-    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true, recorded: null });
     expect(state.rpc).toHaveBeenCalledTimes(1);
     expect(state.rpc).toHaveBeenCalledWith("sales_mark_sent", { p_outreach_id: OUTREACH, p_approval_id: APPROVAL, p_design_enabled: false });
   });

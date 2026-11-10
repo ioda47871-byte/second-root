@@ -92,6 +92,9 @@ test("approve the exact text, then the mailto pre-fills everything; opening is r
 
   await card.getByRole("button", { name: "手動で送信済みにする" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
+  // DEV-197: the page says what the database stored (a normal send).
+  await expect(page.getByTestId("send-recorded")).toHaveAttribute("data-recorded", "sent");
+  await expect(page.getByTestId("send-recorded")).toContainText("通常の送信");
   ({ rows } = await db.query(
     "select a.state, o.status from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id where a.outreach_id = $1",
     [draft.outreachId],
@@ -160,6 +163,44 @@ test("PR #239 M2: opened, then the shop became DNC: the card keeps the confirm s
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   const { rows } = await db.query("select status, blocked_after_open from public.sales_outreaches where id = $1", [draft.outreachId]);
   expect(rows).toEqual([{ status: "sent", blocked_after_open: "do_not_contact" }]);
+  // DEV-197: the page shows what was stored, from the database's own result.
+  const notice = page.getByTestId("send-recorded");
+  await expect(notice).toHaveAttribute("data-recorded", "blocked_after_open");
+  await expect(notice).toHaveAttribute("data-blocked-after-open", "do_not_contact");
+  await expect(notice).toHaveAttribute("data-stale-at-send", "false");
+  await expect(notice).toContainText("事後記録しました");
+});
+
+test("DEV-197 (L2): opened, then excluded and the demo changed: the real send is still recorded after the fact, with the stale snapshot noted", async ({ page }) => {
+  const draft = await seedEmailDraft(db);
+  seeded.push(draft.prospectId);
+  await captureMailto(page);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByTestId("approve-send").click();
+  await card.getByRole("button", { name: "メールを作成" }).click();
+  await expect(card.getByRole("button", { name: "手動で送信済みにする" })).toBeVisible();
+  // The owner sent it; meanwhile the demo changed (what the recipient sees) and the shop was excluded.
+  await db.query("update public.sales_demos set content = content || '{\"hours\": \"9:00-17:00\"}'::jsonb where prospect_id = $1", [draft.prospectId]);
+  await db.query("insert into public.sales_exclusions (label, reason, website_domain) values ('E2E 除外 L2', 'existing_customer', $1)", [draft.email.split("@")[1]]);
+  try {
+    await page.reload();
+    await expect(card.getByTestId("approval-blocked")).toBeVisible();
+    await expect(card.getByRole("button", { name: "メールを作成" })).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "文面をコピー" })).toHaveCount(0);
+    await card.getByRole("button", { name: "送信済みの事実を記録（事後記録）" }).click();
+    await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
+    const notice = page.getByTestId("send-recorded");
+    await expect(notice).toHaveAttribute("data-blocked-after-open", "excluded");
+    await expect(notice).toHaveAttribute("data-stale-at-send", "true");
+    const { rows } = await db.query(
+      "select o.status, o.blocked_after_open, a.state, a.stale_at_send from public.sales_outreaches o join public.sales_outreach_approvals a on a.outreach_id = o.id where o.id = $1",
+      [draft.outreachId],
+    );
+    expect(rows).toEqual([{ status: "sent", blocked_after_open: "excluded", state: "sent", stale_at_send: true }]);
+  } finally {
+    await db.query("delete from public.sales_exclusions where label = 'E2E 除外 L2'");
+  }
 });
 
 test("PR #239 re-review L4b: 見送る is refused while the send screen is open, with the reason", async ({ page }) => {

@@ -9049,7 +9049,7 @@
     {
       "id": "DEV-195",
       "title": "送る前に文面を編集・送信を承認 (承認者・宛先・文面・デモの版を記録)・DB で除外/重複/DNC/条件/デザインを承認時と送信済み時に照合・手動送信を「送信画面を開いた」と「手動で送信済み」の2段に分ける・選んだ理由と改善の仮説を出所つきで保存 (外部への自動送信なし)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-194"
@@ -9059,7 +9059,7 @@
       "branch": "feature/dev-195-draft-edit-send-approval",
       "purpose": "Issue #235 (North Star) の計画の第2段、オーナー GO 2026-11-07 (開発・テスト・PR)。/admin/sales で送る前に文面を直し、送る1件ごとに『何を・誰に・どのデモで』を承認として残し、サーバー (DB) が承認時と送信済み時に同じ規則で断る。手動送信は『開いた』と『送った』を分けて記録し、自動送信済みとは記録しない。DEV-194 で見つけた『送信済みが除外リストを見ない』穴を塞ぐ",
       "acceptance_criteria": [
-        "migration 20261107000000_sales_send_approval.sql (forward-only、hosted には未適用): sales_outreaches に draft_version / edited_at / edited_by、表 sales_outreach_draft_edits / sales_outreach_approvals / sales_prospect_insights (RLS: admin read、書き込みは SECURITY DEFINER の関数だけ)",
+        "migration 20261107000000_sales_send_approval.sql (forward-only。Staging には 2026-11-10 にオーナー承認で適用済み、Production には未適用): sales_outreaches に draft_version / edited_at / edited_by、表 sales_outreach_draft_edits / sales_outreach_approvals / sales_prospect_insights (RLS: admin read、書き込みは SECURITY DEFINER の関数だけ)",
         "文面の編集: sales_update_outreach_draft (drafted の初回だけ、版の一致、本文 1〜1200・URL/メール不可、件名はメールだけ 1〜100)。履歴を残し、古い文面の承認を superseded にする。宛名・デモ URL・注記・配信停止の文・署名は組み立て時に付くので消せない",
         "送信の承認: sales_approve_outreach が承認者・宛先・表示した文面そのまま・チャネル・デモの版 (sales_demo_version)・方式 manual・時刻を記録。server action は DB から組み立て直した文面と表示した文面が違えば承認しない",
         "DB の照合 (sales_send_guards、承認・送信画面を開く・送信済みのたび): DNC・連絡経路・推奨チャネル・除外リスト (sales_assert_outreach_eligible に追加。フォローも)・宛先の重複・デモ・AIデザイン待ち。outreach 行の FOR UPDATE・prospect 行のロック・承認の partial unique index・除外との advisory lock で同時実行でも二重に通らない",
@@ -9123,7 +9123,63 @@
         "Operational Claude に insights を書かせる prompt の変更 (別承認)",
         "mode = api (公式 API による送信) の経路 (別承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-195.md"
+      "note": "記録は .ai/reviews/DEV-195.md。PR #239 merged (6443d99)。Staging DB への migration 20261107000000 の適用 2026-11-10 (オーナー承認、Production は未適用)。Staging の架空データでの実動作 93/93 PASS・DB のセキュリティ確認 13/13 PASS・CI 11/11。最終レビュー C0/H0/M0/L3、L1〜L3 は DEV-197 で対応。done への更新は DEV-197 の branch で行った"
+    },
+    {
+      "id": "DEV-197",
+      "title": "送信できるか判定できないときは安全側に倒し、表示・サーバーの処理・保存した記録を食い違わせない (DEV-195 最終レビュー L1〜L3: 送信の3状態・ブロック後の古い snapshot の事後記録・台帳の文言)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-195"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-197-send-state-consistency",
+      "purpose": "DEV-195 (PR #239) の最終独立レビューの Low 3件を1つの PR で直す (オーナー指示)。原則: 送信できるか判定できないときは安全側に倒し、表示・サーバーの処理・保存した記録を食い違わせない。L1: 未確認 (例: 除外リストを読めない) を『送れない (事後記録・フォロー禁止)』と表示し、DB は通常の送信として記録していた。L2: 開いた承認がブロックかつ snapshot が古いと、実際に送った事実を記録できなかった。L3: 台帳の DEV-195 の文言が古い",
+      "acceptance_criteria": [
+        "送信の3状態 (lib/sales/evidence.ts の ContactVerdict.state): sendable (すべて ok) / blocked (確定した理由がある) / unknown (確定した理由は無いが未確認がある)。block: DNC・除外の確定 / 未確認 / 該当なし",
+        "unknown では新しい送信の操作 (承認・開く・メール・DM・コピー) を出さない。『送信できるか確認できませんでした。再読み込みしてください』を出す",
+        "開いた承認が unknown (または DNC・除外以外の確定した理由) のとき: ブロックを主張しない文言で『送信済みの事実を記録』だけを出し、DB が取引の中で判定する。事後記録・フォロー禁止の文言は DNC・除外の確定のときだけ",
+        "送信済みの後は、DB が保存した状態 (通常の送信 / blocked_after_open / stale_at_send) を sales_mark_sent の結果から画面に出す (SendRecordNotice)。結果の形が想定外なら『確認できませんでした』と言い、通常の送信と推測しない",
+        "migration 20261110000000_sales_send_stale_after_block.sql (forward-only、どの hosted DB にも未適用): sales_outreach_approvals.stale_at_send (check: sent かつ blocked_after_open のときだけ) と sales_mark_sent の create or replace (同じ引数・grant)。ブロック後で、文面の版とチャネルが承認と同じなら、デモ・宛先が変わっていても (宛先が消えた・重複も) 承認の snapshot と宛先のまま記録する (連絡経路の条件は承認の宛先で判定、trigger sales_check_outreach_update も同じ)。ブロック無しの古い snapshot・文面の変更・デモ・デザイン待ち・未オープンは従来どおり拒否、フォローは禁止のまま",
+        "台帳: DEV-195 の acceptance_criteria[0] を『Staging 適用済み (2026-11-10)、Production 未適用』に直し、DEV-195 を done に",
+        "docs/MVP_SPEC.md §4 に3状態と安全側の規則を書く。記録 .ai/reviews/DEV-197.md (表示と記録の食い違いの監査・営業判断への影響の再評価を含む)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/sales",
+        "npm run test:integration (send-approval ほか、ローカル Supabase、npx supabase db reset の後)",
+        "npx playwright test tests/e2e/email-send.spec.ts tests/e2e/instagram-send.spec.ts tests/e2e/today.spec.ts (build の後)",
+        "npx tsc --noEmit・eslint・npm run check:secrets"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261110000000_sales_send_stale_after_block.sql (新規)",
+        "lib/sales/evidence.ts",
+        "lib/sales/approval.ts",
+        "app/admin/sales/_actions/send.ts",
+        "app/admin/sales/page.tsx",
+        "components/admin/InitialSend.tsx",
+        "components/admin/SendRecordNotice.tsx (新規)",
+        "tests/unit/sales/*",
+        "tests/integration/send-approval.test.ts",
+        "tests/e2e/email-send.spec.ts",
+        "docs/MVP_SPEC.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-197.md"
+      ],
+      "forbidden_scope": [
+        "既存の migration (20261107000000 ほか) の編集",
+        "hosted (Staging / Production) DB への migration の適用・deploy・実際の送信",
+        "新しい送信の経路・送信の自動化",
+        "DNC・除外・重複・連絡経路・デザイン待ちの照合の緩和 (古い snapshot はブロック後の事後記録に限る)",
+        ".github/workflows・package.json・lockfile"
+      ],
+      "human_approval_triggers": [
+        "PR のレビュー・必須 CI のあとの merge",
+        "Staging DB への migration 20261110000000 の適用 (別承認)。DEV-195 と同じく、この PR の merge と Staging への適用は一緒に行う (オーナーの承認のもとで merge の直前か直後に適用する)。適用前の develop の Preview では、ブロック後の古い承認に事後記録のボタンが出るが旧関数は stale_snapshot で断る (画面は『サーバーが確かめる』とだけ言い、理由を表示する。誤った記録はできない)",
+        "Production DB への適用 (別承認。DEV-195 の migration と一緒に)"
+      ],
+      "note": "記録は .ai/reviews/DEV-197.md。PR #242 (draft)。独立レビュー 1回目 (a232e1f: C0/H0/M0/L2) に対応: L1 ブロック後の事後記録は店舗の今の宛先 (消えた・重複) で断らず承認の宛先で記録、L2 merge と Staging への 20261110000000 の適用は一緒に行う"
     }
   ]
 }
