@@ -137,6 +137,46 @@ describe("contact verdict: server-rule parity", () => {
   });
 });
 
+describe("DEV-197: three send states — sendable / blocked (confirmed) / unknown (未確認)", () => {
+  it("sendable only when every check is ok; DNC and exclusion both clear", () => {
+    for (const input of [eligibleInstagramInput(), eligibleEmailInput()]) {
+      expect(contactVerdict(input)).toMatchObject({ sendable: true, state: "sendable", block: "clear" });
+    }
+  });
+
+  it("a confirmed DNC / exclusion is blocked with block confirmed (what blocked_after_open records)", () => {
+    for (const input of [
+      eligibleInstagramInput({ doNotContact: true }),
+      eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } }),
+      // Confirmed DNC wins even when another check is 未確認.
+      eligibleInstagramInput({ doNotContact: true, address: null }),
+      eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] }, doNotContact: null }),
+    ]) {
+      expect(contactVerdict(input)).toMatchObject({ sendable: false, state: "blocked", block: "confirmed" });
+    }
+  });
+
+  it("another confirmed reason is blocked, but makes no DNC / exclusion claim", () => {
+    for (const input of [
+      eligibleEmailInput({ sources: [] }),
+      eligibleInstagramInput({ recommendedChannel: "email" }),
+      eligibleInstagramInput({ demoAvailable: false }),
+    ]) {
+      expect(contactVerdict(input)).toMatchObject({ sendable: false, state: "blocked", block: "clear" });
+    }
+    // A confirmed other reason with DNC 未確認: blocked, and a block cannot be ruled out.
+    expect(contactVerdict(eligibleInstagramInput({ demoAvailable: false, exclusion: { state: "unchecked" } }))).toMatchObject({ state: "blocked", block: "unknown" });
+  });
+
+  it("an exclusion list that could not be read is unknown, never blocked (DEV-195 final review L1)", () => {
+    expect(contactVerdict(eligibleInstagramInput({ exclusion: { state: "unchecked" } }))).toMatchObject({ sendable: false, state: "unknown", block: "unknown" });
+    expect(contactVerdict(eligibleInstagramInput({ doNotContact: null }))).toMatchObject({ sendable: false, state: "unknown", block: "unknown" });
+    // 未確認 elsewhere: unknown, while DNC and the exclusion list are confirmed clear.
+    expect(contactVerdict(eligibleInstagramInput({ address: null }))).toMatchObject({ sendable: false, state: "unknown", block: "clear" });
+    expect(contactVerdict(eligibleInstagramInput({ websiteStatus: null }))).toMatchObject({ sendable: false, state: "unknown", block: "clear" });
+  });
+});
+
 describe("the database rules this mirrors are still the ones in the migrations", () => {
   const sql = (f: string) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), "utf8");
   it("sales_assert_outreach_eligible and sales_has_first_party_email", () => {
@@ -164,6 +204,15 @@ describe("the database rules this mirrors are still the ones in the migrations",
     expect(eligible).toContain("if public.sales_prospect_excluded(p.id) then");
     expect(m).toContain("if not found or (d.disabled_at is not null and v_block is distinct from 'do_not_contact') then");
     expect(m).toContain("if coalesce(p_design_enabled, false) and d.design_status in ('pending', 'processing') then");
+  });
+  it("DEV-197: sales_mark_sent keeps every guard; a stale snapshot passes only after a block with the same text revision and channel", () => {
+    const m = sql("20261110000000_sales_send_stale_after_block.sql");
+    expect(m).toContain("if o.kind <> 'initial' or o.status <> 'drafted' then");
+    expect(m).toContain("raise exception 'not_opened'");
+    expect(m).toContain("d := public.sales_send_guards(o, p_design_enabled, true);");
+    expect(m).toContain("if v_stale and (v_block is null or a.draft_version <> o.draft_version or a.channel <> o.channel) then");
+    expect(m).toContain("check (not stale_at_send or (state = 'sent' and blocked_after_open is not null))");
+    expect(m).not.toMatch(/drop function/i);
   });
 });
 

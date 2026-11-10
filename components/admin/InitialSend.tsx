@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { approveSend, markSendOpened, markSent, withdrawApproval } from "@/app/admin/sales/_actions/send";
 import { APPROVAL_STATE_LABEL, type OpenedVia } from "@/lib/sales/approval";
 import { copyText, openInstagram, openMail, type OpenDeps, type PendingWindow } from "@/lib/sales/open-send";
+import { useSendRecordNotice } from "./SendRecordNotice";
 import type { Channel } from "@/lib/sales/types";
 import styles from "./admin.module.css";
 
@@ -28,9 +29,23 @@ export type ApprovalProps = {
   approvedLabel: string;
   openedLabel: string | null;
   staleReasons: string[];
+  /**
+   * DEV-197: the text revision or channel changed since approval. Such an
+   * approval is never recorded as sent; a demo / recipient change can be, but
+   * only after a block (absent = treated as changed: fail safe).
+   */
+  textStale?: boolean;
   /** mailto: (email) or the Instagram profile (instagram), built from the approved text; null if it cannot be. */
   link: string | null;
 };
+
+/**
+ * DEV-197: an opened approval whose shop is not sendable now, without a
+ * confirmed DNC / exclusion. `state` unknown: a check could not be determined;
+ * blocked: another confirmed reason. `blockPossible`: DNC or the exclusion
+ * list itself could not be determined (the database may still record a block).
+ */
+export type CheckWarning = { state: "blocked" | "unknown"; reasons: string[]; blockPossible: boolean };
 
 function Preview({ message }: { message: ComposedMessage }) {
   return (
@@ -50,6 +65,7 @@ export default function InitialSend({
   composed,
   approval,
   blockedWarning = null,
+  checkWarning = null,
 }: {
   outreachId: string;
   draftVersion: number;
@@ -57,10 +73,15 @@ export default function InitialSend({
   approval: ApprovalProps | null;
   /**
    * PR #239 M2: an opened approval whose shop is now DNC / excluded. Only the
-   * confirm (if it really was sent) and 送らなかった are offered.
+   * confirm (if it really was sent) and 送らなかった are offered. DEV-197: only
+   * for a confirmed DNC / exclusion (what the database stores as
+   * blocked_after_open), never for a check that could not be determined.
    */
   blockedWarning?: string[] | null;
+  /** DEV-197: an opened approval not sendable for another reason, or unknown. */
+  checkWarning?: CheckWarning | null;
 }) {
+  const showRecorded = useSendRecordNotice();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   /**
@@ -118,9 +139,27 @@ export default function InitialSend({
     );
   }
 
+  const opened = approval.state === "send_opened";
   const stale = approval.staleReasons.length > 0;
-  const blocked = approval.state === "send_opened" && blockedWarning !== null && blockedWarning.length > 0;
-  const canOpen = !stale && !blocked && approval.link !== null;
+  const blocked = opened && blockedWarning !== null && blockedWarning.length > 0;
+  // DEV-197: unknown / another reason. No new send either; the database decides what it records.
+  const check = opened && !blocked && checkWarning !== null ? checkWarning : null;
+  const noNewSend = blocked || check !== null;
+  const canOpen = !stale && !noNewSend && approval.link !== null;
+  // DEV-197 (L2): a real send after a block is recorded even if the demo /
+  // recipient changed since approval (never a changed text). Offered where a
+  // block is confirmed or cannot be ruled out; otherwise stale still refuses.
+  const staleRecordable = stale && approval.textStale === false && (blocked || (check?.blockPossible ?? false));
+  const canConfirm = opened && (!stale || staleRecordable);
+
+  const confirm = () => {
+    setError(null);
+    start(async () => {
+      const result = await markSent(outreachId, approval.id);
+      if (!result.ok) setError(result.error);
+      else showRecorded({ recorded: result.recorded });
+    });
+  };
 
   const openMailApp = () => {
     if (!approval.link) return;
@@ -176,14 +215,36 @@ export default function InitialSend({
       {blocked && (
         <p className={styles.error} role="alert" data-testid="approval-blocked">
           送信画面を開いた後に、この店舗は送れない状態になりました（{blockedWarning!.join("・")}）。もう送らないでください。ここから送る操作はありません。
-          開いた後に実際に送っていた場合だけ「送信済みの事実を記録（事後記録）」を押してください。送れない状態だったことも一緒に記録され、この店舗へのフォローは出ません（禁止）。送っていなければ「送らなかった」を押してください。
+          {canConfirm
+            ? "開いた後に実際に送っていた場合だけ「送信済みの事実を記録（事後記録）」を押してください。送れない状態だったことも一緒に記録され、この店舗へのフォローは出ません（禁止）。"
+            : "承認の後に文面が変わったため、この承認では送信済みを記録できません。"}
+          送っていなければ「送らなかった」を押してください。
+        </p>
+      )}
+      {check && (
+        <p className={styles.error} role="alert" data-testid={check.state === "unknown" ? "approval-unknown" : "approval-check-failed"}>
+          {check.state === "unknown"
+            ? `送信できるか確認できませんでした（${check.reasons.join("・")}）。再読み込みしてください。`
+            : `送信画面を開いた後に、送れない条件が見つかりました（${check.reasons.join("・")}）。`}
+          もう送らないでください。ここから送る操作はありません。
+          {canConfirm
+            ? "開いた後に実際に送っていた場合だけ「送信済みの事実を記録」を押してください。通常の送信として記録するか、送れない状態（営業不要・除外）の後の事後記録にするかはサーバーが確かめ、記録した内容を画面に表示します。記録できない場合は理由を表示します。"
+            : "承認の後に内容が変わったため、この承認では送信済みを記録できません。"}
+          送っていなければ「送らなかった」を押してください。
         </p>
       )}
       {stale ? (
-        <p className={styles.error} role="alert" data-testid="approval-stale">
-          この承認は使えません（{approval.staleReasons.join("・")}）。「送らなかった」で取り消してから、もう一度承認してください。
-        </p>
-      ) : blocked ? null : approval.link ? (
+        staleRecordable ? (
+          <p className={styles.error} role="alert" data-testid="approval-stale" data-recordable="true">
+            承認の後に内容が変わりました（{approval.staleReasons.join("・")}）。この承認でもう送らないでください。
+            送れない状態（営業不要・除外）の後に実際に送っていた場合だけ、承認した内容（開いた内容）のまま記録でき、内容が変わっていたことも一緒に記録されます。
+          </p>
+        ) : (
+          <p className={styles.error} role="alert" data-testid="approval-stale">
+            この承認は使えません（{approval.staleReasons.join("・")}）。「送らなかった」で取り消してから、もう一度承認してください。
+          </p>
+        )
+      ) : noNewSend ? null : approval.link ? (
         composed.channel === "email" ? (
           // A button, not a mailto link: middle-click / long-press "open link"
           // cannot skip the server's record (PR #239 re-review L4a).
@@ -213,17 +274,18 @@ export default function InitialSend({
       <p className={styles.muted} role="status">
         {note ?? ""}
       </p>
-      {approval.state === "send_opened" && !stale && (
+      {canConfirm && (
         <>
-          {!blocked && <p className={styles.muted}>送信したら「手動で送信済みにする」を押してください。開いただけでは送信済みになりません。</p>}
+          {!noNewSend && <p className={styles.muted}>送信したら「手動で送信済みにする」を押してください。開いただけでは送信済みになりません。</p>}
           <button
             type="button"
             className={styles.secondary}
             disabled={pending}
             data-testid="confirm-sent"
-            onClick={() => run(() => markSent(outreachId, approval.id))}
+            data-confirm={blocked ? "after_block" : check ? "server_decides" : "manual"}
+            onClick={confirm}
           >
-            {pending ? "記録中…" : blocked ? "送信済みの事実を記録（事後記録）" : "手動で送信済みにする"}
+            {pending ? "記録中…" : blocked ? "送信済みの事実を記録（事後記録）" : check ? "送信済みの事実を記録" : "手動で送信済みにする"}
           </button>
         </>
       )}

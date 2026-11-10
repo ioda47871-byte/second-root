@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import InitialSend, { type ApprovalProps, type ComposedMessage } from "@/components/admin/InitialSend";
-import { APPROVAL_STATE_LABEL, errorCode, liveApproval, SEND_ERROR_LABEL, sendErrorMessage, type ApprovalRow } from "@/lib/sales/approval";
+import { APPROVAL_STATE_LABEL, errorCode, liveApproval, recordedSend, recordedSendMessage, SEND_ERROR_LABEL, sendErrorMessage, type ApprovalRow } from "@/lib/sales/approval";
 import { checkDraftMessage, containsContactOrLink, DEFAULT_EMAIL_SUBJECT } from "@/lib/sales/draft";
 import { buildTodayEvidence, formatJstDateTime, UNCONFIRMED } from "@/lib/sales/evidence";
 import { verifiedCandidateInput } from "@/lib/sales/ingest-schema";
@@ -420,6 +420,146 @@ describe("PR #239 M2: an opened approval of a shop that became DNC / excluded", 
     );
     expect(status).toEqual({ kind: "blocked" });
     expect(followUpStatusLabel(status)).toContain("フォローなし");
+  });
+});
+
+describe("DEV-197: an opened approval follows the three send states; the stored state is the server's", () => {
+  const opened: ApprovalProps = {
+    id: APPROVAL,
+    state: "send_opened",
+    recipient: "test_shop",
+    subject: null,
+    body: "本文",
+    approvedLabel: "2026/11/07 10:00",
+    openedLabel: "2026/11/07 10:10・Instagram を開いた",
+    staleReasons: [],
+    textStale: false,
+    link: "https://www.instagram.com/test_shop/",
+  };
+  const igComposed: ComposedMessage = { channel: "instagram", recipient: "test_shop", subject: null, body: "本文" };
+  const render = (props: Partial<Parameters<typeof InitialSend>[0]> = {}) =>
+    renderToStaticMarkup(<InitialSend outreachId={OUTREACH} draftVersion={1} composed={igComposed} approval={opened} {...props} />);
+  const noNewSend = (html: string) => {
+    expect(html).not.toContain("DMを送る");
+    expect(html).not.toContain("メールを作成");
+    expect(html).not.toContain("文面をコピー");
+  };
+
+  it("unknown (e.g. the exclusion list could not be read): no new send, and no claim of a block, 事後記録 or a forbidden follow-up", () => {
+    const html = render({ checkWarning: { state: "unknown", reasons: ["除外リスト: 除外リストを照合できませんでした（未確認）"], blockPossible: true } });
+    expect(html).toContain('data-testid="approval-unknown"');
+    expect(html).toContain("送信できるか確認できませんでした");
+    expect(html).toContain("再読み込みしてください");
+    expect(html).not.toContain('data-testid="approval-blocked"');
+    expect(html).not.toContain("事後記録）");
+    expect(html).not.toContain("フォローは出ません");
+    expect(html).not.toContain("送れない状態になりました");
+    noNewSend(html);
+    // The owner may still record a real send; the server decides how it is stored.
+    expect(html).toContain('data-testid="confirm-sent"');
+    expect(html).toContain('data-confirm="server_decides"');
+    expect(html).toContain(">送信済みの事実を記録<");
+    expect(html).toContain("サーバーが確かめ");
+    expect(html).not.toContain("手動で送信済みにする");
+    expect(html).toContain('data-testid="withdraw-approval"');
+  });
+
+  it("another confirmed reason: no new send, the server decides, no DNC / exclusion claim", () => {
+    const html = render({ checkWarning: { state: "blocked", reasons: ["連絡経路の条件: 公開メールが登録されていません"], blockPossible: false } });
+    expect(html).toContain('data-testid="approval-check-failed"');
+    expect(html).not.toContain('data-testid="approval-blocked"');
+    expect(html).not.toContain("フォローは出ません");
+    expect(html).toContain('data-confirm="server_decides"');
+    noNewSend(html);
+  });
+
+  it("a confirmed DNC / exclusion keeps the after-the-fact wording", () => {
+    const html = render({ blockedWarning: ["営業不要（DNC）: 営業不要（DNC）の店舗です"] });
+    expect(html).toContain('data-testid="approval-blocked"');
+    expect(html).toContain('data-confirm="after_block"');
+    expect(html).toContain("送信済みの事実を記録（事後記録）");
+    expect(html).toContain("フォローは出ません（禁止）");
+    noNewSend(html);
+  });
+
+  it("L2: blocked + stale (demo / recipient changed) still offers the after-the-fact record, and says the change is recorded", () => {
+    const stale = { ...opened, staleReasons: ["承認の後にデモが変わったか無効になりました"], textStale: false };
+    const html = render({ approval: stale, blockedWarning: ["除外リスト: 除外リストに一致（取引先）"] });
+    expect(html).toContain('data-testid="approval-stale"');
+    expect(html).toContain('data-recordable="true"');
+    expect(html).toContain("変わっていたことも一緒に記録されます");
+    expect(html).toContain('data-testid="confirm-sent"');
+    expect(html).toContain("送信済みの事実を記録（事後記録）");
+    expect(html).toContain('data-testid="withdraw-approval"');
+    noNewSend(html);
+    // Unknown where the block itself could not be determined: offered too (the server decides).
+    const unknown = render({ approval: stale, checkWarning: { state: "unknown", reasons: ["除外リスト: 未確認"], blockPossible: true } });
+    expect(unknown).toContain('data-testid="confirm-sent"');
+    noNewSend(unknown);
+  });
+
+  it("L2 limits: no record of a changed text, nor of a stale approval where no block is possible", () => {
+    const textChanged = { ...opened, staleReasons: ["承認の後に文面が編集されました"], textStale: true };
+    const blocked = render({ approval: textChanged, blockedWarning: ["営業不要（DNC）: 営業不要（DNC）の店舗です"] });
+    expect(blocked).not.toContain('data-testid="confirm-sent"');
+    expect(blocked).toContain("この承認では送信済みを記録できません");
+    expect(blocked).not.toContain('data-recordable="true"');
+    // textStale absent: treated as changed (fail safe).
+    const absent: ApprovalProps = { ...opened, staleReasons: ["承認の後に宛先が変わりました"] };
+    delete absent.textStale;
+    expect(render({ approval: absent, blockedWarning: ["営業不要（DNC）: x"] })).not.toContain('data-testid="confirm-sent"');
+    const demoChanged = { ...opened, staleReasons: ["承認の後にデモが変わったか無効になりました"], textStale: false };
+    // Stale without any block: refused as before.
+    expect(render({ approval: demoChanged })).not.toContain('data-testid="confirm-sent"');
+    expect(render({ approval: demoChanged, checkWarning: { state: "unknown", reasons: ["対象: 未確認"], blockPossible: false } })).not.toContain('data-testid="confirm-sent"');
+  });
+
+  it("recordedSend reads what sales_mark_sent stored; anything unexpected is null (never guessed to be normal)", () => {
+    expect(recordedSend({ status: "sent", blocked_after_open: null, stale_at_send: false, replayed: false })).toEqual({ blockedAfterOpen: null, staleAtSend: false, replayed: false });
+    expect(recordedSend({ status: "sent", blocked_after_open: "excluded", stale_at_send: true, replayed: true })).toEqual({ blockedAfterOpen: "excluded", staleAtSend: true, replayed: true });
+    // Before migration 20261110000000 there is no stale_at_send: never stale.
+    expect(recordedSend({ status: "sent", blocked_after_open: "do_not_contact", replayed: false })).toEqual({ blockedAfterOpen: "do_not_contact", staleAtSend: false, replayed: false });
+    for (const bad of [null, undefined, "sent", [], { replayed: false }, { status: "sent" }, { status: "drafted", blocked_after_open: null },
+      { status: "sent", blocked_after_open: "other" }, { status: "sent", blocked_after_open: null, stale_at_send: "yes" }, { status: "sent", blocked_after_open: null, stale_at_send: true }]) {
+      expect(recordedSend(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("recordedSendMessage says what was stored", () => {
+    expect(recordedSendMessage({ blockedAfterOpen: null, staleAtSend: false, replayed: false })).toBe("手動で送信済みとして記録しました（通常の送信）。");
+    const dnc = recordedSendMessage({ blockedAfterOpen: "do_not_contact", staleAtSend: false, replayed: false });
+    expect(dnc).toContain("事後記録しました");
+    expect(dnc).toContain("営業不要（DNC）");
+    expect(dnc).toContain("フォローは出ません");
+    expect(dnc).not.toContain("変わっていた");
+    expect(recordedSendMessage({ blockedAfterOpen: "excluded", staleAtSend: true, replayed: false })).toContain("変わっていたことも記録しました");
+    const unknown = recordedSendMessage(null);
+    expect(unknown).toContain("確認できませんでした");
+    expect(unknown).not.toContain("通常の送信）");
+    expect(dnc + unknown).not.toContain("自動送信");
+  });
+
+  it("markSent returns the stored state from the database's result", async () => {
+    const { markSent } = await import("@/app/admin/sales/_actions/send");
+    state.rpc.mockResolvedValueOnce({ data: { status: "sent", blocked_after_open: "excluded", stale_at_send: true, replayed: false }, error: null });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true, recorded: { blockedAfterOpen: "excluded", staleAtSend: true, replayed: false } });
+    state.rpc.mockResolvedValueOnce({ data: { status: "sent", blocked_after_open: null, stale_at_send: false, replayed: false }, error: null });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: true, recorded: { blockedAfterOpen: null, staleAtSend: false, replayed: false } });
+    state.rpc.mockResolvedValueOnce({ data: null, error: { message: "stale_snapshot" } });
+    expect(await markSent(OUTREACH, APPROVAL)).toEqual({ ok: false, error: SEND_ERROR_LABEL.stale_snapshot });
+  });
+
+  it("liveApproval marks a changed text revision or channel as textStale, and a demo / recipient change not", () => {
+    const row: ApprovalRow = {
+      id: APPROVAL, state: "send_opened", channel: "instagram", recipient: "test_shop", subject: null, body: "本文", draft_version: 3,
+      demo_token: TOKEN, approved_at: "2026-11-07T01:00:00Z", opened_at: "2026-11-07T01:10:00Z", opened_via: "copy",
+    };
+    const ctx = { channel: "instagram" as const, draftVersion: 3, recipient: "test_shop", demoToken: TOKEN };
+    expect(liveApproval([row], ctx)?.textStale).toBe(false);
+    expect(liveApproval([row], { ...ctx, demoToken: null })?.textStale).toBe(false);
+    expect(liveApproval([row], { ...ctx, recipient: "other" })?.textStale).toBe(false);
+    expect(liveApproval([row], { ...ctx, draftVersion: 4 })?.textStale).toBe(true);
+    expect(liveApproval([row], { ...ctx, channel: "email" })?.textStale).toBe(true);
   });
 });
 
