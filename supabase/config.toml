@@ -112,16 +112,20 @@ port = 54324
 # sender_name = "Admin"
 
 [storage]
-enabled = false
+# DEV-196c: local Storage on (spec §5). This file configures the LOCAL stack
+# only; it creates nothing on a hosted project. CI starts Supabase with
+# `-x storage-api`, so the Storage-dependent integration test skips there.
+enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
+file_size_limit = "4MiB"
 
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
+# DEV-196c (spec §5.1): the one private bucket for demo version artifacts.
+# public = false, no storage.objects policy for anon / authenticated: only the
+# server (service role) reads and writes it. No PNG, no SVG.
+[storage.buckets.sales-demo-versions]
+public = false
+file_size_limit = "4MiB"
+allowed_mime_types = ["text/html", "text/css", "image/webp", "image/jpeg"]
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
