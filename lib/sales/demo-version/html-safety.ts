@@ -21,10 +21,16 @@
  *  - order / reservation / cart words and `テスト` refused in every visible text.
  * The CSP (`script-src 'none'`, `img-src` / `style-src` bound to the token path, `sandbox`) stays the backstop.
  *
+ * Bounded (review rounds 2–3): the HTML limits (size, depth, elements, attributes per tag) are enforced inside parse5
+ * (./bounded-parse.ts); the CSS limits (size, whitespace runs, `url(` and unclosed comments) are checked by plain
+ * loops before any regex, and the rule core runs only on a sheet the linear token scan accepted; every step spends
+ * from one operation budget (./budget.ts) — `VALIDATION_BUDGET_EXCEEDED` when it runs out.
+ *
  * Pure: parse5 and string work only. Every finding is a fixed code (detail is ASCII and short, for logs and tests).
  */
-import { parse } from "parse5";
 import type { DefaultTreeAdapterTypes } from "parse5";
+import { boundedParse } from "./bounded-parse";
+import { BudgetExceeded, OpBudget } from "./budget";
 import { cssScanProblems, cssStrings } from "./css-scan";
 import { allowedUrl, cssProblems, cssUrls, decodeEscapes, FORBIDDEN_ELEMENTS, outsideStringsAndComments, PAGE_FONT_FAMILIES, PAGE_FONT_GENERIC_FAMILIES, PROTOTYPE_STYLESHEET, URL_ATTRIBUTES } from "./rule-core";
 
@@ -58,7 +64,8 @@ export type HtmlSafetyCode =
   | "HTML_TOO_MANY_ELEMENTS"
   | "HTML_TOO_MANY_ATTRIBUTES"
   | "CSS_TOO_LARGE"
-  | "CSS_TOO_COMPLEX";
+  | "CSS_TOO_COMPLEX"
+  | "VALIDATION_BUDGET_EXCEEDED";
 
 export type HtmlSafetyFinding = { code: HtmlSafetyCode; detail?: string };
 
@@ -138,92 +145,28 @@ const STRING_PROPERTIES = new Set(["font-family", "grid-template-areas", "grid-t
 const TEXT_PROPERTIES = new Set(["content", "quotes", "list-style", "list-style-type", "text-overflow", "text-emphasis", "text-emphasis-style", "hyphenate-character", "-webkit-hyphenate-character", "string-set", "counter-reset", "counter-set", "counter-increment"]);
 
 /**
- * Review round 2 M1: input limits checked by linear scans BEFORE the slow paths (parse5 on deep nesting; the copied
- * first-pass regexes of the rule core, whose `url(` and comment patterns are quadratic on crafted input). Over a limit,
- * the check refuses with a fixed code and never runs the slow path. The rule core stays byte-identical to its source.
+ * Review rounds 2–3 (M1): limits that keep the CSS checks linear. The HTML limits (size, depth, elements, attributes
+ * per tag) are enforced inside parse5 itself (bounded-parse.ts). Over a limit the check refuses with a fixed code and
+ * never runs the slow path; and every step spends from one operation budget (budget.ts).
+ *
+ * The copied rule core (rule-core.ts, byte-identical to its source) has regexes that backtrack on crafted input:
+ * `cssUrls` (`url\(\s*…([^"')\s]*)\s*\)` on many `url(` or long whitespace) and the lazy comment pattern on unclosed
+ * comments. So the server runs the rule core ONLY on a stylesheet the linear token scan (css-scan.ts) has already
+ * accepted, and only within these limits.
  */
 export const ARTIFACT_INPUT_LIMITS = {
-  /** chars (the manifest allows 384 KiB of bytes; a UTF-8 page never has more chars than bytes) */
-  htmlChars: 384 * 1024,
   cssChars: 256 * 1024,
-  /** open-element depth by the linear tag scan (the research pages stay under 20) */
-  depth: 512,
-  /** start tags (the research pages have under 400) */
-  elements: 8000,
-  /** attributes in one start tag, counted outside quoted values (whitespace around "=" may count extra) */
-  attributesPerTag: 64,
   /** `url(` in one stylesheet, after escapes are decoded (the research pages have at most 9) */
   cssUrls: 200,
   /** `url(` in one attribute value */
   attributeUrls: 8,
   /** `/*` after the last `*` `/` (each unclosed one makes the rule core's comment regex scan to the end) */
   unclosedComments: 4,
+  /** the longest whitespace run allowed in a stylesheet or in an attribute that holds `url(` (bounds every `\s*`) */
+  whitespaceRun: 64,
 } as const;
 
-/** Elements that never open a level: HTML void elements, and (only when written `/>`) the allowed SVG elements. */
-const VOID_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
-
-/**
- * A linear scan of the tags: total length, the number of start tags and the open depth. An approximation of the tree
- * builder that errs towards counting deeper (an HTML element written `<div/>` still opens a level, as in the parser).
- */
-export function htmlShapeProblem(html: string): "HTML_TOO_LARGE" | "HTML_TOO_DEEP" | "HTML_TOO_MANY_ELEMENTS" | "HTML_TOO_MANY_ATTRIBUTES" | null {
-  if (html.length > ARTIFACT_INPUT_LIMITS.htmlChars) return "HTML_TOO_LARGE";
-  let depth = 0;
-  let elements = 0;
-  let i = html.indexOf("<");
-  while (i !== -1 && i < html.length) {
-    const next = html[i + 1];
-    if (html.startsWith("<!--", i)) {
-      const end = html.indexOf("-->", i + 4);
-      if (end === -1) break;
-      i = html.indexOf("<", end + 3);
-      continue;
-    }
-    const close = next === "/";
-    const nameStart = close ? i + 2 : i + 1;
-    if (!/[A-Za-z]/.test(html[nameStart] ?? "")) {
-      i = html.indexOf("<", i + 1);
-      continue;
-    }
-    let j = nameStart;
-    while (j < html.length && /[A-Za-z0-9:-]/.test(html[j]!)) j++;
-    const name = html.slice(nameStart, j).toLowerCase();
-    // the tag's end: the first ">" outside a quoted value; attribute starts counted on the way (parse5's duplicate-
-    // attribute check is quadratic in the attributes of one tag)
-    let gt = -1;
-    let quote: string | null = null;
-    let attributes = 0;
-    for (let k = j; k < html.length; k++) {
-      const ch = html[k]!;
-      if (quote) {
-        if (ch === quote) quote = null;
-      } else if (ch === '"' || ch === "'") quote = ch;
-      else if (ch === ">") {
-        gt = k;
-        break;
-      } else if (!/[\t\n\f\r /]/.test(ch) && /[\t\n\f\r /]/.test(html[k - 1]!)) {
-        attributes++;
-        if (attributes > ARTIFACT_INPUT_LIMITS.attributesPerTag) return "HTML_TOO_MANY_ATTRIBUTES";
-      }
-    }
-    if (gt === -1) break;
-    if (close) depth = Math.max(0, depth - 1);
-    else {
-      elements++;
-      if (elements > ARTIFACT_INPUT_LIMITS.elements) return "HTML_TOO_MANY_ELEMENTS";
-      const selfClosed = html[gt - 1] === "/" && SVG_ELEMENTS.has(name);
-      if (!VOID_ELEMENTS.has(name) && !selfClosed) {
-        depth++;
-        if (depth > ARTIFACT_INPUT_LIMITS.depth) return "HTML_TOO_DEEP";
-      }
-    }
-    i = html.indexOf("<", gt + 1);
-  }
-  return null;
-}
-
-/** Counts a regex's matches (linear: the patterns below have no nested quantifiers). */
+/** Counts a regex's matches (linear: the patterns passed here have a single quantifier between literals). */
 const count = (s: string, re: RegExp) => {
   let n = 0;
   const it = s.matchAll(re);
@@ -231,11 +174,27 @@ const count = (s: string, re: RegExp) => {
   return n;
 };
 
-/** Review round 2 M1: whether a stylesheet is over the limits that keep the rule core's regexes linear in practice. */
+/** The longest run of CSS whitespace (space, tab, LF, CR, FF), by a plain loop. */
+export function longestWhitespaceRun(s: string): number {
+  let best = 0;
+  let run = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d || c === 0x0c) {
+      run++;
+      if (run > best) best = run;
+    } else run = 0;
+  }
+  return best;
+}
+
+/** Whether a stylesheet is over the limits that keep the rule core's regexes linear (checked before they run). */
 export function cssComplexityProblem(css: string): "CSS_TOO_LARGE" | "CSS_TOO_COMPLEX" | null {
   if (css.length > ARTIFACT_INPUT_LIMITS.cssChars) return "CSS_TOO_LARGE";
+  if (longestWhitespaceRun(css) > ARTIFACT_INPUT_LIMITS.whitespaceRun) return "CSS_TOO_COMPLEX";
   const decoded = decodeEscapes(css);
-  if (count(decoded, /url\s*\(/gi) > ARTIFACT_INPUT_LIMITS.cssUrls) return "CSS_TOO_COMPLEX";
+  if (longestWhitespaceRun(decoded) > ARTIFACT_INPUT_LIMITS.whitespaceRun) return "CSS_TOO_COMPLEX";
+  if (count(decoded, /url\(/gi) + count(decoded, /url[\t\n\f\r ]/gi) > ARTIFACT_INPUT_LIMITS.cssUrls) return "CSS_TOO_COMPLEX";
   const lastClose = decoded.lastIndexOf("*/");
   if (count(lastClose === -1 ? decoded : decoded.slice(lastClose + 2), /\/\*/g) > ARTIFACT_INPUT_LIMITS.unclosedComments) return "CSS_TOO_COMPLEX";
   return null;
@@ -245,49 +204,76 @@ type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
 
 const ascii = (s: string) => s.replace(/[^\x20-\x7e]/g, "?").slice(0, 80);
-const trimAsciiWs = (v: string) => v.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
+/** ASCII-whitespace trim by plain loops (a `[ws]+$` regex is quadratic on a long inner whitespace run). */
+const isAsciiWs = (c: number) => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d || c === 0x0c;
+export function trimAsciiWs(v: string): string {
+  let a = 0;
+  let b = v.length;
+  while (a < b && isAsciiWs(v.charCodeAt(a))) a++;
+  while (b > a && isAsciiWs(v.charCodeAt(b - 1))) b--;
+  return v.slice(a, b);
+}
+/** Splits at runs of ASCII whitespace, dropping empty parts, by a plain loop. */
+function splitAsciiWs(v: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (let i = 0; i < v.length; i++) {
+    if (isAsciiWs(v.charCodeAt(i))) {
+      if (cur) out.push(cur);
+      cur = "";
+    } else cur += v[i];
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 
 /**
  * Checks the artifact's HTML and CSS. `photoUrls` are the version's photos as the page references them
- * (`photos/<name>`, from `photoUrlPaths(manifest)`).
+ * (`photos/<name>`, from `photoUrlPaths(manifest)`). `budget` is the validation's operation budget (a fresh default
+ * one when omitted); running out is `VALIDATION_BUDGET_EXCEEDED`.
  */
-export function checkArtifactHtml(html: string, css: string, photoUrls: ReadonlySet<string>): HtmlSafetyResult {
+export function checkArtifactHtml(html: string, css: string, photoUrls: ReadonlySet<string>, budget: OpBudget = new OpBudget()): HtmlSafetyResult {
   const findings: HtmlSafetyFinding[] = [];
   const add = (code: HtmlSafetyCode, detail?: string) => findings.push(detail === undefined ? { code } : { code, detail: ascii(detail) });
   const texts: string[] = [];
-  let stylesheets = 0;
-
-  // review round 2 M1: parse5 is slow on pathological nesting; a linear pre-scan refuses it before parsing (fail closed)
-  const shape = htmlShapeProblem(html);
-  if (shape) {
-    add(shape);
-    findings.push(...checkArtifactCss(css, photoUrls));
-    return { ok: false, findings: dedupe(findings), texts };
-  }
-  const doc = parse(html);
-  // iterative walk (a deeply nested page must not overflow the stack); <template> content is walked too
-  const stack: Node[] = [doc];
-  while (stack.length) {
-    const node = stack.pop()!;
-    if (node.nodeName === "#text") {
-      const t = (node as DefaultTreeAdapterTypes.TextNode).value.trim();
-      if (t) texts.push(t);
-      continue;
+  try {
+    // review round 3 M1.1: the limits are enforced by parse5 itself while it builds the tree
+    const parsed = boundedParse(html, budget);
+    if (!parsed.ok) {
+      add(parsed.code);
+      findings.push(...checkArtifactCss(css, photoUrls, budget));
+      return { ok: false, findings: dedupe(findings), texts: [] };
     }
-    if ("tagName" in node) {
-      const el = node as Element;
-      checkElement(el, photoUrls, add, () => stylesheets++, texts);
-      if (el.tagName === "template") stack.push(...[...(el as DefaultTreeAdapterTypes.Template).content.childNodes].reverse());
+    let stylesheets = 0;
+    // iterative walk (a deeply nested page must not overflow the stack); <template> content is walked too
+    const stack: Node[] = [parsed.document];
+    while (stack.length) {
+      budget.spend(1);
+      const node = stack.pop()!;
+      if (node.nodeName === "#text") {
+        const t = trimAsciiWs((node as DefaultTreeAdapterTypes.TextNode).value).trim();
+        if (t) texts.push(t);
+        continue;
+      }
+      if ("tagName" in node) {
+        const el = node as Element;
+        checkElement(el, photoUrls, add, () => stylesheets++, texts, budget);
+        if (el.tagName === "template") stack.push(...[...(el as DefaultTreeAdapterTypes.Template).content.childNodes].reverse());
+      }
+      if ("childNodes" in node) stack.push(...[...(node as DefaultTreeAdapterTypes.ParentNode).childNodes].reverse());
     }
-    if ("childNodes" in node) stack.push(...[...(node as DefaultTreeAdapterTypes.ParentNode).childNodes].reverse());
+    if (stylesheets !== 1) add("HTML_STYLESHEET_COUNT", String(stylesheets));
+    for (const t of texts) {
+      budget.scan(t);
+      if (ARTIFACT_SALES_WORDS.test(t)) add("HTML_SALES_WORD");
+      if (ARTIFACT_TEST_WORD.test(t)) add("HTML_TEST_WORD");
+    }
+    for (const f of checkArtifactCss(css, photoUrls, budget)) findings.push(f);
+    return { ok: findings.length === 0, findings: dedupe(findings), texts };
+  } catch (e) {
+    if (e instanceof BudgetExceeded) return { ok: false, findings: dedupe([...findings, { code: "VALIDATION_BUDGET_EXCEEDED" }]), texts: [] };
+    throw e;
   }
-  if (stylesheets !== 1) add("HTML_STYLESHEET_COUNT", String(stylesheets));
-  for (const t of texts) {
-    if (ARTIFACT_SALES_WORDS.test(t)) add("HTML_SALES_WORD");
-    if (ARTIFACT_TEST_WORD.test(t)) add("HTML_TEST_WORD");
-  }
-  for (const f of checkArtifactCss(css, photoUrls)) findings.push(f);
-  return { ok: findings.length === 0, findings: dedupe(findings), texts };
 }
 
 function attributeAllowed(tag: string, name: string): boolean {
@@ -296,7 +282,7 @@ function attributeAllowed(tag: string, name: string): boolean {
   return SVG_ELEMENTS.has(tag) && (SVG_ATTRIBUTES.has(name) || CSS_ATTRIBUTES.has(name));
 }
 
-function checkElement(el: Element, photoUrls: ReadonlySet<string>, add: (c: HtmlSafetyCode, d?: string) => void, countStylesheet: () => void, texts: string[]) {
+function checkElement(el: Element, photoUrls: ReadonlySet<string>, add: (c: HtmlSafetyCode, d?: string) => void, countStylesheet: () => void, texts: string[], budget: OpBudget) {
   const tag = el.tagName.toLowerCase();
   if (FORBIDDEN_ELEMENTS.includes(tag)) add("HTML_FORBIDDEN_ELEMENT", tag);
   else if (tag === "style") add("HTML_STYLE_ELEMENT");
@@ -307,36 +293,41 @@ function checkElement(el: Element, photoUrls: ReadonlySet<string>, add: (c: Html
     const rel = trimAsciiWs(get("rel") ?? "").toLowerCase();
     const href = trimAsciiWs(get("href") ?? "");
     const extra = attrs.filter((a) => !["rel", "href", "type", "media"].includes(a.name));
-    if (rel === "stylesheet" && href === PROTOTYPE_STYLESHEET && extra.length === 0 && (get("media") ?? "all").trim().toLowerCase() === "all") countStylesheet();
+    if (rel === "stylesheet" && href === PROTOTYPE_STYLESHEET && extra.length === 0 && trimAsciiWs(get("media") ?? "all").toLowerCase() === "all") countStylesheet();
     else add("HTML_LINK_NOT_ALLOWED", `${rel} ${href}`);
   }
   if (tag === "meta") {
     const eq = get("http-equiv");
-    if (eq !== undefined && !HARMLESS_HTTP_EQUIV.includes(eq.trim().toLowerCase())) add("HTML_META_HTTP_EQUIV", eq);
+    if (eq !== undefined && !HARMLESS_HTTP_EQUIV.includes(trimAsciiWs(eq).toLowerCase())) add("HTML_META_HTTP_EQUIV", eq);
     const content = get("content");
     if (content !== undefined && (ARTIFACT_SALES_WORDS.test(content) || ARTIFACT_TEST_WORD.test(content))) add(ARTIFACT_SALES_WORDS.test(content) ? "HTML_SALES_WORD" : "HTML_TEST_WORD", "meta content");
   }
   for (const a of attrs) {
+    budget.scan(a.value);
     if (a.name.startsWith("on")) add("HTML_EVENT_ATTRIBUTE", a.name);
     else if (a.name === "style") add("HTML_STYLE_ATTRIBUTE");
     else if (!attributeAllowed(tag, a.name)) add("HTML_ATTRIBUTE_NOT_ALLOWED", `${tag} ${a.name}`);
-    if (VISIBLE_TEXT_ATTRIBUTES.includes(a.name) && a.value.trim()) texts.push(a.value.trim());
+    const visible = trimAsciiWs(a.value);
+    if (VISIBLE_TEXT_ATTRIBUTES.includes(a.name) && visible) texts.push(visible);
     // an attribute a browser parses as CSS: no escape at all (M2), and the CSS token scan on its value
+    let scanRefused = false;
     if (CSS_ATTRIBUTES.has(a.name) && SVG_ELEMENTS.has(tag)) {
       if (a.value.includes("\\")) add("HTML_ATTRIBUTE_ESCAPE", `${tag} ${a.name}`);
-      for (const p of cssScanProblems(a.value, (t) => allowedUrl(t, photoUrls))) add(p.code === "CSS_URL_NOT_ALLOWED" ? "HTML_ATTRIBUTE_URL" : p.code, `${tag} ${a.name}: ${p.detail ?? ""}`);
+      const problems = cssScanProblems(a.value, (t) => allowedUrl(t, photoUrls), budget);
+      scanRefused = problems.length > 0;
+      for (const p of problems) add(p.code === "CSS_URL_NOT_ALLOWED" ? "HTML_ATTRIBUTE_URL" : p.code, `${tag} ${a.name}: ${p.detail ?? ""}`);
       if (a.name === "font-family" && !isAllowedFontList(a.value)) add("CSS_FONT_FAMILY_NOT_ALLOWED", `${tag} font-family`);
     }
-    // any attribute holding a url() — escapes decoded first, so "\75 rl(" counts — follows the CSS url rule
+    // any attribute holding a url() — escapes decoded first, so "\75 rl(" counts — follows the CSS url rule. The rule
+    // core's cssUrls runs only within the limits (round 2–3 M1: it is quadratic on many `url(` or long whitespace).
     const decoded = decodeEscapes(a.value);
-    if (a.name !== "style" && /url\s*\(/i.test(decoded)) {
+    if (a.name !== "style" && /url[\t\n\f\r ]*\(/i.test(decoded)) {
       if (a.value.includes("\\")) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: escaped`);
-      // the rule core's cssUrls is quadratic on many `url(`: over the limit, refuse without running it
-      if (count(decoded, /url\s*\(/gi) > ARTIFACT_INPUT_LIMITS.attributeUrls) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: too many url(`);
-      else for (const t of cssUrls(decoded)) if (!allowedUrl(t, photoUrls)) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: ${t}`);
+      if (count(decoded, /url\(/gi) + count(decoded, /url[\t\n\f\r ]/gi) > ARTIFACT_INPUT_LIMITS.attributeUrls || longestWhitespaceRun(decoded) > ARTIFACT_INPUT_LIMITS.whitespaceRun) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: too complex`);
+      else if (!scanRefused) for (const t of cssUrls(decoded)) if (!allowedUrl(t, photoUrls)) add("HTML_ATTRIBUTE_URL", `${tag} ${a.name}: ${t}`);
     }
     if ((URL_ATTRIBUTES.includes(a.name) || ARTIFACT_EXTRA_URL_ATTRIBUTES.includes(a.name)) && !(tag === "link" && a.name === "href")) {
-      const values = a.name === "srcset" ? a.value.split(",").map((s) => trimAsciiWs(s).split(/[\t\n\f\r ]+/)[0] ?? "") : [trimAsciiWs(a.value)];
+      const values = a.name === "srcset" ? a.value.split(",").map((s) => splitAsciiWs(s)[0] ?? "") : [trimAsciiWs(a.value)];
       for (const v of values) {
         if ((a.name === "href" || a.name === "xlink:href") && /^#\S*$/u.test(v)) continue;
         if ((tag === "img" && (a.name === "src" || a.name === "srcset")) || (tag === "source" && a.name === "srcset")) {
@@ -349,24 +340,37 @@ function checkElement(el: Element, photoUrls: ReadonlySet<string>, add: (c: Html
 }
 
 /**
- * The CSS rules: the rule core's first pass (photos as the declared assets), the token scan in place of Chromium's
- * second pass, @font-face, fonts, and no text drawn from CSS.
+ * The CSS rules, in this order (round 3 M1.2): the limits; the linear token scan (in place of Chromium's second pass);
+ * ONLY if the scan accepted the sheet, the rule core's first pass (photos as the declared assets); then @font-face,
+ * fonts and no text drawn from CSS. Running out of budget is `VALIDATION_BUDGET_EXCEEDED`.
  */
-export function checkArtifactCss(css: string, photoUrls: ReadonlySet<string>): HtmlSafetyFinding[] {
-  const out: HtmlSafetyFinding[] = [];
-  // over a limit, refuse without running the rule core's quadratic-on-crafted-input regexes, or anything else
-  const complexity = cssComplexityProblem(css);
-  if (complexity) return [{ code: complexity }];
-  for (const p of cssProblems(css, photoUrls)) {
-    const code: HtmlSafetyCode = p === "css @import" ? "CSS_IMPORT" : p === "css code execution" ? "CSS_CODE_EXECUTION" : p.startsWith("css url") ? "CSS_URL_NOT_ALLOWED" : "CSS_IMAGE_FUNCTION";
-    out.push({ code, detail: ascii(p) });
+export function checkArtifactCss(css: string, photoUrls: ReadonlySet<string>, budget: OpBudget = new OpBudget()): HtmlSafetyFinding[] {
+  try {
+    const complexity = cssComplexityProblem(css);
+    if (complexity) return [{ code: complexity }];
+    budget.scan(css);
+    const out: HtmlSafetyFinding[] = [];
+    const scan = cssScanProblems(css, (t) => allowedUrl(t, photoUrls), budget);
+    for (const p of scan) out.push(p.detail === undefined ? { code: p.code } : { code: p.code, detail: ascii(p.detail) });
+    if (scan.length === 0) {
+      // several regexes over the sheet, each linear within the limits above
+      budget.scan(css);
+      budget.scan(css);
+      for (const p of cssProblems(css, photoUrls)) {
+        const code: HtmlSafetyCode = p === "css @import" ? "CSS_IMPORT" : p === "css code execution" ? "CSS_CODE_EXECUTION" : p.startsWith("css url") ? "CSS_URL_NOT_ALLOWED" : "CSS_IMAGE_FUNCTION";
+        out.push({ code, detail: ascii(p) });
+      }
+    }
+    if (/@font-face/i.test(decodeEscapes(outsideStringsAndComments(css)))) out.push({ code: "CSS_FONT_FACE" });
+    const decls = cssDeclarations(css);
+    budget.spend(decls.length);
+    out.push(...fontProblems(decls, budget));
+    out.push(...textProblems(decls, budget));
+    return dedupe(out);
+  } catch (e) {
+    if (e instanceof BudgetExceeded) return [{ code: "VALIDATION_BUDGET_EXCEEDED" }];
+    throw e;
   }
-  for (const p of cssScanProblems(css, (t) => allowedUrl(t, photoUrls))) out.push(p.detail === undefined ? { code: p.code } : { code: p.code, detail: ascii(p.detail) });
-  if (/@font-face/i.test(decodeEscapes(outsideStringsAndComments(css)))) out.push({ code: "CSS_FONT_FACE" });
-  const decls = cssDeclarations(css);
-  out.push(...fontProblems(decls));
-  out.push(...textProblems(decls));
-  return dedupe(out);
 }
 
 /**
@@ -446,7 +450,7 @@ export function isAllowedFontList(value: string): boolean {
   });
 }
 
-function fontProblems(decls: ReturnType<typeof cssDeclarations>): HtmlSafetyFinding[] {
+function fontProblems(decls: ReturnType<typeof cssDeclarations>, budget: OpBudget): HtmlSafetyFinding[] {
   const out: HtmlSafetyFinding[] = [];
   const custom = new Map<string, string[]>();
   for (const d of decls) if (d.prop.startsWith("--")) custom.set(d.prop, [...(custom.get(d.prop) ?? []), d.value]);
@@ -468,6 +472,7 @@ function fontProblems(decls: ReturnType<typeof cssDeclarations>): HtmlSafetyFind
     return !/var\(/i.test(v) && isAllowedFontList(v);
   };
   for (const d of decls) {
+    budget.scan(d.raw);
     if (d.prop === "font") out.push({ code: "CSS_FONT_SHORTHAND" });
     if (d.prop === "font-family" && !ok(d.value, 0)) out.push({ code: "CSS_FONT_FAMILY_NOT_ALLOWED", detail: ascii(d.value) });
   }
@@ -475,9 +480,10 @@ function fontProblems(decls: ReturnType<typeof cssDeclarations>): HtmlSafetyFind
 }
 
 /** M3: CSS draws no text. Non-empty strings only where they are names or layout; text properties hold no string, attr() or var(). */
-function textProblems(decls: ReturnType<typeof cssDeclarations>): HtmlSafetyFinding[] {
+function textProblems(decls: ReturnType<typeof cssDeclarations>, budget: OpBudget): HtmlSafetyFinding[] {
   const out: HtmlSafetyFinding[] = [];
   for (const d of decls) {
+    budget.scan(d.raw);
     const custom = d.prop.startsWith("--");
     if (!custom && !STRING_PROPERTIES.has(d.prop) && cssStrings(d.raw).length) out.push({ code: "CSS_TEXT_IN_CSS", detail: d.prop });
     if (TEXT_PROPERTIES.has(d.prop) && /attr\s*\(|var\s*\(/i.test(d.value)) out.push({ code: "CSS_TEXT_IN_CSS", detail: d.prop });

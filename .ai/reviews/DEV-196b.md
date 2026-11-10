@@ -102,3 +102,51 @@
 ### 結果
 
 `tests/unit/sales/demo-version` 12 ファイル・344 件、`tests/unit/sales` + `ai-tasks` + `guardrails` + comp-impl の isolation 43 ファイル・1062 件 すべて通過。`tsc --noEmit`・eslint・`check:secrets` 問題なし。
+
+## レビュー 3 回目 (f2caff9: C0 H0 M1、DoS がまだ開いている) への対応
+
+場当たりの上限を足すのではなく、原因を直した。回帰テストは `tests/unit/sales/demo-version/review-round-3.test.ts` (22 件)。すべて拒否の符号を確かめ、3 秒は後ろ盾 (修正後はどれも数 ms〜数百 ms。修正前はレビューの実測で 5〜62 秒)。round 2 のテストは、手書きの scanner の代わりに parse5 の中の上限を確かめるよう直した。
+
+### 1. HTML: 手書きの tag scanner を捨て、parse5 の中で上限を掛けた (`bounded-parse.ts`)
+
+round 2 の scanner は parse5 と食い違った (`<!-->`、`--!>`、`<textarea>` の RCDATA、`"` を含む引用なしの値)。今は木を作る parser そのものが数えるので、parse5 が別に扱う構文で回り込めない。
+
+- 開いた要素の深さ: open-element stack が push (と insertAfter) のたびに呼ぶ `Parser.onItemPush` を subclass で上書きし、512 を超えたら `HTML_TOO_DEEP` で止める。parse5 の遅い経路はこの stack の走査なので、根本の量を抑える。
+- 作られた要素: tree adapter の `createElement` (adoption agency・formatting の再構築で作られる要素も含む) が 8000 を超えたら `HTML_TOO_MANY_ELEMENTS`。
+- 1 つの開始タグの属性: Tokenizer の subclass で `_leaveAttrName` を上書きし、64 を超えたら `HTML_TOO_MANY_ATTRIBUTES` (parse5 の重複属性の検査は 1 タグの属性数について二次)。
+- 大きさ: 384 KiB を超えたら `HTML_TOO_LARGE` (parse の前)。
+- `Parser` は parse5 が export する (internal の印) class で、版は 8.0.1 に固定。hook の名前 (`onItemPush`・`_leaveAttrName`) が消えればテストが落ちる。レビューの 4 つの probe と、平坦な入れ子・formatting・SVG・template・table の入れ子は、すべて `HTML_TOO_DEEP`。
+
+### 2. CSS: 二次の正規表現は、線形の走査が受け入れた入力の上でだけ走らせる
+
+- 順番: (1) 上限 (256 KiB、空白の連なり ≤ 64 (生の文字列と escape を decode した文字列の両方)、decode 後の `url(` ≤ 200、閉じない `/*` ≤ 4。どれも正規表現を使わない loop か、固定長の pattern の数え上げ) → (2) 線形の token の走査 (`css-scan.ts`) → (3) **走査が何も拒否しなかったときだけ** rule core の `cssProblems` → (4) 書体・CSS の文字の規則。`a{background:url(` + 空白 25 万は `CSS_TOO_COMPLEX`。
+- 属性: `url(` を含む属性は、`url(` ≤ 8 かつ空白の連なり ≤ 64 のときだけ、しかも CSS の走査が拒否していないときだけ `cssUrls` を呼ぶ。`fill="url(` + 空白 12 万は `HTML_ATTRIBUTE_URL` (`too complex`)。
+- `rule-core.ts` は元のソースとバイト単位で同じまま (parity test は意味を保つ)。
+
+### 3. 全体の安全網: 操作の予算 (`budget.ts`)
+
+1 回の検査は 1 つの `OpBudget` (既定 400 万単位) を使う。parse5 の token・作った要素・stack の push・属性、木の node と属性の検査、CSS の token と宣言、正規表現の呼び出し (入力 16 文字ごとに 1 単位) がそれぞれ予算を使い、尽きたら `VALIDATION_BUDGET_EXCEEDED` で止まる (fail closed)。時計ではなく仕事を数えるので、結果は決まっていて揺れない。研究の頁 (輪 d1-v9) は既定の 1/50 未満、許される最大の大きさの普通の頁も予算内 (テストで固定)。
+
+### 4. 正規表現の監査 (入れ子・隣り合う量指定子・長い入力での後戻り)
+
+| 場所 | pattern | 判定 | 対応 |
+|---|---|---|---|
+| rule-core `cssUrls` | `url\(\s*(…|([^"')\s]*))\s*\)` | **二次** (`url(` の数 × 長さ、空白の連なり) | 走査が受け入れた CSS の上でだけ、`url(` ≤ 200・空白 ≤ 64 の範囲で呼ぶ。属性は `url(` ≤ 8・空白 ≤ 64 |
+| rule-core `cssProblems` | `\/\*[\s\S]*?\*\/` (lazy) | 閉じない `/*` が多いと二次 | 最後の `*/` の後の `/*` ≤ 4 |
+| rule-core `cssProblems` | `expression\s*\(|(?<!scroll-)behavior\s*:|…` | `\s*` は空白の長さに比例 | 空白の連なり ≤ 64 |
+| rule-core | `decodeEscapes` (`\\([0-9a-fA-F]{1,6})\s?|…`)・`image-set\(|image\(|src\(`・`\\(.)` | 線形 | — |
+| html-safety `trimAsciiWs` | `^[ws]+|[ws]+$` | **二次** (内側の長い空白の連なり) | loop に置き換えた。srcset の分割も loop |
+| html-safety | `url[ws]*\(`・`url\(`・`url[ws]`・`\/\*` の数え上げ | 線形 (literal の間に量指定子 1 つ) | — |
+| html-safety | `^#\S*$`・`^aria-[a-z]+$`・`^data-[a-z0-9_.-]+$`・`^-{0,2}[A-Za-z_][A-Za-z0-9_-]*$`・`^var\(\s*(--…)\s*\)$`・`^(["'])(.*)\1$` | 先頭に固定 (1 回の試行) で線形 | — |
+| html-safety | `^[A-Za-z][A-Za-z0-9-]*( [A-Za-z0-9][A-Za-z0-9-]*)*$` | 区切りが空白で曖昧さが無く線形 | — |
+| html-safety | `!\s*important\s*$` | `!` ごとに後ろの空白だけ (重ならない) で線形 | — |
+| html-safety | `attr\s*\(|var\s*\(` | CSS の値だけ、空白 ≤ 64 | — |
+| css-scan | 1 文字の class の判定・`javascript:|vbscript:` | 線形 | — |
+| copy-check → copy-record | `INVENTED_FACT_SIGNS` (`[一二…]+(年|代|…)`・`[0-9０-９]+時` など) | 長い連なりで二次 | 400 文字を超える頁の文は長さだけで未確認 (`UNVERIFIED_COPY`) とし、signs に渡さない |
+| copy-record `factParts` | 事実の値の文の組 (文の数の二次) | 入力は DB の事実パック (頁ではない) | 範囲外 (DEV-196f 以降で事実の大きさの上限と一緒に) |
+| manifest・view-token・csp・rights・ai-concept-rights | 名前・token・origin・zod の文字列 | 先に長さを切っている (≤ 120 / 400 / 200 / zod の max) | — |
+| parse5 | 木の構築 | 深さ・要素・属性・予算で内側から止める | 上記 1 |
+
+### 結果
+
+`tests/unit/sales/demo-version` 13 ファイル・368 件、`tests/unit/sales` + `ai-tasks` + `guardrails` + comp-impl / phase2f の isolation 45 ファイル・1111 件のうち 1110 件通過 (落ちる 1 件は従来どおり Chromium が無い phase2f の CLI のテスト)。`tsc --noEmit`・eslint・`check:secrets` 問題なし。

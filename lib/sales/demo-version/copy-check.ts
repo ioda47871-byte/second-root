@@ -10,6 +10,9 @@ import { checkCopyRecord, CopyRecord, joinedTextsLookingLikeFact, textsNotInReco
 
 export type ArtifactCopyResult = { ok: boolean; findings: CopyFinding[] };
 
+/** The longest page text a copy-record item can match (item text ≤ 300 chars, label ≤ 20, with room for spacing). */
+export const MAX_RECORDED_TEXT = 400;
+
 export function checkArtifactCopy(o: {
   /** visible texts of the page (`checkArtifactHtml(...).texts`) */
   texts: readonly string[];
@@ -22,10 +25,15 @@ export function checkArtifactCopy(o: {
   const findings = [...base.findings];
   const parsed = CopyRecord.safeParse(o.copyRecord);
   if (parsed.success) {
+    // review round 3: the copy-record signs (e.g. `[一二…]+(年|代|…)`) backtrack on a long run, so only texts a record
+    // item could hold reach them. A record item is at most 300 chars (plus a label), so a longer text is unverified
+    // by its length alone.
+    const short = o.texts.filter((t) => t.length <= MAX_RECORDED_TEXT);
+    const long = o.texts.length - short.length;
     // counts only, never the texts themselves (they may be a real shop's words)
-    const unverified = textsNotInRecord(o.texts, parsed.data);
-    if (unverified.length) findings.push({ code: "UNVERIFIED_COPY", detail: String(unverified.length) });
-    const joined = joinedTextsLookingLikeFact(o.texts, parsed.data);
+    const unverified = textsNotInRecord(short, parsed.data).length + long;
+    if (unverified) findings.push({ code: "UNVERIFIED_COPY", detail: String(unverified) });
+    const joined = joinedTextsLookingLikeFact(short, parsed.data);
     if (joined.length) findings.push({ code: "JOINED_TEXT_LOOKS_LIKE_FACT", detail: String(joined.length) });
   }
   return { ok: findings.length === 0, findings };

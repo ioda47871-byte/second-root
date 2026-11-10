@@ -17,8 +17,11 @@
  * (fail closed): a page that needs them is not a page we serve. The CSP (`script-src 'none'`, `img-src` / `style-src`
  * bound to the token path, `sandbox`) stays the backstop.
  *
+ * Linear: every character is consumed once; each token spends one unit of the validation budget when one is given.
+ *
  * Pure: strings only.
  */
+import type { OpBudget } from "./budget";
 
 export type CssToken =
   | { t: "ident"; v: string }
@@ -72,10 +75,11 @@ const startsIdent = (s: string, i: number) =>
   isNameStart(s[i]) || validEscape(s, i) || (s[i] === "-" && (isNameStart(s[i + 1]) || s[i + 1] === "-" || validEscape(s, i + 1)));
 
 /** Tokenises a stylesheet (or one declaration value / attribute value). */
-export function cssTokens(s: string): CssToken[] {
+export function cssTokens(s: string, budget?: OpBudget): CssToken[] {
   const out: CssToken[] = [];
   let i = 0;
   while (i < s.length) {
+    budget?.spend(1);
     const c = s[i]!;
     if (c === "/" && s[i + 1] === "*") {
       const end = s.indexOf("*/", i + 2);
@@ -201,9 +205,9 @@ const REFUSED_AT_RULES = new Set(["namespace", "counter-style", "document", "-mo
  * at-rules, url() / url token to anything but a declared photo or `#id`, image functions other than url(),
  * expression() / behavior / -moz-binding / javascript:, and bad strings / bad urls / stray escapes.
  */
-export function cssScanProblems(css: string, allowedUrl: (target: string) => boolean): Array<{ code: CssScanCode; detail?: string }> {
+export function cssScanProblems(css: string, allowedUrl: (target: string) => boolean, budget?: OpBudget): Array<{ code: CssScanCode; detail?: string }> {
   const out: Array<{ code: CssScanCode; detail?: string }> = [];
-  const toks = cssTokens(css);
+  const toks = cssTokens(css, budget);
   const next = (k: number) => {
     let j = k + 1;
     while (toks[j]?.t === "ws") j++;

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ARTIFACT_INPUT_LIMITS, checkArtifactCss, checkArtifactHtml, cssComplexityProblem, htmlShapeProblem } from "@/lib/sales/demo-version/html-safety";
+import { ARTIFACT_PARSE_LIMITS, boundedParse } from "@/lib/sales/demo-version/bounded-parse";
+import { OpBudget } from "@/lib/sales/demo-version/budget";
+import { ARTIFACT_INPUT_LIMITS, checkArtifactCss, checkArtifactHtml, cssComplexityProblem } from "@/lib/sales/demo-version/html-safety";
+
+/** The parse limit a page hits inside parse5, or null (round 3 replaced the round-2 pre-scanner with this). */
+const htmlShapeProblem = (html: string) => {
+  const r = boundedParse(html, new OpBudget());
+  return r.ok ? null : r.code;
+};
 import { hasImageMetadata } from "@/lib/sales/demo-version/manifest";
 import { jpeg } from "./fixtures";
 
@@ -45,7 +53,7 @@ describe("M1: slow inputs are refused by a limit before the slow path", () => {
     const html = page(`<svg><rect fill="${"url(".repeat(60000)}"/></svg>`);
     const [r, ms] = timed(() => checkArtifactHtml(html, "body{}", PHOTOS));
     expect(r.ok).toBe(false);
-    expect(r.findings).toContainEqual({ code: "HTML_ATTRIBUTE_URL", detail: "rect fill: too many url(" });
+    expect(r.findings).toContainEqual({ code: "HTML_ATTRIBUTE_URL", detail: "rect fill: too complex" });
     expect(ms).toBeLessThan(BOUND_MS);
   });
 
@@ -59,20 +67,22 @@ describe("M1: slow inputs are refused by a limit before the slow path", () => {
   });
 
   it("<div/> still opens a level (as the HTML parser does); <rect/> in SVG and void elements do not", () => {
-    expect(htmlShapeProblem("<div/>".repeat(ARTIFACT_INPUT_LIMITS.depth + 1))).toBe("HTML_TOO_DEEP");
+    expect(htmlShapeProblem("<div/>".repeat(ARTIFACT_PARSE_LIMITS.depth + 1))).toBe("HTML_TOO_DEEP");
     expect(htmlShapeProblem(`<svg>${"<rect/>".repeat(2000)}</svg>`)).toBeNull();
     expect(htmlShapeProblem("<br>".repeat(5000))).toBeNull();
-    expect(htmlShapeProblem("<i>".repeat(ARTIFACT_INPUT_LIMITS.depth + 1))).toBe("HTML_TOO_DEEP");
+    expect(htmlShapeProblem("<i>".repeat(ARTIFACT_PARSE_LIMITS.depth + 1))).toBe("HTML_TOO_DEEP");
   });
 
   it("depth at the limit passes the pre-scan; closed siblings never accumulate", () => {
-    expect(htmlShapeProblem("<div>".repeat(ARTIFACT_INPUT_LIMITS.depth))).toBeNull();
+    // html, body and the divs share the stack: depth - 2 divs fit, one more does not
+    expect(htmlShapeProblem("<div>".repeat(ARTIFACT_PARSE_LIMITS.depth - 2))).toBeNull();
+    expect(htmlShapeProblem("<div>".repeat(ARTIFACT_PARSE_LIMITS.depth - 1))).toBe("HTML_TOO_DEEP");
     expect(htmlShapeProblem("<p>x</p>".repeat(7000))).toBeNull();
   });
 
   it("too many elements → HTML_TOO_MANY_ELEMENTS; too large → HTML_TOO_LARGE", () => {
-    expect(htmlShapeProblem("<br>".repeat(ARTIFACT_INPUT_LIMITS.elements + 1))).toBe("HTML_TOO_MANY_ELEMENTS");
-    expect(htmlShapeProblem("a".repeat(ARTIFACT_INPUT_LIMITS.htmlChars + 1))).toBe("HTML_TOO_LARGE");
+    expect(htmlShapeProblem("<br>".repeat(ARTIFACT_PARSE_LIMITS.elements + 1))).toBe("HTML_TOO_MANY_ELEMENTS");
+    expect(htmlShapeProblem("a".repeat(ARTIFACT_PARSE_LIMITS.htmlChars + 1))).toBe("HTML_TOO_LARGE");
   });
 
   it("a tag with 40000 attributes → HTML_TOO_MANY_ATTRIBUTES before parse5 (its duplicate check is quadratic)", () => {
@@ -84,7 +94,7 @@ describe("M1: slow inputs are refused by a limit before the slow path", () => {
 
   it("counts attributes outside quoted values only (a long SVG path or alt text is one attribute)", () => {
     expect(htmlShapeProblem(`<svg><path d="${"M 0 0 L 1 1 ".repeat(2000)}"/></svg><img alt="a b > c d e">`)).toBeNull();
-    expect(htmlShapeProblem(`<p ${"x ".repeat(ARTIFACT_INPUT_LIMITS.attributesPerTag + 1)}>`)).toBe("HTML_TOO_MANY_ATTRIBUTES");
+    expect(htmlShapeProblem(`<p ${Array.from({ length: ARTIFACT_PARSE_LIMITS.attributesPerTag + 1 }, (_, i) => `x${i}`).join(" ")}>`)).toBe("HTML_TOO_MANY_ATTRIBUTES");
   });
 
   it("comments and stray < do not confuse the scan", () => {
