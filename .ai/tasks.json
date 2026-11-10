@@ -9207,7 +9207,9 @@
       "allowed_scope": [
         "docs/design/DEV-196-demo-admin-spec.md",
         ".ai/tasks.json (DEV-196 の項目の追加だけ)",
-        ".ai/reviews/DEV-196.md"
+        ".ai/reviews/DEV-196.md",
+        ".ai/tasks.json の台帳の保守 (実際に行った。DEV-196 review L1 を受けて DEV-196a で記録): PR #241 は DEV-196 の項目の追加に加えて、DEV-197 の status を review から done にし、DEV-197 の note を更新した (DEV-195 は c57b7d6 で既に done で、#241 は触っていない)",
+        ".ai/reviews/DEV-197.md (台帳の保守: Staging の節を追加した。PR #241)"
       ],
       "forbidden_scope": [
         "コード・supabase/migrations・supabase/config.toml",
@@ -9235,7 +9237,7 @@
     {
       "id": "DEV-196b",
       "title": "店舗デモの版の offline の純粋なライブラリ (manifest・B方式の HTML/CSS 検査・CSP・HMAC の view token・権利の導出・版と共有の規則・品質の 7 項目)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196"
@@ -9278,7 +9280,53 @@
         "DEV-196c 以降 (DB・Storage・Staging・画像生成・公開・Production) はそれぞれ別の承認",
         "lib/sales/demo-version を phase2f / comp-impl / structure の importer として認めるか (認めれば rule-core の写しを re-export にでき、類似の計算も呼べる)"
       ],
-      "note": "記録は .ai/reviews/DEV-196b.md。つぐ手の fidelity 頁は書体 \"IPA明朝\" が PAGE_FONT_FAMILIES に無いため CSS_FONT_FAMILY_NOT_ALLOWED で落ちる (一覧は広げていない)"
+      "note": "記録は .ai/reviews/DEV-196b.md。つぐ手の fidelity 頁は書体 \"IPA明朝\" が PAGE_FONT_FAMILIES に無いため CSS_FONT_FAMILY_NOT_ALLOWED で落ちる (一覧は広げていない) PR #243 を 6489c5f で merge (2026-11-10)。独立レビュー 5 回 (セキュリティ: CSS/SVG の url() 迂回、Identity Lock のテキスト経路、parse5 による深さ・要素数の制限、二次時間の入力、作業量の budget を修正)、最終 C0/H0/M0/L0。CI 11/11。依存は parse5 8.0.1 (MIT、entities 8.1.0 のみ) を追加。どの経路にもつないでいない (DB・Storage・通信なし)。"
+    },
+    {
+      "id": "DEV-196a",
+      "title": "MVP_SPEC / ARCHITECTURE / SECURITY を DEV-196 の設計とオーナー決定 2026-11-10 に合わせる (店舗ごとの版のデモの規則。docs だけ、コード・設定・DB 変更なし)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-196a-spec-docs",
+      "purpose": "DEV-196 仕様 (docs/design/DEV-196-demo-admin-spec.md) §12 の DEV-196a (オーナー決定 2026-11-10 で承認済み、仕様の文書だけ)。正本の MVP_SPEC と関連の docs を、版のデモの設計と §15 の決定 (二つの承認・管理者プレビューと共有 URL の分離・専用の別 origin・token・取り消し・保持・AI 概念画像・写真の共有は無効のまま・品質の 7 項目) に合わせる",
+      "acceptance_criteria": [
+        "docs/MVP_SPEC.md: §7.1 (版と系譜・二つの別々の承認・版の無い店舗は React のデモで人の確認と送信承認つき・自動の切り替えなし・プレビューと共有 URL の分離・専用の別 origin (DNS と Vercel は今は変えず、設定まで共有の成果物の route は 404)・HMAC の token (管理者 15 分・共有 30 分・共有 URL 30 日・開き直すたびに発行) と要求ごとの DB の照合・取り消しで 404 (切り替えなし)・保持 (未送信 約 60 日・送信済み 共有の後 約 30 日・削除は別の承認)・実店舗の AI 概念画像は管理者だけで条件つき・共有しない・写真の共有は無効のまま・PC1440/SP390 の全頁と 7 項目 (3・4・5 を重視)・類似は警告だけ)。§4・§7・§8・§11.1 から参照",
+        "docs/ARCHITECTURE.md: §11 (提案の表・二つの承認・アプリの origin と artifact origin・token/期限/取り消し/保持・品質と AI 画像)、§9 に提案の環境変数 (未作成・未承認と明記)、§4・§10.3 から参照。origin の名前は案だけ (DEV-196 仕様 §14 Q11)",
+        "docs/SECURITY.md: §12 (非公開 Storage・署名付き URL なし・cookie を読まない成果物の route・要求ごとの DB の照合・CSP・別 origin・取り消しと保持・出所は DB だけ・AI 概念画像の条件・写真の共有は無効・受け入れるリスク T19)、§1 に提案の署名鍵、§5.1・§6 に注記。「事実の偽装なし」の確認の手順は案だけ (DEV-196 仕様 §14 Q12)",
+        "コード・設定・migration・workflow・package/lockfile・環境変数の既定値 (PUBLIC_DEMO_ASSETS_ENABLED を含む) の変更なし。リポジトリのファイルにモデル名・secret を書かない",
+        "DEV-196 の項目の allowed_scope に、PR #241 が行った台帳の保守 (DEV-197 の status を review → done・DEV-197 の note の更新・.ai/reviews/DEV-197.md の Staging の節) を記録 (DEV-196 review L1)。DEV-196 の status は触らない",
+        ".ai/reviews/DEV-196a.md に、docs の変更ごとに従った仕様の節"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/ai-tasks.test.ts (DEV-196 が develop で review の間は、DEV-196a の depends_on の照合だけが落ちる。DEV-196b の PR が DEV-196 を done にする)"
+      ],
+      "allowed_scope": [
+        "docs/MVP_SPEC.md",
+        "docs/ARCHITECTURE.md",
+        "docs/SECURITY.md",
+        ".ai/tasks.json (DEV-196a の項目の追加と、DEV-196 の allowed_scope の追記だけ)",
+        ".ai/reviews/DEV-196a.md"
+      ],
+      "forbidden_scope": [
+        "コード・supabase/migrations・supabase/config.toml・next.config.ts・proxy.ts",
+        ".github/workflows・package.json・lockfile",
+        "環境変数とその既定値 (PUBLIC_DEMO_ASSETS_ENABLED・APPROVED_CAPABILITIES を含む)",
+        "DB・Storage・Staging・Production・Vercel・DNS・WSL への適用や接続",
+        "docs/design/DEV-196-demo-admin-spec.md の変更",
+        "DEV-196 の status の変更 (DEV-196b の PR が行う)",
+        "写真の共有・実店舗の prospect への AI 画像の共有を認める変更 (別の仕様変更と承認)"
+      ],
+      "human_approval_triggers": [
+        "PR のレビューと merge (MVP_SPEC の変更は Protected Scope。内容はオーナー決定 2026-11-10 で承認済み、merge は別)",
+        "DEV-196c 以降の各段 (DB・Storage・環境変数・WSL・Staging・画像生成・公開・別 origin の DNS と Vercel・削除・Production) はそれぞれ別の承認",
+        "artifact origin の名前の決定 (DEV-196 仕様 §14 Q11)、「事実の偽装なし」の確認の手順と文言 (§14 Q12)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196a.md。docs だけで、どの実装の段も承認しない"
     }
   ]
 }

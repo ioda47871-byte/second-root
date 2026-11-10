@@ -11,6 +11,7 @@
 | `SALES_AGENT_VERCEL_BYPASS`（Staging のみ・任意） | Staging の Routine environment だけ | Operational Claude（Vercel Preview の保護を通るためだけ。ingest には token が別に必要）。Vercel の Protection Bypass for Automation の値で **project 全体の保護付き deployment に効く**ため、露出が疑われたら人間が Vercel で再生成する。Production には置かない |
 | bridge token（DEV-030 / DEV-032） | **local bridge の利用者 `sr-designbridge` の file（`~/.config/second-root/design-bridge.token`、0600）だけ**。server（Vercel）には SHA-256（`SALES_DESIGN_BRIDGE_TOKEN_SHA256`）だけを置く | local design bridge だけ。ingest token とは別の値（同じ hash なら bridge API は 503）。token は表示・log・GitHub・Vercel・Claude の session に出さない。design worker（`sr-designgen`）・Codex・Operational Claude には渡さない |
 | bridge 専用の Vercel bypass（DEV-059・Staging のみ・任意。既定で無効） | **`sr-designbridge` の file（`~/.config/second-root/design-bridge.vercel-bypass`、0600）だけ** | local design bridge だけ。Vercel の Protection Bypass for Automation のうち bridge 専用の secret（note「Second Root design bridge (WSL)」。Operational Claude の bypass とは別、env var にしない）。**project 全体の保護付き deployment に効く**ため、bridge は設定した 1 つの `*.vercel.app` origin（API URL と同じ）にだけ header を付け、redirect を辿らない。bridge API には bridge token が別に必要。表示・log・GitHub・Claude の session に出さない。漏れの疑いは Vercel で revoke（`docs/operations/design-bridge-access.md` §8） |
+| `SALES_DEMO_VIEW_SIGNING_KEY`（DEV-196、**提案・未作成**。DEV-196d の承認の後） | Vercel env（server only） | Second Root サーバーのみ。版のデモの閲覧 token の HMAC 鍵（32 bytes 以上）。bridge・worker・Operational Claude には渡さない。表示・log・GitHub に出さない。rotate で発行済みの閲覧 token がすべて無効になる（非常停止）。§12 |
 | Vercel token / GitHub write token / admin password | 人間 | 人間のみ |
 
 - Secret を GitHub に commit しない。`.env*` は `.gitignore` 済み（`.env.local.example` のみ例外、値はダミー）。
@@ -77,6 +78,7 @@
 - `X-Frame-Options: DENY` + `Content-Security-Policy: frame-ancestors 'none'`（管理画面の clickjacking 防止）
 - `X-Content-Type-Options: nosniff`、`Permissions-Policy`（camera / microphone / geolocation 無効）
 - 既存 Second Root のページのヘッダは変更しない。
+- DEV-196 の版のデモ（§12、未実装）: 外枠（`/admin/sales/demos/…`・`/demo/[publicToken]`）は上のヘッダ（`X-Frame-Options: DENY`・`frame-ancestors 'none'` を含む）を保ち、加えて CSP の `frame-src <artifact-origin>` だけを許す。管理者プレビューの外枠だけは、専用の origin が設定されていない間 `frame-src 'self'` も許す（暫定の `/demo-frame/a/…` がアプリの origin にあるため。設定の後は外す）。共有の外枠には `'self'` を入れない（DEV-196 仕様 §6.8）。iframe に入る成果物の route `/demo-frame/*` だけは、上の規則に当たらない接頭辞に置き、`X-Frame-Options` の代わりに CSP の `frame-ancestors <アプリの origin>` と `sandbox` を付ける（§12）。
 
 ## 5.2 依存関係
 
@@ -91,6 +93,7 @@
 - 期限切れ・無効化されたデモは 404 相当（存在有無を区別しない）。
 - 事実は確認済み公開情報のみ。Instagram 画像等の無断転載をしない。
 - 画像は取得・分析（reference screenshot を色・雰囲気の判断に使い、job の後に消す）と再掲載を区別する。Instagram の画像は店舗の利用許可なしに demo に載せない。写真 asset は `approved_real` だけで、AI 生成・架空の店舗写真は使わない（DEV-070。`docs/MVP_SPEC.md` §7）。
+- 公開 demo（相手に見せる頁・共有 URL）には今も写真を出さない（`PUBLIC_DEMO_ASSETS_ENABLED = false`）。実店舗の AI 概念画像を管理者だけのデザイン検討に使う例外（DEV-196、オーナー決定 2026-11-10）は、相手に見せる頁には及ばない（`docs/MVP_SPEC.md` §7.1、§12）。
 
 ## 7. Resend
 
@@ -204,3 +207,38 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
   - 初回の DM / Email は人が送る。flag 有効で `pending` / `processing` の demo は「送信済み」にできない（server action で拒否）。
   - systemd の unit は repo に置くだけで、install・enable は人が行う。
 
+## 12. 店舗ごとの版のデモ（DEV-196。設計だけで未実装・既定は無効）
+
+設計と脅威モデルの正本は `docs/design/DEV-196-demo-admin-spec.md`（以下「DEV-196 仕様」、脅威 T1〜T23 は §11）、規則は `docs/MVP_SPEC.md` §7.1、配置は `docs/ARCHITECTURE.md` §11。
+ここに書く bucket・route・環境変数はどれも作られていない。実装と適用の各段は別の承認が要る（DEV-196 仕様 §12）。この節は、実装の段で**緩めてはいけない境界**を先に決めておくもの。
+
+- **Storage**
+  - 非公開の bucket だけ（`public = false`）。`storage.objects` に anon・authenticated の policy を作らない。読み書きは server（service role）だけ。
+  - 公開 bucket・公開 URL・CDN・**署名付き URL を作らない・ブラウザに渡さない**（署名付き URL は期限前に取り消せないため）。
+  - HTML・CSS・WebP / JPEG だけ。SVG ファイル・PNG は受けない。正規化した画像（EXIF・GPS なし）と大きさの上限。
+  - object・object の metadata に、出所・モデル名・所有者名・同意の参照・private path・prompt の本文を書かない。
+- **成果物の route `/demo-frame/{a|p}/[token]/[...path]`**
+  - cookie を**読まない**（`proxy.ts` の matcher に入れない）。認可は path の HMAC の短い token だけ。
+  - token は管理者用（scope `a`）15 分、共有用（scope `p`）30 分。共有 URL を開き直すたびに共有用の token を新しく発行する。scope が違えば 404。HMAC は定数時間で比べる。
+  - **要求ごとに DB で確かめる**: 版の存在・取り消し・期限、scope `p` は加えて `isDemoPublic`（送信済み・30 日・無効化なし）・送信済みの承認がその版を固定していること・画像の権利の再評価。どれか 1 つでも外れたら、理由を区別しない 404（`no-store`）。
+  - URL の path は Storage の key にしない。manifest の名前と完全一致したものだけを返し、返す前に sha256 を照合する。
+  - 応答: `nosniff`・`Cache-Control: private, no-store`・`Referrer-Policy: no-referrer`・`X-Robots-Tag: noindex, nofollow, noarchive`・`Permissions-Policy` はすべて無効。HTML の CSP は `default-src 'none'`・`script-src 'none'`・`connect-src 'none'`・`font-src 'none'`・`form-action 'none'`・`base-uri 'none'`・`style-src` と `img-src` は token の path だけ・`frame-ancestors <アプリの origin>`・`sandbox`（`allow-*` なし）。`'unsafe-inline'` は入れない。
+  - token を log・エラーに出さない。
+- **専用の別 origin**（オーナー決定 2026-11-10）
+  - 共有する成果物は、アプリと別の専用の origin（`<artifact-origin>`）から配る。そこには成果物の route だけを置き、cookie を発行も読みもしない。アプリの cookie は host-only のまま（`Domain=` で親の domain に広げない）。
+  - **DNS と Vercel の設定は今は変えない**（後の段の別の承認。Domain / DNS は Protected Scope）。設定されるまで、共有の成果物の route は 404（fail closed）。
+  - 別 origin は置き換えではなく、もう 1 枚の層。非公開の Storage・sandbox・スクリプト無効・要求ごとの認可は、別 origin を入れても保つ。
+  - 管理者プレビューは、別 origin の設定までアプリの origin の `/demo-frame/a/…` で配る（cookie を読まない route・CSP の `sandbox`・iframe の `sandbox=""` で opaque origin になり、アプリの cookie・DOM・storage に届かない）。管理者だけの暫定として受け入れる。
+- **取り消しと保持**
+  - 版の取り消しは次の要求から効く。送信済みの版を取り消したら共有 URL は 404 で、ほかの版や React のデモへ**自動で切り替えない**。鍵の rotate で発行済みの token はすべて無効になる。すでに相手の画面に開かれた頁は呼び戻せない（限界）。
+  - 未送信の版は約 60 日、送信済みの版は共有の期間の後 約 30 日残す。期限の後も自動では消さない。Storage の object の削除は復元できないので、別の承認。
+- **HTML/CSS の検査**: server の finalize が正本（worker の申告は助言、§11「worker は結果を偽れる」）。B方式の規則（`script`・`on*`・`form`・`iframe`・外部 URL・`@import`・`@font-face`・外への `url()` など）を緩めず、加えて `style` 属性と `<style>` 要素を拒否する。書体は許可一覧だけ。React の木に成果物の HTML を入れない（`dangerouslySetInnerHTML`・`srcdoc` を使わない）。
+- **画像の権利と出所**
+  - 権利の状態は server が記録から導く（人が enum を選ばない）。既定は `unknown` で、1 枚でも共有可でない画像があれば版ごと共有不可（fail closed。画像を抜いた頁は出さない）。
+  - 出所（AI 画像の生成の手段・ツールが報告したモデル名・生成時刻・prompt の sha256・承認 ID、人の写真の同意の参照など）は **DB の管理者だけが読む列にだけ**置く。リポジトリのファイル（docs・json・fixture）、Storage、log に書かない。
+  - 実店舗の AI 概念画像は、管理者だけのデザイン検討に限る。条件: 実在の商品・店内・人・設備を事実として描かない（`depicts_real_*` が 1 つでも true なら不可）・画像ごとにオーナーが「事実の偽装なし」を確認して記録する・管理画面が画像ごとに AI 生成のラベルを出す・出所と利用の許可が記録されている。1 つでも欠ければ `unknown`。共有の可否を返す経路そのものを持たせず、共有 URL には出さない（DB の check でも強制）。
+  - 「事実の偽装なし」の確認（案、DEV-196 仕様 §14 Q12）: 管理者プレビューの画像ごとに、オーナーが固定の文「この画像は実在の商品・店内・人・設備を事実として描いていません」を読んで押す。押した人と時刻を画像の記録に残し、画像の bytes が変われば確認は無効。文言と手順は DEV-196i の前にオーナーが決める。
+  - 架空の店の研究の規則（`checkPhotoRights`・`AI_DEMO_SHOPS`・`AI_DEMO_NOT_FOR_PUBLIC_SITE`）は変えない。
+  - 写真の共有は今も無効（`PUBLIC_DEMO_ASSETS_ENABLED = false`）。共有できる版は写真 0 枚の版だけ。写真や AI 画像の共有を始めるには、`docs/MVP_SPEC.md` §7 の変更（Protected Scope）と別の承認が要る。
+- **受け入れるリスク**: 管理者用の token は cookie の無い bearer URL で、漏れると未承認の下書き（AI 画像を含む）が最大 15 分見える（DEV-196 仕様 T19）。対策は短い期限・1 つの版だけ・管理者の頁でだけ発行・log に出さない・`no-referrer`・`no-store`・取り消しと鍵の rotate。
+- **worker と bridge**: WSL に Supabase の鍵を置かない。アップロードは今の bridge の token で、版の受け入れだけの狭い API（prospect・outreach・DNC・送信・品質承認には触れない）。worker・bridge の経路から品質承認・送信承認は書けない。生成物は必ず未承認の `draft`。画像の生成は今までどおり 1 回ごとのオーナーの承認。
