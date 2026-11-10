@@ -2,6 +2,7 @@ import { CATEGORY_LABEL } from "./demo-content";
 import { initialSendAllowed, type DesignStatus } from "./design";
 import { checkTarget, type TargetRejection } from "./eligibility";
 import { EXCLUSION_REASON_LABEL, type ExclusionReason } from "./exclusions";
+import { INSIGHT_KINDS, INSIGHT_LABEL, type Insight, type InsightKind } from "./insights";
 import { FIRST_PARTY_SOURCE_TYPES, SOURCE_FIELDS, type Category, type Channel, type SourceField, type SourceType, type WebsiteStatus } from "./types";
 import { normalizeEmail } from "./normalize";
 import { isSafeHttpUrl } from "./url";
@@ -21,11 +22,16 @@ import { isSafeHttpUrl } from "./url";
 //     email: public email with a first-party sales_sources row       -> channel_rule
 //     initial: recommended_channel = channel                         -> recommended_channel
 //   markSent (server action)   AI design not pending/processing      -> design
+//     excluded                 -> exclusion (DEV-195: the stored keys against sales_exclusions)
+//   sales_send_guards (DEV-195: approval, send screen opened, 送信済み)
+//     demo missing / disabled  -> demo_link
+//     design pending/processing with the step on -> design
+//     same recipient approved / sent for another outreach (not shown: the
+//     dedupe keys are unique per prospect, so the card cannot hit it)
 //   sales_mark_follow_up_sent  email only (due / demo checked by the queue);
-//     its insert re-runs the eligibility trigger (DNC + email provenance)
-// The UI adds two stricter checks the database does not make at send time:
-// a usable demo link (without one no message can be composed) and the
-// admin's exclusion list (an exclusion added after the draft was made). Being
+//     its insert re-runs the eligibility trigger (DNC + email provenance + exclusion)
+// The UI's one check the database does not make at the same step: a usable
+// demo link for a follow-up (without one no message can be composed). Being
 // stricter is safe; the card is never "sendable" where the server would refuse.
 
 export const UNCONFIRMED = "未確認";
@@ -157,15 +163,27 @@ export type ContactVerdict = {
 
 export type SelectionLine = { label: string; value: string; unconfirmed: boolean };
 
+/** DEV-195: a stored note (selection rationale / improvement hypothesis) with who wrote it and when. */
+export type InsightEvidence = {
+  kind: InsightKind;
+  label: string;
+  /** null when nothing is stored: shown as 未確認, never filled in. */
+  value: string | null;
+  /** e.g. 「記入: オーナー・2026/11/07 10:05」; null with no note. */
+  provenance: string | null;
+};
+
 export type TodayEvidence = {
   /** One sentence built only from stored fields. */
   summary: string;
   lines: SelectionLine[];
   /**
-   * No column holds why this shop was chosen beyond the stored fields above
-   * (no hypothesis / note is stored by ingest), so this is always 未確認 for now.
+   * DEV-195: the stored improvement hypothesis (sales_prospect_insights), or
+   * null when none is stored (shown as 未確認). Never invented.
    */
   hypothesis: string | null;
+  /** DEV-195: both stored notes with their provenance, in INSIGHT_KINDS order. */
+  insights: InsightEvidence[];
   sources: SourceEvidence[];
   missingSources: MissingSource[];
   /** The newest / oldest verified_at of the stored sources, as JST dates. */
@@ -195,6 +213,8 @@ export type EvidenceInput = {
   designStatus: DesignStatus | null;
   demoAvailable: boolean;
   exclusion: ExclusionCheck;
+  /** DEV-195: the stored notes (absent = none stored). */
+  insights?: Partial<Record<InsightKind, Insight>>;
 };
 
 /** "2026/11/07" in Asia/Tokyo, or 未確認 for anything that is not a valid timestamp. */
@@ -204,6 +224,21 @@ export function formatJstDate(iso: string | null | undefined): string {
   if (Number.isNaN(t)) return UNCONFIRMED;
   const d = new Date(t + 9 * 60 * 60 * 1000).toISOString();
   return `${d.slice(0, 4)}/${d.slice(5, 7)}/${d.slice(8, 10)}`;
+}
+
+/** "2026/11/07 14:05" in Asia/Tokyo, or 未確認 for anything that is not a valid timestamp. */
+export function formatJstDateTime(iso: string | null | undefined): string {
+  if (!iso) return UNCONFIRMED;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return UNCONFIRMED;
+  const d = new Date(t + 9 * 60 * 60 * 1000).toISOString();
+  return `${d.slice(0, 4)}/${d.slice(5, 7)}/${d.slice(8, 10)} ${d.slice(11, 16)}`;
+}
+
+/** Who wrote a note and when, in the owner's words (JST). */
+export function insightProvenance(note: Insight): string {
+  const who = note.source === "owner" ? "オーナー" : `Operational Claude（run ${note.runId ? note.runId.slice(0, 8) : UNCONFIRMED}）`;
+  return `記入: ${who}・${formatJstDateTime(note.writtenAt)}`;
 }
 
 const isField = (v: string): v is SourceField => (SOURCE_FIELDS as readonly string[]).includes(v);
@@ -333,10 +368,10 @@ export function contactVerdict(input: EvidenceInput): ContactVerdict {
 
   checks.push(
     input.exclusion.state === "clear"
-      ? ok("exclusion", "除外リスト", "除外リストに該当なし", false)
+      ? ok("exclusion", "除外リスト", "除外リストに該当なし")
       : input.exclusion.state === "match"
-        ? ng("exclusion", "除外リスト", `除外リストに一致（${input.exclusion.reasons.map((r) => EXCLUSION_REASON_LABEL[r]).join("・")}）。見送るか営業不要にしてください`, false)
-        : unknown("exclusion", "除外リスト", `除外リストを照合できませんでした（${UNCONFIRMED}）`, false),
+        ? ng("exclusion", "除外リスト", `除外リストに一致（${input.exclusion.reasons.map((r) => EXCLUSION_REASON_LABEL[r]).join("・")}）。見送るか営業不要にしてください`)
+        : unknown("exclusion", "除外リスト", `除外リストを照合できませんでした（${UNCONFIRMED}）`),
   );
 
   if (input.address === null || input.category === null) {
@@ -371,10 +406,12 @@ export function contactVerdict(input: EvidenceInput): ContactVerdict {
     );
   }
 
+  // DEV-195: sales_send_guards refuses a missing / disabled demo for an initial message.
+  const demoServer = input.kind === "initial";
   checks.push(
     input.demoAvailable
-      ? ok("demo_link", "デモのリンク", "デモのリンクがあります", false)
-      : ng("demo_link", "デモのリンク", "デモが無いか無効のため、文面を作れません", false),
+      ? ok("demo_link", "デモのリンク", "デモのリンクがあります", demoServer)
+      : ng("demo_link", "デモのリンク", "デモが無いか無効のため、文面を作れません", demoServer),
   );
 
   const sendable = checks.every((c) => c.state === "ok");
@@ -466,10 +503,16 @@ export function buildTodayEvidence(input: EvidenceInput): TodayEvidence {
           return newest === oldest ? newest : `${oldest}〜${newest}`;
         })();
 
+  const insights: InsightEvidence[] = INSIGHT_KINDS.map((kind) => {
+    const note = input.insights?.[kind];
+    return { kind, label: INSIGHT_LABEL[kind], value: note ? note.body : null, provenance: note ? insightProvenance(note) : null };
+  });
+
   return {
     summary,
     lines,
-    hypothesis: null,
+    hypothesis: insights.find((i) => i.kind === "improvement_hypothesis")?.value ?? null,
+    insights,
     sources,
     missingSources,
     researchedDate,

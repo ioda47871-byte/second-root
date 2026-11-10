@@ -56,6 +56,17 @@ export const verifiedCandidateInput = z.strictObject({
     subject: z.string().trim().max(100).nullable().optional(),
     body: text(1200),
   }),
+  /**
+   * DEV-195 (optional, backwards compatible): why this shop was chosen and
+   * what could be improved for it, in Operational Claude's own words
+   * ({ selectionRationale?: string, improvementHypothesis?: string }). Only
+   * what was actually found; omit rather than guess. PR #239 L4: the notes
+   * are never a reason to refuse the checkpoint — anything that is not such a
+   * string (another type, an unknown key, too long, contact details, links)
+   * is dropped note by note in lib/sales/insights.ts (preparedInsights), and
+   * the candidate itself is validated exactly as before.
+   */
+  insights: z.unknown().optional(),
 });
 export type VerifiedCandidateInput = z.infer<typeof verifiedCandidateInput>;
 

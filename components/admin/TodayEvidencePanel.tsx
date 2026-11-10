@@ -1,4 +1,5 @@
 import { UNCONFIRMED, type CheckState, type TodayEvidence } from "@/lib/sales/evidence";
+import InsightEditor from "./InsightEditor";
 import styles from "./admin.module.css";
 
 // DEV-194: the folded evidence of a today card — why the shop is listed,
@@ -7,7 +8,8 @@ import styles from "./admin.module.css";
 
 const STATE_MARK: Record<CheckState, string> = { ok: "OK", ng: "NG", unconfirmed: UNCONFIRMED };
 
-export default function TodayEvidencePanel({ evidence }: { evidence: TodayEvidence }) {
+/** `prospectId` given: the owner can write / clear the notes (DEV-195). */
+export default function TodayEvidencePanel({ evidence, prospectId }: { evidence: TodayEvidence; prospectId?: string }) {
   const { contact } = evidence;
   return (
     <details className={styles.details} data-testid="today-evidence">
@@ -23,10 +25,33 @@ export default function TodayEvidencePanel({ evidence }: { evidence: TodayEviden
               <dd>{l.value}</dd>
             </div>
           ))}
-          <div data-unconfirmed="true" data-testid="evidence-hypothesis">
-            <dt>改善の仮説</dt>
-            <dd>{evidence.hypothesis ?? `${UNCONFIRMED}（保存されていません）`}</dd>
-          </div>
+          {/* DEV-195: stored notes with who wrote them; nothing stored reads 未確認. */}
+          {evidence.insights.map((note) => (
+            <div
+              key={note.kind}
+              data-unconfirmed={note.value === null || undefined}
+              data-testid={note.kind === "improvement_hypothesis" ? "evidence-hypothesis" : "evidence-rationale"}
+            >
+              <dt>{note.label}</dt>
+              <dd>
+                {note.value ?? `${UNCONFIRMED}（保存されていません）`}
+                {note.provenance && (
+                  <>
+                    <br />
+                    <span className={styles.muted} data-testid="insight-provenance">
+                      {note.provenance}
+                    </span>
+                  </>
+                )}
+                {prospectId && (
+                  <>
+                    <br />
+                    <InsightEditor prospectId={prospectId} kind={note.kind} label={note.label} value={note.value} />
+                  </>
+                )}
+              </dd>
+            </div>
+          ))}
         </dl>
       </section>
 

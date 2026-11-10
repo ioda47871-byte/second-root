@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadDesignOutcomes, loadFunnel, loadMetrics } from "@/lib/admin/history";
 import { periodSince, sumDesign, sumFunnel } from "@/lib/sales/funnel";
-import { anonClient, candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
+import { anonClient, approveAndMarkSent, candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-057: sales_funnel_daily / sales_design_daily — the funnel by JST
 // preparation day, admin-only, consistent with sales_metrics.
@@ -37,7 +37,7 @@ async function prepared(c: Record<string, unknown>, when: string) {
 
 async function sent(c: Record<string, unknown>, when: string) {
   const o = await prepared(c, when);
-  const { error } = await admin.rpc("sales_mark_sent", { p_outreach_id: o.id });
+  const { error } = await approveAndMarkSent(admin, o.id);
   if (error) throw error;
   return o;
 }

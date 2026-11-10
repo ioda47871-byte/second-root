@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadTodayQueue } from "@/lib/admin/today";
-import { candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
+import { approve, candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
 // Today's queue through the admin's own session (RLS applies).
 
@@ -181,10 +181,12 @@ describe("today queue", () => {
       expect(byId[mail].evidence.contact.checks.find((c) => c.id === "channel_rule")?.state).toBe("ng");
       expect(byId[ig].evidence.contact.sendable).toBe(false);
       expect(byId[ig].evidence.contact.checks.find((c) => c.id === "exclusion")?.state).toBe("ng");
-      // The database agrees on the provenance: marking the email draft sent is refused.
+      // The database agrees on the provenance: approving the email draft is refused (DEV-195).
       const outreach = byId[mail].outreachId;
-      const { error } = await admin.rpc("sales_mark_sent", { p_outreach_id: outreach });
+      const { error } = await approve(admin, outreach);
       expect(error?.message).toContain("email_not_eligible");
+      // ...and on the later exclusion (DEV-195: the eligibility check reads the list).
+      expect((await approve(admin, byId[ig].outreachId)).error?.message).toContain("excluded");
     } finally {
       await db.query("delete from public.sales_exclusions where label = 'テスト除外'");
     }

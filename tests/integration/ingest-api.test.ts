@@ -100,6 +100,28 @@ describe("run lifecycle through the API", () => {
     expect(fetchSpy).toHaveBeenCalled();
   });
 
+  it("DEV-195: stores optional notes as submitted (run as source), drops one that does not pass, and still prepares the shop", async () => {
+    const withNotes = { ...verifiedInput(), insights: { selectionRationale: "公式サイトがなく Instagram だけで案内している", improvementHypothesis: "連絡先 owner@example.com を載せる" } };
+    const { runId, run } = await fullRun([withNotes, verifiedEmailInput()]);
+    expect(run.candidates.map((c: { stage: string }) => c.stage)).toEqual(["outreach_ready", "outreach_ready"]);
+    const { rows } = await db.query("select kind, body, source, run_id from public.sales_prospect_insights");
+    expect(rows).toEqual([{ kind: "selection_rationale", body: "公式サイトがなく Instagram だけで案内している", source: "ingest", run_id: runId }]);
+  });
+
+  it("PR #239 L4: notes of the wrong shape (unknown keys, non-strings, over 1000 characters) are dropped, never a reason to refuse the checkpoint", async () => {
+    const odd = [
+      { ...verifiedInput(), insights: { note: "x", selectionRationale: 42 } },
+      { ...verifiedInput(), insights: { improvementHypothesis: "長".repeat(1500) } },
+      { ...verifiedInput(), insights: "just a string" },
+    ];
+    const { run } = await fullRun(odd);
+    expect(run.candidates.map((c: { stage: string }) => c.stage)).toEqual(["outreach_ready", "outreach_ready", "outreach_ready"]);
+    expect(await count("sales_prospect_insights")).toBe(0);
+    // The candidate itself is still validated strictly.
+    const res = await call({ action: "checkpoint", runId: randomUUID(), phase: "verified", candidates: [{ ...verifiedInput(), unknownField: "x" }] });
+    expect(res.status).toBe(400);
+  });
+
   it("returns the stored result when a completed run is re-sent", async () => {
     const shop = verifiedInput();
     const { runId } = await fullRun([shop]);

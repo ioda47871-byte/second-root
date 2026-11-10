@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadMetrics } from "@/lib/admin/history";
-import { anonClient, candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
+import { anonClient, approveAndMarkSent, candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
 // sales_metrics view: funnel counts by condition, admin-only.
 
@@ -16,7 +16,8 @@ async function sent(c: Record<string, unknown>) {
   // Finish the run as the API does, so the next fixture can start one.
   await rpc("sales_run_finalize", { p_run_id: runId });
   const id = (await db.query("select id from public.sales_outreaches where prospect_id = $1", [prospect_id])).rows[0].id as string;
-  await admin.rpc("sales_mark_sent", { p_outreach_id: id });
+  const { error } = await approveAndMarkSent(admin, id);
+  if (error) throw error;
   return id;
 }
 

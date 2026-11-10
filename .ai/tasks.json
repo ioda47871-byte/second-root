@@ -8993,7 +8993,7 @@
     {
       "id": "DEV-194",
       "title": "今日のカードに選定理由・出典と調査日・連絡の可否 (理由と未確認) を表示し、送信の UI をサーバーの送信済み判定と一致させる (型付きの view model。DB 変更・実送信なし)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-193"
@@ -9044,7 +9044,86 @@
         "選定理由 (改善仮説) を保存する列の追加 (DB migration、別承認)",
         "sales_mark_sent に除外リストの照合を足す (DB migration、別承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-194.md"
+      "note": "記録は .ai/reviews/DEV-194.md。PR #238 merged (56a6a3b)。done への更新は DEV-195 の branch で行った"
+    },
+    {
+      "id": "DEV-195",
+      "title": "送る前に文面を編集・送信を承認 (承認者・宛先・文面・デモの版を記録)・DB で除外/重複/DNC/条件/デザインを承認時と送信済み時に照合・手動送信を「送信画面を開いた」と「手動で送信済み」の2段に分ける・選んだ理由と改善の仮説を出所つきで保存 (外部への自動送信なし)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-194"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-195-draft-edit-send-approval",
+      "purpose": "Issue #235 (North Star) の計画の第2段、オーナー GO 2026-11-07 (開発・テスト・PR)。/admin/sales で送る前に文面を直し、送る1件ごとに『何を・誰に・どのデモで』を承認として残し、サーバー (DB) が承認時と送信済み時に同じ規則で断る。手動送信は『開いた』と『送った』を分けて記録し、自動送信済みとは記録しない。DEV-194 で見つけた『送信済みが除外リストを見ない』穴を塞ぐ",
+      "acceptance_criteria": [
+        "migration 20261107000000_sales_send_approval.sql (forward-only、hosted には未適用): sales_outreaches に draft_version / edited_at / edited_by、表 sales_outreach_draft_edits / sales_outreach_approvals / sales_prospect_insights (RLS: admin read、書き込みは SECURITY DEFINER の関数だけ)",
+        "文面の編集: sales_update_outreach_draft (drafted の初回だけ、版の一致、本文 1〜1200・URL/メール不可、件名はメールだけ 1〜100)。履歴を残し、古い文面の承認を superseded にする。宛名・デモ URL・注記・配信停止の文・署名は組み立て時に付くので消せない",
+        "送信の承認: sales_approve_outreach が承認者・宛先・表示した文面そのまま・チャネル・デモの版 (sales_demo_version)・方式 manual・時刻を記録。server action は DB から組み立て直した文面と表示した文面が違えば承認しない",
+        "DB の照合 (sales_send_guards、承認・送信画面を開く・送信済みのたび): DNC・連絡経路・推奨チャネル・除外リスト (sales_assert_outreach_eligible に追加。フォローも)・宛先の重複・デモ・AIデザイン待ち。outreach 行の FOR UPDATE・prospect 行のロック・承認の partial unique index・除外との advisory lock で同時実行でも二重に通らない",
+        "手動送信の2段: approve → send_opened (sales_mark_send_opened) → sent (sales_mark_sent(outreach, approval, design_enabled))。旧 sales_mark_sent(uuid) は削除。表示は「手動で送信済み」",
+        "選んだ理由・改善の仮説: ingest の任意の insights (strict、無い payload は従来どおり)・オーナーの編集 (sales_set_prospect_insight)・出所 (ingest の run / owner・時刻)。無ければ 未確認。evidence.ts が保存値を使う",
+        "既存の認証・履歴・返信 (IG 返信送信)・商談・成果は不変 (統合テスト・e2e 全件 green)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/sales/send-approval.test.tsx",
+        "npx vitest run tests/unit/sales/today-evidence.test.ts",
+        "npx vitest run tests/unit/sales/today-evidence-card.test.tsx",
+        "npx vitest run tests/unit/sales/design-send-gate.test.tsx",
+        "npx vitest run tests/unit/sales/design-admin.test.tsx",
+        "npm run test:integration (send-approval / mark-sent / db-security-audit / ingest-api / ig-send ほか、ローカル Supabase)",
+        "npm run test:e2e (today / email-send / instagram-send / follow-up / mobile-qa ほか、build の後)"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261107000000_sales_send_approval.sql",
+        "lib/sales/approval.ts",
+        "lib/sales/draft.ts",
+        "lib/sales/insights.ts",
+        "lib/sales/evidence.ts",
+        "lib/sales/ingest-schema.ts",
+        "lib/sales/prepare.ts",
+        "lib/admin/initial-send.ts",
+        "lib/admin/today.ts",
+        "app/admin/sales/_actions/send.ts",
+        "app/admin/sales/_actions/draft.ts",
+        "app/admin/sales/page.tsx",
+        "components/admin/InitialSend.tsx",
+        "components/admin/DraftEditor.tsx",
+        "components/admin/InsightEditor.tsx",
+        "components/admin/EmailSend.tsx",
+        "components/admin/InstagramSend.tsx (削除)",
+        "components/admin/TodayCard.tsx",
+        "components/admin/TodayEvidencePanel.tsx",
+        "components/admin/admin.module.css",
+        "tests/unit/sales/*",
+        "tests/integration/*",
+        "tests/e2e/today.spec.ts",
+        "tests/e2e/email-send.spec.ts",
+        "tests/e2e/instagram-send.spec.ts",
+        "tests/e2e/follow-up.spec.ts",
+        "tests/e2e/mobile-qa.spec.ts",
+        "docs/MVP_SPEC.md",
+        "docs/ARCHITECTURE.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-195.md"
+      ],
+      "forbidden_scope": [
+        "hosted (Staging / Production) DB への migration 適用",
+        "外部への自動送信 (Resend のコールドメール・Instagram Graph API の初回 DM・新しい API 送信経路)",
+        "認証・dedupe・DNC・除外・5件上限の緩和",
+        "Operational Claude の prompt (ops/sales-agent/RUN_PROMPT.md) の変更",
+        ".github/workflows・package.json・lockfile"
+      ],
+      "human_approval_triggers": [
+        "PR のレビュー・必須 CI のあとの merge",
+        "Staging DB への migration 20261107000000 の適用 (develop の Vercel Preview はこの migration が無いと「今日」を読めない。merge の前後どちらで適用するかを決める)",
+        "Production DB への適用 (別承認)",
+        "Operational Claude に insights を書かせる prompt の変更 (別承認)",
+        "mode = api (公式 API による送信) の経路 (別承認)"
+      ],
+      "note": "記録は .ai/reviews/DEV-195.md"
     }
   ]
 }

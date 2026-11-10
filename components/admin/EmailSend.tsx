@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useSyncExternalStore, useTransition } from "react";
-import { markFollowUpSent, markSent } from "@/app/admin/sales/_actions/send";
+import { markFollowUpSent } from "@/app/admin/sales/_actions/send";
 import styles from "./admin.module.css";
 
-// メールを作成: opens the device's mail app with recipient, subject and body
-// (demo URL, signature, opt-out line) pre-filled. The human presses Send
-// there, then comes back and taps 送信済み (MVP_SPEC §4.2). Never Resend.
+// フォローメールを作成 (MVP_SPEC §4.3): opens the device's mail app with
+// recipient, subject and body (demo URL, signature, opt-out line) pre-filled.
+// The human presses Send there, then comes back and taps 手動で送信済みにする.
+// Never Resend. (The initial message has its own approval flow: InitialSend.)
 
 type Draft = { to: string; subject: string; body: string };
 
@@ -36,14 +37,14 @@ export default function EmailSend({
   outreachId,
   mailto,
   draft,
-  label = "メールを作成",
-  kind = "initial",
+  label = "フォローメールを作成",
+  kind = "follow_up",
 }: {
   outreachId: string;
   mailto: string;
   draft: Draft;
   label?: string;
-  kind?: "initial" | "follow_up";
+  kind?: "follow_up";
 }) {
   const [clicked, setClicked] = useState(false);
   // Read after hydration only (the server has no sessionStorage).
@@ -68,7 +69,7 @@ export default function EmailSend({
   function confirmSent() {
     setError(null);
     start(async () => {
-      const result = kind === "follow_up" ? await markFollowUpSent(outreachId) : await markSent(outreachId);
+      const result = await markFollowUpSent(outreachId);
       if (!result.ok) setError(result.error);
     });
   }
@@ -79,7 +80,7 @@ export default function EmailSend({
         {label}
       </a>
       <p className={styles.muted} role="status">
-        {opened ? "メールアプリで送信したら、戻って「送信済み」を押してください。" : ""}
+        {opened ? "メールアプリで送信したら、戻って「手動で送信済みにする」を押してください。" : ""}
       </p>
       {opened && (
         <>
@@ -111,7 +112,7 @@ export default function EmailSend({
             </p>
           </details>
           <button type="button" className={styles.secondary} onClick={confirmSent} disabled={pending}>
-            {pending ? "記録中…" : "送信済み"}
+            {pending ? "記録中…" : "手動で送信済みにする"}
           </button>
         </>
       )}

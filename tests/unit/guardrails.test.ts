@@ -82,7 +82,9 @@ describe("guardrails", () => {
     for (const f of textFiles) {
       const text = readFileSync(f, "utf8");
       const tokens = [...(text.toLowerCase().match(/[a-z0-9_]+/g) ?? []), ...(text.match(/[\u3040-\u9fff]+[0-9]+(?:-[0-9]+){1,2}/g) ?? [])];
-      if (tokens.some((t) => DENY.has(sha(t)))) hits.push(f);
+      // Each distinct token is hashed once (PR #239: the same check, without
+      // re-hashing repeated words; it ran at the 5 s limit in CI on develop).
+      if ([...new Set(tokens)].some((t) => DENY.has(sha(t)))) hits.push(f);
       // In the design agent / worker: Instagram profile URLs are placeholders or fictional test accounts only.
       if (!/^(lib\/design-agent|scripts\/sales-design|tests\/unit\/design-agent|docs\/operations\/design-)/.test(f)) continue;
       for (const m of text.matchAll(/(?<![\w.-])(?:www\.)?instagram\.com\/([A-Za-z0-9._]+)/g)) {
