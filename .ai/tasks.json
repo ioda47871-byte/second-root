@@ -9285,7 +9285,7 @@
     {
       "id": "DEV-196a",
       "title": "MVP_SPEC / ARCHITECTURE / SECURITY を DEV-196 の設計とオーナー決定 2026-11-10 に合わせる (店舗ごとの版のデモの規則。docs だけ、コード・設定・DB 変更なし)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196"
@@ -9326,7 +9326,65 @@
         "DEV-196c 以降の各段 (DB・Storage・環境変数・WSL・Staging・画像生成・公開・別 origin の DNS と Vercel・削除・Production) はそれぞれ別の承認",
         "artifact origin の名前の決定 (DEV-196 仕様 §14 Q11)、「事実の偽装なし」の確認の手順と文言 (§14 Q12)"
       ],
-      "note": "記録は .ai/reviews/DEV-196a.md。docs だけで、どの実装の段も承認しない"
+      "note": "記録は .ai/reviews/DEV-196a.md。docs だけで、どの実装の段も承認しない。PR #244 を 93ee591 で merge (2026-11-10)。docs だけ (コード・設定・DB の変更なし)。独立レビュー 2 回、最終 C0/H0/M0/L0。CI 11/11。(done への更新は DEV-196c の PR が台帳の保守として行った)"
+    },
+    {
+      "id": "DEV-196c",
+      "title": "店舗デモの版の DB (版・系譜・生成 job の鍵・成果物の hash・画像の権利・品質承認) と送信承認への結び付け。ローカルだけ、版の共有は DB で無効",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196b"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-196c-demo-versions-db",
+      "purpose": "DEV-196 仕様 §12 の DEV-196c (オーナー承認 2026-11-10: migration の作成、ローカル Supabase への適用と確認、ローカル Storage の設定と試験、統合・セキュリティのテスト、PR)。§4 のデータモデル・§4.6 の状態機械・§8 の権利・§9.2〜§9.5 の照合と send_opened の規則を DB で強制する。版の共有は専用の別 origin の設計 (DEV-196g) まで DB で無効にし、既存の React のデモの共有 (/demo/[publicToken]・isDemoPublic・legacy の sales_demo_version の hash) は変えない",
+      "acceptance_criteria": [
+        "migration 20261111000000_sales_demo_versions.sql (forward-only、どの hosted DB にも未適用): sales_demo_versions・sales_demo_version_files・sales_demo_images・sales_demo_quality_reviews、sales_demos.approved_version_id、sales_outreach_approvals の版の固定の列 (demo_version_id・demo_bundle_sha256・demo_quality_review_id・demo_share_eligible・demo_unavailable_after_open)",
+        "追跡: 店舗ごとの版 (version_no)・系譜 (parent_version_id、同じ demo だけ)・生成 job の冪等性の鍵 (generation_job_id unique)・worker の commit・facts / direction / bundle の hash (bundle は DB で再計算し DEV-196b の bundleSha256 と一致)・ファイルごとの hash (sales_demo_version_files)",
+        "二つの承認の分離: 品質承認 (sales_demo_quality_reviews、append-only、active → withdrawn / invalidated だけ、demo ごとに active な approved は最大 1) と送信承認 (DEV-195 の sales_outreach_approvals) は別の表・別の関数。品質承認は送信承認を作らない",
+        "§9.3: sales_demo_version(d) は approved_version_id が null なら今と同じ 5 要素の hash (live な DEV-195 の承認は有効のまま)、あれば版の id と bundle の hash を足す。送信承認は版の id・hash・品質承認を固定する",
+        "§9.2: sales_send_guards が承認と「送信画面を開く」のたびに版 (approved・取り消しなし・期限内)・品質承認・事実の hash・権利を元の行から導き直す (保存した share_eligible などは見ない)",
+        "版の共有は DB で無効: sales_demo_versioned_sharing_enabled() と sales_demo_share_photos_enabled() は定数 false、share_eligible は check で false、sales_resolve_demo_share は版を返さない (版を固定した送信済みは none、React には落ちない。版を固定していない送信済みは legacy)",
+        "権利: ai_demo_internal・ai_concept_internal は table の check で share_cleared にならない、ai_share_approved と owner_ai_share_decision は書けない、ai_concept_internal は depicts_real_* がすべて false・オーナーの確認・出所が必須",
+        "§9.5: 品質承認 (新しい版)・取り下げ・版の取り消し・画像の権利の取り消しは send_opened があれば approval_open で何も書かない。send_opened からの送信済みは demo_unavailable_after_open を残して記録する",
+        "worker: sales_ingest_demo_version (service_role だけ、SECURITY DEFINER でない) は未承認の draft の版を作るだけ。承認・品質承認・取り下げ・取り消し・共有はできない。trigger が品質承認・版の approved・approved_version_id の書き込みをサインイン中の管理者 (auth.uid()) に結び付けるので、service role の鍵で直接書いても承認できない",
+        "不変性: 版の内容と hash・ファイルは作成後に変わらない、版・ファイル・画像・品質承認の行は消せない、取り消しは最終",
+        "RLS: 新しい表はすべて RLS・管理者だけ select、anon の権限なし、authenticated の直接の書き込みなし。管理者の関数は SECURITY DEFINER・最初に sales_assert_admin()・search_path=''・PUBLIC / anon の実行なし",
+        "品質承認の note (500 字まで、trim・空は null・URL / メールは拒否) と、見た描画画像 (PC1440 / SP390、tablet があれば tablet) の sha256 を版のファイルと照合 (DEV-196d の計画からの追加)",
+        "ローカル Storage: supabase/config.toml で有効、非公開 bucket sales-demo-versions (4MiB、text/html・text/css・image/webp・image/jpeg)、storage の policy なし。hosted には何も作らない",
+        "成功例 30 件・SR-001 を写す仕組みは無い (版のファイルはその版の manifest からだけ)",
+        "scripts/staging/lib.mjs の SECURITY_CHECKS に storage の policy と版の共有の無効を追加。db-security-audit に DEV-196c の検査"
+      ],
+      "required_tests": [
+        "npx supabase db reset (ローカル) と npm run test:integration (tests/integration/demo-versions.test.ts を含む全件。Storage の API の 1 件は storage の service が無いとき (CI の -x storage-api) だけ skip)",
+        "npx vitest run tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/staging",
+        "npx tsc --noEmit・npx eslint・npm run check:secrets・npm run build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261111000000_sales_demo_versions.sql (新規)",
+        "supabase/config.toml ([storage] と bucket sales-demo-versions だけ)",
+        "tests/integration/demo-versions.test.ts (新規)・tests/integration/helpers.ts (truncate の表の追加)・tests/integration/db-security-audit.test.ts・tests/integration/staging-checks.test.ts",
+        "scripts/staging/lib.mjs (SECURITY_CHECKS の追加だけ)",
+        ".ai/tasks.json (DEV-196a を done、DEV-196c の追加)",
+        ".ai/reviews/DEV-196c.md"
+      ],
+      "forbidden_scope": [
+        "Staging・Production への適用、hosted の Storage bucket の作成、Vercel の環境変数・DNS",
+        "画像生成・WSL の worker の起動・実店舗のデモの公開や送信",
+        "期限切れの成果物の削除 (purge の関数は作らない。削除は別の承認、DEV-196j)",
+        "route・画面・server の配線 (DEV-196d)、版の共有を有効にすること (DEV-196g)",
+        ".github/workflows・package.json・lockfile",
+        "既存の DEV-195 / DEV-197 の照合の緩和、既存のテストの削除・skip"
+      ],
+      "human_approval_triggers": [
+        "PR の独立レビューのあとの merge (オーナー)",
+        "Staging / Production への migration の適用と hosted の bucket の作成 (DEV-196h・後の段、それぞれ別の承認)",
+        "版の共有を有効にする migration (専用の別 origin の DNS と Vercel の設定の後、DEV-196g)",
+        "期限切れの版の削除 (DEV-196j)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196c.md。migration はローカルの Supabase だけに適用した。巻き戻しはコミットしない scratch の SQL (DEV-195 と同じ扱い)。"
     }
   ]
 }

@@ -30,6 +30,10 @@ export function anonClient(): SupabaseClient {
 }
 
 const SALES_TABLES = [
+  "sales_demo_quality_reviews",
+  "sales_demo_version_files",
+  "sales_demo_versions",
+  "sales_demo_images",
   "sales_outreach_approvals",
   "sales_outreach_draft_edits",
   "sales_prospect_insights",

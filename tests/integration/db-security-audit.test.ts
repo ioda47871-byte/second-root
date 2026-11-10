@@ -131,6 +131,74 @@ describe("database security audit", () => {
     expect(markSent).toEqual([{ args: "p_outreach_id uuid, p_approval_id uuid, p_design_enabled boolean" }]);
   });
 
+  it("DEV-196c: the demo version tables are admin-read only; review / revoke are admin RPCs, the worker insert and every helper are server-only", async () => {
+    const versionTables = ["sales_demo_images", "sales_demo_quality_reviews", "sales_demo_version_files", "sales_demo_versions"];
+    const { rows: tables } = await db.query(`
+      select c.relname, c.relrowsecurity as rls,
+             has_table_privilege('authenticated', c.oid, 'SELECT') as authed_read,
+             has_table_privilege('authenticated', c.oid, 'INSERT') or has_table_privilege('authenticated', c.oid, 'UPDATE')
+               or has_table_privilege('authenticated', c.oid, 'DELETE') as authed_write,
+             has_table_privilege('anon', c.oid, 'SELECT') as anon_read,
+             (select count(*)::int from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) as policies,
+             (select count(*)::int from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname and p.cmd = 'SELECT'
+                and p.roles = array['authenticated']::name[] and p.qual like '%is_sales_admin()%') as admin_read_policies,
+             (select count(*)::int from pg_trigger t where t.tgrelid = c.oid and not t.tgisinternal) as write_triggers
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname = any($1::text[])
+      order by c.relname`, [versionTables]);
+    expect(tables).toEqual(
+      versionTables.map((relname) => ({
+        relname, rls: true, authed_read: true, authed_write: false, anon_read: false, policies: 1, admin_read_policies: 1,
+        // sales_demo_versions also has the deferred "files complete" constraint trigger (review round 1 L4).
+        write_triggers: relname === "sales_demo_versions" ? 2 : 1,
+      })),
+    );
+    // Review round 1 L4: these rows are never deleted — no API role may DELETE or TRUNCATE them.
+    const { rows: deletes } = await db.query(`
+      select c.relname, r.rolname, p.privilege_type
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      cross join lateral (values ('DELETE'), ('TRUNCATE')) as p(privilege_type)
+      cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
+      where n.nspname = 'public' and c.relname = any($1::text[]) and has_table_privilege(r.rolname, c.oid, p.privilege_type)`, [versionTables]);
+    expect(deletes).toEqual([]);
+    const { rows } = await db.query(`
+      select p.proname, p.prosecdef,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed,
+             has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+             has_function_privilege('service_role', p.oid, 'EXECUTE') as service
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and (p.proname like 'sales\\_demo\\_%' or p.proname in (
+        'sales_check_demo_image_write', 'sales_check_demo_version_write', 'sales_check_demo_version_file_write',
+        'sales_check_quality_review_write', 'sales_check_demo_approved_version', 'sales_check_demo_version_files_complete', 'sales_ingest_demo_version',
+        'sales_review_demo_version', 'sales_withdraw_demo_quality_review', 'sales_revoke_demo_version',
+        'sales_revoke_demo_image', 'sales_resolve_demo_share'))
+      order by p.proname`);
+    const rpcs = ["sales_review_demo_version", "sales_revoke_demo_image", "sales_revoke_demo_version", "sales_withdraw_demo_quality_review"];
+    expect(rows).toEqual(
+      rows.map((r) => r.proname).map((proname) =>
+        rpcs.includes(proname)
+          ? { proname, prosecdef: true, authed: true, anon: false, service: true }
+          : { proname, prosecdef: false, authed: false, anon: false, service: true },
+      ),
+    );
+    // 4 RPCs + the worker insert + the share resolver + 6 trigger functions + 18 sales_demo_* helpers (sales_demo_version included).
+    expect(rows).toHaveLength(30);
+    // The generation worker's only function is not SECURITY DEFINER and cannot run as the signed-in role.
+    expect(rows.find((r) => r.proname === "sales_ingest_demo_version")).toEqual({ proname: "sales_ingest_demo_version", prosecdef: false, authed: false, anon: false, service: true });
+    // Duplicate prevention lives in unique / partial unique indexes.
+    const { rows: idx } = await db.query(`
+      select indexname from pg_indexes where schemaname = 'public' and indexdef ilike 'create unique index%'
+        and indexname in ('sales_demo_versions_one_uploading', 'sales_demo_versions_bundle_key', 'sales_demo_versions_one_approved',
+                          'sales_demo_quality_reviews_one_active_approval', 'sales_demo_versions_no', 'sales_demo_versions_generation_job_id_key',
+                          'sales_demo_images_sha256_key', 'sales_demo_version_files_pkey')
+      order by indexname`);
+    expect(idx.map((r) => r.indexname)).toEqual([
+      "sales_demo_images_sha256_key", "sales_demo_quality_reviews_one_active_approval", "sales_demo_version_files_pkey",
+      "sales_demo_versions_bundle_key", "sales_demo_versions_generation_job_id_key", "sales_demo_versions_no",
+      "sales_demo_versions_one_approved", "sales_demo_versions_one_uploading",
+    ]);
+  });
+
   it("checks the admin first in every SECURITY DEFINER function the signed-in role can call", async () => {
     const { rows } = await db.query(`
       select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

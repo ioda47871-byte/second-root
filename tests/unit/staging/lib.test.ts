@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { assertRef, authHeaders, expectedTables, explicitGrantGaps, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
+import { NO_DELETE_TABLES, assertRef, authHeaders, expectedTables, explicitGrantGaps, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
 
 // Staging setup through the Supabase Management API (DEV-016): the plan,
 // the requests and token handling. No network: fetch is mocked.
@@ -37,8 +37,12 @@ describe("migration plan", () => {
 
   it("[fail-closed] every sales_* table is granted to the API roles explicitly (never relies on project defaults)", () => {
     for (const [role, privilege] of [["authenticated", "select"], ["service_role", "select"], ["service_role", "insert"], ["service_role", "update"], ["service_role", "delete"]]) {
-      expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual([]);
+      // DEV-196c: the demo version history is never deleted, so DELETE is deliberately not granted on those tables (and only those).
+      const expected = privilege === "delete" ? [...NO_DELETE_TABLES].sort() : [];
+      expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual(expected);
     }
+    // The exemption list is pinned: widening it (silently skipping the DELETE check for another table) must fail here.
+    expect([...NO_DELETE_TABLES].sort()).toEqual(["sales_demo_images", "sales_demo_quality_reviews", "sales_demo_version_files", "sales_demo_versions"]);
     // Before 20260928000000 the core tables relied on the defaults.
     const before = local.filter((m: { version: string }) => m.version < "20260928000000");
     expect(explicitGrantGaps(before, "authenticated", "select")).toEqual(["sales_admins", "sales_agent_runs", "sales_demos", "sales_outreaches", "sales_prospects", "sales_sources"]);
