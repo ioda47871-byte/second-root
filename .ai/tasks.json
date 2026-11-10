@@ -9208,7 +9208,7 @@
         "docs/design/DEV-196-demo-admin-spec.md",
         ".ai/tasks.json (DEV-196 の項目の追加だけ)",
         ".ai/reviews/DEV-196.md",
-        ".ai/tasks.json の台帳の保守 (実際に行った。DEV-196 review L1 を受けて DEV-196a で記録): PR #241 は DEV-196 の項目の追加に加えて DEV-195 と DEV-197 を done にした (上の『DEV-196 の項目の追加だけ』と forbidden_scope の『DEV-195 の項目の編集』の例外)",
+        ".ai/tasks.json の台帳の保守 (実際に行った。DEV-196 review L1 を受けて DEV-196a で記録): PR #241 は DEV-196 の項目の追加に加えて、DEV-197 の status を review から done にし、DEV-197 の note を更新した (DEV-195 は c57b7d6 で既に done で、#241 は触っていない)",
         ".ai/reviews/DEV-197.md (台帳の保守: Staging の節を追加した。PR #241)"
       ],
       "forbidden_scope": [
@@ -9251,7 +9251,7 @@
         "docs/ARCHITECTURE.md: §11 (提案の表・二つの承認・アプリの origin と artifact origin・token/期限/取り消し/保持・品質と AI 画像)、§9 に提案の環境変数 (未作成・未承認と明記)、§4・§10.3 から参照。origin の名前は案だけ (DEV-196 仕様 §14 Q11)",
         "docs/SECURITY.md: §12 (非公開 Storage・署名付き URL なし・cookie を読まない成果物の route・要求ごとの DB の照合・CSP・別 origin・取り消しと保持・出所は DB だけ・AI 概念画像の条件・写真の共有は無効・受け入れるリスク T19)、§1 に提案の署名鍵、§5.1・§6 に注記。「事実の偽装なし」の確認の手順は案だけ (DEV-196 仕様 §14 Q12)",
         "コード・設定・migration・workflow・package/lockfile・環境変数の既定値 (PUBLIC_DEMO_ASSETS_ENABLED を含む) の変更なし。リポジトリのファイルにモデル名・secret を書かない",
-        "DEV-196 の項目の allowed_scope に、PR #241 が行った台帳の保守 (DEV-195・DEV-197 を done、.ai/reviews/DEV-197.md の Staging の節) を記録 (DEV-196 review L1)。DEV-196 の status は触らない",
+        "DEV-196 の項目の allowed_scope に、PR #241 が行った台帳の保守 (DEV-197 の status を review → done・DEV-197 の note の更新・.ai/reviews/DEV-197.md の Staging の節) を記録 (DEV-196 review L1)。DEV-196 の status は触らない",
         ".ai/reviews/DEV-196a.md に、docs の変更ごとに従った仕様の節"
       ],
       "required_tests": [

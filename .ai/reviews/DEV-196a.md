@@ -46,7 +46,7 @@
 | 変更 | 従った仕様の節 |
 |---|---|
 | §1: 提案の `SALES_DEMO_VIEW_SIGNING_KEY` (server only、未作成) | §6.2・§10.3 |
-| §5.1: 外枠は今のヘッダのまま、`/demo-frame/*` だけ別の規則 | §6.7・T13 |
+| §5.1: 外枠は今のヘッダを保ち `frame-src <artifact-origin>` を足す (管理者プレビューの外枠だけ、origin の設定まで `frame-src 'self'`)。`/demo-frame/*` だけ別の規則 | §6.7・§6.8・T13 |
 | §6: 公開 demo には写真を出さないこと、AI 概念画像の例外は相手に見せる頁に及ばないこと | §8.3 |
 | §12 (新): Storage (非公開・署名付き URL なし・metadata に出所を書かない) | §5・§6.5・§8.2・T4・T17 |
 | §12: 成果物の route (cookie を読まない・token の期限・要求ごとの DB の照合・manifest との完全一致・応答ヘッダと CSP・token を log に出さない) | §6.2〜§6.4・§6.7・T1・T3・T7・T8・T11・T12・T19 |
@@ -59,7 +59,7 @@
 
 ### `.ai/tasks.json`
 
-- DEV-196 の `allowed_scope` に 2 行を足した (DEV-196 review L1): PR #241 が DEV-196 の項目の追加に加えて DEV-195 と DEV-197 を done にし、`.ai/reviews/DEV-197.md` に Staging の節を足したこと。DEV-196 の `status` と `note` は触っていない (DEV-196b の PR #243 との衝突を避けるため)。
+- DEV-196 の `allowed_scope` に 2 行を足した (DEV-196 review L1): PR #241 が DEV-196 の項目の追加に加えて、DEV-197 の status を review から done にして note を更新し、`.ai/reviews/DEV-197.md` に Staging の節を足したこと (DEV-195 は c57b7d6 で既に done で、#241 は触っていない)。DEV-196 の `status` と `note` は触っていない (DEV-196b の PR #243 との衝突を避けるため)。
 - DEV-196a の項目を追加 (status `review`、depends_on DEV-196)。
 
 ## 決めなかったこと (案だけ書いた)
@@ -72,3 +72,12 @@
 
 - `npx vitest run tests/unit/ai-tasks.test.ts`: 207 passed / 1 failed。落ちたのは「DEV-196a needs DEV-196: expected 'review' to be 'done'」だけ (develop で DEV-196 がまだ `review` のため)。DEV-196b の PR が DEV-196 を done にした後に rebase すれば通る。それまでこの PR の CI の unit は赤になる。
 - モデル名・secret の記載なし (docs の追記を目で確認)。
+
+## Review round 1 (head bf0b6fa、独立レビュー: C0 / H0 / M1 / L1)
+
+| # | 指摘 | 直したこと | 場所 |
+|---|---|---|---|
+| M1 | 事実の誤り: PR #241 が DEV-195 と DEV-197 を done にしたと書き、`DEV-195 の項目の編集` の例外と呼んでいた。DEV-195 は #241 より前 (c57b7d6) に develop で既に done で、#241 の diff (`git show 8fe0f80 -- .ai/tasks.json`) が変えたのは DEV-197 の status (review → done) と note、DEV-196 の項目の追加、`.ai/reviews/DEV-197.md` の Staging の節だけ | その事実だけを書き、DEV-195 の例外の文言をすべて消した | `.ai/tasks.json` (DEV-196 の `allowed_scope`・DEV-196a の acceptance_criteria #5)、この記録の `.ai/tasks.json` の節 |
+| L1 | 外枠 (`/admin/sales/demos/…`・`/demo/[publicToken]`) を「今のヘッダのまま」と書いていたが、仕様 §6.8 では `frame-src <artifact-origin>` を足し、専用の origin が無い間だけ管理者プレビューの外枠に `frame-src 'self'` を足す | 今のヘッダを保ったうえで `frame-src <artifact-origin>`、管理者プレビューの外枠だけ設定までの暫定で `frame-src 'self'` (設定の後は外す)、共有の外枠には `'self'` を入れない、と書いた | `docs/SECURITY.md` §5.1、`docs/ARCHITECTURE.md` §11.3 |
+
+docs と `.ai/` だけ。`npx vitest run tests/unit/ai-tasks.test.ts` は前と同じく DEV-196 が `review` の間の 1 件だけが落ちる。

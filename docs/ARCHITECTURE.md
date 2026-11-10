@@ -556,7 +556,7 @@ Second Root server ── service role ──► 非公開 bucket（公開 bucke
 
 - 共有（scope `p`）は `<artifact-origin>` からだけ配る。**設定されるまで共有の成果物の route は 404**（fail closed）。共有の開始（DEV-196g）は設定の後。
 - 管理者プレビュー（scope `a`）は、それまでアプリの origin の `/demo-frame/a/…` で、cookie を読まない route・CSP の `sandbox`・iframe の `sandbox=""` で配る（管理者だけの暫定）。設定の後はそちらへ移す。
-- `/demo-frame/*` は `next.config.ts` の `/demo/:path*`・`/admin/*` などの規則に当たらない接頭辞にする（成果物は `X-Frame-Options` を付けず、`frame-ancestors <アプリの origin>`。外枠は今の `DENY` のまま）。
+- `/demo-frame/*` は `next.config.ts` の `/demo/:path*`・`/admin/*` などの規則に当たらない接頭辞にする（成果物は `X-Frame-Options` を付けず、`frame-ancestors <アプリの origin>`。外枠は今の `X-Frame-Options: DENY`・`frame-ancestors 'none'` を保ったうえで、CSP の `frame-src <artifact-origin>` だけを許す。管理者プレビューの外枠だけは、専用の origin が設定されていない間 `frame-src 'self'` も許し、設定の後は外す。共有の外枠 `/demo/[publicToken]` には `'self'` を入れない。DEV-196 仕様 §6.8）。
 - 成果物の route は要求ごとに: 旗 → token（形・HMAC・期限・scope）→ DB（版があり取り消しなし。scope `a` は版の状態と期限、scope `p` は `isDemoPublic` と送信済みの承認の固定と画像の権利の再評価）→ manifest との完全一致 → `Sec-Fetch-Dest` → Storage から読んで sha256 を照合、の順に確かめ、どれか 1 つでも外れたら理由を区別しない 404。
 - **origin の名前（案、DEV-196 仕様 §14 Q11）**: アプリと別の、成果物の route だけを置く専用の host。案はアプリの domain の下の専用 sub domain（例: `demo-artifacts.<アプリの domain>`）。登録できる別の domain にすれば site も分かれ、分離はさらに強い（その代わり domain の取得と費用が要る）。どちらにするか、名前、DNS と Vercel の設定はオーナーの判断と別の承認（Domain / DNS は Protected Scope）。
 

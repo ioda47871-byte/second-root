@@ -78,7 +78,7 @@
 - `X-Frame-Options: DENY` + `Content-Security-Policy: frame-ancestors 'none'`（管理画面の clickjacking 防止）
 - `X-Content-Type-Options: nosniff`、`Permissions-Policy`（camera / microphone / geolocation 無効）
 - 既存 Second Root のページのヘッダは変更しない。
-- DEV-196 の版のデモ（§12、未実装）: 外枠（`/admin/sales/demos/…`・`/demo/[publicToken]`）は上のヘッダのまま。iframe に入る成果物の route `/demo-frame/*` だけは、上の規則に当たらない接頭辞に置き、`X-Frame-Options` の代わりに CSP の `frame-ancestors <アプリの origin>` と `sandbox` を付ける（§12）。
+- DEV-196 の版のデモ（§12、未実装）: 外枠（`/admin/sales/demos/…`・`/demo/[publicToken]`）は上のヘッダ（`X-Frame-Options: DENY`・`frame-ancestors 'none'` を含む）を保ち、加えて CSP の `frame-src <artifact-origin>` だけを許す。管理者プレビューの外枠だけは、専用の origin が設定されていない間 `frame-src 'self'` も許す（暫定の `/demo-frame/a/…` がアプリの origin にあるため。設定の後は外す）。共有の外枠には `'self'` を入れない（DEV-196 仕様 §6.8）。iframe に入る成果物の route `/demo-frame/*` だけは、上の規則に当たらない接頭辞に置き、`X-Frame-Options` の代わりに CSP の `frame-ancestors <アプリの origin>` と `sandbox` を付ける（§12）。
 
 ## 5.2 依存関係
 
