@@ -145,9 +145,31 @@ export type VerdictCheck = {
   serverEnforced: boolean;
 };
 
+/**
+ * DEV-197: the three send states (MVP_SPEC §4). When the system cannot tell
+ * whether a shop may be contacted it fails safe: no new send action.
+ *   sendable  every check is ok
+ *   blocked   at least one check is confirmed ng (a known reason)
+ *   unknown   nothing is confirmed ng, but a check could not be determined (未確認)
+ */
+export type SendState = "sendable" | "blocked" | "unknown";
+
+/**
+ * DEV-197: what sales_mark_sent would record as blocked_after_open for an
+ * opened approval — DNC or the exclusion list.
+ *   confirmed  DNC or an exclusion match is confirmed
+ *   unknown    neither is confirmed, but one of them could not be determined
+ *   clear      both are confirmed not to apply
+ * The database decides the stored value inside its own transaction; this only
+ * chooses the words the card may use before asking it.
+ */
+export type BlockCheck = "confirmed" | "unknown" | "clear";
+
 export type ContactVerdict = {
-  /** sendable only when every check is ok. */
+  /** sendable only when every check is ok (state === "sendable"). */
   sendable: boolean;
+  state: SendState;
+  block: BlockCheck;
   badge: string;
   checks: VerdictCheck[];
   /** Short reasons the card shows next to a 送信不可 badge (ng and 未確認 checks). */
@@ -415,12 +437,21 @@ export function contactVerdict(input: EvidenceInput): ContactVerdict {
   );
 
   const sendable = checks.every((c) => c.state === "ok");
+  const state: SendState = checks.some((c) => c.state === "ng") ? "blocked" : sendable ? "sendable" : "unknown";
+  const blockChecks = checks.filter((c) => c.id === "dnc" || c.id === "exclusion");
+  const block: BlockCheck = blockChecks.some((c) => c.state === "ng")
+    ? "confirmed"
+    : blockChecks.some((c) => c.state !== "ok")
+      ? "unknown"
+      : "clear";
   const unconfirmed: string[] = [];
   if (channel === "instagram") unconfirmed.push("プロフィールに「DM不可」「営業お断り」の記載がないか（送る前に目で確認）");
   if (channel === "email") unconfirmed.push("出典ページに「営業お断り」の記載がないか（送る前に目で確認）");
 
   return {
     sendable,
+    state,
+    block,
     badge: sendable ? "送信できます" : "送信できません",
     checks,
     blockers: checks.filter((c) => c.state !== "ok").map((c) => `${c.label}: ${c.detail}`),

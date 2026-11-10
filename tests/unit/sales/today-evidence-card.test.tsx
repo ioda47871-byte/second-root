@@ -152,6 +152,63 @@ describe("PR #239 M2: an opened approval keeps its controls when the card is no 
   });
 });
 
+describe("DEV-197 (DEV-195 final review L1): 未確認 is not a block", () => {
+  const openedApproval = (staleReasons: string[] = [], textStale = false) => ({
+    id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+    state: "send_opened" as const,
+    channel: "instagram" as const,
+    recipient: "test_shop",
+    subject: null,
+    body: "本文",
+    approvedAt: "2026-11-07T01:00:00Z",
+    approvedLabel: "2026/11/07 10:00",
+    openedLabel: "2026/11/07 10:10",
+    staleReasons,
+    textStale,
+  });
+  const render = async (input: EvidenceInput, approval: ReturnType<typeof openedApproval> | null) => {
+    state.items = [{ ...item(input), approval }];
+    const { default: TodayPage } = await import("@/app/admin/sales/page");
+    return renderToStaticMarkup(await TodayPage());
+  };
+
+  it("the exclusion list could not be read while a send screen was open: no block, no 事後記録, no follow-up claim; the server decides", async () => {
+    const html = await render(eligibleInstagramInput({ exclusion: { state: "unchecked" } }), openedApproval());
+    expect(html).toContain('data-testid="approval-unknown"');
+    expect(html).toContain("送信できるか確認できませんでした");
+    expect(html).not.toContain('data-testid="approval-blocked"');
+    expect(html).not.toContain("送信済みの事実を記録（事後記録）");
+    expect(html).not.toContain("フォローは出ません");
+    expect(html).toContain('data-confirm="server_decides"');
+    expect(html).not.toContain("DMを送る");
+    expect(html).not.toContain("文面をコピー");
+    expect(html).not.toContain("手動で送信済みにする");
+    // The notice area for the stored result is on the page (empty until a record).
+    expect(html).not.toContain('data-testid="send-recorded"');
+  });
+
+  it("a confirmed exclusion while open keeps the after-the-fact wording; with a stale demo it is still recordable (L2)", async () => {
+    const html = await render(eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } }), openedApproval(["承認の後にデモが変わったか無効になりました"]));
+    expect(html).toContain('data-testid="approval-blocked"');
+    expect(html).toContain('data-recordable="true"');
+    expect(html).toContain("送信済みの事実を記録（事後記録）");
+    expect(html).not.toContain("DMを送る");
+  });
+
+  it("not opened and 未確認: fail closed, saying it could not be checked (not that the shop is blocked)", async () => {
+    const html = await render(eligibleInstagramInput({ exclusion: { state: "unchecked" } }), null);
+    expect(html).toContain('data-testid="send-blocked"');
+    expect(html).toContain('data-send-state="unknown"');
+    expect(html).toContain("送信できるか確認できませんでした");
+    expect(html).not.toContain("送信できない理由があるため");
+    expect(html).not.toContain('data-testid="send-flow"');
+    expect(html).not.toContain("この内容で送信を承認");
+    const blocked = await render(eligibleInstagramInput({ exclusion: { state: "match", reasons: ["partner"] } }), null);
+    expect(blocked).toContain('data-send-state="blocked"');
+    expect(blocked).toContain("送信できない理由があるため");
+  });
+});
+
 describe("today card: evidence", () => {
   it("shows the selection, the sources with links and dates, and the checks", async () => {
     const html = await pageHtml(eligibleEmailInput());
