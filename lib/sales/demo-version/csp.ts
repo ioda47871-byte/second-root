@@ -47,13 +47,15 @@ export function servingOrigin(o: { scope: ViewScope; requestOrigin: string; appO
 }
 
 /**
- * The trusted outer pages' `frame-src` (§6.8): the artifact origin when there is one, otherwise `'self'` (the
- * admin-only interim on the app origin). Everything else about the outer pages' headers stays as next.config.ts sets it.
+ * The trusted outer pages' `frame-src` (§6.8): the artifact origin when there is one. Only while no artifact origin is
+ * configured, the ADMIN preview page gets `'self'` (the interim `/demo-frame/a/…` is on the app origin). The SHARE
+ * page never gets `'self'`: without an artifact origin it frames nothing (null → keep `frame-src 'none'`).
+ * Everything else about the outer pages' headers stays as next.config.ts sets it.
  */
-export function outerFrameSrc(o: { appOrigin: string; artifactOrigin: string | null }): string | null {
+export function outerFrameSrc(o: { page: "admin_preview" | "share"; appOrigin: string; artifactOrigin: string | null }): string | null {
   const app = normaliseOrigin(o.appOrigin);
   if (!app) return null;
-  if (o.artifactOrigin === null) return "frame-src 'self'";
+  if (o.artifactOrigin === null) return o.page === "admin_preview" ? "frame-src 'self'" : null;
   const art = normaliseOrigin(o.artifactOrigin);
   return art && art !== app ? `frame-src ${art}` : null;
 }

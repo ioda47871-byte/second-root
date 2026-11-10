@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { signViewToken, verifyViewToken, VIEW_TOKEN_SHAPE, VIEW_TOKEN_TTL_SECONDS } from "@/lib/sales/demo-artifact/view-token";
+import { signViewToken, verifyViewToken, VIEW_TOKEN_SHAPE, VIEW_TOKEN_TTL_SECONDS } from "@/lib/sales/demo-version/view-token";
 import { DEMO_ID, KEY, OTHER_KEY, VERSION_ID } from "./fixtures";
 
 const NOW = new Date("2026-11-10T03:00:00Z");

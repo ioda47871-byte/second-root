@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAdminPreview, guardHashChange, HASH_CHANGING_OPERATIONS, resolveSharedVersion, VERSION_STATE_PERMISSIONS, VERSION_STATUSES, versionRetentionUntil, type VersionRow } from "@/lib/sales/demo-artifact/version-state";
+import { canAdminPreview, guardHashChange, HASH_CHANGING_OPERATIONS, resolveSharedVersion, VERSION_STATE_PERMISSIONS, VERSION_STATUSES, versionRetentionUntil, type VersionRow } from "@/lib/sales/demo-version/version-state";
 import { DEMO_ID, VERSION_ID } from "./fixtures";
 
 const NOW = new Date("2026-11-10T03:00:00Z");

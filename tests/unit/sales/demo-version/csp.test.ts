@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { artifactResponseHeaders, buildArtifactHtmlCsp, fetchDestAllowed, normaliseOrigin, outerFrameSrc, servingOrigin } from "@/lib/sales/demo-artifact/csp";
-import { signViewToken } from "@/lib/sales/demo-artifact/view-token";
+import { artifactResponseHeaders, buildArtifactHtmlCsp, fetchDestAllowed, normaliseOrigin, outerFrameSrc, servingOrigin } from "@/lib/sales/demo-version/csp";
+import { signViewToken } from "@/lib/sales/demo-version/view-token";
 import { DEMO_ID, KEY, VERSION_ID } from "./fixtures";
 
 const APP = "https://app.example.com";
@@ -91,10 +91,13 @@ describe("origins (§6.8・T23)", () => {
     expect(servingOrigin({ scope: "a", requestOrigin: "https://other.example", appOrigin: APP, artifactOrigin: null })).toBeNull();
   });
 
-  it("gives the outer frame frame-src 'self' without an artifact origin, the artifact origin with one", () => {
-    expect(outerFrameSrc({ appOrigin: APP, artifactOrigin: null })).toBe("frame-src 'self'");
-    expect(outerFrameSrc({ appOrigin: APP, artifactOrigin: ART })).toBe(`frame-src ${ART}`);
-    expect(outerFrameSrc({ appOrigin: APP, artifactOrigin: APP })).toBeNull();
+  it("gives the admin outer frame frame-src 'self' only without an artifact origin; the share frame never 'self'", () => {
+    expect(outerFrameSrc({ page: "admin_preview", appOrigin: APP, artifactOrigin: null })).toBe("frame-src 'self'");
+    expect(outerFrameSrc({ page: "admin_preview", appOrigin: APP, artifactOrigin: ART })).toBe(`frame-src ${ART}`);
+    expect(outerFrameSrc({ page: "share", appOrigin: APP, artifactOrigin: null })).toBeNull();
+    expect(outerFrameSrc({ page: "share", appOrigin: APP, artifactOrigin: ART })).toBe(`frame-src ${ART}`);
+    expect(outerFrameSrc({ page: "admin_preview", appOrigin: APP, artifactOrigin: APP })).toBeNull();
+    expect(outerFrameSrc({ page: "share", appOrigin: APP, artifactOrigin: "http://bad.example" })).toBeNull();
   });
 });
 

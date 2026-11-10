@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StructureDescriptor } from "@/lib/design-agent/structure/descriptor";
-import { EMPHASISED_ITEMS, evaluateQualityDecision, QUALITY_CHECKLIST_ITEMS, RECENT_OTHER_SHOP_VERSIONS, templateWarnings } from "@/lib/sales/demo-artifact/quality";
+import { EMPHASISED_ITEMS, evaluateQualityDecision, QUALITY_CHECKLIST_ITEMS, RECENT_OTHER_SHOP_VERSIONS, templateWarnings } from "@/lib/sales/demo-version/quality";
 
 const allOk = Object.fromEntries(QUALITY_CHECKLIST_ITEMS.map((k) => [k, "ok"]));
 const renders = { desktop_1440: "1".repeat(64), mobile_390: "2".repeat(64) };

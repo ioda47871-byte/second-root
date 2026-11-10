@@ -12,7 +12,7 @@ import {
   validateManifest,
   type ArtifactManifest,
   type ManifestFile,
-} from "@/lib/sales/demo-artifact/manifest";
+} from "@/lib/sales/demo-version/manifest";
 import { jpeg, sha, webp } from "./fixtures";
 
 const html = new TextEncoder().encode("<!doctype html><title>x</title>");

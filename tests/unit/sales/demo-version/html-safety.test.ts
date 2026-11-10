@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { checkArtifactCss, checkArtifactHtml, cssDeclarations, isAllowedFontList } from "@/lib/sales/demo-artifact/html-safety";
+import { checkArtifactCss, checkArtifactHtml, cssDeclarations, isAllowedFontList } from "@/lib/sales/demo-version/html-safety";
 
 const POC = "design-library/research/quality-pipeline/poc";
 const pages = (shop: string) => {

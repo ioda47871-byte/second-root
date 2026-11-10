@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkArtifactCopy } from "@/lib/sales/demo-artifact/copy-check";
-import { checkArtifactHtml } from "@/lib/sales/demo-artifact/html-safety";
+import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
+import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
 
 const FACTS_SHA = "a".repeat(64);
 const facts = [
