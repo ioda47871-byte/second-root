@@ -147,8 +147,20 @@ describe("database security audit", () => {
       where n.nspname = 'public' and c.relname = any($1::text[])
       order by c.relname`, [versionTables]);
     expect(tables).toEqual(
-      versionTables.map((relname) => ({ relname, rls: true, authed_read: true, authed_write: false, anon_read: false, policies: 1, admin_read_policies: 1, write_triggers: 1 })),
+      versionTables.map((relname) => ({
+        relname, rls: true, authed_read: true, authed_write: false, anon_read: false, policies: 1, admin_read_policies: 1,
+        // sales_demo_versions also has the deferred "files complete" constraint trigger (review round 1 L4).
+        write_triggers: relname === "sales_demo_versions" ? 2 : 1,
+      })),
     );
+    // Review round 1 L4: these rows are never deleted — no API role may DELETE or TRUNCATE them.
+    const { rows: deletes } = await db.query(`
+      select c.relname, r.rolname, p.privilege_type
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      cross join lateral (values ('DELETE'), ('TRUNCATE')) as p(privilege_type)
+      cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
+      where n.nspname = 'public' and c.relname = any($1::text[]) and has_table_privilege(r.rolname, c.oid, p.privilege_type)`, [versionTables]);
+    expect(deletes).toEqual([]);
     const { rows } = await db.query(`
       select p.proname, p.prosecdef,
              has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed,
@@ -157,7 +169,7 @@ describe("database security audit", () => {
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and (p.proname like 'sales\\_demo\\_%' or p.proname in (
         'sales_check_demo_image_write', 'sales_check_demo_version_write', 'sales_check_demo_version_file_write',
-        'sales_check_quality_review_write', 'sales_check_demo_approved_version', 'sales_ingest_demo_version',
+        'sales_check_quality_review_write', 'sales_check_demo_approved_version', 'sales_check_demo_version_files_complete', 'sales_ingest_demo_version',
         'sales_review_demo_version', 'sales_withdraw_demo_quality_review', 'sales_revoke_demo_version',
         'sales_revoke_demo_image', 'sales_resolve_demo_share'))
       order by p.proname`);
@@ -169,8 +181,8 @@ describe("database security audit", () => {
           : { proname, prosecdef: false, authed: false, anon: false, service: true },
       ),
     );
-    // 4 RPCs + the worker insert + the share resolver + 5 triggers + 16 sales_demo_* helpers (sales_demo_version included).
-    expect(rows).toHaveLength(27);
+    // 4 RPCs + the worker insert + the share resolver + 6 trigger functions + 18 sales_demo_* helpers (sales_demo_version included).
+    expect(rows).toHaveLength(30);
     // The generation worker's only function is not SECURITY DEFINER and cannot run as the signed-in role.
     expect(rows.find((r) => r.proname === "sales_ingest_demo_version")).toEqual({ proname: "sales_ingest_demo_version", prosecdef: false, authed: false, anon: false, service: true });
     // Duplicate prevention lives in unique / partial unique indexes.

@@ -117,8 +117,11 @@ as $$
     and not exists (select 1 from jsonb_each(u) e where jsonb_typeof(e.value) <> 'boolean'), false)
 $$;
 
--- A note an admin writes: ≤ 500 chars, no URL, no email address
--- (same style as sales_prospect_insights).
+-- A note an admin writes: ≤ 500 chars, no URL, no domain, no email address
+-- (same style as sales_prospect_insights). Checked on the NFKC form, so
+-- full-width letters and punctuation (ｈｔｔｐｓ：, ｅｘａｍｐｌｅ．ｃｏｍ) are
+-- caught too (review round 1 L3). A domain is a dotted name ending in 2+
+-- letters, followed by "/", ":" or a word end (example.com, example.com/x).
 create function public.sales_demo_note_valid(n text)
 returns boolean
 language sql
@@ -126,7 +129,62 @@ immutable
 set search_path = ''
 as $$
   select n is null or (char_length(n) between 1 and 500 and n = btrim(n)
-    and n !~* '(https?:|www\.)' and n !~ '[^[:space:]@＠]+[@＠][^[:space:]@＠]+\.[^[:space:]@＠]+')
+    and lower(normalize(n, NFKC)) !~ '([a-z][a-z0-9+.-]*://|https?:|www\.)'
+    and lower(normalize(n, NFKC)) !~ '[a-z0-9_-]+(\.[a-z0-9_-]+)*\.[a-z]{2,}([/:]|\M)'
+    and normalize(n, NFKC) !~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+')
+$$;
+
+-- §8.3.1 (AiConceptProvenance, lib/sales/demo-version/ai-concept-rights.ts):
+-- generator, model (not "unknown"), generated_at, prompt_sha256, approval_id
+-- and admin_preview_only = true, nothing else.
+create function public.sales_demo_ai_provenance_valid(p jsonb)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(jsonb_typeof(p) = 'object'
+    and (select array_agg(k order by k) from jsonb_object_keys(p) k)
+        = array['admin_preview_only', 'approval_id', 'generated_at', 'generator', 'model', 'prompt_sha256']
+    and p->'admin_preview_only' = 'true'::jsonb
+    and jsonb_typeof(p->'generator') = 'string' and char_length(btrim(p->>'generator')) between 1 and 300
+    and jsonb_typeof(p->'model') = 'string' and (p->>'model') ~ '^[0-9A-Za-z._-]{1,60}$' and lower(p->>'model') <> 'unknown'
+    and jsonb_typeof(p->'generated_at') = 'string' and (p->>'generated_at') ~ '^\d{4}-\d{2}-\d{2}T'
+    and jsonb_typeof(p->'prompt_sha256') = 'string' and (p->>'prompt_sha256') ~ '^[0-9a-f]{64}$'
+    and jsonb_typeof(p->'approval_id') = 'string' and (p->>'approval_id') ~ '^[a-z0-9][a-z0-9._-]{3,95}$', false)
+$$;
+
+-- The manifest's shape (lib/sales/demo-version/manifest.ts validateManifest,
+-- the parts the database can check): {version: 1, files: 2..40 strict file
+-- objects with distinct names, exactly one page/index.html and one
+-- page/style.css}, at most 15 MiB in all. Names, roles, content types, sizes
+-- and dimensions are checked again per file by sales_demo_version_files.
+create function public.sales_demo_manifest_valid(m jsonb)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(
+    jsonb_typeof(m) = 'object'
+    and (select array_agg(k order by k) from jsonb_object_keys(m) k) = array['files', 'version']
+    and m->'version' = '1'::jsonb
+    and jsonb_typeof(m->'files') = 'array'
+    and jsonb_array_length(m->'files') between 2 and 40
+    and not exists (
+      select 1 from jsonb_array_elements(m->'files') f
+      where jsonb_typeof(f) <> 'object'
+         or exists (select 1 from jsonb_object_keys(f) k where k not in ('name', 'role', 'sha256', 'bytes', 'content_type', 'width', 'height'))
+         or jsonb_typeof(f->'name') is distinct from 'string' or jsonb_typeof(f->'role') is distinct from 'string'
+         or jsonb_typeof(f->'sha256') is distinct from 'string' or (f->>'sha256') !~ '^[0-9a-f]{64}$'
+         or jsonb_typeof(f->'bytes') is distinct from 'number' or (f->>'bytes') !~ '^[1-9][0-9]{0,7}$'
+         or jsonb_typeof(f->'content_type') is distinct from 'string'
+         or (f ? 'width' and (jsonb_typeof(f->'width') <> 'number' or (f->>'width') !~ '^[1-9][0-9]{0,3}$'))
+         or (f ? 'height' and (jsonb_typeof(f->'height') <> 'number' or (f->>'height') !~ '^[1-9][0-9]{0,3}$')))
+    and (select count(distinct f->>'name') from jsonb_array_elements(m->'files') f) = jsonb_array_length(m->'files')
+    and (select count(*) from jsonb_array_elements(m->'files') f where f->>'name' = 'page/index.html') = 1
+    and (select count(*) from jsonb_array_elements(m->'files') f where f->>'name' = 'page/style.css') = 1
+    and (select sum((f->>'bytes')::bigint) from jsonb_array_elements(m->'files') f) <= 15728640, false)
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -192,7 +250,12 @@ create table public.sales_demo_images (
     or (not depicts_real_shop and not depicts_identifiable_person and not depicts_real_product
         and not depicts_real_interior and not depicts_real_equipment
         and no_factual_impersonation_confirmed_at is not null and no_factual_impersonation_confirmed_by is not null
-        and provenance is not null and not (allowed_uses->>'public_web')::boolean)),
+        and public.sales_demo_ai_provenance_valid(provenance) and not (allowed_uses->>'public_web')::boolean)),
+  -- Review round 1 M1: every sales_prospects row is a REAL shop. The fictional
+  -- shops' AI demo pictures (ai_generated_demo / ai_demo_internal, AI_DEMO_SHOPS)
+  -- never enter this table; a real shop's AI image is ai_concept_internal only.
+  constraint sales_demo_images_real_shop_no_ai_demo
+    check (source_kind <> 'ai_generated_demo' and rights_status <> 'ai_demo_internal'),
   constraint sales_demo_images_share_cleared check (
     rights_status <> 'share_cleared'
     or (source_kind in ('owner_provided', 'shop_provided', 'licensed_stock_with_terms')
@@ -361,6 +424,38 @@ begin
     if new.revoked_at is not null then
       raise exception 'demo_image_must_start_unrevoked' using errcode = 'check_violation';
     end if;
+    -- Review round 1 M1: a real shop never carries a fictional shop's AI demo picture.
+    if new.source_kind = 'ai_generated_demo' or new.rights_status = 'ai_demo_internal' then
+      raise exception 'ai_demo_real_shop' using errcode = 'check_violation';
+    end if;
+    -- §8.1 "derived on the server": the database derives the status from the
+    -- source kind and the recorded conditions; a caller-supplied status is not
+    -- trusted. The only caller value kept is 'unknown' (the server's
+    -- checkPhotoRights / checkAiConceptRights found the record unusable, e.g. a
+    -- wrong label or a forbidden hash the database cannot see): it only lowers.
+    if new.rights_status is null or new.rights_status = 'unknown' then
+      new.rights_status := 'unknown';
+    elsif new.source_kind = 'ai_concept_internal' then
+      new.rights_status := case
+        when not new.depicts_real_shop and not new.depicts_identifiable_person and not new.depicts_real_product
+             and not new.depicts_real_interior and not new.depicts_real_equipment
+             and new.no_factual_impersonation_confirmed_at is not null
+             and new.no_factual_impersonation_confirmed_by is not null
+             and exists (select 1 from public.sales_admins a where a.user_id = new.no_factual_impersonation_confirmed_by)
+             and public.sales_demo_ai_provenance_valid(new.provenance)
+             and (new.allowed_uses->>'public_web') = 'false'
+          then 'ai_concept_internal' else 'unknown' end;
+    else
+      new.rights_status := case
+        when (new.allowed_uses->>'public_web') = 'true' and new.client_confirmed_at is not null
+             and not new.depicts_identifiable_person then 'share_cleared'
+        when new.source_kind = 'owner_provided' then 'owner_provided_internal'
+        when new.source_kind = 'shop_provided' then 'shop_provided_internal'
+        else 'licensed_terms_pinned_internal' end;
+    end if;
+    if new.rights_status <> 'unknown' and new.rights_expiry < public.sales_jst_date(now()) then
+      new.rights_status := 'expired';
+    end if;
     return new;
   end if;
   if row(new.id, new.prospect_id, new.sha256, new.bytes, new.width, new.height, new.format, new.record_schema,
@@ -378,6 +473,13 @@ begin
   end if;
   if old.revoked_at is not null and new is distinct from old then
     raise exception 'demo_image_revoked_final' using errcode = 'check_violation';
+  end if;
+  -- §9.5 (review round 1 L4): revoking an image a shop's versions use is
+  -- refused while that shop has a send screen open, whoever writes it.
+  if new.revoked_at is not null then
+    perform public.sales_demo_assert_no_open_send(v.demo_id)
+      from (select distinct ver.demo_id from public.sales_demo_version_files fl
+            join public.sales_demo_versions ver on ver.id = fl.version_id where fl.image_id = new.id) v;
   end if;
   if new.rights_status is distinct from old.rights_status
      and not (new.rights_status = 'revoked' or (new.rights_status = 'expired' and old.rights_status <> 'revoked')) then
@@ -401,6 +503,7 @@ set search_path = ''
 as $$
 declare
   v_parent_demo uuid;
+  v_facts text;
   allowed boolean;
 begin
   if tg_op = 'DELETE' then
@@ -417,6 +520,34 @@ begin
         raise exception 'parent_other_demo' using errcode = 'check_violation';
       end if;
     end if;
+    -- Review round 1 L4: the integrity checks hold for every writer, not only
+    -- sales_ingest_demo_version. The manifest is well formed, the bundle hash
+    -- is the manifest's, the size is its sum, the facts hash is the demo's
+    -- content now, and the retention is at most 60 days from now.
+    if not public.sales_demo_manifest_valid(new.manifest) then
+      raise exception 'invalid_manifest' using errcode = 'check_violation';
+    end if;
+    if public.sales_demo_bundle_sha256(new.manifest) is distinct from new.bundle_sha256 then
+      raise exception 'bundle_mismatch' using errcode = 'check_violation';
+    end if;
+    if new.total_bytes is distinct from (select sum((f->>'bytes')::bigint)::integer from jsonb_array_elements(new.manifest->'files') f) then
+      raise exception 'invalid_manifest' using errcode = 'check_violation';
+    end if;
+    select public.sales_demo_facts_sha256(d) into v_facts from public.sales_demos d where d.id = new.demo_id;
+    if v_facts is distinct from new.facts_sha256 then
+      raise exception 'facts_mismatch' using errcode = 'check_violation';
+    end if;
+    if new.expires_at <= now() or new.expires_at > now() + interval '60 days' then
+      raise exception 'invalid_expiry' using errcode = 'check_violation';
+    end if;
+    -- Review round 1 L5: a byte-identical bundle is never recorded for another
+    -- shop (no template reuse, no copying between shops; §7.5, §7.6). Serialised
+    -- per bundle so two concurrent inserts cannot both pass.
+    perform pg_advisory_xact_lock(hashtext('second_root_demo_bundle:' || new.bundle_sha256));
+    if exists (select 1 from public.sales_demo_versions v where v.bundle_sha256 = new.bundle_sha256 and v.demo_id <> new.demo_id) then
+      raise exception 'bundle_reused_across_shops' using errcode = 'P0001';
+    end if;
+    new.created_at := now();
     new.status_changed_at := now();
     return new;
   end if;
@@ -440,8 +571,20 @@ begin
   if old.status in ('revoked', 'rejected', 'expired') and new is distinct from old then
     raise exception 'demo_version_final' using errcode = 'check_violation';
   end if;
+  -- Review round 1 L4: the retention may be shortened (fail-safe), but only
+  -- extended for a version a sent approval pinned (sales_mark_sent, §6.6).
+  if new.expires_at > old.expires_at and not exists (
+       select 1 from public.sales_outreach_approvals a where a.demo_version_id = new.id and a.state = 'sent') then
+    raise exception 'demo_version_expiry_extension_forbidden' using errcode = 'check_violation';
+  end if;
 
   if new.status <> old.status then
+    -- §9.5 (review round 1 L4): leaving or entering 'approved' and revoking
+    -- change what a send would show; refused while a send screen is open,
+    -- whoever writes it.
+    if old.status = 'approved' or new.status in ('approved', 'revoked') then
+      perform public.sales_demo_assert_no_open_send(new.demo_id);
+    end if;
     allowed := case old.status
       when 'uploading' then new.status in ('draft', 'rejected')
       when 'draft' then new.status in ('approved', 'revoked', 'expired')
@@ -493,6 +636,14 @@ begin
   if v.created_at is distinct from now() or v.status not in ('uploading', 'draft') then
     raise exception 'demo_version_files_immutable' using errcode = 'check_violation';
   end if;
+  -- Review round 1 L4: every file row is exactly one entry of the version's manifest.
+  if not exists (
+    select 1 from jsonb_array_elements(v.manifest->'files') f
+    where f->>'name' = new.path and f->>'role' = new.role and f->>'sha256' = new.sha256
+      and (f->>'bytes')::integer = new.bytes and f->>'content_type' = new.content_type
+      and (f->>'width')::integer is not distinct from new.width and (f->>'height')::integer is not distinct from new.height) then
+    raise exception 'file_not_in_manifest' using errcode = 'check_violation';
+  end if;
   if new.image_id is not null then
     select * into i from public.sales_demo_images where id = new.image_id;
     select prospect_id into v_prospect from public.sales_demos where id = v.demo_id;
@@ -512,6 +663,27 @@ $$;
 create trigger sales_demo_version_files_write
   before insert or update or delete on public.sales_demo_version_files
   for each row execute function public.sales_check_demo_version_file_write();
+
+-- Review round 1 L4: at commit, a new version has exactly its manifest's files
+-- (with the per-row check above: the same set), whoever wrote it.
+create function public.sales_check_demo_version_files_complete()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if (select count(*) from public.sales_demo_version_files f where f.version_id = new.id)
+     <> jsonb_array_length(new.manifest->'files') then
+    raise exception 'version_files_incomplete' using errcode = 'check_violation';
+  end if;
+  return null;
+end;
+$$;
+
+create constraint trigger sales_demo_versions_files_complete
+  after insert on public.sales_demo_versions
+  deferrable initially deferred
+  for each row execute function public.sales_check_demo_version_files_complete();
 
 -- Quality reviews: append-only. A review is written only by a signed-in sales
 -- admin as themself, for exactly the version's content; afterwards it only
@@ -555,6 +727,11 @@ begin
     if new.state = 'withdrawn' and (not public.is_sales_admin() or new.withdrawn_by is distinct from auth.uid()) then
       raise exception 'admin_identity_required' using errcode = '42501';
     end if;
+    -- §9.5 (review round 1 L4): ending an active approval can change what a
+    -- send would show; refused while a send screen is open, whoever writes it.
+    if old.decision = 'approved' then
+      perform public.sales_demo_assert_no_open_send(old.demo_id);
+    end if;
   end if;
   return new;
 end;
@@ -578,6 +755,11 @@ begin
       raise exception 'approved_version_on_insert' using errcode = 'check_violation';
     end if;
     return new;
+  end if;
+  -- §9.5 (review round 1 L4): any change of the approved version changes the
+  -- send hash; refused while a send screen is open, whoever writes it.
+  if new.approved_version_id is distinct from old.approved_version_id then
+    perform public.sales_demo_assert_no_open_send(new.id);
   end if;
   if new.approved_version_id is not null and new.approved_version_id is distinct from old.approved_version_id then
     if not public.is_sales_admin() then
@@ -993,6 +1175,9 @@ begin
     'public.sales_demo_renders_valid(jsonb)',
     'public.sales_demo_allowed_uses_valid(jsonb)',
     'public.sales_demo_note_valid(text)',
+    'public.sales_demo_ai_provenance_valid(jsonb)',
+    'public.sales_demo_manifest_valid(jsonb)',
+    'public.sales_check_demo_version_files_complete()',
     'public.sales_check_demo_image_write()',
     'public.sales_check_demo_version_write()',
     'public.sales_check_demo_version_file_write()',
@@ -1038,19 +1223,21 @@ create policy sales_demo_quality_reviews_admin_read on public.sales_demo_quality
   for select to authenticated using ((select public.is_sales_admin()));
 
 revoke all on public.sales_demo_images, public.sales_demo_versions, public.sales_demo_version_files,
-  public.sales_demo_quality_reviews from public, anon, authenticated;
+  public.sales_demo_quality_reviews from public, anon, authenticated, service_role;
 grant select on public.sales_demo_images to authenticated;
 grant select on public.sales_demo_versions to authenticated;
 grant select on public.sales_demo_version_files to authenticated;
 grant select on public.sales_demo_quality_reviews to authenticated;
--- The server (service role) keeps table privileges like every sales_* table
--- (scripts/staging/lib.mjs REQUIRED_CHECKS); the triggers above still refuse
--- any approval, review or approved-version write without a sales admin
--- identity, and any change to a version's content, files or hashes.
-grant all on public.sales_demo_images to service_role;
-grant all on public.sales_demo_versions to service_role;
-grant all on public.sales_demo_version_files to service_role;
-grant all on public.sales_demo_quality_reviews to service_role;
+-- The server (service role) reads, inserts and updates like every sales_*
+-- table (scripts/staging/lib.mjs REQUIRED_CHECKS); the triggers above still
+-- refuse any approval, review or approved-version write without a sales admin
+-- identity, and any change to a version's content, files or hashes. Rows of
+-- these four tables are never deleted (review round 1 L4): no DELETE and no
+-- TRUNCATE for any API role (NO_DELETE_TABLES in scripts/staging/lib.mjs).
+grant select, insert, update on public.sales_demo_images to service_role;
+grant select, insert, update on public.sales_demo_versions to service_role;
+grant select, insert, update on public.sales_demo_version_files to service_role;
+grant select, insert, update on public.sales_demo_quality_reviews to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 6. Worker path: insert an unapproved draft version (service_role only)
@@ -1138,37 +1325,11 @@ begin
     raise exception 'already_sent' using errcode = 'P0001';
   end if;
 
-  -- The manifest: {version: 1, files: [2..40 strict file objects]}.
-  if jsonb_typeof(p_manifest) <> 'object'
-     or (select array_agg(k order by k) from jsonb_object_keys(p_manifest) k) <> array['files', 'version']
-     or p_manifest->'version' <> '1'::jsonb
-     or jsonb_typeof(p_manifest->'files') <> 'array'
-     or jsonb_array_length(p_manifest->'files') not between 2 and 40 then
-    raise exception 'invalid_manifest' using errcode = '22023';
-  end if;
-  for f in select x from jsonb_array_elements(p_manifest->'files') x loop
-    if jsonb_typeof(f) <> 'object'
-       or exists (select 1 from jsonb_object_keys(f) k where k not in ('name', 'role', 'sha256', 'bytes', 'content_type', 'width', 'height'))
-       or jsonb_typeof(f->'name') <> 'string' or jsonb_typeof(f->'role') <> 'string'
-       or jsonb_typeof(f->'sha256') <> 'string' or jsonb_typeof(f->'bytes') <> 'number'
-       or jsonb_typeof(f->'content_type') <> 'string'
-       or (f ? 'width' and jsonb_typeof(f->'width') <> 'number')
-       or (f ? 'height' and jsonb_typeof(f->'height') <> 'number')
-       or (f->>'bytes') !~ '^[1-9][0-9]{0,7}$'
-       or (f ? 'width' and (f->>'width') !~ '^[1-9][0-9]{0,3}$')
-       or (f ? 'height' and (f->>'height') !~ '^[1-9][0-9]{0,3}$') then
-      raise exception 'invalid_manifest' using errcode = '22023';
-    end if;
-  end loop;
-  if (select count(distinct x->>'name') from jsonb_array_elements(p_manifest->'files') x) <> jsonb_array_length(p_manifest->'files')
-     or (select count(*) from jsonb_array_elements(p_manifest->'files') x where x->>'name' = 'page/index.html') <> 1
-     or (select count(*) from jsonb_array_elements(p_manifest->'files') x where x->>'name' = 'page/style.css') <> 1 then
+  -- The manifest (the version trigger checks the same for every writer).
+  if not public.sales_demo_manifest_valid(p_manifest) then
     raise exception 'invalid_manifest' using errcode = '22023';
   end if;
   select sum((x->>'bytes')::bigint) into v_total from jsonb_array_elements(p_manifest->'files') x;
-  if v_total > 15728640 then
-    raise exception 'invalid_manifest' using errcode = '22023';
-  end if;
   if public.sales_demo_bundle_sha256(p_manifest) is distinct from p_bundle_sha256 then
     raise exception 'bundle_mismatch' using errcode = '22023';
   end if;

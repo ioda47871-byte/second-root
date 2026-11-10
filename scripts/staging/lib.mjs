@@ -170,6 +170,12 @@ export function redact(text, ...secrets) {
 }
 
 /**
+ * DEV-196c: tables whose rows are never deleted (the demo version history).
+ * No API role has DELETE or TRUNCATE on them.
+ */
+export const NO_DELETE_TABLES = ["sales_demo_images", "sales_demo_quality_reviews", "sales_demo_version_files", "sales_demo_versions"];
+
+/**
  * Security checks (docs/SECURITY.md §2, same rules as
  * tests/integration/db-security-audit.test.ts). Each query returns the
  * violations; a check passes when it returns no rows.
@@ -237,6 +243,18 @@ export const SECURITY_CHECKS = [
                 !~* '^\\s*(declare\\s.*?)?begin\\s+(perform\\s+public\\.sales_assert_admin\\(\\)|if\\s+not\\s+public\\.is_sales_admin\\(\\))'`,
   },
   {
+    // DEV-196c review round 1 L4: demo versions, their files, images and
+    // quality reviews are never deleted: no API role may DELETE or TRUNCATE them.
+    id: "demo_version_tables_never_deleted",
+    title: "no API role can DELETE or TRUNCATE the demo version tables",
+    sql: `select c.relname || ':' || r.rolname || ':' || p.privilege_type as item
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          cross join lateral (values ('DELETE'), ('TRUNCATE')) as p(privilege_type)
+          cross join (select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role')) r
+          where n.nspname = 'public' and c.relkind = 'r' and c.relname in (${NO_DELETE_TABLES.map((t) => `'${t}'`).join(", ")})
+            and has_table_privilege(r.rolname, c.oid, p.privilege_type)`,
+  },
+  {
     // DEV-196c (spec §5.1, T4): demo artifacts are read only by the server
     // (service role). No storage policy may give anon / signed-in users (or
     // PUBLIC) any access, and none may name the demo bucket.
@@ -297,11 +315,12 @@ export const REQUIRED_CHECKS = [
   },
   {
     id: "service_role_can_write",
-    title: "service_role can SELECT / INSERT / UPDATE / DELETE every sales_* table",
+    title: "service_role can SELECT / INSERT / UPDATE / DELETE every sales_* table (no DELETE on the never-deleted demo version tables)",
     sql: `select c.relname || ':' || p.privilege_type as item
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
           cross join lateral (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')) as p(privilege_type)
           where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'sales\\_%'
+            and not (p.privilege_type = 'DELETE' and c.relname in (${NO_DELETE_TABLES.map((t) => `'${t}'`).join(", ")}))
             and not has_table_privilege('service_role', c.oid, p.privilege_type)`,
   },
 ];

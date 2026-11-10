@@ -73,7 +73,8 @@ function aiConceptImage(sha256: string, confirmedBy: string, overrides: Record<s
     depicts_real_shop: false, depicts_identifiable_person: false, depicts_real_product: false, depicts_real_interior: false, depicts_real_equipment: false,
     no_factual_impersonation_confirmed_at: new Date().toISOString(), no_factual_impersonation_confirmed_by: confirmedBy,
     allowed_uses: { edit: true, crop: true, commercial: false, public_web: false },
-    provenance: { method: "test_fixture", approval_id: "grant-test-0001", prompt_sha256: sha256Hex("prompt"), label: AI_CONCEPT_ADMIN_LABEL },
+    // AiConceptProvenance (strict): a fictional generator / model id, never a real model name in the repository.
+    provenance: { generator: "test-fixture", model: "test-model-0", generated_at: new Date().toISOString(), prompt_sha256: sha256Hex(`prompt:${AI_CONCEPT_ADMIN_LABEL}`), approval_id: "grant-test-0001", admin_preview_only: true },
     ...overrides,
   };
 }
@@ -241,16 +242,28 @@ describe("worker path: unapproved drafts only", () => {
     expect((await ingest({ ...args, p_manifest: other, p_bundle_sha256: bundleSha256(other) })).error?.message).toContain("job_conflict");
     expect((await ingest({ ...args, p_generation_job_id: `job-${randomUUID()}` })).error?.message).toContain("duplicate_bundle");
     expect((await db.query("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [s.demoId])).rows[0].n).toBe(1);
-    // One upload in flight per demo (partial unique index).
-    const v = (a.data as { version_id: string }).version_id;
-    const insertUploading = () => db.query(
-      `insert into public.sales_demo_versions (id, demo_id, version_no, origin, facts_sha256, bundle_sha256, manifest, storage_prefix, total_bytes, status, expires_at)
-       select x.id, $1, (select coalesce(max(version_no), 0) + 1 from public.sales_demo_versions where demo_id = $1), 'manual_import', $2, encode(sha256(convert_to(x.id::text, 'UTF8')), 'hex'), '{}'::jsonb,
-              'v1/' || $1 || '/' || x.id || '/', 1, 'uploading', now() + interval '1 day'
-       from (select gen_random_uuid() as id) x`, [s.demoId, sha256Hex("f")]);
-    await insertUploading();
-    await expect(insertUploading()).rejects.toThrow(/sales_demo_versions_one_uploading/);
-    expect(v).toBeTruthy();
+    // One upload in flight per demo (partial unique index), inside one transaction with each version's files.
+    const client = await db.connect();
+    try {
+      await client.query("begin");
+      const uploading = async () => {
+        const m2 = manifest(randomUUID());
+        const id = randomUUID();
+        await client.query(
+          `insert into public.sales_demo_versions (id, demo_id, version_no, origin, facts_sha256, bundle_sha256, manifest, storage_prefix, total_bytes, status, expires_at)
+           select $1::uuid, d.id, (select coalesce(max(version_no), 0) + 1 from public.sales_demo_versions where demo_id = d.id), 'manual_import',
+                  public.sales_demo_facts_sha256(d), $2, $3::jsonb, 'v1/' || d.id || '/' || $1::text || '/', $4, 'uploading', now() + interval '1 day'
+           from public.sales_demos d where d.id = $5`,
+          [id, bundleSha256(m2), JSON.stringify(m2), m2.files.reduce((n, f) => n + f.bytes, 0), s.demoId],
+        );
+      };
+      await uploading();
+      await expect(uploading()).rejects.toThrow(/sales_demo_versions_one_uploading/);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+    expect((a.data as { version_id: string }).version_id).toBeTruthy();
   });
 
   it("refuses a bad manifest, a wrong bundle hash, a failed validator, foreign lineage and an unusable shop", async () => {
@@ -284,16 +297,61 @@ describe("worker path: unapproved drafts only", () => {
     // No record at all, or an 'unknown' one → the whole version is refused (§8.1).
     expect((await ingest(ingestArgs(s, m1))).error?.message).toContain("rights_unknown");
     expect((await ingest(ingestArgs(s, m1, { p_images: [aiConceptImage(p1.sha256, adminId, { rights_status: "unknown" })] }))).error?.message).toContain("rights_unknown");
-    // depicts_real_product / no owner confirmation / reserved AI-share status / confirmation by a non-admin → invalid_image.
-    for (const over of [{ depicts_real_product: true }, { no_factual_impersonation_confirmed_at: null }, { rights_status: "ai_share_approved" }, { rights_status: "share_cleared" }]) {
-      expect((await ingest(ingestArgs(s, m1, { p_images: [aiConceptImage(p1.sha256, adminId, over)] }))).error?.message, JSON.stringify(over)).toContain("invalid_image");
+    // The database derives the status (review round 1 M1): depicts_real_product / no owner confirmation /
+    // incomplete provenance / public_web → 'unknown' → the whole version is refused.
+    for (const over of [
+      { depicts_real_product: true }, { depicts_real_shop: true }, { no_factual_impersonation_confirmed_at: null },
+      { provenance: { generator: "x", model: "unknown", generated_at: new Date().toISOString(), prompt_sha256: sha256Hex("p"), approval_id: "grant-test-0001", admin_preview_only: true } },
+      { allowed_uses: { edit: true, crop: true, commercial: true, public_web: true } },
+    ]) {
+      expect((await ingest(ingestArgs(s, m1, { p_images: [aiConceptImage(p1.sha256, adminId, over)] }))).error?.message, JSON.stringify(over)).toContain("rights_unknown");
     }
+    // A provenance that is not an object does not even fit the table.
+    expect((await ingest(ingestArgs(s, m1, { p_images: [aiConceptImage(p1.sha256, adminId, { provenance: null })] }))).error?.message).toContain("invalid_image");
     expect((await ingest(ingestArgs(s, m1, { p_images: [aiConceptImage(p1.sha256, randomUUID())] }))).error?.message).toContain("invalid_image");
     expect((await ingest(ingestArgs(s, m1, { p_images: [{ ...aiConceptImage(p1.sha256, adminId), model_raw: "x" }] }))).error?.message).toContain("invalid_image");
     // An image recorded for another shop is never used in this shop's version.
     await newVersion(other, randomUUID(), { p_images: [aiConceptImage(p1.sha256, adminId)] }, { photos: [p1] });
     expect((await ingest(ingestArgs(s, m1, { p_images: [aiConceptImage(p1.sha256, adminId)] }))).error?.message).toContain("image_other_shop");
     expect((await db.query("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [s.demoId])).rows[0].n).toBe(0);
+  });
+
+  it("review round 1 M1: a real shop's AI image is never ai_demo_internal, and a caller-supplied status is not trusted", async () => {
+    const s = await shop();
+    const p1 = { name: "page/photos/hero-desktop.webp", sha256: sha256Hex(`photo-${randomUUID()}`) };
+    const m1 = manifest(randomUUID(), { photos: [p1] });
+    // The fictional shops' AI demo kind, as the reviewer tried it (everything real depicted): refused at ingest…
+    const aiDemo = {
+      ...aiConceptImage(p1.sha256, adminId), record_schema: "photo_rights_v0", source_kind: "ai_generated_demo", rights_status: "ai_demo_internal",
+      depicts_real_shop: true, depicts_identifiable_person: true, depicts_real_product: true, depicts_real_interior: true, depicts_real_equipment: true,
+      no_factual_impersonation_confirmed_at: undefined, no_factual_impersonation_confirmed_by: undefined, provenance: undefined,
+    };
+    expect((await ingest(ingestArgs(s, m1, { p_images: [aiDemo] }))).error?.message).toContain("invalid_image");
+    // …and by the table for any writer (database owner and service role).
+    const direct = {
+      prospect_id: s.prospectId, sha256: sha256Hex(randomUUID()), bytes: 10, width: 10, height: 10, format: "webp", record_schema: "photo_rights_v0",
+      source_kind: "ai_generated_demo", rights_status: "ai_demo_internal", depicts_real_shop: true, depicts_identifiable_person: true,
+      depicts_real_product: true, depicts_real_interior: true, depicts_real_equipment: true, allowed_uses: { edit: true, crop: true, commercial: true, public_web: false },
+    };
+    expect((await serviceClient().from("sales_demo_images").insert(direct)).error?.message).toContain("ai_demo_real_shop");
+    expect((await serviceClient().from("sales_demo_images").insert({ ...direct, source_kind: "owner_provided" })).error?.message).toContain("ai_demo_real_shop");
+    // A caller-supplied status is replaced by the derived one: an AI concept image claimed as share_cleared /
+    // ai_share_approved is stored as ai_concept_internal, never shareable.
+    const v = await newVersion(s, randomUUID(), { p_images: [aiConceptImage(p1.sha256, adminId, { rights_status: "share_cleared" })] }, { photos: [p1] });
+    expect((await db.query("select i.rights_status, public.sales_demo_image_shareable(i) as share from public.sales_demo_images i where sha256 = $1", [p1.sha256])).rows[0]).toEqual({ rights_status: "ai_concept_internal", share: false });
+    expect((await db.query("select public.sales_demo_version_rights_shareable($1) as r", [v.id])).rows[0].r).toBe(false);
+    // A human photo claimed as share_cleared without the shop's written confirmation is internal; an expired one is refused.
+    const human = (sha256: string, over: Record<string, unknown> = {}) => ({
+      sha256, bytes: 30_000, width: 800, height: 600, format: "webp", record_schema: "photo_rights_v0", source_kind: "owner_provided", rights_status: "share_cleared",
+      depicts_real_shop: true, depicts_identifiable_person: false, depicts_real_product: true, depicts_real_interior: false, depicts_real_equipment: false,
+      allowed_uses: { edit: true, crop: true, commercial: true, public_web: true }, ...over,
+    });
+    const p2 = { name: "page/photos/hero-desktop.webp", sha256: sha256Hex(`photo-${randomUUID()}`) };
+    await newVersion(s, randomUUID(), { p_images: [human(p2.sha256)] }, { photos: [p2] });
+    expect((await db.query("select rights_status from public.sales_demo_images where sha256 = $1", [p2.sha256])).rows[0].rights_status).toBe("owner_provided_internal");
+    const p3 = { name: "page/photos/hero-desktop.webp", sha256: sha256Hex(`photo-${randomUUID()}`) };
+    const m3 = manifest(randomUUID(), { photos: [p3] });
+    expect((await ingest(ingestArgs(s, m3, { p_images: [human(p3.sha256, { rights_expiry: "2020-01-01" })] }))).error?.message).toContain("rights_unknown");
   });
 
   it("the worker cannot approve: a direct write with the service role key is refused by the database", async () => {
@@ -313,6 +371,99 @@ describe("worker path: unapproved drafts only", () => {
     expect(await versionRow(v.id)).toMatchObject({ status: "draft" });
     expect((await demoRow(s.demoId)).approved_version_id).toBeNull();
     expect((await db.query("select count(*)::int as n from public.sales_demo_quality_reviews")).rows[0].n).toBe(0);
+  });
+});
+
+describe("review round 1 L4 / L5: the rules hold for every writer", () => {
+  /** A version row as a direct writer would send it (the service role, bypassing sales_ingest_demo_version). */
+  async function directRow(s: Shop, m: ArtifactManifest, over: Record<string, unknown> = {}) {
+    const id = randomUUID();
+    const facts = (await db.query("select public.sales_demo_facts_sha256(d) as h from public.sales_demos d where d.id = $1", [s.demoId])).rows[0].h;
+    return {
+      id, demo_id: s.demoId, version_no: 50, origin: "manual_import", facts_sha256: facts, bundle_sha256: bundleSha256(m), manifest: m,
+      storage_prefix: `v1/${s.demoId}/${id}/`, total_bytes: m.files.reduce((n, f) => n + f.bytes, 0), status: "draft",
+      validator_result: { ok: true }, expires_at: new Date(Date.now() + 86_400_000).toISOString(), ...over,
+    };
+  }
+
+  it("a direct insert must carry the manifest's bundle hash, its size, the demo's facts hash and a ≤ 60-day retention, and all its files", async () => {
+    const s = await shop();
+    const svc = serviceClient();
+    const m = manifest(randomUUID());
+    expect((await svc.from("sales_demo_versions").insert(await directRow(s, m, { bundle_sha256: sha256Hex("forged") }))).error?.message).toContain("bundle_mismatch");
+    expect((await svc.from("sales_demo_versions").insert(await directRow(s, m, { facts_sha256: sha256Hex("caller facts") }))).error?.message).toContain("facts_mismatch");
+    expect((await svc.from("sales_demo_versions").insert(await directRow(s, m, { total_bytes: 1 }))).error?.message).toContain("invalid_manifest");
+    expect((await svc.from("sales_demo_versions").insert(await directRow(s, m, { manifest: { ...m, extra: 1 } }))).error?.message).toContain("invalid_manifest");
+    expect((await svc.from("sales_demo_versions").insert(await directRow(s, m, { expires_at: new Date(Date.now() + 90 * 86_400_000).toISOString() }))).error?.message).toContain("invalid_expiry");
+    // A version committed without its files is refused at commit (deferred constraint trigger).
+    expect((await svc.from("sales_demo_versions").insert(await directRow(s, m))).error?.message).toContain("version_files_incomplete");
+    // A file that is not an entry of the manifest is refused.
+    const client = await db.connect();
+    try {
+      await client.query("begin");
+      const row = await directRow(s, m);
+      await client.query(
+        `insert into public.sales_demo_versions (id, demo_id, version_no, origin, facts_sha256, bundle_sha256, manifest, storage_prefix, total_bytes, status, validator_result, expires_at)
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12)`,
+        [row.id, row.demo_id, row.version_no, row.origin, row.facts_sha256, row.bundle_sha256, JSON.stringify(m), row.storage_prefix, row.total_bytes, row.status, JSON.stringify(row.validator_result), row.expires_at],
+      );
+      await expect(
+        client.query("insert into public.sales_demo_version_files (version_id, path, role, sha256, bytes, content_type) values ($1, 'page/index.html', 'html', repeat('9', 64), 2048, 'text/html')", [row.id]),
+      ).rejects.toThrow(/file_not_in_manifest/);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+    expect((await db.query("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [s.demoId])).rows[0].n).toBe(0);
+  });
+
+  it("no API role deletes or truncates the history; the retention is never extended for an unsent version", async () => {
+    const s = await shop();
+    const v = await newVersion(s);
+    const svc = serviceClient();
+    expect((await svc.from("sales_demo_versions").delete().eq("id", v.id)).error?.code).toBe("42501");
+    expect((await svc.from("sales_demo_version_files").delete().eq("version_id", v.id)).error?.code).toBe("42501");
+    for (const table of ["sales_demo_versions", "sales_demo_version_files", "sales_demo_images", "sales_demo_quality_reviews"]) {
+      for (const role of ["service_role", "authenticated"]) {
+        const client = await db.connect();
+        try {
+          await client.query("begin");
+          await client.query(`set local role ${role}`);
+          await expect(client.query(`truncate public.${table}`), `${role} ${table}`).rejects.toThrow(/permission denied/);
+        } finally {
+          await client.query("rollback");
+          client.release();
+        }
+      }
+    }
+    expect((await svc.from("sales_demo_versions").update({ expires_at: new Date(Date.now() + 120 * 86_400_000).toISOString() }).eq("id", v.id)).error?.message).toContain("demo_version_expiry_extension_forbidden");
+    expect(await versionRow(v.id)).toMatchObject({ status: "draft" });
+  });
+
+  it("while a send screen is open, direct writes that change what a send shows answer approval_open", async () => {
+    const s = await shop();
+    const v = await newVersion(s);
+    const reviewId = await approveVersion(v);
+    await forceOpenedApproval(s, null);
+    const svc = serviceClient();
+    expect((await svc.from("sales_demo_versions").update({ status: "draft" }).eq("id", v.id)).error?.message).toContain("approval_open");
+    expect((await svc.from("sales_demo_versions").update({ status: "revoked", revoked_at: new Date().toISOString(), revoked_by: adminId, revoke_code: "DIRECT" }).eq("id", v.id)).error?.message).toContain("approval_open");
+    expect((await svc.from("sales_demo_quality_reviews").update({ state: "invalidated", invalidated_at: new Date().toISOString(), invalidated_reason: "rights_changed" }).eq("id", reviewId)).error?.message).toContain("approval_open");
+    expect((await svc.from("sales_demos").update({ approved_version_id: null }).eq("id", s.demoId)).error?.message).toContain("approval_open");
+    expect(await versionRow(v.id)).toMatchObject({ status: "approved", revoked_at: null });
+    expect((await demoRow(s.demoId)).approved_version_id).toBe(v.id);
+    expect((await db.query("select state from public.sales_demo_quality_reviews where id = $1", [reviewId])).rows[0].state).toBe("active");
+  });
+
+  it("L5: a byte-identical bundle is never recorded for another shop", async () => {
+    const a = await shop();
+    const b = await shop();
+    const m = manifest(randomUUID());
+    expect((await ingest(ingestArgs(a, m))).error).toBeNull();
+    const res = await ingest(ingestArgs(b, m));
+    expect(res.error?.message).toContain("bundle_reused_across_shops");
+    expect((await serviceClient().from("sales_demo_versions").insert(await directRow(b, m))).error?.message).toContain("bundle_reused_across_shops");
+    expect((await db.query("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [b.demoId])).rows[0].n).toBe(0);
   });
 });
 
@@ -370,7 +521,7 @@ describe("immutability and append-only history", () => {
           [s.prospectId, sha256Hex(randomUUID()), status],
         ),
         status,
-      ).rejects.toThrow(/sales_demo_images_/);
+      ).rejects.toThrow(/ai_demo_real_shop|sales_demo_images_/);
     }
   });
 });
@@ -394,12 +545,21 @@ describe("quality review (separate from the send approval)", () => {
   it("validates the note: empty is null; URL, email, over 500 characters are refused before anything is written", async () => {
     const s = await shop();
     const v = await newVersion(s);
-    for (const note of ["詳しくは https://example.com", "www.example.com を参照", "info@example.com に連絡", "長".repeat(501)]) {
+    for (const note of [
+      "詳しくは https://example.com", "www.example.com を参照", "info@example.com に連絡", "長".repeat(501),
+      // review round 1 L3: bare domains, full-width forms (NFKC), other schemes
+      "example.com/x を参照", "参考 example.com", "ｈｔｔｐｓ：／／ｅｘａｍｐｌｅ", "ｅｘａｍｐｌｅ．ｃｏｍ を見る", "info＠example．com", "ftp://x", "shop.example.jp:8080 で",
+    ]) {
       expect((await review(admin, v, { p_decision: "changes_requested", p_note: note })).error?.message, note).toContain("invalid_note");
     }
     expect((await db.query("select count(*)::int as n from public.sales_demo_quality_reviews")).rows[0].n).toBe(0);
     expect((await review(admin, v, { p_decision: "changes_requested", p_note: "   ", p_checklist: { ...ALL_OK, not_a_copy: "ng" } })).error).toBeNull();
-    expect((await db.query("select note, decision from public.sales_demo_quality_reviews where version_id = $1", [v.id])).rows).toEqual([{ note: null, decision: "changes_requested" }]);
+    // Ordinary notes with numbers and dots still pass.
+    expect((await review(admin, v, { p_decision: "changes_requested", p_note: "版 1.2 の SP390 で見出しが 2 行。PC1440 は可。", p_checklist: { ...ALL_OK, not_a_copy: "ng" } })).error).toBeNull();
+    expect((await db.query("select note, decision from public.sales_demo_quality_reviews where version_id = $1 order by reviewed_at, note nulls first", [v.id])).rows).toEqual([
+      { note: null, decision: "changes_requested" },
+      { note: "版 1.2 の SP390 で見出しが 2 行。PC1440 は可。", decision: "changes_requested" },
+    ]);
     expect(await versionRow(v.id)).toMatchObject({ status: "draft" });
   });
 
@@ -492,11 +652,12 @@ describe("§9.3 demo_version hash and the DEV-195 send approval", () => {
     const s = await shop();
     const v = await newVersion(s);
     const reviewId = await approveVersion(v);
-    await db.query("update public.sales_demo_versions set expires_at = now() - interval '1 minute' where id = $1", [v.id]);
-    expect((await approve(admin, s.outreachId)).error?.message).toContain("demo_version_unavailable");
-    await db.query("update public.sales_demo_versions set expires_at = now() + interval '1 day' where id = $1", [v.id]);
     await db.query("update public.sales_demo_quality_reviews set state = 'invalidated', invalidated_at = now(), invalidated_reason = 'rights_changed' where id = $1", [reviewId]);
     expect((await approve(admin, s.outreachId)).error?.message).toContain("demo_quality_not_approved");
+    await db.query("update public.sales_demo_versions set expires_at = now() - interval '1 minute' where id = $1", [v.id]);
+    expect((await approve(admin, s.outreachId)).error?.message).toContain("demo_version_unavailable");
+    // The retention cannot be extended again for an unsent version (review round 1 L4).
+    await expect(db.query("update public.sales_demo_versions set expires_at = now() + interval '1 day' where id = $1", [v.id])).rejects.toThrow(/demo_version_expiry_extension_forbidden/);
     const s2 = await shop();
     const v2 = await newVersion(s2);
     await approveVersion(v2);

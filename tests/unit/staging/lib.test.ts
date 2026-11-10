@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { assertRef, authHeaders, expectedTables, explicitGrantGaps, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
+import { NO_DELETE_TABLES, assertRef, authHeaders, expectedTables, explicitGrantGaps, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
 
 // Staging setup through the Supabase Management API (DEV-016): the plan,
 // the requests and token handling. No network: fetch is mocked.
@@ -37,7 +37,9 @@ describe("migration plan", () => {
 
   it("[fail-closed] every sales_* table is granted to the API roles explicitly (never relies on project defaults)", () => {
     for (const [role, privilege] of [["authenticated", "select"], ["service_role", "select"], ["service_role", "insert"], ["service_role", "update"], ["service_role", "delete"]]) {
-      expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual([]);
+      // DEV-196c: the demo version history is never deleted, so DELETE is deliberately not granted on those tables (and only those).
+      const expected = privilege === "delete" ? [...NO_DELETE_TABLES].sort() : [];
+      expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual(expected);
     }
     // Before 20260928000000 the core tables relied on the defaults.
     const before = local.filter((m: { version: string }) => m.version < "20260928000000");

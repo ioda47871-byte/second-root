@@ -85,3 +85,27 @@ DEV-195 と同じ扱い: scratch の `dev196c-rollback.sql` (repo には置か�
 - 画像の権利の更新 (例: `unknown` → `share_cleared`) の関数は無い (trigger は権利の格上げを拒否)。写真の共有を認める承認のときに設計する。
 - 成功例の画像の禁止の hash は server (DEV-196b の `forbiddenSha256`) が持ち、DB には持っていない。
 - 急ぎの取り消し `sales_urgent_revoke_demo_version` (§9.5 の 3) は作っていない。通常の取り消しも `send_opened` があれば `approval_open` で、決着を先にする規則は同じ。
+
+## Review round 1 (独立レビュー、dd6606e: C0 / H0 / M1 / L5)
+
+置き換えた 6 関数と legacy の hash は問題なしとの評価。指摘への対応 (同じ migration を修正。どの hosted DB にも未適用):
+
+| # | 指摘 | 対応 | 回帰テスト |
+|---|---|---|---|
+| M1 | 実店舗の AI 画像を `ai_generated_demo` / `ai_demo_internal` として入れると、AI 概念画像の規則を迂回できた | `sales_prospects` の行はすべて実店舗なので、table の check `sales_demo_images_real_shop_no_ai_demo` と挿入の trigger (`ai_demo_real_shop`) で両方を拒否。権利の状態は **DB が導く** (挿入の trigger): `ai_concept_internal` は `depicts_real_*` がすべて false・オーナーの確認 (確認者が `sales_admins`)・出所が strict な `AiConceptProvenance` の形 (`sales_demo_ai_provenance_valid`)・`public_web=false` のときだけ、それ以外は `unknown`。人の写真は条件から `share_cleared` / 種類ごとの internal を導く。呼ぶ側の値で残すのは `unknown` だけ (下げる方向)。`rights_expiry` を過ぎていれば `expired` | ingest と service role の直接の挿入で `ai_demo_real_shop` / `invalid_image`、呼ぶ側が `share_cleared` と言った AI 概念画像は `ai_concept_internal` (共有不可) で保存、書面の確認の無い人の写真は internal、期限切れは `rights_unknown`、条件の欠け (`depicts_real_shop`・model `unknown`・`public_web`) は `rights_unknown` |
+| L3 | note の検査が裸のドメインと全角を見逃した | NFKC で正規化して小文字にした上で、scheme (`xxx://`・`https:`)・`www.`・ドメインの形 (`名前.英字2文字以上` の後が `/`・`:`・語の終わり)・メール (全角の `＠` も) を拒否 | `example.com/x`・`参考 example.com`・`ｈｔｔｐｓ：／／…`・`ｅｘａｍｐｌｅ．ｃｏｍ`・`info＠example．com`・`ftp://x`・`shop.example.jp:8080` は `invalid_note`。`版 1.2 の SP390 …` は通る |
+| L4 | service role の直接の書き込みが ingest の検査を迂回できた | 検査を trigger に移した (どの書き手にも効く): 挿入時に manifest の形 (`sales_demo_manifest_valid`、ingest と共用)・bundle の hash = manifest から計算した値・`total_bytes` = 合計・`facts_sha256` = 今の demo の content・`expires_at` は今から 60 日以内、ファイルは manifest の 1 項目と完全一致 (`file_not_in_manifest`)、commit の時点でファイルの数 = manifest (遅延の constraint trigger `version_files_incomplete`)。`expires_at` は短くはできるが、延ばせるのは送信済みの承認が固定した版だけ。approved から出る・approved に入る・revoked への遷移、active な品質承認の終了、`approved_version_id` の変更、画像の取り消しは、`send_opened` があれば trigger が `approval_open`。4 表の DELETE・TRUNCATE を service_role・authenticated・anon から外した (`NO_DELETE_TABLES`、staging の `service_role_can_write` はこの 4 表の DELETE だけを除外し、新しい検査 `demo_version_tables_never_deleted` が逆を監視) | service role の直接の挿入で `bundle_mismatch` / `facts_mismatch` / `invalid_manifest` / `invalid_expiry` / `version_files_incomplete`、`file_not_in_manifest`、DELETE は 42501、TRUNCATE は `permission denied` (service_role・authenticated)、期限の延長は拒否、`send_opened` の間の直接の approved→draft・revoked・品質承認の無効化・`approved_version_id = null` は `approval_open` |
+| L5 | 同じ bundle を別の店で記録できた | 挿入の trigger が bundle ごとの advisory lock の下で、別の demo に同じ `bundle_sha256` の版があれば (状態を問わず) `bundle_reused_across_shops` | ingest と直接の挿入の両方で `bundle_reused_across_shops` |
+
+**DEV-196d に持ち越す (今は直さない、オーナー指示)**
+
+- **L2**: オーナーの「事実の偽装なし」の確認を、包みで中継された user id ではなく管理者の操作 (管理画面のボタン) に結び付ける。今は確認者が `sales_admins` であることだけを DB で確かめる。
+- **L6**: 版を品質承認すると、版の共有が有効になるか承認を取り下げるまで、その店の送信承認は `demo_not_shareable` で止まることを、管理画面で警告する。
+
+**再実行 (round 1 の修正の後)**
+
+- `npx supabase db reset` (ローカルの隔離した stack): 成功、bucket 作成。
+- 統合: 23 ファイル **439 / 439 通過** (storage あり。`demo-versions` 35 件、`send-approval` 48 件、`db-security-audit` 11 件、`staging-checks` 8 件を含む)。CI と同じ `-x storage-api` では 438 passed / 1 skipped (Storage の API の 1 件)。
+- unit (`tests/unit/sales`・`ai-tasks`・`staging`): 1155 件通過 (`staging/lib.test.ts` の明示 grant の検査は、DELETE だけ `NO_DELETE_TABLES` を期待値にした)。
+- `npm run typecheck`・`npx eslint`・`npm run check:secrets`・`npm run build` 通過。
+- 巻き戻しの scratch SQL を新しい関数に合わせて更新し、もう一度確認: migration なしの schema と差分 0 行。
