@@ -145,6 +145,8 @@ unique(normalized_name, normalized_address) による重複防止。
 | design_job_id, design_attempts, design_claimed_at | job の lineage（claim ごとに新しい uuid、unique）・試行回数（≤ 3）・lease の開始。`processing` には job id と lease が必須（check） |
 | design_worker_commit, design_error_code, design_updated_at | worker の commit（sha）・固定の符号（`^[A-Z][A-Z0-9_]{2,47}$`。自由文は入らない）・最終更新 |
 
+- 店舗ごとの版のデモ（DEV-196、**提案だけで未作成**）: `sales_demos` の 1 行 = 1 店舗は変えず、その下に版の表を足す案。§11 を参照。
+
 ### sales_outreaches（営業行為）
 | 列 | 備考 |
 |---|---|
@@ -393,6 +395,10 @@ mugi-no-mi 等の別 project と混ぜない。CI に Production の Supabase / 
 | `SALES_DEMO_BASE_URL` | server | DEV-004 |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_ACCOUNT_ID` / `INSTAGRAM_ACCESS_TOKEN` | **server only**（Operational Claude にも渡さない。設定は人間: `docs/INSTAGRAM_SETUP.md`） | DEV-020〜024 |
 | `SALES_AI_DESIGN_ENABLED` | server。`"true"` のときだけ AI デザイン step が有効（unset・他の値は無効）。migration `20261009000000` の適用後にだけ有効にする | DEV-030 |
+| `SALES_DEMO_VERSIONS_ENABLED`（提案・未作成） | server。`"true"` のときだけ版のデモ（アップロードの API・成果物の route・管理者プレビュー）が有効。それ以外は 404 / 503。既定は無効 | DEV-196d（未承認） |
+| `SALES_DEMO_SHARE_ENABLED`（提案・未作成） | server。版での共有（`/demo-frame/p/…`）の旗。既定は無効 | DEV-196g（未承認） |
+| `SALES_DEMO_VIEW_SIGNING_KEY`（提案・未作成） | **server only**。閲覧の token の HMAC 鍵（32 bytes 以上）。rotate で発行済みの token がすべて無効になる。値の設定は人 | DEV-196d（未承認） |
+| `SALES_DEMO_ARTIFACT_ORIGIN`（提案・未作成） | server。成果物を配る専用の origin。未設定の間、共有の成果物の route は 404。DNS と Vercel の設定は別の承認 | DEV-196d / 196g（未承認） |
 | `SALES_DESIGN_BRIDGE_TOKEN_SHA256` | server only。bridge token の SHA-256（64 桁の hex）。token そのものは local bridge（Linux 利用者 `sr-designbridge` の 0600 file）にだけあり、server には置かない（置くと 503）。ingest token とは別の token。design worker（`sr-designgen`）・Operational Claude には渡さない | DEV-030 / DEV-032 |
 
 ## 10. Sales Design Bridge（DEV-030）
@@ -454,6 +460,7 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
   - この拒否は server action で行い、DB の `sales_mark_sent`（管理者だけが呼べる RPC）は変えていない。flag は env にあり DB からは見えないため、flag 無効時の legacy の挙動を DB で崩さないための選択。管理者が RPC を直接呼べば送信済みにできるが、それは管理者本人の操作に限られる。
   - flag を一度無効にして、その間に待ち・生成中の demo を送った後で再び有効にすると、その demo は `ALREADY_SENT` で閉じる（送った後でページを変えない）。
 - `/admin/preview/[prospectId]`: 公開ページと同じ描き方と、デザインの状態。
+- この React の経路（テンプレートと `ProfileRenderer`）は、DEV-196 の版のデモ（§11）を足しても変えない。版のデモは別の route で並べて足す。
 
 ### 10.4 local bridge と worker
 
@@ -495,3 +502,79 @@ DEV-053 の品質ゲートで `blocked` になった理由は符号しか残ら�
   - server が migration より先: `p_review` 付きの呼び出しは関数が見つからず 503 になり、bridge は `BRIDGE_DISABLED` で止まって次の回に再送する（job id は変わらない）。
 - flag 無効時、今日の画面の query は従来と同じで、`design_review` を読まない。
 
+## 11. 店舗ごとの版のデモ（DEV-196。設計だけで未実装）
+
+設計の正本は `docs/design/DEV-196-demo-admin-spec.md`（以下「DEV-196 仕様」）、規則は `docs/MVP_SPEC.md` §7.1、安全は `docs/SECURITY.md` §12。
+ここに書く表・関数・route・bucket・環境変数はすべて**提案**で、どれも作られておらず、どの環境にも適用されていない。
+実装の各段（DEV-196c 以降: migration・Storage・環境変数・WSL・Staging・画像生成・公開・Production）は別の承認が要り、まだ承認されていない（DEV-196 仕様 §12）。
+
+```
+(将来) worker (jail) ─► spool ─► sr-designbridge ─► POST /api/internal/sales-design/demo-versions (begin / put / finalize)
+                                                        │ server が再ハッシュ・HTML/CSS の規則・書体・権利・事実を検める
+                                                        ▼
+Second Root server ── service role ──► 非公開 bucket（公開 bucket・署名付き URL は作らない）
+  ├─ /admin/sales/demos/[prospectId]  管理者セッション: 版・系譜・PC1440 / SP390・品質承認・取り消し
+  │     └─ <iframe sandbox=""> → /demo-frame/a/<管理者用 token>/index.html   (15 分)
+  ├─ /admin/sales (今日)  送信承認（DEV-195）が「品質承認済みの版」を snapshot に固定
+  └─ /demo/[publicToken]  相手が開く URL（今の形のまま）
+        └─ 外枠（注記・footer）+ <iframe sandbox=""> → <artifact-origin>/demo-frame/p/<共有用 token>/index.html   (30 分)
+```
+
+### 11.1 データ（提案、DEV-196 仕様 §4）
+
+| 表（案） | 役割 |
+|---|---|
+| `sales_demo_versions` | 版。`demo_id`・`version_no`・`parent_version_id`（系譜）・`generation_job_id`（冪等の鍵）・`bundle_sha256`（版の同一性）・`facts_sha256`（生成の入力にした事実）・`manifest`・`status`（`uploading` / `draft` / `approved` / `superseded` / `rejected` / `revoked` / `expired`）・`share_eligible`（表示用の cache。写真 0 枚のときだけ true）・`expires_at`・`revoked_at`。内容は `draft` の後は変えない（trigger）。row 削除は無い |
+| `sales_demo_version_files` | 版のファイル（manifest の正規化した写し、画像の権利の記録への参照） |
+| `sales_demo_images` | 画像と権利・出所。`rights_status`（既定 `unknown`、server が記録から導く）・`depicts_real_*`・`provenance`（**DB にだけ**置く。管理者だけが読む） |
+| `sales_demo_quality_reviews` | **デモの品質承認**（送信承認とは別の表）。7 項目の `checklist`・見た描画画像の sha256・承認時の版の snapshot。1 つの demo で生きている承認は最大 1 件 |
+| `sales_demos.approved_version_id` | 品質承認済みの版（関数だけが書く） |
+| `sales_outreach_approvals` に足す列 | `demo_version_id`・`demo_bundle_sha256`・`demo_quality_review_id` など（DEV-196f） |
+
+- RLS・権限は既存の型（SECURITY §2）に従う。書き込みは SECURITY DEFINER の関数だけ。worker・bridge の経路から品質承認・送信承認は書けない。
+- `sales_demo_version(d)` は、`approved_version_id` があるときだけ末尾に版の id と `bundle_sha256` を足す（無いときは今と同じ hash。既存の承認は無効にならない）。版の差し替え・取り消しで送信承認が古くなる（DEV-196 仕様 §9.3）。
+
+### 11.2 二つの承認（DEV-196 仕様 §9）
+
+| | デモの品質承認 | 送信承認（DEV-195、§4） |
+|---|---|---|
+| 何を | この版は店らしく、事実が正しく、PC/SP で崩れていない | この文面を、この宛先に、このデモで送る |
+| 単位 | 版 | 初回営業 1 件 |
+| 前提 | 検査を通った `draft` の版・PC1440 / SP390 の描画画像 | 品質承認済みの版（版の無い店舗は React のデモで、人の確認つき） |
+
+- `sales_send_guards` は、保存した旗を信用せず、照合のたびに版・品質承認・事実・画像の権利（期限を含む）を導き直す。符号は `demo_version_unavailable` / `demo_quality_not_approved` / `demo_facts_changed` / `demo_not_shareable`。
+- `send_opened` の承認がある間、版を変える操作（新しい版の承認・取り消し・取り下げ）は `approval_open` で断る。時間で起きる変化（権利の期限切れ）は、`send_opened` からの送信済みに限り記録して通す（DEV-196 仕様 §9.5）。
+- 承認済みの版が無い店舗は、一時的に React のデモで送ってよい（人の確認と送信承認は必須）。未承認の版への自動の切り替えはしない。
+
+### 11.3 route と origin（DEV-196 仕様 §6）
+
+| | アプリの origin（今の Second Root） | `<artifact-origin>`（新設。DNS と Vercel の設定は後の別の承認） |
+|---|---|---|
+| 置くもの | `/admin/*`、管理者プレビューの外枠、共有 URL の外枠 `/demo/[publicToken]`、アップロードの API | 成果物の route `/demo-frame/{a\|p}/[token]/[...path]` **だけ** |
+| cookie | 管理者セッション（host-only のまま。`Domain=` で広げない） | 発行しない・読まない |
+| 認可 | 管理者セッション / `public_token` + `isDemoPublic` | path の HMAC の token + 要求ごとの DB の照合 |
+
+- 共有（scope `p`）は `<artifact-origin>` からだけ配る。**設定されるまで共有の成果物の route は 404**（fail closed）。共有の開始（DEV-196g）は設定の後。
+- 管理者プレビュー（scope `a`）は、それまでアプリの origin の `/demo-frame/a/…` で、cookie を読まない route・CSP の `sandbox`・iframe の `sandbox=""` で配る（管理者だけの暫定）。設定の後はそちらへ移す。
+- `/demo-frame/*` は `next.config.ts` の `/demo/:path*`・`/admin/*` などの規則に当たらない接頭辞にする（成果物は `X-Frame-Options` を付けず、`frame-ancestors <アプリの origin>`。外枠は今の `DENY` のまま）。
+- 成果物の route は要求ごとに: 旗 → token（形・HMAC・期限・scope）→ DB（版があり取り消しなし。scope `a` は版の状態と期限、scope `p` は `isDemoPublic` と送信済みの承認の固定と画像の権利の再評価）→ manifest との完全一致 → `Sec-Fetch-Dest` → Storage から読んで sha256 を照合、の順に確かめ、どれか 1 つでも外れたら理由を区別しない 404。
+- **origin の名前（案、DEV-196 仕様 §14 Q11）**: アプリと別の、成果物の route だけを置く専用の host。案はアプリの domain の下の専用 sub domain（例: `demo-artifacts.<アプリの domain>`）。登録できる別の domain にすれば site も分かれ、分離はさらに強い（その代わり domain の取得と費用が要る）。どちらにするか、名前、DNS と Vercel の設定はオーナーの判断と別の承認（Domain / DNS は Protected Scope）。
+
+### 11.4 token・期限・取り消し・保持（DEV-196 仕様 §6.2・§6.6、オーナー決定 2026-11-10）
+
+| もの | 期限 | 止め方 |
+|---|---|---|
+| 管理者用の token（scope `a`） | 15 分 | 版の取り消し、鍵の rotate |
+| 共有用の token（scope `p`） | 30 分。共有 URL を開き直すたびに新しく発行 | 同上 + demo の無効化・期限切れ・画像の権利の取り消し |
+| 共有 URL `/demo/[publicToken]` | 原則 30 日（今の規則のまま） | 今の手段 + 版の取り消し。**取り消したら 404。ほかの版・React のデモへ自動で切り替えない** |
+| 未送信の版 | 作成から約 60 日 | 版の取り消し |
+| 送信済みの版 | 共有の期間が終わってから約 30 日（管理者プレビューだけ） | 版の取り消し |
+| 期限の後の削除 | 自動では消さない。Storage の削除は別の承認（DEV-196j、復元できない） | — |
+
+- token は `base64url(payload).base64url(HMAC-SHA256)`、payload は scope・版・demo・期限だけ。共有の外枠を開いても DB に書かない。取り消しは token ではなく DB の状態で毎回確かめる。
+
+### 11.5 品質と AI 画像（DEV-196 仕様 §7・§8）
+
+- 品質は server の finalize が正本（worker の申告は助言）。B方式の HTML/CSS の規則・書体の許可一覧・事実パックとの照合は緩めない。オーナーは PC1440 / SP390 の全頁の描画画像で 7 項目を確かめる（MVP_SPEC §7.1）。構造の近さ（`GENERIC_SKELETON`・ほかの店との骨格・成功例との近さ）は**警告だけ**で、版を拒否せず品質承認も止めない。
+- 画像の権利は server が記録から導く enum（既定 `unknown`、fail closed）。実店舗の AI 概念画像（`ai_concept_internal`）は `checkPhotoRights` に通さず別の検査で導き、管理者プレビューだけで見える（共有の可否を返す経路が無い）。`checkPhotoRights`・`AI_DEMO_SHOPS` は変えない。
+- 共有できる版は写真 0 枚の版だけ（`PUBLIC_DEMO_ASSETS_ENABLED = false` のまま）。
