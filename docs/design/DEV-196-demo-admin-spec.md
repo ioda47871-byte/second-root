@@ -128,7 +128,7 @@ RLS・権限は既存の型 (SECURITY §2) に従う: RLS 有効、anon の権�
 | `worker_checks` | jsonb null、strict・≤ 2KB | worker の申告 (助言。`checkPrototype`・描画の検査・構造記述子) |
 | `structure_descriptor` | jsonb null、strict・≤ 2KB | 計測した構造記述子 (`lib/design-agent/structure`。hero・flow・節の型など。§7.5) |
 | `rights_summary` | jsonb null、strict・≤ 1KB | §8.4 |
-| `share_eligible` | boolean not null default false | 共有 URL に出してよい版か (server が §8.3 から導く表示用の cache。check: DEV-196a の承認までは写真 0 枚のときだけ true。送信の照合はこの値を使わず導き直す、§9.2) |
+| `share_eligible` | boolean not null default false | 共有 URL に出してよい版か (server が §8.3 から導く表示用の cache。check: 写真の共有を認める後の別の承認 (MVP_SPEC §7 の変更、Protected Scope。DEV-196a には含まない) までは写真 0 枚のときだけ true。送信の照合はこの値を使わず導き直す、§9.2) |
 | `renders` | jsonb null | `desktop_1440` / `mobile_390` (と店の spec が描くなら `tablet_768`) の描画画像 (WebP) の manifest 上の名前と sha256 (§5.2・§7.2) |
 | `expires_at` | timestamptz not null | 管理画面で見られる期限 (未送信のまま放置された版の掃除。未送信は作成から約 60 日。送信済みは共有の期間の終わりから約 30 日に延ばす (オーナー決定 2026-11-10、§6.6)。期限の後の削除は別の承認) |
 | `revoked_at`, `revoked_by`, `revoke_code` | null 可、`revoke_code ~ '^[A-Z][A-Z0-9_]{2,47}$'` | 取り消し (§6.6)。取り消した版は管理者プレビューでも共有でも出ない |
@@ -375,7 +375,7 @@ sandbox
 | 置くもの | 管理画面 (`/admin/*`)、管理者プレビューの外枠 (`/admin/sales/demos/[prospectId]`)、共有 URL の外枠 (`/demo/[publicToken]`)、アップロードの API (`/api/internal/…`) | 成果物の route `/demo-frame/{a\|p}/[token]/[...path]` **だけ**。ほかの頁・API は置かない (他の path は 404) |
 | cookie | Supabase の管理者セッション (今のまま、host-only)。外枠は cookie を読む | **cookie を一切発行せず、読まない**。アプリの cookie は host-only なので送られない (アプリの cookie に `Domain=` を付けて親 domain に広げることはしない) |
 | 認可 | 管理者セッション (RLS) / `public_token` + `isDemoPublic` | path の HMAC の view token + 要求ごとの DB の照合 (§6.2・§6.4) |
-| CSP (外枠) | 今の `X-Frame-Options: DENY`・`frame-ancestors 'none'` に加え、`frame-src <artifact-origin>` だけを許す | — |
+| CSP (外枠) | 今の `X-Frame-Options: DENY`・`frame-ancestors 'none'` に加え、`frame-src <artifact-origin>` だけを許す。**専用の origin が設定されていない間だけ**、管理者プレビューの外枠 (`/admin/sales/demos/…`) は `frame-src 'self'` にする (暫定の `/demo-frame/a/…` がアプリの origin にあるため)。設定された後は `'self'` を外す。共有の外枠 (`/demo/[publicToken]`) は常に `<artifact-origin>` だけ (`'self'` は入れない) | — |
 | CSP (成果物) | — | §6.7 の CSP。`frame-ancestors <アプリの origin>` (`'self'` ではなく、アプリの origin を名指し)、`style-src` / `img-src` は `<artifact-origin>` の token の path |
 | iframe | `sandbox=""` (`allow-*` なし)・`referrerpolicy="no-referrer"`・`allow` なし | 応答の CSP の `sandbox` 指令で、直接開かれても opaque origin・スクリプトなし |
 | Storage | server (アプリの route と成果物の route の両方の server 側) だけが service role で読む。ブラウザには Storage の URL を出さない | 同左 |
@@ -464,12 +464,14 @@ sandbox
 | `ai_concept_internal` | **実店舗**の管理者だけのデザイン検討用の AI 概念画像 (オーナー決定 2026-11-10)。条件 (§8.3) をすべて満たすときだけ | ○ (画像ごとに「AI 生成の概念画像 (実在の商品・店内・人・設備ではありません。共有不可)」の固定のラベル) | **×** (仕様変更と承認が別に要る) |
 | `owner_provided_internal` / `shop_provided_internal` | 人の写真。編集・切り抜き・商用は可だが `public_web` が false か店舗の書面の確認が無い | ○ | × |
 | `licensed_terms_pinned_internal` | 利用規約の sha256 を固定した素材。`public_web` が false | ○ | × |
-| `share_cleared` | 人の写真か規約固定の素材で、`public_web=true`・店舗の書面の確認あり (`client_confirmed_at`)・期限内・実在の人物を写さない | ○ | **DEV-196a で MVP_SPEC §7 を変えた後だけ** ○ (それまでは ×、§8.3) |
+| `share_cleared` | 人の写真か規約固定の素材で、`public_web=true`・店舗の書面の確認あり (`client_confirmed_at`)・期限内・実在の人物を写さない | ○ | **写真の共有を認める後の別の承認 (MVP_SPEC §7 の変更、Protected Scope。DEV-196a には含まない) の後だけ** ○ (それまでは ×、§8.3) |
 | `ai_share_approved` | (予約) AI 画像を共有する仕様変更と、画像ごとのオーナーの決定の後だけ。**今は DB の check で書けない** | ○ | 今は × |
 | `expired` | `rights_expiry` を過ぎた (配信のたびに日付で判定) | × | × |
 | `revoked` | 苦情・誤り・取り下げ | × | × |
 
-- 状態は `photo_rights_v0` を server で `checkPhotoRights` に通した結果から**導く** (人が enum を直接選ばない)。共有の判定は `purpose: "public_site"` の結果 (AI 画像は必ず `AI_DEMO_NOT_FOR_PUBLIC_SITE`) と同じ。
+- 状態は server が記録から**導く** (人が enum を直接選ばない)。導き方は画像の種類で 2 つに分かれる:
+  - **人の写真・規約固定の素材・架空の店の AI デモ画像**: `photo_rights_v0` を `checkPhotoRights` に通した結果から導く。共有の判定は `purpose: "public_site"` の結果 (AI 画像は必ず `AI_DEMO_NOT_FOR_PUBLIC_SITE`) と同じ。`ai_generated_demo` は今までどおり `AI_DEMO_SHOPS` (架空の店) のときだけ `aiDemoAllowed` を渡し、それ以外は `AI_DEMO_NOT_ALLOWED` で `unknown`。**`checkPhotoRights`・`AiProvenance`・`AI_DEMO_PUBLIC_LABEL`・`AI_DEMO_SHOPS` は変えない** (架空の店の研究の規則を緩めない)。実店舗の画像に `aiDemoAllowed: true` を渡すことはしない。
+  - **実店舗の AI 概念画像 (`ai_concept_internal`)**: `checkPhotoRights` には通さず、**別の記録と別の検査**で導く (§8.3.1)。
 - **fail closed**: 1 枚でも共有可でない画像があれば、版の `share_eligible` は false。画像を抜いて穴のあいた頁を出すことはしない。共有したいなら、共有可の画像だけで作り直した**別の版**にする (系譜でつなぐ)。
 
 ### 8.2 出所 (provenance) の置き場所
@@ -491,8 +493,27 @@ sandbox
 - **架空の店の研究 (SR-001「輪」・つぐ手など) は今までどおり** (`ai_demo_internal`、`AI_DEMO_SHOPS`、DEV-185〜193 の承認の範囲)。
 - 画像の生成そのもの (Codex・画像生成) は、今までどおり 1 回ごとのオーナーの承認が要る (§10.4、DEV-196i)。この決定は生成を承認しない。
 - `ai_concept_internal` の画像を含む版は、管理者プレビューで見て品質承認まではできるが、共有できないので、その版でデモ URL を含む送信承認はできない (`demo_not_shareable`、§9.2)。送るには AI 画像を含まない別の版 (系譜でつなぐ) か、版の無い既存の React のデモ (§9.2) を使う。
-- **AI 画像だけでなく、どの写真も今は共有 URL に出せない**。MVP_SPEC §7 は「公開 demo には今も写真を出さない」とし、コードも `PUBLIC_DEMO_ASSETS_ENABLED = false` である。したがって `share_cleared` の写真を共有 URL に出すことも、**DEV-196a での MVP_SPEC §7 の変更 (Protected Scope、オーナーの承認)** が先に要る。それまでは、共有できる版は**写真 0 枚の版だけ** (`share_eligible` は「写真が 0 枚」のときだけ true、DB の check でも強制) とし、`share_cleared` は承認の後に有効にする予約の値として扱う。
+- **AI 画像だけでなく、どの写真も今は共有 URL に出せない**。MVP_SPEC §7 は「公開 demo には今も写真を出さない」とし、コードも `PUBLIC_DEMO_ASSETS_ENABLED = false` である。したがって `share_cleared` の写真を共有 URL に出すことも、**写真の共有を認める後の別の承認 (MVP_SPEC §7 の変更、Protected Scope。DEV-196a には含まない)** が先に要る (DEV-196a は写真の共有を変えない、§12)。それまでは、共有できる版は**写真 0 枚の版だけ** (`share_eligible` は「写真が 0 枚」のときだけ true、DB の check でも強制) とし、`share_cleared` は承認の後に有効にする予約の値として扱う。
 - 仕様を変える場合 (Protected Scope) の最小の条件: MVP_SPEC §7 の改訂、店の事実を描かない画像 (質感・抽象・道具の一般形など) に限る規則、実店舗向けの新しいラベルの文 (今の `AI_DEMO_PUBLIC_LABEL` は「架空の店」と書いてある)、画像ごとの `owner_ai_share_decision_at/by`、外枠が出すラベル (成果物の HTML には任せない)。
+
+### 8.3.1 `ai_concept_internal` の導き方 (DEV-196b で実装)
+
+- 記録は `photo_rights_v0` とは別の schema `ai_concept_rights_v0` (案、strict)。`source_kind` は `ai_concept_internal` の 1 値だけで、`ai_generated_demo` と混ぜない。中身:
+  - `provenance`: 生成の手段・ツールが報告したモデル名・生成時刻・prompt の sha256・承認 ID (`AiProvenance` と同じ形の欄。ただし `demo_only` ではなく `admin_preview_only: true` 固定)。値は DB だけに置く (§8.2)。
+  - `depicts_real_product` / `depicts_real_interior` / `depicts_identifiable_person` / `depicts_real_equipment` / `depicts_real_shop`: すべて boolean。
+  - `no_factual_impersonation_confirmed_at` / `_by`: オーナーの「事実の偽装なし」の確認。
+  - `admin_label`: 固定の文 `AI_CONCEPT_ADMIN_LABEL` (「AI 生成の概念画像。実在の商品・店内・人・設備ではありません。共有不可」、案) と一致すること。
+  - `prospect_id`: どの実店舗の検討用か。
+  - sha256・bytes・width・height・format (計測した値と照合)。
+- 検査 `checkAiConceptRights(record, bytesInfo, opts)` (案) は、次を**すべて**満たすときだけ `ai_concept_internal` を返し、1 つでも欠ければ `unknown`:
+  1. schema に通り、出所が記録されている (モデル名・承認 ID・prompt の sha256 が空でない)
+  2. `depicts_real_*` がすべて false
+  3. オーナーの確認がある
+  4. 管理画面のラベルが固定の文と一致
+  5. bytes の hash・大きさ・形式が記録と一致し、成功例の禁止の hash に当たらない (`forbiddenSha256`、`checkPhotoRights` と同じ集合)
+  6. 版の `demo_id` の prospect と記録の `prospect_id` が同じ
+- 結果は**管理者プレビューで見えるだけ**。`purpose` を受け取らず、共有の可否を返す経路そのものが無い (返り値の型に `share` が無い)。`share_eligible` の導出は `ai_concept_internal` の画像が 1 枚でもあれば常に false。
+- 実装の場所 (DEV-196b、offline の純粋な module): `lib/sales/demo-version/ai-concept-rights.ts` (案。schema・`AI_CONCEPT_ADMIN_LABEL`・`checkAiConceptRights`) と、両方の検査の結果を enum に写す `lib/sales/demo-version/rights.ts` (案。`deriveRightsStatus`・`shareEligible`)。`lib/design-agent/quality-pipeline/photo-rights.ts` は import して使うだけで変えない。unit で「`ai_concept_internal` の記録は `checkPhotoRights` では `unknown`」「`depicts_real_*` が 1 つ true・確認なし・ラベル違い・出所の欠け → `unknown`」「`shareEligible` は常に false」を固定する。
 
 ### 8.4 `rights_summary` (版ごと、server が導く)
 
@@ -679,7 +700,7 @@ sr-designbridge      ── 読む (link なし・link 数 1・上限・strict s
 |---|---|---|---|---|
 | **DEV-196** (この PR) | 仕様と安全設計 (docs だけ) | なし | PR のレビューと merge | review |
 | DEV-196a | 仕様の文書の更新だけ: MVP_SPEC §7 / §11.1・ARCHITECTURE・SECURITY に版のデモの規則と §15 の決定を書く (実店舗の AI 概念画像は管理者だけ・共有不可、別 origin の採用、保持と token、取り消しで 404)。共有 URL に写真を出す (`PUBLIC_DEMO_ASSETS_ENABLED`) かどうかは、AI 画像の共有と同じく今は変えない | なし | 承認済み (オーナー決定 2026-11-10、仕様の文書だけ)。PR のレビューと merge は別 | **承認済み (文書だけ)** |
-| DEV-196b | 純粋なライブラリ (offline だけ): manifest の schema と正規化 hash、規則の核の切り出しと server の HTML 解析器、CSP の組み立て、HMAC の view token、権利の導出 (`ai_concept_internal` を含む)、事実の照合、構造記述子の警告 | なし (呼ぶ側が無い) | 承認済み (オーナー決定 2026-11-10)。依存は**最小限**で、追加の前に候補の安全性 (保守の状況・推移的な依存・既知の advisory・`npm audit`) と版 (2 週間以上前の固定の版) を確かめ、レビュー記録に残す | **承認済み (offline だけ)** |
+| DEV-196b | 純粋なライブラリ (offline だけ): manifest の schema と正規化 hash、規則の核の切り出しと server の HTML 解析器、CSP の組み立て、HMAC の view token、権利の導出 (`ai_concept_internal` は §8.3.1 の別の検査、`checkPhotoRights` は変えない)、事実の照合、構造記述子の警告 | なし (呼ぶ側が無い) | 承認済み (オーナー決定 2026-11-10)。依存は**最小限**で、追加の前に候補の安全性 (保守の状況・推移的な依存・既知の advisory・`npm audit`) と版 (2 週間以上前の固定の版) を確かめ、レビュー記録に残す | **承認済み (offline だけ)** |
 | DEV-196c | migration (ローカルだけ): §4 の表・関数・RLS・trigger・bucket、`supabase/config.toml` の Storage を有効 | 適用するまで無し | **DB 変更の作成**。Storage の有効化 (ローカル・CI の Supabase) | 未承認 |
 | DEV-196d | server (旗は既定で無効): アップロードの API、`/demo-frame/a/…` の route (別 origin の設定が無い間は管理者の暫定、§6.8)、`/admin/sales/demos/[prospectId]` (版の一覧・系譜・PC1440 / SP390・品質承認・取り消し) | 旗が無効の間は 404 / 503 | **新しい環境変数** (`SALES_DEMO_VERSIONS_ENABLED`・`SALES_DEMO_VIEW_SIGNING_KEY`・`SALES_DEMO_ARTIFACT_ORIGIN`。値の設定は人) | 未承認 |
 | DEV-196e | WSL: photo-swap の配信用の書き出し・包み・bridge のアップロードの mode・cycle の任意の段 | conf の旗を立てるまで無し | **WSL の commit の承認と導入** (`admin.sh approve`、root の conf)。jail・`.wslconfig`・timer は変えない | 未承認 |
