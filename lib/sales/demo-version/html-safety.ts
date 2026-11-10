@@ -241,7 +241,7 @@ export function checkArtifactHtml(html: string, css: string, photoUrls: Readonly
     const parsed = boundedParse(html, budget);
     if (!parsed.ok) {
       add(parsed.code);
-      findings.push(...checkArtifactCss(css, photoUrls, budget));
+      append(findings, checkArtifactCss(css, photoUrls, budget));
       return { ok: false, findings: dedupe(findings), texts: [] };
     }
     let stylesheets = 0;
@@ -258,9 +258,9 @@ export function checkArtifactHtml(html: string, css: string, photoUrls: Readonly
       if ("tagName" in node) {
         const el = node as Element;
         checkElement(el, photoUrls, add, () => stylesheets++, texts, budget);
-        if (el.tagName === "template") stack.push(...[...(el as DefaultTreeAdapterTypes.Template).content.childNodes].reverse());
+        if (el.tagName === "template") pushReversed(stack, (el as DefaultTreeAdapterTypes.Template).content.childNodes);
       }
-      if ("childNodes" in node) stack.push(...[...(node as DefaultTreeAdapterTypes.ParentNode).childNodes].reverse());
+      if ("childNodes" in node) pushReversed(stack, (node as DefaultTreeAdapterTypes.ParentNode).childNodes);
     }
     if (stylesheets !== 1) add("HTML_STYLESHEET_COUNT", String(stylesheets));
     for (const t of texts) {
@@ -364,8 +364,8 @@ export function checkArtifactCss(css: string, photoUrls: ReadonlySet<string>, bu
     if (/@font-face/i.test(decodeEscapes(outsideStringsAndComments(css)))) out.push({ code: "CSS_FONT_FACE" });
     const decls = cssDeclarations(css);
     budget.spend(decls.length);
-    out.push(...fontProblems(decls, budget));
-    out.push(...textProblems(decls, budget));
+    append(out, fontProblems(decls, budget));
+    append(out, textProblems(decls, budget));
     return dedupe(out);
   } catch (e) {
     if (e instanceof BudgetExceeded) return [{ code: "VALIDATION_BUDGET_EXCEEDED" }];
@@ -452,12 +452,21 @@ export function isAllowedFontList(value: string): boolean {
 
 function fontProblems(decls: ReturnType<typeof cssDeclarations>, budget: OpBudget): HtmlSafetyFinding[] {
   const out: HtmlSafetyFinding[] = [];
+  // review round 4: push onto the property's own list (a spread copy per redefinition was quadratic); each
+  // definition spends from the budget, and so does each definition visited below
   const custom = new Map<string, string[]>();
-  for (const d of decls) if (d.prop.startsWith("--")) custom.set(d.prop, [...(custom.get(d.prop) ?? []), d.value]);
+  for (const d of decls) {
+    if (!d.prop.startsWith("--")) continue;
+    budget.spend(1);
+    const defs = custom.get(d.prop);
+    if (defs) defs.push(d.value);
+    else custom.set(d.prop, [d.value]);
+  }
   // a font list, or var(--x) whose every definition is (through at most 4 levels of var())
   // memoised per (property, depth): a chain of custom properties defined many times stays linear (review round 2)
   const memo = new Map<string, boolean>();
   const ok = (value: string, depth: number): boolean => {
+    budget.scan(value);
     const v = value.replace(/!\s*important\s*$/i, "").trim();
     const m = /^var\(\s*(--[A-Za-z0-9_-]+)\s*\)$/.exec(v);
     if (m) {
@@ -489,6 +498,16 @@ function textProblems(decls: ReturnType<typeof cssDeclarations>, budget: OpBudge
     if (TEXT_PROPERTIES.has(d.prop) && /attr\s*\(|var\s*\(/i.test(d.value)) out.push({ code: "CSS_TEXT_IN_CSS", detail: d.prop });
   }
   return out;
+}
+
+/** Pushes children last-first (so they pop in document order), in a loop rather than `push(...[...xs].reverse())`. */
+function pushReversed<T>(stack: T[], xs: readonly T[]): void {
+  for (let i = xs.length - 1; i >= 0; i--) stack.push(xs[i]!);
+}
+
+/** Appends in a loop (`push(...xs)` passes every element as an argument and throws on a very long list). */
+function append<T>(into: T[], xs: readonly T[]): void {
+  for (const x of xs) into.push(x);
 }
 
 function dedupe(f: HtmlSafetyFinding[]): HtmlSafetyFinding[] {

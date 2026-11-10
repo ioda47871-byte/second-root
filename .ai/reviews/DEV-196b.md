@@ -150,3 +150,17 @@ round 2 の scanner は parse5 と食い違った (`<!-->`、`--!>`、`<textarea
 ### 結果
 
 `tests/unit/sales/demo-version` 13 ファイル・368 件、`tests/unit/sales` + `ai-tasks` + `guardrails` + comp-impl / phase2f の isolation 45 ファイル・1111 件のうち 1110 件通過 (落ちる 1 件は従来どおり Chromium が無い phase2f の CLI のテスト)。`tsc --noEmit`・eslint・`check:secrets` 問題なし。
+
+## レビュー 4 回目 (b9d8955: parse5 の hook の設計は確認済み、Medium 1 件) への対応
+
+- **M (custom property の再定義が二次)**: `fontProblems` が再定義のたびに配列を spread で作り直していた (`a{` + `--x:1;` × 42000 で 7.1 秒、予算は 0.43M 単位しか使わない)。各 property の配列に push するよう直し、定義 1 つごとに予算を 1 単位使う。`var()` の解決で訪れる定義の値も予算に入れる (`budget.scan`)。取りこぼしがあっても、宣言の数に比例して予算が尽きる。
+- **同じ型の探索 (`lib/sales/demo-version/` 全体)**:
+  - spread の写し・`push(...xs)`: 木の歩きの `stack.push(...[...childNodes].reverse())` は、子が非常に多い要素で引数が膨らむ (長さ次第で RangeError) ので、逆順の loop (`pushReversed`) にした。`findings.push(...)`・`out.push(...)` も loop (`append`)。残る spread は定数個のもの (adapter の複製、`Set` → 配列、40 ファイル以下の manifest) だけ。
+  - `concat` の loop: 無し。
+  - 文字列の `+=`: css-scan の token・`cssDeclarations` の `buf`・`splitAsciiWs`・rule-core の `outsideStringsAndComments` は、1 文字ずつ一度だけ足す (V8 の rope で償却線形)。区切りで捨てるので長さは入力に比例。
+  - 伸びる配列への `indexOf` / `includes` / `find`: 無し。`includes` は固定の小さな一覧 (許可一覧・旗)、`attrs.find` は 1 タグの属性 (≤ 64、parse5 の中で上限)。`dedupe` は `Set`。
+- 回帰テスト `review-round-4.test.ts` (4 件)。修正前のファイルに戻すと probe の 2 件が 7.0 秒・7.4 秒で落ちる (時間の後ろ盾 3 秒と、定義ごとの予算の差)。残る 2 件 (`font-family` から参照した再定義、子が 4 万の要素) は線形を固定するための見張り。
+
+### 結果
+
+`tests/unit/sales/demo-version` 14 ファイル・372 件、`tests/unit/sales` + `ai-tasks` + `guardrails` + comp-impl の isolation 45 ファイル・1090 件 すべて通過。`tsc --noEmit`・eslint・`check:secrets` 問題なし。
