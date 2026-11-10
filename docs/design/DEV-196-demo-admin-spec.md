@@ -213,12 +213,14 @@ draft / approved / superseded ──期限 (expires_at、未送信のときだ�
 |---|---|---|---|
 | `uploading` | × | × | × |
 | `rejected` | × (符号だけ表示) | × | × |
-| `draft` (未承認) | ○ | × | × |
+| `draft` (未承認、または品質承認の取り下げ・無効化で戻った版) | ○ | × | × (ただし `sent` の承認が固定していれば、その相手には出し続ける。§6.4) |
 | `approved` | ○ | ○ (`share_eligible` が false ならデモ URL を含む送信は不可。§8.3) | 送信済みの承認が固定したときだけ |
 | `superseded` | ○ (履歴) | × (新しい承認には使えない) | 送信済みの承認が固定していれば、その相手にはこの版を出し続ける (§9.4) |
 | `revoked` / `expired` | × | × | × (404) |
 
 **品質承認 (`sales_demo_quality_reviews.state`)**: `active` → `withdrawn` (オーナーが取り下げ) / `invalidated` (§9.3 の理由)。後戻りなし。
+
+**品質承認を取り下げた・無効になった版の状態**: 版は `approved` から **`draft` に戻る** (`approved_version_id` は null。§9.3)。`draft` は今後の送信承認には使えない (もう一度品質承認すれば `approved` に戻る)。ただし、その版を固定した `sent` の承認があれば、共有 URL は状態にかかわらずその版を出し続ける (§6.4 の手順 3・4)。共有を止めるのは取り消し (`revoked`) と共有の期限 (`isDemoPublic`) だけである。
 
 **送信承認**: DEV-195 のまま (`approved` → `send_opened` → `sent`、`superseded`)。§9 で「品質承認済みの版」の条件を足す。
 
@@ -301,8 +303,8 @@ v1/<demo_id>/<version_id>/renders/mobile_390.webp
 
 1. 機能の旗 `SALES_DEMO_VERSIONS_ENABLED` が `"true"` (それ以外は 404)。共有は別の旗 `SALES_DEMO_SHARE_ENABLED` も要る (§12)。
 2. token の形・HMAC (定数時間)・`exp`・scope が path と一致。
-3. DB (service role): 版が存在し、`status` が scope に許された状態で、`revoked_at` が null、期限内。
-4. scope `p`: さらに demo が `isDemoPublic` を満たし、`sales_outreach_approvals` の `sent` の行がこの版を固定していて (§9.4)、`share_eligible` が true で、版の全画像の `rights_status` が共有可 (§8.3、配信のたびに再評価)。
+3. DB (service role): 版が存在し、`revoked_at` が null。scope `a` は `status` が `draft` / `approved` / `superseded` で版の `expires_at` 内。**scope `p` は `status` を見ない** (下の 4 で、送信済みの固定だけで決める)。
+4. scope `p`: demo が `isDemoPublic` (送信から 30 日・`keep_alive`・無効化なし) を満たし、`sales_outreach_approvals` の `sent` の行がこの版を固定していること (§9.4)。**今の承認の状態 (`approved` / `superseded` / 品質承認の取り下げで `draft` に戻ったもの) にかかわらず、送信済みの固定があり取り消し・期限切れでなければ出す**。送信済みの版は版の `expires_at` による掃除の対象にしない (§9.4) ので、期限は共有の期限 (`isDemoPublic`) で決まる。さらに`share_eligible` が true で、版の全画像の `rights_status` が共有可 (§8.3、配信のたびに再評価)。
 5. URL の path を §5.2 の対応表で manifest の名前に写し、その名前が manifest に完全一致で在ること (scope `p` は `index.html`・`style.css`・`photos/*` だけ、`renders/*` は 404)。`..`・query・符号化の抜け道は対応表と manifest の照合で落ちる。
 6. `Sec-Fetch-Dest` を役割と照合する。CSS は `style`、画像は `image`。HTML は **scope `p` では `iframe` だけ** (無い・`document` などは 404。外枠の注記 (MVP_SPEC §7) なしに頁だけを直接開けないようにするため。`Sec-Fetch-Dest` を送らない古いブラウザでは枠の中が空になるが、fail closed を選ぶ)。scope `a` は `iframe` (無ければ許す。管理者だけの道で、CSP の `sandbox` が後ろ盾)。
 7. Storage から読み、sha256 を manifest と照合してから返す。
@@ -522,7 +524,7 @@ CSP の `sandbox` で文書はすでに opaque origin になり、cookie も DOM
 | 画像の権利を取り消した・期限が切れた | その画像を使う版の承認は `invalidated(rights_changed)` | 拒否 | その版は配信のたびの再評価で 404 |
 | 事実パックが変わった (prospect の事実の訂正) | `facts_sha256` が今の事実と違えば `invalidated(facts_changed)` | 拒否 | 送ったときの版のまま (ただし事実の誤りなら版を取り消す) |
 | 文面を編集した | 変わらない | DEV-195 のとおり `superseded(draft_edited)` | — |
-| 品質承認を取り下げた | `withdrawn` | 拒否 | 送ったときの版のまま |
+| 品質承認を取り下げた | `withdrawn` (版は `draft` に戻る) | 拒否 | 送ったときの版のまま (`draft` でも `sent` の固定で出す、§6.4) |
 | DNC・除外 | 変わらない | DEV-195 のとおり (承認・開くは拒否、`send_opened` からの送信済みだけ記録) | `disabled_at` で即時 404 (今と同じ) |
 | 30 日の期限 | 変わらない | — | 404 (今と同じ) |
 
