@@ -1,7 +1,7 @@
 /**
  * DEV-196b (spec §7.3・T1・T2・T3・T12): the server's own safety check of a B方式 artifact (index.html + style.css),
- * the same rules as the Chromium check (lib/design-agent/phase2f/prototype-safety.ts: FORBIDDEN_ELEMENTS,
- * URL_ATTRIBUTES, cssProblems, cssUrls, allowedUrl) with the HTML read by parse5 (an HTML-spec tokenizer and tree
+ * the same rules as the Chromium check (Phase 2f prototype-safety: FORBIDDEN_ELEMENTS, URL_ATTRIBUTES, cssProblems,
+ * cssUrls, allowedUrl; held in ./rule-core.ts, parity-tested) with the HTML read by parse5 (an HTML-spec tokenizer and tree
  * builder) instead of Chromium, which cannot run on Vercel. The rules are not relaxed; the artifact adds:
  *
  *  - no `style` attribute and no `<style>` element (the CSP has no 'unsafe-inline')
@@ -16,8 +16,7 @@
  */
 import { parse } from "parse5";
 import type { DefaultTreeAdapterTypes } from "parse5";
-import { PAGE_FONT_FAMILIES, PAGE_FONT_GENERIC_FAMILIES } from "@/lib/design-agent/comp-impl/page-css";
-import { allowedUrl, cssProblems, cssUrls, decodeEscapes, FORBIDDEN_ELEMENTS, outsideStringsAndComments, PROTOTYPE_STYLESHEET, URL_ATTRIBUTES } from "@/lib/design-agent/phase2f/prototype-safety";
+import { allowedUrl, cssProblems, cssUrls, decodeEscapes, FORBIDDEN_ELEMENTS, outsideStringsAndComments, PAGE_FONT_FAMILIES, PAGE_FONT_GENERIC_FAMILIES, PROTOTYPE_STYLESHEET, URL_ATTRIBUTES } from "./rule-core";
 
 export type HtmlSafetyCode =
   | "HTML_FORBIDDEN_ELEMENT"

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StructureDescriptor } from "@/lib/design-agent/structure/descriptor";
-import { EMPHASISED_ITEMS, evaluateQualityDecision, QUALITY_CHECKLIST_ITEMS, RECENT_OTHER_SHOP_VERSIONS, templateWarnings } from "@/lib/sales/demo-version/quality";
+import { EMPHASISED_ITEMS, evaluateQualityDecision, QUALITY_CHECKLIST_ITEMS, RECENT_OTHER_SHOP_VERSIONS, templateWarnings, type StructureFindingInput } from "@/lib/sales/demo-version/quality";
 
 const allOk = Object.fromEntries(QUALITY_CHECKLIST_ITEMS.map((k) => [k, "ok"]));
 const renders = { desktop_1440: "1".repeat(64), mobile_390: "2".repeat(64) };
@@ -36,35 +35,35 @@ describe("7-item checklist (§7.2)", () => {
   });
 });
 
-const generic: StructureDescriptor = {
-  schema: "structure_descriptor_v0",
-  hero: { value: "split_copy_media", source: "measured" },
-  flow: { value: "stacked_bands", source: "measured" },
-  navigation: { value: "top_bar", source: "measured" },
-  reading_path: { value: "z_pattern", source: "declared" },
-  section_layouts: { value: ["grid_cards", "split_copy_media", "single_column_text"], source: "measured" },
-  transitions: { value: ["hard_cut"], source: "measured" },
-  text_direction: { value: "horizontal", source: "measured" },
-  imagery: { value: "sequence", source: "measured" },
-};
+const FINDINGS: StructureFindingInput[] = [
+  { code: "GENERIC_SKELETON", reasons: ["hero:split_copy_media", "flow:stacked_bands"] },
+  { code: "TOO_CLOSE_TO_REFERENCE", reference: "CP-001", similarity: 0.9 },
+  { code: "SIBLINGS_SAME_SKELETON", sibling: "version-x", similarity: 0.7 },
+  { code: "ASPECTS_UNKNOWN", aspects: ["transitions"] },
+];
 
 describe("template warnings (§7.5: warnings only)", () => {
-  it("warns about the generic skeleton, another shop's skeleton and a reference — and never blocks", () => {
-    const r = templateWarnings(generic, { references: { "CP-001": generic }, otherShops: { "version-x": generic } });
+  it("maps the structure findings to warnings and never blocks", () => {
+    const r = templateWarnings(FINDINGS);
     expect(r.blocking).toBe(false);
-    expect(r.warnings.map((w) => w.code).sort()).toEqual(["GENERIC_SKELETON", "SAME_SKELETON_AS_OTHER_SHOP", "TOO_CLOSE_TO_REFERENCE"]);
+    expect(r.warnings).toEqual([
+      { code: "GENERIC_SKELETON", reasons: ["hero:split_copy_media", "flow:stacked_bands"] },
+      { code: "TOO_CLOSE_TO_REFERENCE", reference: "CP-001", similarity: 0.9 },
+      { code: "SAME_SKELETON_AS_OTHER_SHOP", versionId: "version-x", similarity: 0.7 },
+      { code: "ASPECTS_UNKNOWN", aspects: ["transitions"] },
+    ]);
   });
 
-  it("does not let warnings change a quality decision", () => {
-    const w = templateWarnings(generic, { references: { "CP-001": generic } });
-    expect(w.warnings.length).toBeGreaterThan(0);
-    // evaluateQualityDecision has no warning input: the owner's checklist decides
+  it("has no way to change a quality decision (the owner's checklist decides)", () => {
+    expect(templateWarnings(FINDINGS).warnings.length).toBe(4);
+    expect(evaluateQualityDecision.length).toBe(1);
     expect(evaluateQualityDecision({ decision: "approved", checklist: allOk, renders, viewedRenders: renders }).ok).toBe(true);
   });
 
-  it("compares with at most 20 other shops' versions", () => {
-    const others = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`v${i}`, generic]));
-    const r = templateWarnings(generic, { otherShops: others });
-    expect(r.warnings.filter((w) => w.code === "SAME_SKELETON_AS_OTHER_SHOP")).toHaveLength(RECENT_OTHER_SHOP_VERSIONS);
+  it("keeps at most 20 other shops' versions and drops unknown codes", () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({ code: "SIBLINGS_SAME_SKELETON" as const, sibling: `v${i}`, similarity: 0.8 }));
+    expect(templateWarnings(many).warnings).toHaveLength(RECENT_OTHER_SHOP_VERSIONS);
+    expect(templateWarnings([{ code: "SOMETHING_NEW" } as unknown as StructureFindingInput]).warnings).toEqual([]);
   });
 });
+

@@ -8,10 +8,14 @@
  *   WARNING only: it is shown to the owner and never blocks a version or an approval. Turning it into a gate is a
  *   separate approval once the vocabulary and thresholds are settled (Issue #159).
  *
+ * The similarity itself is NOT computed here: the structure descriptor module is behind its own isolation boundary
+ * (provisional vocabulary, "never used by a generator without a separate approval"), and DEV-196b's approval does not
+ * extend it. `templateWarnings` takes the structure findings computed by the caller (DEV-196d+, which needs that
+ * importer approved) through the typed `StructureFindingInput` and turns them into non-blocking warnings.
+ *
  * Pure.
  */
 import { z } from "zod";
-import { structureFindings, THRESHOLDS, type StructureDescriptor } from "@/lib/design-agent/structure/descriptor";
 import { REQUIRED_RENDERS, type RenderViewport } from "./manifest";
 
 /** §7.2: the 7 items, in the order the admin screen shows them. 3, 4 and 5 are the ones the owner weighs most. */
@@ -68,22 +72,31 @@ export type TemplateWarning =
   | { code: "TOO_CLOSE_TO_REFERENCE"; reference: string; similarity: number }
   | { code: "ASPECTS_UNKNOWN"; aspects: string[] };
 
-/** Provisional thresholds (§7.5): the same values as the structure checks. */
-export const TEMPLATE_WARNING_THRESHOLDS = { otherShops: THRESHOLDS.siblings_same_skeleton, reference: THRESHOLDS.too_close_to_reference } as const;
-/** §7.5: how many recently approved versions of other shops the candidate is compared with. */
+/**
+ * The shape of the structure checks' findings (StructureFinding of the structure descriptor module), restated as the
+ * interface DEV-196d+ fills: references = success cases / SR-001, siblings = recently approved versions of OTHER shops.
+ */
+export type StructureFindingInput =
+  | { code: "TOO_CLOSE_TO_REFERENCE"; reference: string; similarity: number }
+  | { code: "SIBLINGS_SAME_SKELETON"; sibling: string; similarity: number }
+  | { code: "GENERIC_SKELETON"; reasons: string[] }
+  | { code: "ASPECTS_UNKNOWN"; aspects: string[] };
+
+/** §7.5: how many recently approved versions of other shops are compared (provisional: 20). */
 export const RECENT_OTHER_SHOP_VERSIONS = 20;
 
 /**
- * §7.5 warnings for the admin screen: the structure checks (lib/design-agent/structure) against the success cases /
- * SR-001 (`references`) and the recently approved versions of OTHER shops (`otherShops`, at most 20 used).
- * `blocking` is always false.
+ * §7.5 warnings for the admin screen. `blocking` is always false: no warning rejects a version or stops a quality
+ * approval (owner decision 2026-11-10). Unknown finding codes are dropped, never escalated.
  */
-export function templateWarnings(candidate: StructureDescriptor, o: { references?: Record<string, StructureDescriptor>; otherShops?: Record<string, StructureDescriptor> } = {}): { blocking: false; warnings: TemplateWarning[] } {
-  const others = Object.fromEntries(Object.entries(o.otherShops ?? {}).slice(0, RECENT_OTHER_SHOP_VERSIONS));
-  const warnings: TemplateWarning[] = structureFindings(candidate, { references: o.references ?? {}, siblings: others }).map((f): TemplateWarning => {
-    if (f.code === "SIBLINGS_SAME_SKELETON") return { code: "SAME_SKELETON_AS_OTHER_SHOP", versionId: f.sibling, similarity: f.similarity };
-    if (f.code === "ASPECTS_UNKNOWN") return { code: "ASPECTS_UNKNOWN", aspects: [...f.aspects] };
-    return f;
-  });
+export function templateWarnings(findings: readonly StructureFindingInput[]): { blocking: false; warnings: TemplateWarning[] } {
+  const warnings: TemplateWarning[] = [];
+  let siblings = 0;
+  for (const f of findings) {
+    if (f.code === "GENERIC_SKELETON") warnings.push({ code: "GENERIC_SKELETON", reasons: [...f.reasons] });
+    else if (f.code === "TOO_CLOSE_TO_REFERENCE") warnings.push({ code: "TOO_CLOSE_TO_REFERENCE", reference: f.reference, similarity: f.similarity });
+    else if (f.code === "SIBLINGS_SAME_SKELETON" && siblings++ < RECENT_OTHER_SHOP_VERSIONS) warnings.push({ code: "SAME_SKELETON_AS_OTHER_SHOP", versionId: f.sibling, similarity: f.similarity });
+    else if (f.code === "ASPECTS_UNKNOWN") warnings.push({ code: "ASPECTS_UNKNOWN", aspects: [...f.aspects] });
+  }
   return { blocking: false, warnings };
 }
