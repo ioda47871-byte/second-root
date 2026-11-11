@@ -19,7 +19,7 @@
  * Pure: rows in, view out.
  */
 import { jstDate } from "@/lib/sales/dates";
-import { RIGHTS_BLOCKED_LABEL, AI_CONCEPT_BADGE, RIGHTS_STATUS_LABEL, VERSION_STATUS_LABEL } from "./admin-messages";
+import { RIGHTS_BLOCKED_LABEL, AI_CONCEPT_BADGE, REVOKE_REASONS, RIGHTS_STATUS_LABEL, VERSION_STATUS_LABEL, type RevokeReason } from "./admin-messages";
 import { validatorCodes } from "./compare";
 import { REQUIRED_RENDERS, RENDER_VIEWPORTS, roleOfName, type RenderViewport } from "./manifest";
 import { QUALITY_CHECKLIST_ITEMS, type QualityChecklistItem, type QualityDecision } from "./quality";
@@ -170,6 +170,8 @@ export type VersionView = {
   createdAt: string;
   expiresAt: string;
   revoked: boolean;
+  /** the fixed reason a revoked version was revoked for (REVOKE_REASONS only; anything else → null) */
+  revokeCode: RevokeReason | null;
   previewable: boolean;
   renders: RenderView[];
   missingRequiredRenders: RenderViewport[];
@@ -191,6 +193,11 @@ export type DemoVersionsView = {
   approvedVersionId: string | null;
   /** §9.5: send approvals of this shop in send_opened (to settle on the Today screen first) */
   openSends: { approvalId: string; outreachId: string }[];
+  /**
+   * review of #251 L1: unsent send approvals made with the React demo (state approved, no version pinned). If the
+   * approved version goes away, those whose draft / recipient / demo are unchanged become current again.
+   */
+  unsentLegacyApprovals: number;
   /**
    * Low (d): the shop has an approved version id, so its send approvals are refused for this reason (re-derived like
    * sales_demo_version_send_block). null: no approved version (sending uses the React demo as before).
@@ -364,6 +371,7 @@ export function buildDemoVersionsView(o: {
         createdAt: v.created_at,
         expiresAt: v.expires_at,
         revoked: v.revoked_at !== null || status === "revoked",
+        revokeCode: v.revoke_code !== null && (REVOKE_REASONS as readonly string[]).includes(v.revoke_code) ? (v.revoke_code as RevokeReason) : null,
         previewable: statusPreviewable && rightsPreviewable && UUID.test(v.id) && UUID.test(v.demo_id),
         renders,
         missingRequiredRenders,
@@ -385,6 +393,7 @@ export function buildDemoVersionsView(o: {
     versions,
     approvedVersionId: o.approvedVersionId,
     openSends,
+    unsentLegacyApprovals: o.approvals.filter((a) => a.state === "approved" && a.demo_version_id === null).length,
     sendStop: sendStop(o, versions, factsKnown),
     lineage: fullLineage.slice(0, LINEAGE_DISPLAY_LIMIT),
     lineageHidden: Math.max(0, fullLineage.length - LINEAGE_DISPLAY_LIMIT),

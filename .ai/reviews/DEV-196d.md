@@ -254,3 +254,52 @@ branch `feature/dev-196d-5-quality-approval` (`origin/develop` 9e2a1ae から)�
 **DB の locale への依存**: `\M` の語の文字は DB の locale (`LC_CTYPE`) で決まる。ローカルと CI の DB は `datcollate = datctype = en_US.UTF-8`、encoding `UTF8` (確かめた)。この locale では日本語は語の文字。Staging / Production の locale が違って日本語を語の文字と見ない (たとえば UTF-8 でない `C`) なら、「style.cssを直す」は DB で拒まれ、app の事前の確認とずれる (app は通し、DB が `invalid_note` を返す。DB が判定者なので書き込みは安全側。画面は DB の拒否を Low (a) の同じ文言で出す)。上の統合テストは「style.cssを直す」などの DB の値を明示しているので、**その DB に対して走らせれば違いで落ちる**。Staging で確かめるなら (DEV-196h の Staging の承認の範囲で、今はしない): `select datctype from pg_database where datname = current_database()` と `select public.sales_demo_note_valid('style.cssを直す')` (true のはず)。DB は変えていない。
 
 結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1253 件合格、統合 `demo-review` 8 件、e2e `demo-review` 6 件、lint・typecheck・check:secrets・build 合格。
+
+### 196d-5 review round 2 (coordinator、差分 5cfedb4 → 1616645)
+
+L1 は直っている: app のメモの規則は DB と両方向で一致 (生成した 868 例と手で選んだ 35 例)。新しい指摘なし: **C0 H0 M0 L0**。CI (1616645) すべて green。merged (#250 → 11c44b7)。
+
+## 196d-6: 品質承認の取り下げと版の取り消し (通常・急ぎ)
+
+branch `feature/dev-196d-6-withdraw-revoke` (`origin/develop` 11c44b7 から)。DB・migration・DB の関数・grant・workflow・依存の変更なし。書き込みは DEV-196c の `sales_withdraw_demo_quality_review` と `sales_revoke_demo_version` だけ (管理者の session、service role の書き込みなし)。
+
+| file | 中身 |
+|---|---|
+| `lib/sales/demo-version/lifecycle-input.ts` (純粋) | `WithdrawInput` (画面が見せた有効な品質承認の id・bundle hash・**2 段目の明示の確認 `confirmed: true`**)、`RevokeInput` (bundle hash・固定の理由 `REVOKE_REASONS`・急ぎかどうか・確認)。急ぎの理由は `URGENT_REVOKE_REASONS` (事実の誤り・権利の苦情・安全上の懸念) だけ。`checkWithdraw` / `checkRevoke`: 今の DB から導いた版と照らし、版がない・`STALE`・もう有効な承認でない・取り消せない状態・`send_opened` がある (`APPROVAL_OPEN`)・急ぎに普通の理由、を拒否 |
+| `lib/admin/demo-lifecycle.ts` (`server-only`) | 旗 (無効なら何も読まず書かず) → 形 → 管理者の session で読み直し → 照合 → DEV-196c の関数。DB の拒否は固定の文言 |
+| `app/admin/sales/_actions/demo-versions.ts` | `withdrawDemoApproval`・`revokeDemoVersion`: 旗 → `requireAdmin` → core → `revalidatePath` |
+| `components/admin/demo/VersionLifecycle.tsx` | 取り下げ (`WITHDRAW_CONFIRM_TEXT` と送信への効果 `WITHDRAW_SEND_EFFECT_TEXT`)、通常の取り消し (理由は既定なしで選ぶ)、**見た目の違う急ぎの取り消し** (赤い枠・`URGENT_REVOKE_TEXT`・急ぎの理由だけ)。どれも 2 段 (選ぶ → 何が起きるかを読む → 確かめる)。`send_opened` があればすべて押せず、`APPROVAL_OPEN_MESSAGE` と今日の画面へのリンク (ここからは決着も取り消しもしない)。成功の後は**取り消した / 取り下げた版のまま** (`?v=` で同じ版に留まる、別の版や demo へ切り替えない、勝手に動く提案はしない) |
+| `lib/sales/demo-version/view-model.ts` | `revokeCode` (`REVOKE_REASONS` の固定の符号だけ、それ以外は null) |
+| 頁 | 取り消した版は「取り消し済みです（理由: …）。表示しません。ほかの版や React のデモへは切り替えません」で、描画画像・frame・判定の form・取り下げ / 取り消しの欄は出さない。理由は `REVOKE_REASON_LABEL` だけ |
+| `lib/sales/demo-version/admin-messages.ts` | `WITHDRAW_SEND_EFFECT_TEXT`・`REVOKE_EFFECTS`・`URGENT_REVOKE_TEXT`・`LIFECYCLE_REFUSAL_LABEL` |
+
+### 送信への効果 (DB がすることをそのまま書いた。coordinator の確認が要る点)
+
+- DEV-196c の両方の関数は `sales_demos.approved_version_id` を null にする。`sales_demo_version_send_block` は承認済みの版が無ければ何も拒まない。だから**取り下げ・取り消し (承認版のとき) の後、この店舗の新しい送信は React のデモで承認できるようになる** (「デモを共有できない」の停止は外れる)。指示の「the send block returns」「sending blocked」とは逆なので、画面は DB の実際の動きを書いた (`WITHDRAW_SEND_EFFECT_TEXT`・`REVOKE_EFFECTS` の 3 つ目)。ほかの版を自動で品質承認することはない (テストで固定)。
+- 送信済みの相手の共有 URL は、取り消した版を出さず 404 (ほかの版や React のデモへ切り替えない。共有の route は DEV-196g で、今は作っていない)。
+- 取り消しの後、その版の view token と成果物の route は 404 (統合で、取り消し前に署名した token が 200 → 404 になることを確かめた)。
+
+### 止めたこと (DB の変更が要る。coordinator へ)
+
+1. **取り下げの理由**: 指示は「取り下げに必須の理由」だが、`sales_withdraw_demo_quality_review(p_review_id uuid)` は理由を受け取らず、`sales_demo_quality_reviews` に理由の列も無い。記録されない理由を選ばせるのは誤解を招くので、取り下げは**理由なしの 2 段の確認**で作った。理由を記録するには: 列 `withdrawn_code text check (withdrawn_code ~ '^[A-Z][A-Z0-9_]{2,47}$')` (`state = 'withdrawn'` のとき not null) と、関数の引数 `p_code text` (旧い 1 引数の関数は drop、`revoke … from public, anon` / `grant execute … to authenticated`)、`quality_review_final` の trigger の許す列への追加、テスト。
+2. **急ぎの取り消しの記録**: DB は急ぎかどうかを記録しない (同じ `sales_revoke_demo_version`、違いは理由の符号の範囲と画面だけ)。急ぎの記録 (と、計画の「急ぎ」の DB の部分) は DEV-196f の範囲。記録するなら `sales_demo_versions` に `revoke_urgent boolean` と関数の引数。
+
+### テスト
+
+- unit `tests/unit/admin/demo-lifecycle.test.tsx` (11 件): 入力の形 (確認なし / false・知らない理由・余分な key)、`checkWithdraw` / `checkRevoke` の全分岐、view model の `revokeCode`、core が DEV-196c の関数だけに決めた値で書く・旗の無効で何も読まない・拒否で DB を呼ばない・DB の拒否を固定の文言で、server action の順 (旗 → 管理者)、panel の markup (1 段目だけ・理由の既定なし・急ぎは別の見た目と急ぎの理由だけ・`send_opened` で全部押せず文言とリンク)。
+- 統合 `tests/integration/demo-lifecycle.test.ts` (6 件、CI でも走る、本物の関数): 取り下げ (管理者の id・下書きに戻る・承認版が外れる・送信停止が外れる・もう一つの版は下書きのまま)、旗の無効・管理者でない・STALE・別の判定・確認なし で何も変わらない、取り消し (管理者の id と理由・承認の無効化・承認版が外れる・親の版を代わりに承認しない・token を出さない)、**取り消しの後に成果物の route が 404** (取り消し前に署名した token、object はテストの中で差し替え)、急ぎの理由の範囲と拒否の各条件・二度目は取り消せない、`send_opened` のとき両方を固定の文言で拒否し送信の状態は変わらない (DB の関数も `approval_open` で拒む)。
+- e2e `tests/e2e/demo-lifecycle.spec.ts` (desktop で 6 件、1440 と 390、Storage 不要): 取り下げの 2 段、取り消しの 2 段 (理由を選ぶまで押せない) と取り消した版に留まり描画も frame も form も出ない・もう一つの版はそのまま、390 で急ぎの取り消し (急ぎの理由だけ・404 を言う)、`send_opened` で押せず文言とリンク・送信の状態は変わらない。
+- 196d-3 の e2e: 「取り消しはまだ無い」を「判定と取り消しのボタンは初め押せない」に変えた。
+- 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1265 件、統合の全体 27 files / 466 件、e2e の全体 149 passed / 31 skipped (旗を立てる 5 つの spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
+- 見つけて直したこと: open send の e2e が作った `send_opened` の承認を残すと、共有の今日の画面 (最大 5 件) を使うほかの spec (today・mobile-qa・email-send の mobile) が落ちた。spec の `afterAll` で、その spec が作った outreach (承認は cascade) を消すようにした。実行の後に `send_opened` が 0 件であることを確かめた。
+
+### 196d-6 review round 1 (coordinator の独立レビュー、f6b0343: C0 H0 M0 L2) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (正確さ) | 取り下げ・承認版の取り消しの後の送信の説明が DB の動きと違った。両方の関数が `approved_version_id` を null にすると、`sales_demo_version(d)` は昔の hash に戻り、`sales_approval_is_current` は `demo_version_id = null` で再び一致する。だから品質承認の前に React のデモで承認していた未送信の送信承認は、**再承認なしで再び有効** (送れる) になる。また「この版での送信承認はやり直し」は、版での共有が無効の間は版を固定した送信承認が無いので誤り | 文言を DB のとおりに: `APPROVED_VERSION_REMOVED_SEND_EFFECT` (「品質承認の前に承認していた未送信の送信承認（React のデモ）は、文面・宛先・デモが変わっていなければ、再承認なしで再び有効になり、送れるようになります。新しい送信も React のデモで承認できます。ほかの版を自動で品質承認することはありません。」)。`WITHDRAW_CONFIRM_TEXT` から「やり直し」と「送った版を出し続けます」を外した。取り消しでは**承認版のときだけ**この文を出す。件数: 既にある RLS の読み出し (`sales_outreach_approvals` の `state`・`demo_version_id`) から、この店舗の未送信の React のデモの送信承認 (`approved` で版の固定なし) の数を出す (`unsentLegacyApprovals`、「…が N 件あります」。文面などが変わっていないものだけが有効になるので上限の数)。新しい query・grant はない | unit: 文言 (「再承認なしで再び有効」・「やり直し」が無い)・件数の文・view model の数え方 (approved かつ版の固定なしだけ)・panel の件数の表示。**統合: React のデモの送信承認が current → 品質承認で not current → 取り下げ / 取り消しで同じ行が再承認なしに current に戻り、送信画面を開ける** (2 件、本物の関数) |
+| L2 (正確さ) | 取り消しの説明「この版の品質承認は無効になります」がすべての取り消しで出ていた | `revokeEffects({ hasActiveApproval, isApprovedVersion })` で、有効な品質承認があるときだけその行を出す (無ければ「取り消しは元に戻せません」だけ) | unit: 承認なし (その文が無い)・承認あり (その文がある)・承認版でないとき「承認版は外れ」が無い、panel (下書きの版で「品質承認は無効」が出ない) |
+
+結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1269 件、統合の全体 27 files / 468 件、統合 `demo-lifecycle` 8 件 (2 回続けて)、e2e `demo-lifecycle`・`demo-versions-page` 14 件、lint・typecheck・check:secrets・build 合格。統合の file は他の file と同じく `beforeAll` で `resetSalesData` し、送信承認の宛先は毎回別にした (2 回目の実行で、前の実行の途中の run が `run_in_progress` で残ったため)。
+
+**以前の送信承認が再び有効になることは DEV-196c の DB の動き**であり、この PR は変えていない (画面はそれを正しく書いただけ)。coordinator が DEV-196f の決定として owner に上げる。

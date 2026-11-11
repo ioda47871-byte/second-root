@@ -85,7 +85,7 @@ test("flag on: the page's own headers — framed by nobody, may frame only 'self
   expect((await page.goto(`${on.origin}/admin/sales/demos/00000000-0000-4000-8000-000000000000`))?.status()).toBe(404);
 });
 
-test("flag on: version list, facts (missing → 未確認), rights, the approval warning; no revoke yet, decisions start disabled", async ({ page }) => {
+test("flag on: version list, facts (missing → 未確認), rights, the approval warning; decisions and revokes start disabled", async ({ page }) => {
   await login(page, on.origin);
   await page.goto(pageUrl(on.origin));
   await expect(page.getByRole("heading", { level: 1 })).toContainText("デモの版");
@@ -94,10 +94,10 @@ test("flag on: version list, facts (missing → 未確認), rights, the approval
   await expect(page.getByText("未確認").first()).toBeVisible();
   await expect(page.locator('[data-image="page/photos/hero-desktop.webp"]')).toHaveAttribute("data-rights", "owner_provided_internal");
   await expect(page.locator('[data-approval-warning="before"]')).toContainText("送信承認は止まります");
-  // DEV-196d-5 added the quality decision: nothing is written until the admin's own explicit action, so every
-  // decision button starts disabled; there is still no revoke (DEV-196d-6) and no <form> besides the shell's logout
+  // DEV-196d-5 / 196d-6: nothing is written until the admin's own explicit action — every decision button starts
+  // disabled, and both revokes start disabled until a reason is chosen (and then ask again); no <form> but the logout
   await expect(page.locator("form")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /取り消/ })).toHaveCount(0);
+  for (const b of ["版を取り消す…", "急ぎで取り消す…"]) await expect(page.getByRole("button", { name: b })).toBeDisabled();
   for (const b of ["品質承認", "修正を依頼", "却下"]) await expect(page.getByRole("button", { name: b, exact: true })).toBeDisabled();
 });
 

@@ -4,6 +4,7 @@ import FactsPanel from "@/components/admin/demo/FactsPanel";
 import type { RenderItem } from "@/components/admin/demo/RenderPane";
 import ReviewHistory from "@/components/admin/demo/ReviewHistory";
 import ReviewWorkspace from "@/components/admin/demo/ReviewWorkspace";
+import VersionLifecycle from "@/components/admin/demo/VersionLifecycle";
 import RightsPanel from "@/components/admin/demo/RightsPanel";
 import TokenExpiry from "@/components/admin/demo/TokenExpiry";
 import VersionList from "@/components/admin/demo/VersionList";
@@ -11,7 +12,7 @@ import VersionNotices from "@/components/admin/demo/VersionNotices";
 import styles from "@/components/admin/demo/demo.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
 import { loadDemoVersionsPage, type PreviewUnavailable } from "@/lib/admin/demo-versions";
-import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, RIGHTS_BLOCKED_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL } from "@/lib/sales/demo-version/admin-messages";
 import { demoVersionsEnabled } from "@/lib/sales/demo-version/flags";
 import { VIEW_TOKEN_TTL_SECONDS } from "@/lib/sales/demo-version/view-token";
 
@@ -103,7 +104,7 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
           ) : !base ? (
             <p className={styles.alert} role="alert" data-preview-unavailable="version">
               {selected.revoked
-                ? "この版は取り消し済みです。表示しません。ほかの版や React のデモへは切り替えません。"
+                ? `この版は取り消し済みです（理由: ${selected.revokeCode ? REVOKE_REASON_LABEL[selected.revokeCode] : "理由不明"}）。表示しません。ほかの版や React のデモへは切り替えません。`
                 : selected.images.some((i) => !i.previewable)
                   ? `${RIGHTS_BLOCKED_LABEL}の画像を含むため、この版は表示しません。`
                   : "この版は今は表示できません（期限切れ・アップロード中・不採用・デモの無効のどれかです）。"}
@@ -143,6 +144,21 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
         </section>
       )}
 
+      {selected && !selected.revoked && (selected.revocable || selected.activeApproval) && (
+        <VersionLifecycle
+          prospectId={data.prospectId}
+          version={{
+            id: selected.id,
+            versionNo: selected.versionNo,
+            bundleSha256: selected.bundleSha256,
+            revocable: selected.revocable,
+            activeApprovalId: selected.activeApproval?.id ?? null,
+            isApprovedVersion: view.approvedVersionId === selected.id,
+          }}
+          openSends={view.openSends.length}
+          unsentLegacyApprovals={view.unsentLegacyApprovals}
+        />
+      )}
       {selected && <ReviewHistory reviews={selected.reviews} />}
       <FactsPanel content={data.content} facts={selected?.facts ?? null} />
       {selected && <RightsPanel images={selected.images} photoBase={base} />}

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
+import { submitRevoke, submitWithdraw, type LifecycleResult } from "@/lib/admin/demo-lifecycle";
 import { submitDemoReview, type ReviewResult } from "@/lib/admin/demo-review";
 import { DEMO_VERSION_ERROR_LABEL } from "@/lib/sales/demo-version/admin-messages";
 import { demoVersionsEnabled } from "@/lib/sales/demo-version/flags";
@@ -19,5 +20,30 @@ export async function reviewDemoVersion(input: unknown): Promise<ReviewResult> {
     if (typeof prospectId === "string") revalidatePath(`/admin/sales/demos/${prospectId}`);
     revalidatePath("/admin/sales");
   }
+  return result;
+}
+
+function revalidate(input: unknown) {
+  const prospectId = (input as { prospectId?: unknown } | null)?.prospectId;
+  if (typeof prospectId === "string") revalidatePath(`/admin/sales/demos/${prospectId}`);
+  revalidatePath("/admin/sales");
+}
+
+// DEV-196d-6: 品質承認を取り下げる — the same order: flag, admin, re-read and re-check, then
+// sales_withdraw_demo_quality_review as the admin. Nothing is approved or switched automatically.
+export async function withdrawDemoApproval(input: unknown): Promise<LifecycleResult> {
+  if (!demoVersionsEnabled(process.env)) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.feature_disabled! };
+  await requireAdmin();
+  const result = await submitWithdraw(input, { env: process.env, now: new Date(), client: await createAuthClient() });
+  if (result.ok) revalidate(input);
+  return result;
+}
+
+// DEV-196d-6: 版を取り消す (normal or urgent) — sales_revoke_demo_version as the admin, with a fixed reason code.
+export async function revokeDemoVersion(input: unknown): Promise<LifecycleResult> {
+  if (!demoVersionsEnabled(process.env)) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.feature_disabled! };
+  await requireAdmin();
+  const result = await submitRevoke(input, { env: process.env, now: new Date(), client: await createAuthClient() });
+  if (result.ok) revalidate(input);
   return result;
 }
