@@ -9,6 +9,7 @@
 import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
 import type { RightsStatus } from "./rights";
 import type { VersionStatus } from "./version-state";
+import type { ReviewRefusal } from "./review-input";
 import type { ApproveBlocker, SendBlockCode } from "./view-model";
 
 /** The leading code of a database error message (`invalid_version_transition:draft->approved` → its first part). */
@@ -251,6 +252,25 @@ const EMAIL_LIKE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 export function containsEmail(text: string): boolean {
   return EMAIL_LIKE.test(text);
 }
+
+/** DEV-196d-5: why the server refused a quality decision before calling the database (its own re-check). */
+export const REVIEW_REFUSAL_LABEL: Readonly<Record<ReviewRefusal, string>> = {
+  VERSION_NOT_FOUND: `この版が見つかりません。${RELOAD}`,
+  STALE: DEMO_VERSION_ERROR_LABEL.stale_version!,
+  BLOCKED: "この版は今は判定できません（画面の「品質承認できません」の理由を確かめてください）。",
+  CHECKLIST_INVALID: DEMO_VERSION_ERROR_LABEL.invalid_checklist!,
+  CHECKLIST_HAS_NG: DEMO_VERSION_ERROR_LABEL.checklist_has_ng!,
+  DECISION_NEEDS_NG: "「修正を依頼」と「却下」は、「問題あり」の項目があるときだけ選べます。",
+  RENDER_MISSING: DEMO_VERSION_ERROR_LABEL.render_missing!,
+  RENDER_NOT_VIEWED: DEMO_VERSION_ERROR_LABEL.render_not_viewed!,
+  IMPERSONATION_NOT_CONFIRMED: DEMO_VERSION_ERROR_LABEL.impersonation_not_confirmed!,
+  IMPERSONATION_UNKNOWN_IMAGE: `確認した画像がこの版の画像と一致しません。${RELOAD}`,
+  SEND_STOP_NOT_ACKNOWLEDGED: "品質承認すると送信承認が止まることを確認してください。",
+  INVALID_NOTE: INVALID_NOTE_MESSAGE,
+};
+
+/** The admin's explicit acknowledgement before approving (Low d): the checkbox's words. */
+export const SEND_STOP_ACKNOWLEDGEMENT = "品質承認すると、この店舗の送信承認が止まることを理解しました（「デモを共有できない」）。";
 
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";
