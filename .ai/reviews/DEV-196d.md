@@ -308,3 +308,23 @@ branch `feature/dev-196d-6-withdraw-revoke` (`origin/develop` 11c44b7 から)。
 
 L1・L2 は migration と照らしてすべての場合で直っていることを確認。新しい指摘なし: **C0 H0 M0 L0**。CI (49da86c) すべて green。merged (#251 → 355b642)。
 任意の nit (196d-7 の最初の commit で対応): 件数の文に「（変わっていないものだけが再び有効になります）」を足した (`unsentLegacyApprovalsText`、テストも更新)。
+
+## 196d-7: 今日の画面の版の印とリンク、送信停止の説明 (表示だけ)
+
+branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB・migration・DB の関数・grant・workflow・依存の変更なし。送信の規則・`InitialSend`・`approveSend`・送信承認の RPC は変えていない (表示だけ)。
+
+| file | 中身 |
+|---|---|
+| `lib/sales/demo-version/badge.ts` (純粋) | view model から 1 つの状態: 承認版があれば `approved`、無ければ最新の版から `awaiting_review` (下書き・有効な判定なし) / `changes_requested` / `rejected_by_admin` (その版の最新の有効な判定) / `revoked` / `uploading` / `validator_rejected` / `expired`、版が無ければ `none`。送信停止は view model の `sendStop` (DB の `sales_demo_version_send_block` と同じ順) |
+| `lib/admin/demo-version-badges.ts` (`server-only`) | **旗が無効なら null を返し何も読まない**。有効なら、頁のすべての店について**1 回の request** (`sales_demos` に版・ファイル・画像・品質の判定を埋め込み、版は `demo_id` の FK を名指し、店ごとに新しい 20 件) を**管理者の session (RLS)** で。service role なし・店ごとの query なし。失敗はすべての店を `unknown` (中立の印) にし、今日の画面は壊さない。今の事実の hash は読まない (service role が要るため): 説明は「事実の変化はここでは確かめていません (版の頁で)」と書き、変わっていないとは言わない |
+| `components/admin/DemoVersionBadge.tsx` | 印 (`DEMO_VERSION_BADGE_LABEL`、「デモの版: 品質承認済み（v1）」など、取得できなければ「版の状態を取得できません」)、版の頁へのリンク「デモの版を確認」、送信停止の説明 (`TODAY_SEND_STOP_TITLE` + `SEND_BLOCK_LABEL` + 理由 + 事実を確かめていない旨)。固定の label だけ |
+| `components/admin/TodayCard.tsx` | 任意の prop `demoVersion` を足しただけ。**渡されない (旗が無効) とき、印・リンク・説明は一切出ず、今までの markup のまま**。送信停止の説明は初回の card だけ (送信の操作の前、操作そのものは変えない) |
+| `app/admin/sales/page.tsx` | 一覧を読んだ後に `loadTodayDemoVersions` (旗が無効なら null で何も読まない) を 1 度呼び、旗が有効なときだけ各 card に `demoVersion` を渡す |
+| `lib/sales/demo-version/admin-messages.ts` | 印・取得できない・送信停止の見出し・事実を確かめていない旨の固定の文 |
+
+### テスト
+
+- unit `tests/unit/admin/today-demo-badge.test.tsx` (8 件): 状態の導出のすべて (版なし・確認待ち・修正依頼中・却下・取り下げ済みの判定は数えない・承認済みと送信停止・取り消し・アップロード中・不採用・期限切れ・最新の版で決まる・一覧に無い承認版は unavailable)、印・送信停止の markup (固定の label・操作のボタンなし・止まっていなければ何も出さない)、**旗が無効のとき: card に新しい markup が一切なく、頁は `sales_demos` を一度も読まず (5 通りの綴り)、送信の承認の操作はそのまま**、旗が有効: 1 回の request・印・リンク・説明・送信の操作はそのまま、読み出しの失敗で中立の印と card はそのまま、フォローの card には説明を出さない。
+- 統合 `tests/integration/demo-version-badges.test.ts` (3 件、CI でも走る): 管理者の session で**1 回の request** (client の request を数えて `["sales_demos"]` だけ) で 版なし・demo なし・確認待ち・修正依頼中・承認済み (送信停止 `demo_not_shareable`、理由、事実は不明)・取り消し、管理者でない session には何も見えない (RLS)、旗が無効なら null で request は 0。
+- e2e `tests/e2e/demo-today-badge.spec.ts` (desktop で 3 件): suite の server (旗は無効) で今日の card に印・リンク・説明が無く、承認済みの店の card も今までどおり送信の承認の操作がある。旗を立てた server で 1440 と 390: 承認済みの店に「品質承認済み（v1）」と送信停止の説明 (送信の操作はそのまま)、確認待ちの店に「品質確認待ち（v1）」と説明なし、リンクで版の頁へ移る、頁は横にはみ出さない。spec は作った下書きを `afterAll` で消す (共有の今日の画面のため)。
+- 既存の today・e2e-sales の spec はそのまま (変更なし) で通ることを全体の実行で確かめる (下)。
