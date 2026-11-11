@@ -258,3 +258,35 @@ branch `feature/dev-196d-5-quality-approval` (`origin/develop` 9e2a1ae から)�
 ### 196d-5 review round 2 (coordinator、差分 5cfedb4 → 1616645)
 
 L1 は直っている: app のメモの規則は DB と両方向で一致 (生成した 868 例と手で選んだ 35 例)。新しい指摘なし: **C0 H0 M0 L0**。CI (1616645) すべて green。merged (#250 → 11c44b7)。
+
+## 196d-6: 品質承認の取り下げと版の取り消し (通常・急ぎ)
+
+branch `feature/dev-196d-6-withdraw-revoke` (`origin/develop` 11c44b7 から)。DB・migration・DB の関数・grant・workflow・依存の変更なし。書き込みは DEV-196c の `sales_withdraw_demo_quality_review` と `sales_revoke_demo_version` だけ (管理者の session、service role の書き込みなし)。
+
+| file | 中身 |
+|---|---|
+| `lib/sales/demo-version/lifecycle-input.ts` (純粋) | `WithdrawInput` (画面が見せた有効な品質承認の id・bundle hash・**2 段目の明示の確認 `confirmed: true`**)、`RevokeInput` (bundle hash・固定の理由 `REVOKE_REASONS`・急ぎかどうか・確認)。急ぎの理由は `URGENT_REVOKE_REASONS` (事実の誤り・権利の苦情・安全上の懸念) だけ。`checkWithdraw` / `checkRevoke`: 今の DB から導いた版と照らし、版がない・`STALE`・もう有効な承認でない・取り消せない状態・`send_opened` がある (`APPROVAL_OPEN`)・急ぎに普通の理由、を拒否 |
+| `lib/admin/demo-lifecycle.ts` (`server-only`) | 旗 (無効なら何も読まず書かず) → 形 → 管理者の session で読み直し → 照合 → DEV-196c の関数。DB の拒否は固定の文言 |
+| `app/admin/sales/_actions/demo-versions.ts` | `withdrawDemoApproval`・`revokeDemoVersion`: 旗 → `requireAdmin` → core → `revalidatePath` |
+| `components/admin/demo/VersionLifecycle.tsx` | 取り下げ (`WITHDRAW_CONFIRM_TEXT` と送信への効果 `WITHDRAW_SEND_EFFECT_TEXT`)、通常の取り消し (理由は既定なしで選ぶ)、**見た目の違う急ぎの取り消し** (赤い枠・`URGENT_REVOKE_TEXT`・急ぎの理由だけ)。どれも 2 段 (選ぶ → 何が起きるかを読む → 確かめる)。`send_opened` があればすべて押せず、`APPROVAL_OPEN_MESSAGE` と今日の画面へのリンク (ここからは決着も取り消しもしない)。成功の後は**取り消した / 取り下げた版のまま** (`?v=` で同じ版に留まる、別の版や demo へ切り替えない、勝手に動く提案はしない) |
+| `lib/sales/demo-version/view-model.ts` | `revokeCode` (`REVOKE_REASONS` の固定の符号だけ、それ以外は null) |
+| 頁 | 取り消した版は「取り消し済みです（理由: …）。表示しません。ほかの版や React のデモへは切り替えません」で、描画画像・frame・判定の form・取り下げ / 取り消しの欄は出さない。理由は `REVOKE_REASON_LABEL` だけ |
+| `lib/sales/demo-version/admin-messages.ts` | `WITHDRAW_SEND_EFFECT_TEXT`・`REVOKE_EFFECTS`・`URGENT_REVOKE_TEXT`・`LIFECYCLE_REFUSAL_LABEL` |
+
+### 送信への効果 (DB がすることをそのまま書いた。coordinator の確認が要る点)
+
+- DEV-196c の両方の関数は `sales_demos.approved_version_id` を null にする。`sales_demo_version_send_block` は承認済みの版が無ければ何も拒まない。だから**取り下げ・取り消し (承認版のとき) の後、この店舗の新しい送信は React のデモで承認できるようになる** (「デモを共有できない」の停止は外れる)。指示の「the send block returns」「sending blocked」とは逆なので、画面は DB の実際の動きを書いた (`WITHDRAW_SEND_EFFECT_TEXT`・`REVOKE_EFFECTS` の 3 つ目)。ほかの版を自動で品質承認することはない (テストで固定)。
+- 送信済みの相手の共有 URL は、取り消した版を出さず 404 (ほかの版や React のデモへ切り替えない。共有の route は DEV-196g で、今は作っていない)。
+- 取り消しの後、その版の view token と成果物の route は 404 (統合で、取り消し前に署名した token が 200 → 404 になることを確かめた)。
+
+### 止めたこと (DB の変更が要る。coordinator へ)
+
+1. **取り下げの理由**: 指示は「取り下げに必須の理由」だが、`sales_withdraw_demo_quality_review(p_review_id uuid)` は理由を受け取らず、`sales_demo_quality_reviews` に理由の列も無い。記録されない理由を選ばせるのは誤解を招くので、取り下げは**理由なしの 2 段の確認**で作った。理由を記録するには: 列 `withdrawn_code text check (withdrawn_code ~ '^[A-Z][A-Z0-9_]{2,47}$')` (`state = 'withdrawn'` のとき not null) と、関数の引数 `p_code text` (旧い 1 引数の関数は drop、`revoke … from public, anon` / `grant execute … to authenticated`)、`quality_review_final` の trigger の許す列への追加、テスト。
+2. **急ぎの取り消しの記録**: DB は急ぎかどうかを記録しない (同じ `sales_revoke_demo_version`、違いは理由の符号の範囲と画面だけ)。急ぎの記録 (と、計画の「急ぎ」の DB の部分) は DEV-196f の範囲。記録するなら `sales_demo_versions` に `revoke_urgent boolean` と関数の引数。
+
+### テスト
+
+- unit `tests/unit/admin/demo-lifecycle.test.tsx` (11 件): 入力の形 (確認なし / false・知らない理由・余分な key)、`checkWithdraw` / `checkRevoke` の全分岐、view model の `revokeCode`、core が DEV-196c の関数だけに決めた値で書く・旗の無効で何も読まない・拒否で DB を呼ばない・DB の拒否を固定の文言で、server action の順 (旗 → 管理者)、panel の markup (1 段目だけ・理由の既定なし・急ぎは別の見た目と急ぎの理由だけ・`send_opened` で全部押せず文言とリンク)。
+- 統合 `tests/integration/demo-lifecycle.test.ts` (6 件、CI でも走る、本物の関数): 取り下げ (管理者の id・下書きに戻る・承認版が外れる・送信停止が外れる・もう一つの版は下書きのまま)、旗の無効・管理者でない・STALE・別の判定・確認なし で何も変わらない、取り消し (管理者の id と理由・承認の無効化・承認版が外れる・親の版を代わりに承認しない・token を出さない)、**取り消しの後に成果物の route が 404** (取り消し前に署名した token、object はテストの中で差し替え)、急ぎの理由の範囲と拒否の各条件・二度目は取り消せない、`send_opened` のとき両方を固定の文言で拒否し送信の状態は変わらない (DB の関数も `approval_open` で拒む)。
+- e2e `tests/e2e/demo-lifecycle.spec.ts` (desktop で 6 件、1440 と 390、Storage 不要): 取り下げの 2 段、取り消しの 2 段 (理由を選ぶまで押せない) と取り消した版に留まり描画も frame も form も出ない・もう一つの版はそのまま、390 で急ぎの取り消し (急ぎの理由だけ・404 を言う)、`send_opened` で押せず文言とリンク・送信の状態は変わらない。
+- 196d-3 の e2e: 「取り消しはまだ無い」を「判定と取り消しのボタンは初め押せない」に変えた。
