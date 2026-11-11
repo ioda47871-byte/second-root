@@ -9432,7 +9432,7 @@
         "環境変数の値の設定 (人)",
         "旗を Staging / Production で有効にすること (別の承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-196d.md。196d-1 merged (#246 → 68298eb)。196d-2 merged (#247 → 59260b9)。196d-3 は PR を開いた段階 (閲覧だけの版の頁と next.config の /admin/sales/demos の CSP)。"
+      "note": "記録は .ai/reviews/DEV-196d.md。196d-1 merged (#246 → 68298eb)。196d-2 merged (#247 → 59260b9)。196d-3 merged (#248 → a178892)。196d-4 は PR を開いた段階 (版の比較の頁)。"
     }
   ]
 }
