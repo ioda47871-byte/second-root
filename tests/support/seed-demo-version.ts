@@ -80,6 +80,11 @@ export async function seedDemoVersion(
     renderHeights?: { desktop: number; mobile: number };
     /** a new shop's name (stored as its fact before the first ingest), e.g. one without 「テスト」, which the server's HTML check refuses */
     shopName?: string;
+    /**
+     * the photo is a real shop's AI concept image (admin preview only), confirmed at ingest by this admin's user id —
+     * the per-image confirmation on the screen is a separate, later admin action (DEV-196d-5)
+     */
+    aiConceptConfirmedBy?: string;
     /** add the version to this shop's demo (with this parent) instead of seeding a new shop */
     into?: { prospectId: string; demoId: string; parentVersionId?: string };
   } = {},
@@ -125,11 +130,20 @@ export async function seedDemoVersion(
   });
   if (!m.ok) throw new Error(`fixture manifest invalid: ${m.codes.join(",")}`);
 
-  const image = {
-    sha256: sha256Hex(photo), bytes: photo.byteLength, ...dims(photo), format: "webp", record_schema: "photo_rights_v0", source_kind: "owner_provided",
-    rights_status: "owner_provided_internal", depicts_real_shop: true, depicts_identifiable_person: false, depicts_real_product: true,
-    depicts_real_interior: false, depicts_real_equipment: false, allowed_uses: { edit: true, crop: true, commercial: true, public_web: false },
-  };
+  const image = opts.aiConceptConfirmedBy
+    ? {
+        sha256: sha256Hex(photo), bytes: photo.byteLength, ...dims(photo), format: "webp", record_schema: "ai_concept_rights_v0", source_kind: "ai_concept_internal",
+        rights_status: "ai_concept_internal", depicts_real_shop: false, depicts_identifiable_person: false, depicts_real_product: false,
+        depicts_real_interior: false, depicts_real_equipment: false, no_factual_impersonation_confirmed_at: new Date().toISOString(),
+        no_factual_impersonation_confirmed_by: opts.aiConceptConfirmedBy, allowed_uses: { edit: true, crop: true, commercial: false, public_web: false },
+        // a fictional generator / model id (never a real model name in the repository)
+        provenance: { generator: "test-fixture", model: "test-model-0", generated_at: new Date().toISOString(), prompt_sha256: sha256Hex(`prompt-${randomUUID()}`), approval_id: "grant-test-0001", admin_preview_only: true },
+      }
+    : {
+        sha256: sha256Hex(photo), bytes: photo.byteLength, ...dims(photo), format: "webp", record_schema: "photo_rights_v0", source_kind: "owner_provided",
+        rights_status: "owner_provided_internal", depicts_real_shop: true, depicts_identifiable_person: false, depicts_real_product: true,
+        depicts_real_interior: false, depicts_real_equipment: false, allowed_uses: { edit: true, crop: true, commercial: true, public_web: false },
+      };
   const res = await svc.rpc("sales_ingest_demo_version", {
     p_demo_id: demoId,
     p_generation_job_id: `job-${randomUUID()}`,
@@ -143,7 +157,7 @@ export async function seedDemoVersion(
     p_validator_result: { version: 1, ok: true, codes: [], validator_commit: "abcdef1", checked_at: new Date().toISOString() },
     p_worker_checks: { checkPrototype: "ok" },
     p_structure_descriptor: null,
-    p_rights_summary: { version: 1, photos: 1, by_status: { owner_provided_internal: 1 }, earliest_expiry: null, label_required: false },
+    p_rights_summary: { version: 1, photos: 1, by_status: { [image.rights_status]: 1 }, earliest_expiry: null, label_required: !!opts.aiConceptConfirmedBy },
   });
   if (res.error) throw new Error(`ingest failed: ${res.error.message}`);
   const versionId = (res.data as { version_id: string }).version_id;
