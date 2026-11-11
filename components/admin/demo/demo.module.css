@@ -405,3 +405,77 @@
   padding: 0 8px;
   background: var(--card);
 }
+
+/* --- quality review (DEV-196d-5) --- */
+.item,
+.itemEmph {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 10px;
+  min-width: 0;
+}
+
+.itemEmph {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.item legend,
+.itemEmph legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.answers {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.answer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.primary {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:disabled,
+.tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* stays in reach on a phone: above the admin's bottom navigation */
+.reviewBar {
+  position: sticky;
+  bottom: calc(68px + env(safe-area-inset-bottom));
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px -14px 0;
+  padding: 10px 14px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 6%);
+}
