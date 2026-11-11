@@ -21,6 +21,13 @@ const TM_STEPS = "scripts/design-artifact/three-methods-steps.ts";
 const DIRECTION_SET = "lib/design-agent/quality-pipeline/direction-set.ts";
 // DEV-159 (Issue #193 comment 6595445598, owner-approved exact path): the comp lane CLI checks and renders a B-method comp
 const COMP_LANE = "scripts/design-artifact/comp-lane.ts";
+/**
+ * DEV-196r (owner-approved option C, exact path): the local operator script that packages the committed d1-v9 page as a
+ * demo version renders it once, read-only, with the comp lane's renderer (renderPrototype). No neutral render helper
+ * exists outside phase2f (comp-impl's opener is allowed only to render-prototype), and a copy would drift from the renders
+ * the research recorded, so the script takes renderPrototype by name and nothing else (checked below).
+ */
+const SALES_PACKAGE = "scripts/sales/demo-version/package-local.ts";
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -83,7 +90,7 @@ describe("isolation of the Phase 2f runner", () => {
 
   it("is imported only by its offline CLI, and by the Phase 2f-2 design step for its prompt only (DEV-116, owner-approved exact path)", () => {
     // the design step's own modules (phase2f-live) never import the runner
-    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS, DIRECTION_SET, COMP_LANE].sort());
+    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS, DIRECTION_SET, COMP_LANE, SALES_PACKAGE].sort());
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     // DEV-122: plus the prompt-version check (pure; no file access)
@@ -188,6 +195,16 @@ describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193
       // the CLI's own entry check (require.main === module) is the only `require` allowed
       expect(source.replace(/require\.main === module/g, ""), file).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|execSync|process\.binding|\bfetch\(|codex/i);
     }
+  });
+});
+
+describe("DEV-196r: the sales packaging script takes only renderPrototype from phase2f (owner-approved option C, exact path)", () => {
+  it("render-prototype only, renderPrototype only (never the runner, the prompt, Codex or the safety writer)", () => {
+    const source = readFileSync(resolve(REPO, SALES_PACKAGE), "utf8");
+    const names = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([["../../../lib/design-agent/phase2f/render-prototype", ["renderPrototype"]]]);
+    expect(specifiers(source).filter((s) => s.includes("phase2f"))).toEqual(["../../../lib/design-agent/phase2f/render-prototype"]);
+    expect(source).not.toMatch(/phase2f\/(runner|prompt)|codex|\bfetch\(|import\s*\(/i);
   });
 });
 

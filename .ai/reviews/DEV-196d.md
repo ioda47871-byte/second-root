@@ -401,3 +401,10 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 | nit | `scaledRenderNote` が viewport より広い描画にも「縮小」と言いうる | 幅が viewport 以上なら何も言わない | unit (1600 / 1440 → null) |
 
 結果 (2026-11-11): unit (admin・demo-frame・demo-version-package・sales・ai-tasks・guardrails) 1310 件、統合 `demo-version-package` 5 件、import の script の実行 (取り込みと 2 つの拒否)、lint・typecheck・check:secrets・build 合格。
+
+### DEV-196r CI round (5cdd2f4: `unit (2/2)` の `tests/unit/design-agent/phase2f/isolation.test.ts` が赤) と修正
+
+- 原因: phase2f の isolation test は、phase2f を import してよい file を **正確な path の一覧** で持っている (DEV-116 / 117 / 150 / 157 / 159、どれもオーナー承認の path)。守っているのは「phase2f (Codex の port を受ける runner・prompt) は、知られた呼び手からだけ、決まった名前だけ使われる」こと。`scripts/sales/demo-version/package-local.ts` が `renderPrototype` を import したので、一覧と合わなくなった。
+- 先に、すでに許された中立の描画の経路を探した。**無い**。描画の中身 (comp-impl の `openCompPage`) も comp-impl の isolation test で守られていて、comp-impl の外で import してよいのは `render-prototype.ts` だけ。複製すると研究の描画 (d1-v9 の README の sha256) とずれていくし、別の門を緩めることになる。
+- 選んだのは、案 C (オーナー承認の DEV-196r) のローカルの運用 script **1 つの path だけ** を一覧に足すこと。pattern にはしない。test に DEV-196r と理由の comment を書き、DEV-159 と同じく名前の検査を足した: phase2f からは `render-prototype` の `renderPrototype` **だけ** (runner・prompt・Codex・`fetch(`・動的 import はなし)。描画は読むだけ (JavaScript off、network 遮断)。
+- 結果 (2026-11-11): unit の全体 (`npx vitest run`、design-agent を含む、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` を設定) 233 files passed / 2 skipped、5997 passed / 16 skipped、lint・typecheck 合格。変更は test と本記録だけ (script・lib はそのまま)。
