@@ -225,7 +225,7 @@ function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[
 }
 
 /** sales_demo_image_previewable, re-derived at `now`; the status the screen shows. */
-export function effectiveRights(img: DemoImageDb | null, now: Date): { status: RightsStatus; previewable: boolean } {
+export function effectiveRights(img: Pick<DemoImageDb, "revoked_at" | "rights_status" | "rights_expiry"> | null, now: Date): { status: RightsStatus; previewable: boolean } {
   if (!img) return { status: "unknown", previewable: false };
   if (img.revoked_at !== null) return { status: "revoked", previewable: false };
   const status = (RIGHTS_STATUSES as readonly string[]).includes(img.rights_status) ? (img.rights_status as RightsStatus) : "unknown";
