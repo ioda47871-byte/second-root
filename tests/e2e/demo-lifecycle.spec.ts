@@ -20,6 +20,8 @@ let db: pg.Pool;
 let svc: SupabaseClient;
 let adminRpc: SupabaseClient;
 let adminId = "";
+/** outreaches this file created for the open-send case: removed afterwards so the shared Today queue is untouched */
+const outreaches: string[] = [];
 
 test.describe.configure({ mode: "serial" });
 test.skip(({ isMobile }) => isMobile, "one flag-on server: the desktop project runs this file and sets 1440 / 390 itself");
@@ -37,6 +39,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   on?.stop();
+  // the approvals go with their outreach (on delete cascade); other specs share the Today queue (max 5 items)
+  if (outreaches.length) await db.query("delete from public.sales_outreaches where id = any($1::uuid[])", [outreaches]);
   await removeUsers(USERS_KEY);
   await db?.end();
 });
@@ -142,6 +146,7 @@ test("an open send: withdraw / revoke cannot be pressed; the fixed message and t
   const { v2 } = await twoVersions();
   await approve(v2);
   const o = await one("insert into public.sales_outreaches (prospect_id, kind, channel, body) values ($1, 'initial', 'instagram', 'はじめまして。') returning id", [v2.prospectId]);
+  outreaches.push(o.id as string);
   const a = await one(
     `insert into public.sales_outreach_approvals (outreach_id, prospect_id, channel, recipient, body, draft_version, demo_token, demo_version, snapshot_sha256, approved_by)
      select o.id, o.prospect_id, o.channel, p.instagram_handle, o.body || ' /demo/' || d.public_token, o.draft_version, d.public_token,
