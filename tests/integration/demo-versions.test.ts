@@ -20,6 +20,7 @@ import {
   supabaseUrl,
   verifiedRun,
 } from "./helpers";
+import { storageStatus } from "../support/seed-demo-version";
 
 // DEV-196c: demo versions, artifact hashes, image rights and the demo QUALITY
 // approval (separate from the DEV-195 SEND approval), with versioned sharing
@@ -798,14 +799,14 @@ describe("foreign keys", () => {
   });
 });
 
-// Whether the local storage API answers (it does not in CI: `-x storage-api`).
-const storageUp = await fetch(`${supabaseUrl}/storage/v1/bucket`, { headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey } })
-  .then((r) => r.ok)
-  .catch(() => false);
+// Whether the local storage API is running, decided narrowly by storageStatus (DEV-196o): only "not running" skips —
+// a missing or public bucket or any other error fails the file, and with SR_REQUIRE_STORAGE=1 (CI) so does "not running".
+const storage = await storageStatus(supabaseUrl, serviceRoleKey);
+const storageUp = storage.available;
 
-// Spec §5 / T4. DB-level assertions run everywhere (CI starts Supabase with
-// `-x storage-api`, so the storage schema may exist without the API); the
-// Storage API test needs the local storage service and skips cleanly without it.
+// Spec §5 / T4. DB-level assertions run everywhere (a local stack started with
+// `-x storage-api` may have the storage schema without the API); the Storage API
+// test needs the storage service, which CI runs (DEV-196o).
 describe("Storage (private bucket, service role only)", () => {
   it("no storage policy lets anon or signed-in users at the bucket (DB level, runs in CI)", async () => {
     const { rows: has } = await db.query("select to_regclass('storage.objects') is not null as objects, to_regclass('storage.buckets') is not null as buckets");
@@ -824,8 +825,8 @@ describe("Storage (private bucket, service role only)", () => {
     }
   });
 
-  // Storage-dependent only: skipped when the storage API is not running (CI excludes storage-api).
-  it.skipIf(!storageUp)("the bucket is private with the spec's limits; anon / signed-in users cannot read or write; the service role can", async () => {
+  // Storage-dependent only: skipped when the storage API is not running (never in CI: SR_REQUIRE_STORAGE=1).
+  it.skipIf(!storageUp)(`the bucket is private with the spec's limits; anon / signed-in users cannot read or write; the service role can${storage.available ? "" : ` [skipped: ${storage.reason}]`}`, async () => {
     const svc = serviceClient();
     const { data: bucket, error } = await svc.storage.getBucket("sales-demo-versions");
     expect(error).toBeNull();
