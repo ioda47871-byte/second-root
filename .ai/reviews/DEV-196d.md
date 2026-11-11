@@ -338,3 +338,21 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 | L2 (正確さ) | 承認版の `expires_at` が過ぎても「品質承認済み」、最新の版の期限切れを言わない、知らない状態や承認版でない版の `approved` を「品質確認待ち」と推測していた | `demoVersionBadge(view, now)`: 承認版が期限切れ (読めない `expires_at` も期限切れ、view model と同じ) なら「期限切れ」、取り消しなら「取り消し済み」、それ以外の状態や行が無いなら中立の `unknown`。最新の版 (下書き・superseded・アップロード中) が期限切れなら「期限切れ」。知らない状態・承認版でない版の `approved` は中立の `unknown` (`DEMO_VERSION_BADGE_UNKNOWN`) | unit: 承認版の期限切れ 4 通り (過ぎた・ちょうど今・読めない 2 つ)、承認版の行が別の状態 (下書き・superseded → unknown、取り消し → 取り消し済み)、承認 id が行に無い → unknown、最新の版の期限切れ (3 つの状態 × 過ぎた / 読めない)、承認版でない版の `approved`・知らない状態 → unknown |
 
 結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1281 件、統合 `demo-version-badges` 4 件、e2e `demo-today-badge`・`today`・`mobile-qa` 23 passed / 3 skipped (今日の印の spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
+
+## DEV-196k: 旗を分ける — プレビューと品質の判定の書き込み (コードだけ)
+
+オーナー決定 2026-11-11 の 5。branch `feature/dev-196k-flag-split` (`origin/develop` f3a8dd3 から)。DB・migration・workflow・依存の変更なし。
+
+- `SALES_DEMO_VERSIONS_ENABLED` は**プレビューだけ** (頁・`/demo-frame/a`・比較・今日の印)。
+- 新しい `SALES_DEMO_QUALITY_REVIEW_ENABLED` (`"true"` ちょうど、既定で無効) は**すべての書き込み** (品質承認・修正依頼・却下・取り下げ・取り消し・急ぎの取り消し)。プレビューの旗も要る (`demoQualityReviewEnabled`)。Staging では DEV-196f の前に有効にしない。
+- server: 3 つの server action (`reviewDemoVersion`・`withdrawDemoApproval`・`revokeDemoVersion`) と core (`submitDemoReview`・`submitWithdraw`・`submitRevoke`) が**最初に**確かめ、無効なら管理者の確認の前に、何も読まず書かずに固定の文言 `QUALITY_REVIEW_DISABLED_TEXT` で拒否。
+- UI: 品質の判定の旗が無効なら、版の頁に判定の form・取り下げ / 取り消しの欄を出さず、`QUALITY_REVIEW_DISABLED_TEXT` を出す (表示だけ)。
+- `.ai/tasks.json`: DEV-196d を done、DEV-196k (in_progress)・196l・196m・196n・196e-1 と、共有 (196g) の前に必須の DEV-196p (copy.json の事実 / 見出しの照合)・DEV-196q (構造の比較の結果の保存) を追加。DEV-196o は coordinator が扱う。
+
+### テスト
+
+- unit `tests/unit/admin/flag-split.test.ts` (9 件): 2 つの旗の**すべての組み合わせ** (7 × 7 の綴り)、3 つの action が 6 通りの組み合わせ (両方無効・プレビューだけ・review が "false" / "TRUE"・review だけ・preview が "false") で、管理者の確認の前に固定の文言で拒否し `from` も `rpc` も呼ばない、core もプレビューだけで拒否、両方有効なら管理者の確認まで進む。
+- 既存の unit (demo-review・demo-lifecycle) と統合 (demo-review・demo-lifecycle・demo-version-badges) は、書き込みに両方の旗を立てるように直し、統合にプレビューだけで何も書かれない場合を足した。
+- e2e: 旗を立てる server の helper に `review` の option。demo-review・demo-lifecycle は両方、demo-versions-page はプレビューだけで「書き込みの欄が無く固定の文言」を確かめる。比較・今日の印・成果物の route はプレビューだけ (変更なし)。
+- 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1297 件、統合の全体 28 files / 472 件、e2e の全体 152 passed / 34 skipped (旗を立てる spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
+- 注: 長く使っているローカルの DB に、途中で止めた実行の行が溜まると、共有の今日の画面 (最大 5 件) が埋まり today・mobile-qa・email-send が落ちることがある (一度起きた)。統合の実行 (`resetSalesData`) の後の、きれいな DB からの全体の実行はすべて通った。CI は毎回きれいな DB から始まる。

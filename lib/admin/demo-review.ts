@@ -18,8 +18,8 @@ import "server-only";
  */
 import type { createAuthClient } from "@/lib/supabase/server";
 import { loadDemoVersionsPage } from "@/lib/admin/demo-versions";
-import { DEMO_VERSION_ERROR_LABEL, demoVersionErrorMessage, REVIEW_REFUSAL_LABEL } from "@/lib/sales/demo-version/admin-messages";
-import { demoVersionsEnabled, type Env } from "@/lib/sales/demo-version/flags";
+import { DEMO_VERSION_ERROR_LABEL, demoVersionErrorMessage, QUALITY_REVIEW_DISABLED_TEXT, REVIEW_REFUSAL_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import { demoQualityReviewEnabled, type Env } from "@/lib/sales/demo-version/flags";
 import type { QualityDecision } from "@/lib/sales/demo-version/quality";
 import { checkReview, normaliseNote, ReviewInput, type ReviewRefusal } from "@/lib/sales/demo-version/review-input";
 
@@ -31,7 +31,8 @@ export async function submitDemoReview(
   raw: unknown,
   o: { env: Env; now: Date; client: Client; factsSha256?: (demoId: string) => Promise<string | null> },
 ): Promise<ReviewResult> {
-  if (!demoVersionsEnabled(o.env)) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.feature_disabled! };
+  // DEV-196k: a write — the quality-review flag (which needs the preview flag) or nothing is read or written
+  if (!demoQualityReviewEnabled(o.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
   const parsed = ReviewInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.invalid_input! };
   const input = parsed.data;

@@ -21,14 +21,26 @@ import { normaliseOrigin } from "./csp";
 import { VIEW_TOKEN_MIN_KEY_BYTES } from "./view-token";
 
 export const DEMO_VERSIONS_ENABLED_ENV = "SALES_DEMO_VERSIONS_ENABLED";
+/**
+ * DEV-196k (owner decision 2026-11-11, item 5): the quality-review WRITES have their own flag — approve, send back,
+ * reject, withdraw, revoke and urgent revoke. Strict "true", default off, and it needs the preview flag too
+ * (SALES_DEMO_VERSIONS_ENABLED alone is preview only: the pages, /demo-frame/a, compare, the Today badge).
+ * Not to be enabled on Staging before DEV-196f.
+ */
+export const QUALITY_REVIEW_ENABLED_ENV = "SALES_DEMO_QUALITY_REVIEW_ENABLED";
 export const VIEW_SIGNING_KEY_ENV = "SALES_DEMO_VIEW_SIGNING_KEY";
 export const ARTIFACT_ORIGIN_ENV = "SALES_DEMO_ARTIFACT_ORIGIN";
 
 export type Env = Readonly<Record<string, string | undefined>>;
 
-/** Strict: only the exact string "true". */
+/** Strict: only the exact string "true". Preview only (DEV-196k): reading, never writing. */
 export function demoVersionsEnabled(env: Env): boolean {
   return env[DEMO_VERSIONS_ENABLED_ENV] === "true";
+}
+
+/** DEV-196k: every quality-review write. Strict "true" AND the preview flag. */
+export function demoQualityReviewEnabled(env: Env): boolean {
+  return demoVersionsEnabled(env) && env[QUALITY_REVIEW_ENABLED_ENV] === "true";
 }
 
 /** A key longer than this is not a key someone generated for this purpose. */

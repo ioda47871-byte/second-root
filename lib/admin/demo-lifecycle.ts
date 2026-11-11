@@ -9,8 +9,8 @@ import "server-only";
  */
 import type { createAuthClient } from "@/lib/supabase/server";
 import { loadDemoVersionsPage } from "@/lib/admin/demo-versions";
-import { DEMO_VERSION_ERROR_LABEL, demoVersionErrorMessage, LIFECYCLE_REFUSAL_LABEL } from "@/lib/sales/demo-version/admin-messages";
-import { demoVersionsEnabled, type Env } from "@/lib/sales/demo-version/flags";
+import { DEMO_VERSION_ERROR_LABEL, demoVersionErrorMessage, LIFECYCLE_REFUSAL_LABEL, QUALITY_REVIEW_DISABLED_TEXT } from "@/lib/sales/demo-version/admin-messages";
+import { demoQualityReviewEnabled, type Env } from "@/lib/sales/demo-version/flags";
 import { checkRevoke, checkWithdraw, RevokeInput, WithdrawInput, type LifecycleRefusal } from "@/lib/sales/demo-version/lifecycle-input";
 
 export type LifecycleResult = { ok: true; replayed: boolean } | { ok: false; error: string; refusals?: LifecycleRefusal[] };
@@ -26,7 +26,7 @@ async function reread(prospectId: string, o: Deps) {
 const refused = (r: LifecycleRefusal[]): LifecycleResult => ({ ok: false, error: [...new Set(r.map((x) => LIFECYCLE_REFUSAL_LABEL[x]))].join(" "), refusals: r });
 
 export async function submitWithdraw(raw: unknown, o: Deps): Promise<LifecycleResult> {
-  if (!demoVersionsEnabled(o.env)) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.feature_disabled! };
+  if (!demoQualityReviewEnabled(o.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
   const parsed = WithdrawInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.invalid_input! };
   const r = await reread(parsed.data.prospectId, o);
@@ -39,7 +39,7 @@ export async function submitWithdraw(raw: unknown, o: Deps): Promise<LifecycleRe
 }
 
 export async function submitRevoke(raw: unknown, o: Deps): Promise<LifecycleResult> {
-  if (!demoVersionsEnabled(o.env)) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.feature_disabled! };
+  if (!demoQualityReviewEnabled(o.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
   const parsed = RevokeInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: DEMO_VERSION_ERROR_LABEL.invalid_input! };
   const r = await reread(parsed.data.prospectId, o);

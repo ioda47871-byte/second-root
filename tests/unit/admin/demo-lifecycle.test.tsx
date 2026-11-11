@@ -138,7 +138,7 @@ const { submitRevoke, submitWithdraw } = await import("@/lib/admin/demo-lifecycl
 const { revokeDemoVersion, withdrawDemoApproval } = await import("@/app/admin/sales/_actions/demo-versions");
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
-const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY };
+const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_QUALITY_REVIEW_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY };
 const deps = (o: { env?: Record<string, string | undefined>; openSend?: boolean } = {}) => ({ env: o.env ?? ENV, now: NOW, client: fakeClient(o.openSend) as never, factsSha256: async () => h("f") });
 
 beforeEach(() => {
@@ -181,6 +181,7 @@ describe("withdrawDemoApproval / revokeDemoVersion (server actions)", () => {
   });
   it("a non-admin is refused (requireAdmin throws), nothing written", async () => {
     vi.stubEnv("SALES_DEMO_VERSIONS_ENABLED", "true");
+    vi.stubEnv("SALES_DEMO_QUALITY_REVIEW_ENABLED", "true");
     vi.stubEnv("SALES_DEMO_VIEW_SIGNING_KEY", KEY);
     auth.admin = false;
     await expect(withdrawDemoApproval(withdraw())).rejects.toThrow("forbidden");

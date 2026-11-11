@@ -34,7 +34,7 @@ test.beforeAll(async () => {
   adminId = (await db.query("select id from auth.users where email = $1", [admin.email])).rows[0].id as string;
   adminRpc = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
   expect((await adminRpc.auth.signInWithPassword(admin)).error).toBeNull();
-  on = await startFlagOnServer(ON_PORT, randomBytes(32));
+  on = await startFlagOnServer(ON_PORT, randomBytes(32), { review: true }); // DEV-196k: writes need the review flag
 });
 
 test.afterAll(async () => {

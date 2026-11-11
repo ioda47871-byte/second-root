@@ -36,7 +36,7 @@ test.beforeAll(async () => {
   skipReason = storage.available ? "" : `${storage.reason} — approving needs the renders scrolled to their end; runs locally with Storage`;
   await ensureUsers(USERS_KEY);
   adminId = (await db.query("select id from auth.users where email = $1", [usersFor(USERS_KEY).admin.email])).rows[0].id as string;
-  on = await startFlagOnServer(ON_PORT, randomBytes(32));
+  on = await startFlagOnServer(ON_PORT, randomBytes(32), { review: true }); // DEV-196k: writes need the review flag
 });
 
 test.afterAll(async () => {

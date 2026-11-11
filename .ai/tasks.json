@@ -9389,7 +9389,7 @@
     {
       "id": "DEV-196d",
       "title": "店舗デモの版の管理者プレビューと品質承認の画面 (旗は既定で無効。7 つの PR: 196d-1 旗・文言・比較・view model / 196d-2 /demo-frame/a / 196d-3 閲覧の頁と CSP / 196d-4 比較の頁 / 196d-5 品質承認 / 196d-6 取り下げ・取り消し / 196d-7 今日の印)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196c"
@@ -9432,7 +9432,294 @@
         "環境変数の値の設定 (人)",
         "旗を Staging / Production で有効にすること (別の承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-196d.md。196d-1 merged (#246 → 68298eb)。196d-2 merged (#247 → 59260b9)。196d-3 merged (#248 → a178892)。196d-4 merged (#249 → 9e2a1ae)。196d-5 merged (#250 → 11c44b7、Low (c) の DB 側は報告済み)。196d-6 merged (#251 → 355b642)。196d-7 は PR を開いた段階 (今日の画面の版の印・リンク・送信停止の説明。旗が無効なら何も読まず何も変えない)。"
+      "note": "記録は .ai/reviews/DEV-196d.md。7 つの PR (#246〜#252) をすべて merge、オーナーが受け入れ (2026-11-11)。残りは DEV-196k〜n・196e-1 と、共有の前に必須の DEV-196p・196q へ。"
+    },
+    {
+      "id": "DEV-196k",
+      "title": "店舗デモの版の旗を分ける: プレビュー (SALES_DEMO_VERSIONS_ENABLED) と品質の判定の書き込み (SALES_DEMO_QUALITY_REVIEW_ENABLED)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196d"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー決定 2026-11-11 の 5。プレビューだけを有効にでき、品質の判定 (承認・修正依頼・却下・取り下げ・取り消し・急ぎの取り消し) は別の旗。両方とも既定で無効、server で確かめる。Staging では DEV-196f の前に品質の判定を有効にしない",
+      "acceptance_criteria": [
+        "SALES_DEMO_QUALITY_REVIEW_ENABLED は \"true\" ちょうどで、プレビューの旗も要る",
+        "server action と core が最初に確かめ、無効なら何も読まず書かずに固定の文言で拒否",
+        "UI は判定・取り下げ・取り消しの欄を出さず固定の文言",
+        "2 つの旗のすべての組み合わせのテスト、プレビューだけで頁は動き書き込みはすべて拒否、両方無効で今までどおり"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/admin tests/unit/sales tests/unit/ai-tasks.test.ts",
+        "統合 demo-review / demo-lifecycle / demo-version-badges",
+        "e2e demo-versions-page / demo-review / demo-lifecycle",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "lib/sales/demo-version/flags.ts",
+        "lib/admin/demo-review.ts・demo-lifecycle.ts",
+        "app/admin/sales/_actions/demo-versions.ts",
+        "app/admin/sales/demos/**",
+        "lib/sales/demo-version/admin-messages.ts",
+        "tests/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-196d.md"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)",
+        "supabase/migrations (コードだけ)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196d.md (DEV-196k の節)。"
+    },
+    {
+      "id": "DEV-196l",
+      "title": "AI 概念画像ごとの「事実の偽装なし」の確認を DB の監査記録に (sales_demo_review_image_confirmations)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196k"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー決定 2026-11-11 の 2。不変の監査記録 (review_id・version_id・image_id・image_sha256・confirmed_by・confirmed_at)。権利の検査と偽装なしの確認は別。画像が変わった・期限切れ・取り消しなら前の確認は使わない",
+      "acceptance_criteria": [
+        "migration 1 つ: 不変の表 (insert は判定の関数の中だけ・confirmed_by = auth.uid() の管理者、update / delete は trigger で拒否、RLS は管理者の読み取り、select を authenticated と service_role)",
+        "sales_review_demo_version に p_image_confirmations (drop して同じ grant で作り直す): 承認では版の ai_concept_internal の画像とちょうど一致、sha は画像の行とファイルの行の両方と一致、それ以外の判定では空",
+        "承認ごとに新しい行 (前の判定・版から持ち越さない)",
+        "196d-5 の form と action が確認を渡す",
+        "統合と security audit のテスト"
+      ],
+      "required_tests": [
+        "統合 (ローカル Supabase): demo-versions / demo-review / db-security-audit",
+        "unit",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations (1 つ)",
+        "lib/admin/demo-review.ts",
+        "tests/**",
+        "scripts/staging/lib.mjs (SECURITY_CHECKS の追加だけ)",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
+      ],
+      "note": "設計は .ai/reviews/DEV-196d.md の「Low (c) に要る DB の変更」。"
+    },
+    {
+      "id": "DEV-196m",
+      "title": "取り下げの理由と急ぎの取り消しを監査に記録",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196l"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー決定 2026-11-11 の 3。急ぎの取り消しは共有をすぐ止め、新しい送信を禁じる。送信の後の記録の道は安全に保つ",
+      "acceptance_criteria": [
+        "migration 1 つ: 取り下げに固定の理由の符号 (withdrawn_code、trigger の許す列を更新)、取り消しに急ぎの印 (revoke_urgent)",
+        "急ぎの取り消しで共有が止まり新しい送信が禁じられることを DB のテストで固定 (版での共有の switch を後で有効にした場合も)",
+        "取り消しの後も DEV-195/197 の送信の後の記録が動くテスト (すでに起きた送信を記録)",
+        "UI: 取り下げの理由の欄、急ぎの取り消しの記録"
+      ],
+      "required_tests": [
+        "統合 (ローカル Supabase)",
+        "unit",
+        "e2e demo-lifecycle",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations (1 つ)",
+        "lib/admin/demo-lifecycle.ts",
+        "components/admin/demo/**",
+        "tests/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
+      ],
+      "note": ""
+    },
+    {
+      "id": "DEV-196n",
+      "title": "承認版の取り下げ・取り消しの後の送信の制御 (React のデモへ自動で戻らない)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196m"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー決定 2026-11-11 の 1。承認版の取り下げ・取り消しの後は新しい送信を止め、以前の送信承認は二度と有効にならない。React のデモを使うには管理者の明示の切り替えと新しい送信承認が要る。承認版を持ったことのない店は今のまま",
+      "acceptance_criteria": [
+        "migration 1 つ: sales_demo_version(d) の hash に demo の epoch (承認・取り下げ・取り消し・切り替えで増える) を入れ、以前の承認は二度と current にならない",
+        "明示の管理者の操作「React デモに戻す」(2 段・理由・監査) で React の道を戻す。送信には新しい送信承認が要る",
+        "承認版を持ったことのない demo は今のまま (既存の DEV-195/197 のテストを変えずに通す)",
+        "取り消した送信済みの版の共有は 404",
+        "196d-6 の画面の文言と今日の画面の説明を新しい事実に"
+      ],
+      "required_tests": [
+        "統合 (ローカル Supabase): send-approval / mark-sent / demo-versions / demo-lifecycle",
+        "e2e",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations (1 つ)",
+        "lib/admin/**",
+        "lib/sales/demo-version/**",
+        "components/admin/**",
+        "app/admin/sales/**",
+        "tests/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)",
+        "オーナーの決定を超える Protected Scope の仕様変更 (止まって報告)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
+      ],
+      "note": ""
+    },
+    {
+      "id": "DEV-196e-1",
+      "title": "店舗デモの版のアップロードの API (設計 B: begin / put / finalize)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196n"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー決定 2026-11-11 の 6。begin / finalize をローカルの DB に実装し、生成時の事実と取り込み時の事実を比べ (DEV-196c Low b)、server がファイルの hash・形式・安全・画像の権利を検め直す。すべて通るまで本物の版にしない",
+      "acceptance_criteria": [
+        "migration 1 つ: begin が 'uploading' の版 (server が決める prefix、15 分の upload token は sha256 だけ保存、生成時の事実の hash) を作り、finalize が server の検査の後に draft か rejected へ",
+        "route /api/internal/sales-design/demo-versions (begin / put / finalize): bridge token の認証、旗で 503、厳格な schema、1 ファイル 4MiB まで、Storage への書き込みは server の service role だけ、再 hash・checkArtifactHtml・画像の頭と形式・既存の規則での権利、生成時の事実 = 取り込み時の事実でなければ拒否",
+        "冪等: 同じ job と bundle は replay、衝突は拒否、同じファイルを同じ sha で二度 put は replayed、違う sha は拒否",
+        "テスト: 途中の失敗・重複の登録・retry/replay・不完全なアップロード (finalize が拒否)・upload token や 'uploading' の期限切れと古い行の後始末 (object を取り返せない形では消さない)・大きすぎ・違う demo / job・manifest に無いファイル・hash の違い"
+      ],
+      "required_tests": [
+        "統合 (ローカル Supabase、Storage あり)",
+        "unit",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations (1 つ)",
+        "app/api/internal/sales-design/demo-versions/**",
+        "lib/**",
+        "tests/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)",
+        "WSL のコード (DEV-196e-2)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
+      ],
+      "note": ""
+    },
+    {
+      "id": "DEV-196p",
+      "title": "copy.json の事実の行と創作の見出しの照合 (共有の前に必須)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196e-1"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "共有 (DEV-196g) の前に必ずすること (オーナー決定 2026-11-11)。copy record (copy.json) を保存し、頁の文を事実の行と創作の見出しに分けて照合する。今は DEV-196c が copy record を保存していない (DEV-196d-4 の記録)",
+      "acceptance_criteria": [
+        "copy record を保存し (DB / manifest の変更は別の承認)、頁の見える文を copy record の行と照合、事実の行は事実パックと一致",
+        "DEV-196g の前に done"
+      ],
+      "required_tests": [
+        "統合と unit",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "(承認の後に決める)"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)",
+        "DB / manifest の変更 (copy record の保存)"
+      ],
+      "note": "DEV-196g (共有) の前に必須。"
+    },
+    {
+      "id": "DEV-196q",
+      "title": "構造の比較の結果 (structure findings) を保存する (共有の前に必須)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196e-1"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "共有 (DEV-196g) の前に必ずすること (オーナー決定 2026-11-11)。構造記述子の比較の結果 (StructureFindingInput: 成功例・他の店の承認版との近さ、汎用の骨格) を保存し、品質の判定の画面の 3・4 の横に参考として出す (DEV-196d-5 では保存されていないため出していない)",
+      "acceptance_criteria": [
+        "structure findings を保存し、テンプレート化の警告を参考として表示 (止めない)",
+        "DEV-196g の前に done"
+      ],
+      "required_tests": [
+        "統合と unit",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "(承認の後に決める)"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows (DEV-196o は別の builder)",
+        "package.json・lockfile",
+        "progress.md (feature branch で編集しない)"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)",
+        "DB の変更 (findings の保存)"
+      ],
+      "note": "DEV-196g (共有) の前に必須。"
     }
   ]
 }
