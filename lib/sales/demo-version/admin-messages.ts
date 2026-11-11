@@ -294,7 +294,7 @@ export const WITHDRAW_SEND_EFFECT_TEXT = `取り下げると、送信承認の�
 
 /** How many such unsent React-demo send approvals the shop has (an upper bound: unchanged ones only become current). */
 export function unsentLegacyApprovalsText(n: number): string | null {
-  return n > 0 ? `この店舗には、品質承認の前に承認した未送信の送信承認（React のデモ）が ${n} 件あります。` : null;
+  return n > 0 ? `この店舗には、品質承認の前に承認した未送信の送信承認（React のデモ）が ${n} 件あります（変わっていないものだけが再び有効になります）。` : null;
 }
 
 /**

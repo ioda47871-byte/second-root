@@ -303,3 +303,8 @@ branch `feature/dev-196d-6-withdraw-revoke` (`origin/develop` 11c44b7 から)。
 結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1269 件、統合の全体 27 files / 468 件、統合 `demo-lifecycle` 8 件 (2 回続けて)、e2e `demo-lifecycle`・`demo-versions-page` 14 件、lint・typecheck・check:secrets・build 合格。統合の file は他の file と同じく `beforeAll` で `resetSalesData` し、送信承認の宛先は毎回別にした (2 回目の実行で、前の実行の途中の run が `run_in_progress` で残ったため)。
 
 **以前の送信承認が再び有効になることは DEV-196c の DB の動き**であり、この PR は変えていない (画面はそれを正しく書いただけ)。coordinator が DEV-196f の決定として owner に上げる。
+
+### 196d-6 review round 2 (coordinator、差分 f6b0343 → 49da86c)
+
+L1・L2 は migration と照らしてすべての場合で直っていることを確認。新しい指摘なし: **C0 H0 M0 L0**。CI (49da86c) すべて green。merged (#251 → 355b642)。
+任意の nit (196d-7 の最初の commit で対応): 件数の文に「（変わっていないものだけが再び有効になります）」を足した (`unsentLegacyApprovalsText`、テストも更新)。
