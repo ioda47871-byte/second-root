@@ -85,7 +85,7 @@ test("flag on: the page's own headers — framed by nobody, may frame only 'self
   expect((await page.goto(`${on.origin}/admin/sales/demos/00000000-0000-4000-8000-000000000000`))?.status()).toBe(404);
 });
 
-test("flag on: version list, facts (missing → 未確認), rights, the approval warning; decisions and revokes start disabled", async ({ page }) => {
+test("preview flag only: version list, facts (missing → 未確認), rights, the approval warning; no write controls (DEV-196k)", async ({ page }) => {
   await login(page, on.origin);
   await page.goto(pageUrl(on.origin));
   await expect(page.getByRole("heading", { level: 1 })).toContainText("デモの版");
@@ -94,11 +94,11 @@ test("flag on: version list, facts (missing → 未確認), rights, the approval
   await expect(page.getByText("未確認").first()).toBeVisible();
   await expect(page.locator('[data-image="page/photos/hero-desktop.webp"]')).toHaveAttribute("data-rights", "owner_provided_internal");
   await expect(page.locator('[data-approval-warning="before"]')).toContainText("送信承認は止まります");
-  // DEV-196d-5 / 196d-6: nothing is written until the admin's own explicit action — every decision button starts
-  // disabled, and both revokes start disabled until a reason is chosen (and then ask again); no <form> but the logout
+  // DEV-196k: this server has the preview flag only — no decision, withdraw or revoke control at all, the fixed note
   await expect(page.locator("form")).toHaveCount(1);
-  for (const b of ["版を取り消す…", "急ぎで取り消す…"]) await expect(page.getByRole("button", { name: b })).toBeDisabled();
-  for (const b of ["品質承認", "修正を依頼", "却下"]) await expect(page.getByRole("button", { name: b, exact: true })).toBeDisabled();
+  await expect(page.locator("[data-review-form], [data-lifecycle]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /品質承認|修正を依頼|却下|取り消す|取り下げる/ })).toHaveCount(0);
+  await expect(page.locator("[data-review-disabled]")).toContainText("今は無効です");
 });
 
 test("the live frame is sandbox=\"\" exactly (no allow-same-origin, no allow, no srcdoc)", async ({ page }) => {

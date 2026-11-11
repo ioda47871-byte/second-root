@@ -12,7 +12,7 @@ import { createUser, db, makeAdmin, serviceClient, signedInClient } from "./help
 // sales_review_demo_version, on the LOCAL stack, as a signed-in admin. No object is read (runs in CI). Fictional
 // shops and example.com only.
 
-const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: randomBytes(32).toString("base64url") };
+const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_QUALITY_REVIEW_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: randomBytes(32).toString("base64url") };
 const ALL_OK = Object.fromEntries(QUALITY_CHECKLIST_ITEMS.map((k) => [k, "ok"]));
 let admin: SupabaseClient;
 let adminId: string;
@@ -67,6 +67,8 @@ describe("submitDemoReview (local stack, through sales_review_demo_version)", ()
   it("flag off and a non-admin: refused, nothing written", async () => {
     const v = await seed();
     expect((await submit(await input(v), admin, { ...ENV, SALES_DEMO_VERSIONS_ENABLED: "false" })).ok).toBe(false);
+    // DEV-196k: the preview flag alone (review flag off or not exactly "true") writes nothing
+    for (const review of [undefined, "false", "TRUE"]) expect((await submit(await input(v), admin, { ...ENV, SALES_DEMO_QUALITY_REVIEW_ENABLED: review })).ok, String(review)).toBe(false);
     expect((await submit(await input(v), outsider)).ok).toBe(false); // RLS: the outsider sees no shop
     expect(await reviews(v)).toEqual([]);
     expect(await status(v)).toBe("draft");

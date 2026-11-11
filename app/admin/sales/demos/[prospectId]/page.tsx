@@ -12,8 +12,8 @@ import VersionNotices from "@/components/admin/demo/VersionNotices";
 import styles from "@/components/admin/demo/demo.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
 import { loadDemoVersionsPage, type PreviewUnavailable } from "@/lib/admin/demo-versions";
-import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL } from "@/lib/sales/demo-version/admin-messages";
-import { demoVersionsEnabled } from "@/lib/sales/demo-version/flags";
+import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, QUALITY_REVIEW_DISABLED_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import { demoQualityReviewEnabled, demoVersionsEnabled } from "@/lib/sales/demo-version/flags";
 import { VIEW_TOKEN_TTL_SECONDS } from "@/lib/sales/demo-version/view-token";
 
 // DEV-196d-3 (spec §6.1・§7.2・§8.1・§9): the read-only admin page of a shop's demo versions — the lineage, the
@@ -37,6 +37,8 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
   const wanted = typeof sp.v === "string" && UUID.test(sp.v) ? sp.v : null;
 
   const now = new Date();
+  // DEV-196k: the quality-review writes have their own flag; without it this page is preview only (no forms)
+  const reviewEnabled = demoQualityReviewEnabled(process.env);
   const data = await loadDemoVersionsPage(prospectId, { env: process.env, now });
   if (data.kind === "not_found") notFound();
   if (data.kind === "error") {
@@ -124,7 +126,7 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
                 frameTitle={`v${selected.versionNo} の頁（sandbox）`}
                 review={
                   // a decision is offered only when the database would take one (the server re-checks everything)
-                  selected.reviewBlockers.length === 0
+                  reviewEnabled && selected.reviewBlockers.length === 0
                     ? {
                         id: selected.id,
                         versionNo: selected.versionNo,
@@ -144,7 +146,12 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
         </section>
       )}
 
-      {selected && !selected.revoked && (selected.revocable || selected.activeApproval) && (
+      {selected && !selected.revoked && !reviewEnabled && (selected.revocable || selected.activeApproval || selected.reviewBlockers.length === 0) && (
+        <p className={styles.note} role="status" data-review-disabled="">
+          {QUALITY_REVIEW_DISABLED_TEXT}
+        </p>
+      )}
+      {selected && !selected.revoked && reviewEnabled && (selected.revocable || selected.activeApproval) && (
         <VersionLifecycle
           prospectId={data.prospectId}
           version={{

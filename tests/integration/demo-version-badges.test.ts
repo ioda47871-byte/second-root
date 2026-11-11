@@ -11,7 +11,7 @@ import { createUser, db, makeAdmin, serviceClient, signedInClient } from "./help
 // DEV-196d-7: the Today screen's demo version badges — one request for every shop on the page, through the admin's
 // own session (RLS), no service role. Runs in CI (no object is read). Fictional shops and example.com only.
 
-const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: randomBytes(32).toString("base64url") };
+const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_QUALITY_REVIEW_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: randomBytes(32).toString("base64url") };
 const ALL_OK = Object.fromEntries(QUALITY_CHECKLIST_ITEMS.map((k) => [k, "ok"]));
 let admin: SupabaseClient;
 let outsider: SupabaseClient;

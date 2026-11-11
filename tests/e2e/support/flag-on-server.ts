@@ -6,9 +6,16 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 export type FlagOnServer = { origin: string; stop: () => void };
 
-export async function startFlagOnServer(port: number, key: Buffer): Promise<FlagOnServer> {
+/**
+ * `review`: also SALES_DEMO_QUALITY_REVIEW_ENABLED (DEV-196k: the quality-review writes have their own flag; without
+ * it the server is preview only).
+ */
+export async function startFlagOnServer(port: number, key: Buffer, o: { review?: boolean } = {}): Promise<FlagOnServer> {
+  const env: NodeJS.ProcessEnv = { ...process.env, SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: key.toString("base64url") };
+  if (o.review) env.SALES_DEMO_QUALITY_REVIEW_ENABLED = "true";
+  else delete env.SALES_DEMO_QUALITY_REVIEW_ENABLED;
   const child: ChildProcess = spawn("npm", ["run", "start", "--", "--port", String(port)], {
-    env: { ...process.env, SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: key.toString("base64url") },
+    env,
     stdio: "ignore",
     detached: true,
   });

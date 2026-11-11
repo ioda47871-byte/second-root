@@ -17,7 +17,7 @@ import { approve as approveSend, candidate, createUser, db, makeAdmin, resetSale
 // route's object read is injected in this test), so everything runs in CI. Fictional shops and example.com only.
 
 const KEY = randomBytes(32);
-const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY.toString("base64url") };
+const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_QUALITY_REVIEW_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY.toString("base64url") };
 const ALL_OK = Object.fromEntries(QUALITY_CHECKLIST_ITEMS.map((k) => [k, "ok"]));
 let admin: SupabaseClient;
 let adminId: string;
@@ -94,6 +94,7 @@ describe("withdraw a quality approval", () => {
     const ok = { prospectId: v.prospectId, versionId: v.versionId, reviewId, bundleSha256: await bundle(v), confirmed: true };
     const cases: Array<[string, unknown, ReturnType<typeof deps>]> = [
       ["flag off", ok, deps(admin, { ...ENV, SALES_DEMO_VERSIONS_ENABLED: undefined })],
+      ["preview only (DEV-196k)", ok, deps(admin, { ...ENV, SALES_DEMO_QUALITY_REVIEW_ENABLED: undefined })],
       ["outsider", ok, deps(outsider)],
       ["stale", { ...ok, bundleSha256: "0".repeat(64) }, deps()],
       ["other review", { ...ok, reviewId: "00000000-0000-4000-8000-000000000999" }, deps()],

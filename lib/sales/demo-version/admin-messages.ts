@@ -352,6 +352,10 @@ export const TODAY_SEND_STOP_TITLE = "この店舗の送信承認は、デモの
 /** Today does not read the shop's current facts: the facts check is left to the version page. */
 export const TODAY_FACTS_NOT_CHECKED = "店舗の事実が変わったかどうかは、ここでは確かめていません（版の頁で確認できます）。";
 
+/** DEV-196k: the quality-review writes are off (preview only). Shown instead of the forms, and as the refusal. */
+export const QUALITY_REVIEW_DISABLED_TEXT =
+  "品質の判定・取り下げ・取り消しは、今は無効です（表示だけ）。有効にするには設定が要ります。";
+
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";
 export const TOKEN_EXPIRED_TEXT = "表示期限が切れました";

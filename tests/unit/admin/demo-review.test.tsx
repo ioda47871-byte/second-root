@@ -201,7 +201,7 @@ const { submitDemoReview } = await import("@/lib/admin/demo-review");
 const { reviewDemoVersion } = await import("@/app/admin/sales/_actions/demo-versions");
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
-const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY };
+const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_QUALITY_REVIEW_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY };
 const submit = (raw: unknown, env: Record<string, string | undefined> = ENV, client = fakeClient()) =>
   submitDemoReview(raw, { env, now: NOW, client: client as never, factsSha256: async () => FACTS });
 
@@ -255,6 +255,7 @@ describe("reviewDemoVersion (server action)", () => {
   });
   it("a non-admin is refused (requireAdmin throws), nothing written", async () => {
     vi.stubEnv("SALES_DEMO_VERSIONS_ENABLED", "true");
+    vi.stubEnv("SALES_DEMO_QUALITY_REVIEW_ENABLED", "true");
     vi.stubEnv("SALES_DEMO_VIEW_SIGNING_KEY", KEY);
     auth.admin = false;
     await expect(reviewDemoVersion(input())).rejects.toThrow("forbidden");
