@@ -316,10 +316,24 @@
 }
 
 /* --- compare (DEV-196d-4) --- */
+/* side by side from 700px; on a phone the two renders stack (each still in its own synced scroll box) */
 .compareSide {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.compareSide .scroll {
+  height: 45vh;
+}
+
+@media (min-width: 700px) {
+  .compareSide {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .compareSide .scroll {
+    height: 75vh;
+  }
 }
 
 .table {
