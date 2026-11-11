@@ -1,6 +1,8 @@
 /**
  * DEV-196d-3 (spec §7.4, MVP_SPEC §7): the shop's verified facts as stored for the demo, so the admin can check the
- * version against them. A missing fact is shown as 未確認 — never filled in. Email addresses are never shown. Whether
+ * version against them. A missing fact is shown as 未確認 — never filled in. Email addresses are never shown: such a
+ * fact reads 「非表示（メールアドレスを含む）」 (it exists, it is just not shown), and a value cut at its display limit
+ * ends with 「…（以下略）」. Whether
  * the version was made from these same facts is shown as same / changed / unknown (unknown never reads as same).
  */
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
@@ -10,30 +12,47 @@ import styles from "./demo.module.css";
 
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 
-function text(value: unknown, max: number): string | null {
-  if (typeof value !== "string") return null;
-  const t = value.trim();
-  return !t || EMAIL.test(t) ? null : t.slice(0, max);
-}
+/** Review of #248 L2: a stored fact that holds an email address is hidden — which is not the same as unconfirmed. */
+export const FACT_HIDDEN_EMAIL = "非表示（メールアドレスを含む）";
+/** …and a value cut at its display limit says so, so it never reads as the whole fact. */
+export const FACT_TRUNCATED = "…（以下略）";
 
-export type FactRow = { label: string; value: string | null };
+export type FactRow = { label: string; value: string | null; hidden: "email" | null };
+
+type Text = { value: string | null; hidden: "email" | null };
+
+function text(value: unknown, max: number): Text {
+  if (typeof value !== "string") return { value: null, hidden: null };
+  const t = value.trim();
+  if (!t) return { value: null, hidden: null };
+  if (EMAIL.test(t)) return { value: null, hidden: "email" };
+  return { value: t.length > max ? `${t.slice(0, max)}${FACT_TRUNCATED}` : t, hidden: null };
+}
 
 /** The facts the demo may show, from sales_demos.content. Pure. */
 export function demoFacts(content: unknown): FactRow[] {
   const c = content && typeof content === "object" && !Array.isArray(content) ? (content as Record<string, unknown>) : {};
   const category = typeof c.category === "string" && Object.hasOwn(CATEGORY_LABEL, c.category) ? CATEGORY_LABEL[c.category as keyof typeof CATEGORY_LABEL] : null;
-  const menu = Array.isArray(c.menu_items) ? c.menu_items.map((m) => text(m, 100)).filter((m): m is string => m !== null).slice(0, 12) : [];
+  const items = Array.isArray(c.menu_items) ? c.menu_items.map((m) => text(m, 100)) : [];
+  const shown = items.filter((m) => m.value !== null).map((m) => m.value!);
+  const menuHidden = items.some((m) => m.hidden === "email");
+  const menu = shown.length > 12 ? `${shown.slice(0, 12).join("・")}${FACT_TRUNCATED}` : shown.join("・");
+  const row = (label: string, t: Text): FactRow => ({ label, ...t });
   return [
-    { label: "店名", value: text(c.name, 200) },
-    { label: "業種", value: category },
-    { label: "区", value: text(c.ward, 20) },
-    { label: "住所", value: text(c.address, 300) },
-    { label: "営業時間", value: text(c.hours, 500) },
-    { label: "定休日", value: text(c.closed_days, 500) },
-    { label: "アクセス", value: text(c.access, 500) },
-    { label: "電話", value: text(c.phone, 30) },
-    { label: "メニュー", value: menu.length ? menu.join("・") : null },
-    { label: "紹介文", value: text(c.description, 500) },
+    row("店名", text(c.name, 200)),
+    row("業種", { value: category, hidden: null }),
+    row("区", text(c.ward, 20)),
+    row("住所", text(c.address, 300)),
+    row("営業時間", text(c.hours, 500)),
+    row("定休日", text(c.closed_days, 500)),
+    row("アクセス", text(c.access, 500)),
+    row("電話", text(c.phone, 30)),
+    {
+      label: "メニュー",
+      value: menu ? (menuHidden ? `${menu}（メールアドレスを含む項目は非表示）` : menu) : null,
+      hidden: !menu && menuHidden ? "email" : null,
+    },
+    row("紹介文", text(c.description, 500)),
   ];
 }
 
@@ -59,7 +78,9 @@ export default function FactsPanel({ content, facts }: { content: unknown; facts
         {rows.map((r) => (
           <div key={r.label} style={{ display: "contents" }}>
             <dt>{r.label}</dt>
-            <dd className={r.value === null ? styles.unconfirmed : undefined}>{r.value ?? UNCONFIRMED}</dd>
+            <dd className={r.value === null && r.hidden === null ? styles.unconfirmed : undefined} data-fact-state={r.value !== null ? "shown" : r.hidden ? "hidden" : "unconfirmed"}>
+              {r.value ?? (r.hidden === "email" ? FACT_HIDDEN_EMAIL : UNCONFIRMED)}
+            </dd>
           </div>
         ))}
       </dl>

@@ -35,7 +35,8 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
   const sp = await searchParams;
   const wanted = typeof sp.v === "string" && UUID.test(sp.v) ? sp.v : null;
 
-  const data = await loadDemoVersionsPage(prospectId, { env: process.env, now: new Date() });
+  const now = new Date();
+  const data = await loadDemoVersionsPage(prospectId, { env: process.env, now });
   if (data.kind === "not_found") notFound();
   if (data.kind === "error") {
     return (
@@ -80,7 +81,7 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
           <h2 id="versions-h" className={styles.h2}>
             版
           </h2>
-          <VersionList view={view} prospectId={data.prospectId} selectedId={selected?.id ?? null} />
+          <VersionList view={view} prospectId={data.prospectId} selectedId={selected?.id ?? null} now={now} />
           {data.truncated && <p className={styles.note}>版が多いため、新しい 100 件だけを表示しています。</p>}
         </section>
       )}

@@ -133,3 +133,13 @@ branch `feature/dev-196d-3-preview-page` (`origin/develop` 59260b9 から)。DB�
   5. client へは出さない: view model が same / changed / unknown に変える。
   6. どんな失敗 (誤り・例外・sha256 でない値) も「不明」で、承認は FACTS_UNKNOWN で止まる (`readFactsSafely`)。
   テスト (`tests/unit/admin/demo-versions-page.test.tsx`、3 件): 旗の無効・prospect が無い (RLS)・demo が無い・demo の誤り・版の誤りでは一度も呼ばれず、正常なときに 1 回だけその demo の id で呼ばれる。例外・null・sha256 でない値・大文字は不明で承認が止まる。読み出した hash は頁のデータのどこにも入らない。統合 (`tests/integration/demo-versions-page.test.ts`) で、本物の computed field の値が ingest の値と一致することを確かめている。
+
+### 196d-3 review round 1 (coordinator の独立レビュー、5ef01a5: C0 H0 M0 L2 + nit) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (承認) | 「最後まで表示しました」の sentinel を mount 時から見ていた。描画画像が 404 (token の期限切れ・object なし) だと画像が alt の文に縮み、sentinel がすぐ見えて「見た」になる。196d-5 はこれで承認を許す | 画像が読み込まれ、**natural の幅と高さが manifest の値とちょうど一致したとき**にだけ見始める (`data-image="ok"`)。`onError`・大きさの違いは `broken` にして「見た」を戻し、「描画画像を表示できませんでした（表示期限切れの可能性…再読み込み）」を出す。src が変わる (token・版) と component ごと作り直す (`key={r.src}`)。hydration の前に読み込みが終わっていた画像も mount の後に一度確かめる | e2e「review round 1 L1」(**Storage なしで CI でも走る**): PC の描画を 404、SP を大きさの違う本物の WebP にして、枠を最下まで scroll し sentinel が枠の中に見えていても `data-viewed="false"` のまま、表示できない旨が出る。unit: server の markup は `loading`、見始める条件・`onError` の戻し・src の key を固定 |
+| L2 (正確さ) | email を含む事実を 未確認 と表示していた (未確認ではない) | 固定の別の文「非表示（メールアドレスを含む）」(`data-fact-state="hidden"`、未確認の赤ではない)。上限で切った値には「…（以下略）」。メニューは email を含む項目を「（メールアドレスを含む項目は非表示）」と添え、13 件以上は「…（以下略）」 | unit「review round 1 L2」(電話の email、600 字の紹介文、ちょうど上限は切らない、未確認との区別、メニューの 2 通り) |
+| nit | 文書は「取り消し・期限切れはリンクなし」だが全部リンクしていた。`expires_at` を過ぎた下書きは灰色にならなかった | 文書どおりにした: 取り消し、または期限切れ (状態・`expires_at`・読めない `expires_at`) の版は灰色でリンクなし (`versionGone`)、「表示しません」。頁から `now` を渡す | unit「review round 1 nit」(5 通り) |
+
+結果 (2026-11-11): unit `tests/unit/admin` 25 件、`tests/unit/admin tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 1220 件合格。e2e `demo-versions-page` 8 件 (Storage あり 8 passed / 止めて 6 passed・2 skipped、L1 の検査は止めても走る)。lint・typecheck・check:secrets・build 合格。

@@ -5,6 +5,7 @@ import pg from "pg";
 import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
 import { startFlagOnServer, type FlagOnServer } from "./support/flag-on-server";
 import { DEMO_VERSIONS_BUCKET, seedDemoVersion, storageStatus, type SeededVersion } from "../support/seed-demo-version";
+import { solidWebp } from "../support/solid-webp";
 
 // DEV-196d-3 (spec §6.1・§6.7・§6.8・§7.2): the read-only admin demo version page at PC 1440 and SP 390.
 //
@@ -157,6 +158,30 @@ for (const vp of [
     expect(await noPageOverflow(page)).toBeLessThanOrEqual(0);
   });
 }
+
+test("review round 1 L1: a render that 404s (expired token, no object) or has the wrong size never counts as viewed — runs without Storage", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, on.origin);
+  // the PC render answers 404 (what CI and an expired token give); the SP render answers a real image of the wrong size
+  await page.route(/\/renders\/desktop_1440\.webp$/, (route) => route.fulfill({ status: 404, contentType: "text/plain", body: "Not Found" }));
+  await page.route(/\/renders\/mobile_390\.webp$/, (route) => route.fulfill({ status: 200, contentType: "image/webp", body: Buffer.from(solidWebp(390, 120)) }));
+  await page.goto(pageUrl(on.origin));
+  for (const viewport of ["desktop_1440", "mobile_390"]) {
+    const figure = page.locator(`[data-render="${viewport}"]`);
+    await expect(figure).toHaveAttribute("data-image", "broken");
+    const box = page.locator(`[data-scroll="${viewport}"]`);
+    await box.evaluate((b) => b.scrollTo(0, b.scrollHeight));
+    // the collapsed image puts the sentinel in view at once: it must still not count
+    expect(await page.locator(`[data-sentinel="${viewport}"]`).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const b = el.parentElement!.getBoundingClientRect();
+      return r.top >= b.top && r.bottom <= b.bottom + 1;
+    })).toBe(true);
+    await page.waitForTimeout(300);
+    await expect(figure).toHaveAttribute("data-viewed", "false");
+    await expect(figure.getByRole("status")).toContainText("描画画像を表示できませんでした");
+  }
+});
 
 test("SP 390: the page structure fits without horizontal page scroll even without Storage", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

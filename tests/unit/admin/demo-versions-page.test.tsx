@@ -2,12 +2,12 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import FactsPanel, { demoFacts } from "@/components/admin/demo/FactsPanel";
+import FactsPanel, { demoFacts, FACT_HIDDEN_EMAIL, FACT_TRUNCATED } from "@/components/admin/demo/FactsPanel";
 import LiveFrame from "@/components/admin/demo/LiveFrame";
 import PreviewTabs from "@/components/admin/demo/PreviewTabs";
 import RenderPane from "@/components/admin/demo/RenderPane";
 import RightsPanel from "@/components/admin/demo/RightsPanel";
-import VersionList from "@/components/admin/demo/VersionList";
+import VersionList, { versionGone } from "@/components/admin/demo/VersionList";
 import VersionNotices from "@/components/admin/demo/VersionNotices";
 import { AI_CONCEPT_BADGE, APPROVAL_STOPS_SENDING_BEFORE, RIGHTS_BLOCKED_LABEL, SEND_BLOCK_LABEL } from "@/lib/sales/demo-version/admin-messages";
 import { outerFrameSrc } from "@/lib/sales/demo-version/csp";
@@ -71,6 +71,15 @@ describe("RenderPane: full pages, nothing cropped, a sentinel per render", () =>
     }
     expect(html.match(/最後まで見ていません/g)).toHaveLength(2);
   });
+  it("review round 1 L1: the sentinel is not watched before the image loaded at the manifest size (server markup: loading)", () => {
+    expect(html.match(/data-image="loading"/g)).toHaveLength(2);
+    const src = readFileSync("components/admin/demo/RenderPane.tsx", "utf8");
+    // watching starts only once the image is "ok" (loaded with exactly the expected natural size); errors reset it
+    expect(src).toMatch(/if \(image !== "ok" \|\| viewed/);
+    expect(src).toMatch(/el\.naturalWidth === item\.width && el\.naturalHeight === item\.height/);
+    expect(src).toMatch(/onError=\{\(\) => \{\s*setImage\("broken"\);\s*setViewed\(false\);/);
+    expect(src).toMatch(/<Render key=\{r\.src\}/);
+  });
 });
 
 describe("LiveFrame and PreviewTabs", () => {
@@ -98,12 +107,30 @@ describe("FactsPanel: missing facts are 未確認, never filled in", () => {
     const rows = demoFacts({ name: "架空の店", category: "bakery", hours: "8:00〜17:00", phone: "info@example.com", menu_items: ["食パン", 3, "  "] });
     expect(rows.find((r) => r.label === "店名")?.value).toBe("架空の店");
     expect(rows.find((r) => r.label === "業種")?.value).toBe("パン屋");
-    expect(rows.find((r) => r.label === "電話")?.value).toBeNull();
+    expect(rows.find((r) => r.label === "電話")).toMatchObject({ value: null, hidden: "email" });
     expect(rows.find((r) => r.label === "メニュー")?.value).toBe("食パン");
     const html = renderToStaticMarkup(<FactsPanel content={{ name: "架空の店" }} facts="unknown" />);
     expect(html.match(/未確認/g)!.length).toBeGreaterThanOrEqual(8);
     expect(html).toContain("同じとは扱いません");
     expect(renderToStaticMarkup(<FactsPanel content={null} facts="changed" />)).toContain("事実が変わりました");
+  });
+  it("review round 1 L2: a fact holding an email is 非表示 (not 未確認); a cut value says it was cut", () => {
+    const html = renderToStaticMarkup(<FactsPanel content={{ name: "架空の店", phone: "info@example.com", description: "あ".repeat(600), address: "住所" }} facts="same" />);
+    const dd = (label: string) => html.split(`<dt>${label}</dt>`)[1]!.match(/<dd[^>]*>([\s\S]*?)<\/dd>/)!;
+    expect(dd("電話")[1]).toBe(FACT_HIDDEN_EMAIL);
+    expect(dd("電話")[0]).toContain('data-fact-state="hidden"');
+    expect(dd("電話")[0]).not.toContain("unconfirmed");
+    expect(dd("紹介文")[1]).toBe(`${"あ".repeat(500)}${FACT_TRUNCATED}`);
+    expect(dd("住所")[1]).toBe("住所");
+    expect(dd("定休日")[1]).toBe("未確認");
+    expect(dd("定休日")[0]).toContain('data-fact-state="unconfirmed"');
+    // exactly at the limit: not cut
+    expect(demoFacts({ hours: "x".repeat(500) }).find((r) => r.label === "営業時間")?.value).toBe("x".repeat(500));
+    // menu: an email item is hidden and said so; more than 12 items are marked as cut
+    const menu = demoFacts({ menu_items: ["a", "b@example.com"] }).find((r) => r.label === "メニュー")!;
+    expect(menu.value).toBe("a（メールアドレスを含む項目は非表示）");
+    expect(demoFacts({ menu_items: ["b@example.com"] }).find((r) => r.label === "メニュー")).toMatchObject({ value: null, hidden: "email" });
+    expect(demoFacts({ menu_items: Array.from({ length: 13 }, (_, i) => `m${i}`) }).find((r) => r.label === "メニュー")!.value).toMatch(new RegExp(`m11${FACT_TRUNCATED.replace(/[()…]/g, "\\$&")}$`));
   });
 });
 
@@ -151,12 +178,29 @@ describe("VersionNotices and VersionList (display only)", () => {
   });
   it("lists versions in lineage order with the selected one marked; links stay on this page", () => {
     const v = view({ versions: [version(1), version(2, { parent_version_id: id(1) }), version(3, { status: "revoked", revoked_at: "2026-11-10T00:00:00Z" })], files: [] });
-    const html = renderToStaticMarkup(<VersionList view={v} prospectId={PROSPECT} selectedId={id(2)} />);
+    const html = renderToStaticMarkup(<VersionList view={v} prospectId={PROSPECT} selectedId={id(2)} now={NOW} />);
     expect(html.indexOf('data-version="1"')).toBeLessThan(html.indexOf('data-version="2"'));
     const current = html.match(/<a[^>]*aria-current="page"[^>]*>/g)!;
     expect(current).toHaveLength(1);
     expect(current[0]).toContain(`href="/admin/sales/demos/${PROSPECT}?v=${id(2)}"`);
     expect(html).toContain("取り消し済み");
+  });
+  it("review round 1 nit: revoked and expired versions (status, expires_at or an unreadable one) have no link and are greyed", () => {
+    const v = view({
+      versions: [version(1), version(2, { status: "revoked", revoked_at: "2026-11-10T00:00:00Z" }), version(3, { expires_at: "2026-11-01T00:00:00Z" }), version(4, { expires_at: "soon" }), version(5, { status: "expired" })],
+      files: [],
+    });
+    const html = renderToStaticMarkup(<VersionList view={v} prospectId={PROSPECT} selectedId={null} now={NOW} />);
+    const item = (n: number) => html.match(new RegExp(`<li[^>]*data-version="${n}"[\\s\\S]*?</li>`))![0];
+    expect(item(1)).toContain("<a ");
+    expect(item(1)).toContain('data-gone="false"');
+    for (const n of [2, 3, 4, 5]) {
+      expect(item(n), String(n)).not.toContain("<a ");
+      expect(item(n), String(n)).toContain('data-gone="true"');
+      expect(item(n), String(n)).toContain("versionGone");
+    }
+    expect(versionGone({ revoked: false, status: "draft", expiresAt: NOW.toISOString() }, NOW)).toBe(true);
+    expect(versionGone({ revoked: false, status: "draft", expiresAt: "2027-01-01T00:00:00Z" }, NOW)).toBe(false);
   });
 });
 
