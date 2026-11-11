@@ -3,10 +3,12 @@
  * a prospect and demo in the LOCAL database only, so the version page's facts panel and facts hash are 輪's real
  * fictional facts. Never real-shop data; never a hosted database (the connection string must be a local stack).
  *
- * The schema allows only bakery / baked_goods / cafe for sales_prospects.category and the matching template for
- * sales_demos.template (the React demo's categories). Those two columns therefore hold the placeholder "bakery" /
- * "bakery_v1"; the shop's facts — including category "bicycle_repair" — are in sales_demos.content, which the
- * version page and the facts hash read. The prospect has no outreach (it never appears on the Today screen).
+ * The prospect registry's schema is the sales MVP's: sales_prospects.category is bakery / baked_goods / cafe, the
+ * address must be in Nagoya (sales_prospects_nagoya), and sales_demos.template is a React template. Those registry
+ * columns therefore hold fixed, clearly-labelled placeholders (category "bakery", template "bakery_v1", the address
+ * RIN_REGISTRY_ADDRESS, no ward). The shop's facts — category "bicycle_repair", 「架空市架空区…」 — are in
+ * sales_demos.content, which the version page's facts panel and the facts hash read. The prospect has no outreach (it
+ * never appears on the Today screen) and is never sent to.
  */
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
@@ -14,6 +16,8 @@ import type pg from "pg";
 export type FactsPack = { schema: string; shop_id: string; facts: { id: string; key: string; value: string }[] };
 
 export const RIN_SHOP_ID = "fictional-bicycle-repair-wa";
+/** The registry row's address placeholder (the schema requires a Nagoya address; this is not a fact of 輪). */
+export const RIN_REGISTRY_ADDRESS = "愛知県名古屋市（登録用の仮の住所。架空の研究用の店 輪、実在しない）";
 /** fixed so the seed is idempotent */
 export const RIN_INSTAGRAM_HANDLE = "sr001_rin_fictional_local";
 
@@ -68,11 +72,11 @@ export async function seedRinShop(db: pg.Pool | pg.Client, pack: FactsPack): Pro
   const r = await db.query(
     `with p as (
        insert into public.sales_prospects (name, normalized_name, address, normalized_address, ward, category, website_status, instagram_url, instagram_handle, recommended_channel)
-       values ($1, $1, $2, $2, $3, 'bakery', 'not_found', $4, $5, 'instagram') returning id)
+       values ($1, $1, $2, $2, null, 'bakery', 'not_found', $3, $4, 'instagram') returning id)
      insert into public.sales_demos (prospect_id, public_token, template, content, expires_at)
-     select id, $6, 'bakery_v1', $7::jsonb, null from p
+     select id, $5, 'bakery_v1', $6::jsonb, null from p
      returning id as demo_id, prospect_id`,
-    [name, content.address, content.ward, `https://www.instagram.com/${RIN_INSTAGRAM_HANDLE}/`, RIN_INSTAGRAM_HANDLE, randomBytes(32).toString("base64url"), JSON.stringify(content)],
+    [name, RIN_REGISTRY_ADDRESS, `https://www.instagram.com/${RIN_INSTAGRAM_HANDLE}/`, RIN_INSTAGRAM_HANDLE, randomBytes(32).toString("base64url"), JSON.stringify(content)],
   );
   return { prospectId: r.rows[0].prospect_id as string, demoId: r.rows[0].demo_id as string, created: true };
 }
