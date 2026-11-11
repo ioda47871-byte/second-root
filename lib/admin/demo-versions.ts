@@ -59,6 +59,19 @@ async function currentFactsSha256(demoId: string): Promise<string | null> {
   }
 }
 
+/**
+ * The cheap gate the segment's layout runs BEFORE the page streams (a notFound() inside the loading boundary would
+ * answer 200; Next "loading.js › Status Codes"): the flag, the id's shape, and that the shop has a demo — through
+ * the admin's own session. true: render the page.
+ */
+export async function demoVersionsPageExists(prospectId: string, o: { env: Env; client?: Client }): Promise<boolean> {
+  if (!UUID.test(prospectId) || !demoVersionsConfig(o.env).enabled) return false;
+  const supabase = o.client ?? (await createAuthClient());
+  const { data, error } = await supabase.from("sales_demos").select("id").eq("prospect_id", prospectId).maybeSingle();
+  // an error is not "absent": the page then shows its error state
+  return error ? true : data !== null;
+}
+
 export async function loadDemoVersionsPage(
   prospectId: string,
   o: { env: Env; now: Date; client?: Client; factsSha256?: (demoId: string) => Promise<string | null> },
