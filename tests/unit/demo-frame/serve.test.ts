@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { demoFrameNotFound, serveDemoFrame, splitFramePath, type FrameFile, type FrameImage, type FrameRequest, type FrameStore, type FrameVersion } from "@/lib/demo-frame/serve";
+import { demoFrameNotFound, requestOrigin, serveDemoFrame, splitFramePath, type FrameFile, type FrameImage, type FrameRequest, type FrameStore, type FrameVersion } from "@/lib/demo-frame/serve";
 import { artifactResponseHeaders } from "@/lib/sales/demo-version/csp";
 import { sha256Hex } from "@/lib/sales/demo-version/manifest";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
@@ -321,5 +321,23 @@ describe("splitFramePath", () => {
     expect(splitFramePath("/demo-frame/a/tok/index.html")).toEqual({ token: "tok", urlPath: "index.html" });
     expect(splitFramePath("/demo-frame/a/tok/photos/x-desktop.webp")).toEqual({ token: "tok", urlPath: "photos/x-desktop.webp" });
     for (const p of ["/demo-frame/p/tok/index.html", "/demo-frame/a/tok", "/demo-frame/a//index.html", "/demo/a/tok/index.html", `/demo-frame/a/${"x".repeat(700)}/i`]) expect(splitFramePath(p), p).toBeNull();
+  });
+});
+
+describe("requestOrigin", () => {
+  it("is the Host the browser sent with the forwarded (or URL) protocol; anything odd is empty (→ 404)", () => {
+    expect(requestOrigin({ host: "127.0.0.1:3111", forwardedProto: null, urlProtocol: "http:" })).toBe("http://127.0.0.1:3111");
+    expect(requestOrigin({ host: "app.example.com", forwardedProto: "https", urlProtocol: "http:" })).toBe("https://app.example.com");
+    expect(requestOrigin({ host: "App.Example.com", forwardedProto: "https", urlProtocol: "https:" })).toBe("https://app.example.com");
+    for (const [host, forwardedProto] of [
+      [null, "https"],
+      ["", "https"],
+      ["evil.example/x", "https"],
+      ["a b", "https"],
+      ["user@host", "https"],
+      ["host", "https,http"],
+      ["host", "javascript"],
+      ["host", "ftp"],
+    ] as const) expect(requestOrigin({ host, forwardedProto, urlProtocol: "https:" }), `${host} ${forwardedProto}`).toBe("");
   });
 });

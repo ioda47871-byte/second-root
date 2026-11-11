@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { demoFrameNotFound, serveDemoFrame } from "@/lib/demo-frame/serve";
+import { demoFrameNotFound, requestOrigin, serveDemoFrame } from "@/lib/demo-frame/serve";
 import { supabaseFrameStore } from "@/lib/demo-frame/store";
 
 // DEV-196d-2 (spec §6.4): one file of one demo version for the admin preview, behind SALES_DEMO_VERSIONS_ENABLED
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       method: request.method,
       pathname: request.nextUrl.pathname,
       search: request.nextUrl.search,
-      origin: request.nextUrl.origin,
+      origin: requestOrigin({ host: request.headers.get("host"), forwardedProto: request.headers.get("x-forwarded-proto"), urlProtocol: request.nextUrl.protocol }),
       secFetchDest: request.headers.get("sec-fetch-dest"),
     },
     { env: process.env, now: new Date(), store: () => supabaseFrameStore() },

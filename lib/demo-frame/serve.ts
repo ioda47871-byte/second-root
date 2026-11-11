@@ -73,6 +73,20 @@ export type FrameRequest = {
 const PREFIX = "/demo-frame/a/";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * The origin the browser asked for: `Host` and the forwarded protocol (Vercel sets `x-forwarded-proto`; `next start`
+ * reports its own configured hostname in nextUrl, which can differ from what the browser used — e.g. localhost vs
+ * 127.0.0.1 — and would make `frame-ancestors` refuse the real parent). The value only shapes this one, uncached
+ * response; servingOrigin / normaliseOrigin still refuse anything that is not a plain https (or local http) origin.
+ * Returns "" when it cannot be told (→ 404).
+ */
+export function requestOrigin(o: { host: string | null; forwardedProto: string | null; urlProtocol: string }): string {
+  const proto = o.forwardedProto ?? o.urlProtocol.replace(/:$/, "");
+  if (proto !== "https" && proto !== "http") return "";
+  if (!o.host || !/^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(o.host)) return "";
+  return `${proto}://${o.host.toLowerCase()}`;
+}
+
 /** The token and the path after it, or null. Taken from the raw path, so an encoded "/" or "%" never gets through. */
 export function splitFramePath(pathname: string): { token: string; urlPath: string } | null {
   if (typeof pathname !== "string" || !pathname.startsWith(PREFIX) || pathname.length > 600) return null;
