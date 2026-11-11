@@ -45,7 +45,8 @@ async function main(): Promise<number> {
   let prospectId = prospectArg ?? null;
   let demoId: string;
   if (seedRin) {
-    const db = new pg.Client({ connectionString: assertLocalDbUrl(process.env.SUPABASE_DB_URL) });
+    // the explicit config of the host checked (never the raw string: nothing in it can redirect the connection)
+    const db = new pg.Client(assertLocalDbUrl(process.env.SUPABASE_DB_URL));
     await db.connect();
     try {
       const pack = JSON.parse(readFileSync(resolve(REPO, RIN_FACTS), "utf8")) as FactsPack;
@@ -70,6 +71,11 @@ main()
   .catch((e) => {
     if (e instanceof ImportError || e instanceof PackageError) {
       process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
+      process.exit(1);
+    }
+    const code = e instanceof Error ? /^DB_URL_[A-Z_]+/.exec(e.message)?.[0] : undefined;
+    if (code) {
+      process.stdout.write(`${JSON.stringify({ status: "FAIL", code })}\n`);
       process.exit(1);
     }
     process.stderr.write(`${e instanceof Error ? e.name : "error"}\n`);

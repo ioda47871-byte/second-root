@@ -100,8 +100,26 @@ describe("the import's rules (no network here)", () => {
     for (const bad of ["https://abc.supabase.co", "http://10.0.0.5:54321", "https://127.0.0.1:54321", "http://127.0.0.1.example.com", "http://user:pw@127.0.0.1:1", "", undefined]) {
       expect(() => assertLocalSupabaseUrl(bad), String(bad)).toThrow(/SUPABASE_URL/);
     }
-    expect(assertLocalDbUrl("postgresql://postgres:postgres@127.0.0.1:56422/postgres")).toContain("127.0.0.1");
-    for (const bad of ["postgresql://u:p@db.abc.supabase.co:5432/postgres", "postgres://u@10.1.1.1/x", "mysql://127.0.0.1/x"]) expect(() => assertLocalDbUrl(bad), bad).toThrow(/DB_URL/);
+    const noEnv = {};
+    expect(assertLocalDbUrl("postgresql://postgres:postgres@127.0.0.1:56422/postgres", noEnv)).toEqual({ host: "127.0.0.1", port: 56422, user: "postgres", password: "postgres", database: "postgres" });
+    expect(assertLocalDbUrl("postgres://u@localhost:5432/db", noEnv)).toMatchObject({ host: "localhost", port: 5432 });
+    for (const bad of ["postgresql://u:p@db.abc.supabase.co:5432/postgres", "postgres://u@10.1.1.1/x", "mysql://127.0.0.1/x", "", "not a url"]) expect(() => assertLocalDbUrl(bad, noEnv), bad).toThrow(/DB_URL/);
+  });
+  it("review of #255 L1: node-postgres's own host overrides cannot slip past (query, socket, IPv6, PG* env)", () => {
+    const noEnv = {};
+    for (const bad of [
+      "postgresql://postgres:postgres@127.0.0.1:54322/postgres?host=db.example.com",
+      "postgresql://postgres:postgres@127.0.0.1:54322/postgres?hostaddr=203.0.113.5",
+      "postgresql://postgres:postgres@127.0.0.1:54322/postgres?sslmode=disable",
+      "postgresql://postgres@127.0.0.1:54322/postgres#x",
+      "postgresql://postgres@%2Fvar%2Frun%2Fpostgresql/postgres",
+      "socket:/var/run/postgresql?db=postgres",
+      "postgresql:///postgres",
+      "postgresql://postgres@[::1]:54322/postgres",
+    ]) expect(() => assertLocalDbUrl(bad, noEnv), bad).toThrow(/DB_URL/);
+    for (const k of ["PGHOST", "PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE"]) {
+      expect(() => assertLocalDbUrl("postgresql://postgres@127.0.0.1:54322/postgres", { [k]: "db.example.com" }), k).toThrow(new RegExp(k));
+    }
   });
   it("the job id is derived from the bundle (a re-run replays the same version)", () => {
     const b = "a".repeat(64);
@@ -124,6 +142,7 @@ describe("RenderPane: a downscaled render says so and offers no 'actual size'", 
     expect(scaledRenderNote(286, 390)).toBe("縮小表示（実寸の約73%）。実寸は「生の頁」タブで確認できます。");
     expect(scaledRenderNote(1440, 1440)).toBeNull();
     expect(scaledRenderNote(0, 1440)).toBeNull();
+    expect(scaledRenderNote(1600, 1440)).toBeNull(); // wider than the viewport: no "縮小" claim
   });
   it("markup: the scaled PC has the note and no 実寸で見る; an unscaled PC keeps the toggle and no note", () => {
     const scaled = renderToStaticMarkup(

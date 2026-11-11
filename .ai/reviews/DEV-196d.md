@@ -391,3 +391,13 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 - unit `tests/unit/demo-version-package/package.test.tsx` (11 件): 実際の輪の大きさの縮小 (1102×4096・286×4096、短い頁は変えない、metadata なし)、PNG でないものの拒否、本物の d1-v9 の HTML / CSS が server と同じ検査を通る・worker_checks に元の大きさ、**決定的** (同じ入力で同じ bytes・manifest・bundle)、server が拒む頁 (script・外の URL) と描画の欠けを拒否 (緩めない)、リポジトリの中への書き出しの拒否・読み直しの検め直し・改ざんの拒否、ローカルでない URL / DB URL の拒否、job id、輪の content が事実パック、縮小の注記の % と markup (注記あり・「実寸で見る」なし / 縮小なしは今までどおり)。
 - 統合 `tests/integration/demo-version-package.test.ts` (5 件): 輪の seed の冪等、取り込み (manual_import・draft・job id・worker_checks・ファイルの行の大きさ)・再実行で二つ目の版なし・upload しない、保存された object が違えば上書きせず拒否、別の job の同じ bundle (`duplicate_bundle`) で既存の版、**本物の bucket** で upload・取り直し・照合 (storage の service が無いときだけ理由つきで skip)。DB の部分は CI でも走る (object は memory の store)。
 - 結果 (2026-11-11): unit (admin・demo-frame・demo-version-package・sales・ai-tasks・guardrails) 1309 件、統合の全体 29 files / 477 件、e2e の全体 152 passed / 34 skipped、lint・typecheck・check:secrets・build 合格。
+
+### DEV-196r review round 1 (coordinator の独立レビュー、68bd99f: C0 H0 M0 L2 + nit) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (安全) | `assertLocalDbUrl` は URL の hostname だけを見ていた。node-postgres は `?host=` を優先するので `postgresql://…@127.0.0.1:54322/postgres?host=db.example.com` が通り、リモートに繋がりうる | node-postgres 自身の parser (`pg-connection-string`、pg の依存として lockfile にある。package の変更なし) で読み、**解決した host** が 127.0.0.1 / localhost ちょうどであること、**query string と fragment は一切不可**、unix socket・IPv6 (`::1`) 不可、URL の host と parser の host が同じ、`PGHOST`・`PGHOSTADDR`・`PGSERVICE`・`PGSERVICEFILE` が設定されていたら拒否。戻り値は確かめた host の明示の設定で、import の script は生の文字列でなくその設定で接続する。拒否は `{"status":"FAIL","code":"DB_URL_NOT_LOCAL"}` | unit: `?host=`・`?hostaddr=`・ほかの query・fragment・socket の path (`%2Fvar%2Frun…`・`socket:`・host なし)・`[::1]`・4 つの PG* 環境変数で拒否、127.0.0.1 / localhost は受ける (設定の中身も)。script を `?host=` と `PGHOST` で起動して拒否されることも確かめた |
+| L2 (営業のデータ) | 架空の輪の registry の行が、登録できる本物の形の Instagram の handle と `recommended_channel = 'instagram'` を持っていた | schema を確かめた: `recommended_channel`・`instagram_url` / `instagram_handle` (対で null 可)・`public_email` はすべて null 可で、channel の check は null で通る。**連絡先を一切持たない** (Instagram・email・推奨の channel・website すべて null)。冪等の鍵は (normalized_address = 仮の住所、normalized_name = 店名)。outreach なし | 統合: 輪の行の連絡先がすべて null、outreach が 0 件 |
+| nit | `scaledRenderNote` が viewport より広い描画にも「縮小」と言いうる | 幅が viewport 以上なら何も言わない | unit (1600 / 1440 → null) |
+
+結果 (2026-11-11): unit (admin・demo-frame・demo-version-package・sales・ai-tasks・guardrails) 1310 件、統合 `demo-version-package` 5 件、import の script の実行 (取り込みと 2 つの拒否)、lint・typecheck・check:secrets・build 合格。

@@ -8,29 +8,47 @@
  * columns therefore hold fixed, clearly-labelled placeholders (category "bakery", template "bakery_v1", the address
  * RIN_REGISTRY_ADDRESS, no ward). The shop's facts — category "bicycle_repair", 「架空市架空区…」 — are in
  * sales_demos.content, which the version page's facts panel and the facts hash read. The prospect has no outreach (it
- * never appears on the Today screen) and is never sent to.
+ * never appears on the Today screen), has no contact (no Instagram, email or channel) and is never sent to.
  */
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
+import { parse as parseConnectionString } from "pg-connection-string";
 
 export type FactsPack = { schema: string; shop_id: string; facts: { id: string; key: string; value: string }[] };
 
 export const RIN_SHOP_ID = "fictional-bicycle-repair-wa";
 /** The registry row's address placeholder (the schema requires a Nagoya address; this is not a fact of 輪). */
 export const RIN_REGISTRY_ADDRESS = "愛知県名古屋市（登録用の仮の住所。架空の研究用の店 輪、実在しない）";
-/** fixed so the seed is idempotent */
-export const RIN_INSTAGRAM_HANDLE = "sr001_rin_fictional_local";
+/** The registry row's name, fixed so the seed is idempotent (with RIN_REGISTRY_ADDRESS). */
+export const RIN_REGISTRY_KEY = "SR-001";
 
-/** Only a local stack: postgres(ql)://…@127.0.0.1|localhost:<port>/… */
-export function assertLocalDbUrl(raw: string | undefined): string {
+/** Environment variables node-postgres would use for the host when a connection string leaves it out. */
+export const PG_HOST_ENV = ["PGHOST", "PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE"] as const;
+
+export type LocalDbConfig = { host: "127.0.0.1" | "localhost"; port: number; user?: string; password?: string; database?: string };
+
+/**
+ * Only a local stack (review of #255 L1). The string is read with node-postgres's own parser (pg-connection-string,
+ * pg's dependency), so a `?host=` / `?hostaddr=` / socket path cannot slip past: no query string or fragment at all,
+ * the parsed host must be exactly 127.0.0.1 or localhost (no IPv6, no unix socket), and none of the PG* host
+ * variables may be set. Returns an explicit config, so the client connects to exactly the host checked here.
+ */
+export function assertLocalDbUrl(raw: string | undefined, env: Readonly<Record<string, string | undefined>> = process.env): LocalDbConfig {
   let u: URL;
   try {
     u = new URL(raw ?? "");
   } catch {
     throw new Error("DB_URL_INVALID");
   }
-  if (!/^postgres(ql)?:$/.test(u.protocol) || !(u.hostname === "127.0.0.1" || u.hostname === "localhost")) throw new Error("DB_URL_NOT_LOCAL: only a local stack (127.0.0.1 / localhost) is allowed");
-  return raw!;
+  if (!/^postgres(ql)?:$/.test(u.protocol)) throw new Error("DB_URL_NOT_LOCAL: not a postgres URL");
+  if (u.search !== "" || u.hash !== "" || raw!.includes("?") || raw!.includes("#")) throw new Error("DB_URL_NOT_LOCAL: no query string or fragment is allowed");
+  for (const k of PG_HOST_ENV) if (env[k] !== undefined && env[k] !== "") throw new Error(`DB_URL_NOT_LOCAL: ${k} is set`);
+  const c = parseConnectionString(raw!);
+  if (c.host !== "127.0.0.1" && c.host !== "localhost") throw new Error("DB_URL_NOT_LOCAL: only a local stack (127.0.0.1 / localhost) is allowed");
+  if (u.hostname !== c.host) throw new Error("DB_URL_NOT_LOCAL: the host is ambiguous");
+  const port = Number(c.port ?? 5432);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("DB_URL_INVALID");
+  return { host: c.host, port, ...(c.user ? { user: c.user } : {}), ...(c.password ? { password: c.password } : {}), ...(c.database ? { database: c.database } : {}) };
 }
 
 /** The demo content from the facts pack: every fact, under the keys the version page reads. Pure. */
@@ -64,19 +82,21 @@ export async function seedRinShop(db: pg.Pool | pg.Client, pack: FactsPack): Pro
   const content = rinDemoContent(pack);
   const name = content.name as string;
   const found = await db.query(
-    "select p.id as prospect_id, d.id as demo_id from public.sales_prospects p join public.sales_demos d on d.prospect_id = p.id where p.instagram_handle = $1",
-    [RIN_INSTAGRAM_HANDLE],
+    "select p.id as prospect_id, d.id as demo_id from public.sales_prospects p join public.sales_demos d on d.prospect_id = p.id where p.normalized_address = $1 and p.normalized_name = $2",
+    [RIN_REGISTRY_ADDRESS, name],
   );
   if (found.rows[0]) return { prospectId: found.rows[0].prospect_id as string, demoId: found.rows[0].demo_id as string, created: false };
-  // one statement: the prospect and its demo together, or neither
+  // one statement: the prospect and its demo together, or neither. Review of #255 L2: NO contact at all — no Instagram
+  // URL / handle (a made-up handle could be someone's real account), no email, no recommended channel (the schema allows
+  // null for each, and the channel checks pass on null) — so nothing can ever be sent to this registry row.
   const r = await db.query(
     `with p as (
-       insert into public.sales_prospects (name, normalized_name, address, normalized_address, ward, category, website_status, instagram_url, instagram_handle, recommended_channel)
-       values ($1, $1, $2, $2, null, 'bakery', 'not_found', $3, $4, 'instagram') returning id)
+       insert into public.sales_prospects (name, normalized_name, address, normalized_address, ward, category, website_status, instagram_url, instagram_handle, public_email, recommended_channel)
+       values ($1, $1, $2, $2, null, 'bakery', 'not_found', null, null, null, null) returning id)
      insert into public.sales_demos (prospect_id, public_token, template, content, expires_at)
-     select id, $5, 'bakery_v1', $6::jsonb, null from p
+     select id, $3, 'bakery_v1', $4::jsonb, null from p
      returning id as demo_id, prospect_id`,
-    [name, RIN_REGISTRY_ADDRESS, `https://www.instagram.com/${RIN_INSTAGRAM_HANDLE}/`, RIN_INSTAGRAM_HANDLE, randomBytes(32).toString("base64url"), JSON.stringify(content)],
+    [name, RIN_REGISTRY_ADDRESS, randomBytes(32).toString("base64url"), JSON.stringify(content)],
   );
   return { prospectId: r.rows[0].prospect_id as string, demoId: r.rows[0].demo_id as string, created: true };
 }

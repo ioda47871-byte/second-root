@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 import { DEMO_VERSIONS_BUCKET, importPackage, supabasePackageStore, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, type DemoVersionPackage } from "@/lib/demo-version-package/package";
-import { RIN_INSTAGRAM_HANDLE, seedRinShop, type FactsPack } from "@/lib/demo-version-package/seed-rin";
+import { seedRinShop, type FactsPack } from "@/lib/demo-version-package/seed-rin";
 import { storageStatus } from "../support/seed-demo-version";
 import { db, serviceClient } from "./helpers";
 
@@ -35,8 +35,7 @@ let pkg: DemoVersionPackage;
 let shop: { prospectId: string; demoId: string };
 
 beforeAll(async () => {
-  // a fresh fictional 輪 shop for this file (the seed is idempotent on its handle)
-  await db.query("delete from public.sales_demo_quality_reviews where demo_id in (select d.id from public.sales_demos d join public.sales_prospects p on p.id = d.prospect_id where p.instagram_handle = $1)", [RIN_INSTAGRAM_HANDLE]);
+  // the fictional 輪 shop (the seed is idempotent)
   const seeded = await seedRinShop(db, pack);
   shop = seeded;
   // a bundle unique to this run (renders differ by colour), on the real 輪 page
@@ -51,6 +50,10 @@ describe("the fictional 輪 shop", () => {
     const d = (await db.query("select content, template, expires_at from public.sales_demos where id = $1", [shop.demoId])).rows[0];
     expect(d.content).toMatchObject({ name: "架空自転車修理 輪", category: "bicycle_repair", facts_pack: "fictional-bicycle-repair-wa" });
     expect(d.expires_at).toBeNull();
+    // review of #255 L2: no contact at all — nothing can ever be sent to it; no outreach
+    const p = (await db.query("select instagram_url, instagram_handle, public_email, recommended_channel, website_url from public.sales_prospects where id = $1", [shop.prospectId])).rows[0];
+    expect(p).toEqual({ instagram_url: null, instagram_handle: null, public_email: null, recommended_channel: null, website_url: null });
+    expect((await db.query("select count(*)::int as n from public.sales_outreaches where prospect_id = $1", [shop.prospectId])).rows[0].n).toBe(0);
   });
 });
 

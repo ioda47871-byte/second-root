@@ -361,7 +361,8 @@ export const QUALITY_REVIEW_DISABLED_TEXT =
  * The 1:1 check is the live page tab.
  */
 export function scaledRenderNote(width: number, viewportWidth: number): string | null {
-  if (!(width > 0 && viewportWidth > 0) || width === viewportWidth) return null;
+  // only a downscaled render gets the note (a wider one is not something the package makes: say nothing)
+  if (!(width > 0 && viewportWidth > 0) || width >= viewportWidth) return null;
   return `縮小表示（実寸の約${Math.round((width / viewportWidth) * 100)}%）。実寸は「生の頁」タブで確認できます。`;
 }
 
