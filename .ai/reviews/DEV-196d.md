@@ -99,4 +99,4 @@ CI で走る、header の検査 (coordinator の指示):
 - bucket からバイト列をそのまま返すこと、object の差し替え・削除で 404 になること (統合の 2 件)。
 - CI で走るのは、それらの根拠となるヘッダ (上の route test)・判定のすべての分岐 (serve test)・DB の検査 (統合、`object()` を差し替えた 6 件) と、e2e の 3 件 (旗の無効の 404 の同一性、scope `p`、直接開く)。
 
-結果 (2026-11-11): unit `tests/unit/demo-frame` 44 件、`tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 全部合格。統合 `demo-frame` 8 件 (storage あり 8 passed / storage を止めて 6 passed・2 skipped)。e2e `demo-frame` (storage あり 5 passed / 止めて 3 passed・2 skipped)。lint・typecheck・check:secrets・build 合格 (数は下の最終の実行で更新)。
+結果 (2026-11-11): unit `tests/unit/demo-frame` 44 件、`tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 全部合格。統合 `demo-frame` 8 件 (storage あり 8 passed / storage を止めて 6 passed・2 skipped)。e2e `demo-frame` (storage あり 5 passed / 止めて 3 passed・2 skipped)。lint・typecheck・check:secrets・build 合格。unit (demo-frame + sales + ai-tasks + guardrails) 1195 件、統合の全体 24 files / 447 件合格。
