@@ -479,3 +479,30 @@
   border-top: 1px solid var(--line);
   box-shadow: 0 -4px 12px rgb(0 0 0 / 6%);
 }
+
+/* --- withdraw / revoke (DEV-196d-6) --- */
+.danger {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: var(--danger);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* the urgent revoke is visually distinct from the normal one */
+.urgent {
+  border: 2px solid var(--danger);
+  border-radius: 10px;
+  background: #fff6f4;
+  padding: 12px;
+  margin: 0 0 10px;
+}

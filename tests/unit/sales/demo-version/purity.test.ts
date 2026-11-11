@@ -9,7 +9,7 @@ const files = readdirSync(DIR).filter((f) => f.endsWith(".ts"));
 
 describe("demo-version library purity", () => {
   it("has the expected modules", () => {
-    expect(files.sort()).toEqual(["admin-messages.ts", "ai-concept-rights.ts", "bounded-parse.ts", "budget.ts", "compare.ts", "copy-check.ts", "csp.ts", "css-scan.ts", "flags.ts", "html-safety.ts", "manifest.ts", "quality.ts", "review-client.ts", "review-input.ts", "rights.ts", "rule-core.ts", "version-state.ts", "view-model.ts", "view-token.ts"]);
+    expect(files.sort()).toEqual(["admin-messages.ts", "ai-concept-rights.ts", "bounded-parse.ts", "budget.ts", "compare.ts", "copy-check.ts", "csp.ts", "css-scan.ts", "flags.ts", "html-safety.ts", "lifecycle-input.ts", "manifest.ts", "quality.ts", "review-client.ts", "review-input.ts", "rights.ts", "rule-core.ts", "version-state.ts", "view-model.ts", "view-token.ts"]);
   });
 
   it.each(files)("%s reads no env, does no I/O and talks to no service", (f) => {
@@ -34,6 +34,7 @@ describe("demo-version library purity", () => {
       "components/admin/demo/ReviewHistory.tsx",
       "components/admin/demo/RightsPanel.tsx",
       "components/admin/demo/TokenExpiry.tsx",
+      "components/admin/demo/VersionLifecycle.tsx",
       "components/admin/demo/VersionList.tsx",
       "components/admin/demo/VersionNotices.tsx",
     ]);

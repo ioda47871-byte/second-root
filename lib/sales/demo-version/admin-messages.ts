@@ -9,6 +9,7 @@
 import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
 import type { RightsStatus } from "./rights";
 import type { VersionStatus } from "./version-state";
+import type { LifecycleRefusal } from "./lifecycle-input";
 import type { ReviewRefusal } from "./review-input";
 import type { ApproveBlocker, SendBlockCode } from "./view-model";
 
@@ -271,6 +272,33 @@ export const REVIEW_REFUSAL_LABEL: Readonly<Record<ReviewRefusal, string>> = {
 
 /** The admin's explicit acknowledgement before approving (Low d): the checkbox's words. */
 export const SEND_STOP_ACKNOWLEDGEMENT = "品質承認すると、この店舗の送信承認が止まることを理解しました（「デモを共有できない」）。";
+
+/**
+ * DEV-196d-6: what withdrawing / revoking does to this shop's SENDING, exactly as the database does it
+ * (sales_withdraw_demo_quality_review / sales_revoke_demo_version clear sales_demos.approved_version_id, and
+ * sales_demo_version_send_block refuses nothing without an approved version). Nothing is approved automatically.
+ */
+export const WITHDRAW_SEND_EFFECT_TEXT =
+  "取り下げると、この店舗には品質承認済みの版が無くなり、送信承認の「デモを共有できない」の停止は外れます。新しい送信は今までどおり React のデモで承認できます。ほかの版を自動で品質承認することはありません。";
+export const REVOKE_EFFECTS: readonly string[] = [
+  "この版の描画画像と頁は、管理者のプレビューでも次の読み込みから表示されなくなります（404）。",
+  "この版の品質承認は無効になります。取り消しは元に戻せません。",
+  "この版が送信に使う品質承認版なら、承認版は外れます。新しい送信は品質承認済みの版が無い状態（React のデモ）で承認します。ほかの版を自動で品質承認することはありません。",
+  "送信済みの相手の共有 URL はこの版を表示せず 404 になります。ほかの版や React のデモへは自動で切り替わりません。",
+];
+/** The urgent revoke says what it is for and that it is the same, immediate, irreversible revoke. */
+export const URGENT_REVOKE_TEXT =
+  "急ぎの取り消し: 事実の誤り・権利の苦情・安全上の懸念で、今すぐこの版を止めるときに使います。取り消しの効果は通常と同じで、すぐに効き、元に戻せません。";
+
+/** DEV-196d-6: why the server refused a withdrawal or a revoke before calling the database. */
+export const LIFECYCLE_REFUSAL_LABEL: Readonly<Record<LifecycleRefusal, string>> = {
+  VERSION_NOT_FOUND: `この版が見つかりません。${RELOAD}`,
+  STALE: DEMO_VERSION_ERROR_LABEL.stale_version!,
+  NOT_AN_ACTIVE_APPROVAL: DEMO_VERSION_ERROR_LABEL.review_not_active!,
+  NOT_REVOCABLE: DEMO_VERSION_ERROR_LABEL.version_not_revocable!,
+  APPROVAL_OPEN: APPROVAL_OPEN_MESSAGE,
+  URGENT_CODE: "急ぎの取り消しの理由は「事実の誤り」「権利の苦情・誤り」「安全上の懸念」から選んでください。",
+};
 
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";

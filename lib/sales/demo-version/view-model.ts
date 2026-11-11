@@ -19,7 +19,7 @@
  * Pure: rows in, view out.
  */
 import { jstDate } from "@/lib/sales/dates";
-import { RIGHTS_BLOCKED_LABEL, AI_CONCEPT_BADGE, RIGHTS_STATUS_LABEL, VERSION_STATUS_LABEL } from "./admin-messages";
+import { RIGHTS_BLOCKED_LABEL, AI_CONCEPT_BADGE, REVOKE_REASONS, RIGHTS_STATUS_LABEL, VERSION_STATUS_LABEL, type RevokeReason } from "./admin-messages";
 import { validatorCodes } from "./compare";
 import { REQUIRED_RENDERS, RENDER_VIEWPORTS, roleOfName, type RenderViewport } from "./manifest";
 import { QUALITY_CHECKLIST_ITEMS, type QualityChecklistItem, type QualityDecision } from "./quality";
@@ -170,6 +170,8 @@ export type VersionView = {
   createdAt: string;
   expiresAt: string;
   revoked: boolean;
+  /** the fixed reason a revoked version was revoked for (REVOKE_REASONS only; anything else → null) */
+  revokeCode: RevokeReason | null;
   previewable: boolean;
   renders: RenderView[];
   missingRequiredRenders: RenderViewport[];
@@ -364,6 +366,7 @@ export function buildDemoVersionsView(o: {
         createdAt: v.created_at,
         expiresAt: v.expires_at,
         revoked: v.revoked_at !== null || status === "revoked",
+        revokeCode: v.revoke_code !== null && (REVOKE_REASONS as readonly string[]).includes(v.revoke_code) ? (v.revoke_code as RevokeReason) : null,
         previewable: statusPreviewable && rightsPreviewable && UUID.test(v.id) && UUID.test(v.demo_id),
         renders,
         missingRequiredRenders,
