@@ -8,7 +8,8 @@ import { DEFAULT_CSS, DEMO_VERSIONS_BUCKET, seedDemoVersion, storageStatus, type
 
 // DEV-196d-4 (spec §4.1・§7.2): the admin compare page for two versions of one fictional shop's demo, at PC 1440 and
 // SP 390. The suite's server keeps the flag OFF (404); a second server from the same build has it ON. Checks that
-// read the bucket (the page text and the renders) skip only when the storage service is not running (CI).
+// read the bucket (the page text and the renders) skip only when the storage service is not running (local stacks
+// without storage-api; CI runs them and sets SR_REQUIRE_STORAGE=1, under which "not running" fails, DEV-196o).
 
 const ON_PORT = Number(process.env.E2E_PORT ?? 3100) + 13;
 const USERS_KEY = "demo-compare";

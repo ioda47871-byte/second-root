@@ -11,7 +11,7 @@ import { createUser, db, makeAdmin, serviceClient, signedInClient } from "./help
 // bucket), with the flag on only inside this test process. Fictional shops and example.com only.
 //
 // The database checks (revoked, rights, flag off) run everywhere. The checks that read objects need the storage API,
-// which CI does not start (`-x storage-api`); they skip there and run on a local stack with storage.
+// which CI starts (SR_REQUIRE_STORAGE=1, DEV-196o); a local stack without storage-api skips them.
 
 const KEY = randomBytes(32);
 const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_VIEW_SIGNING_KEY: KEY.toString("base64url") };
@@ -28,7 +28,7 @@ const NAME: Record<string, string> = {
 const svc = serviceClient();
 const storage = await storageStatus();
 const storageUp = storage.available;
-// Skipped ONLY when the storage service is not running (CI: `-x storage-api`); any other storage error fails the file.
+// Skipped ONLY when the storage service is not running (never in CI: SR_REQUIRE_STORAGE=1); any other storage error fails the file.
 const STORAGE_SKIP = storage.available ? "" : ` [skipped: ${storage.reason}]`;
 let admin: SupabaseClient;
 const prospects: string[] = [];
@@ -48,7 +48,7 @@ const serve = (r: FrameRequest, env: Record<string, string | undefined> = ENV) =
 
 /**
  * The real database reads with the object read replaced IN THIS TEST by the seeded bytes (review of #247 L1): the
- * revocation, rights and disabled-demo checks then run against the database in CI too, where there is no storage API
+ * revocation, rights and disabled-demo checks then run against the database even without a storage API
  * — a 200 first proves the 404 afterwards comes from the database check, not from a missing object.
  */
 const serveDbOnly = (s: SeededVersion, r: FrameRequest) =>

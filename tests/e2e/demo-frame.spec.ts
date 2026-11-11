@@ -14,8 +14,9 @@ import { DEMO_VERSIONS_BUCKET, seedDemoVersion, storageStatus, type SeededVersio
 // SALES_DEMO_VERSIONS_ENABLED=true and a signing key made up inside this test process only (no value is registered
 // anywhere). The framed document must be an opaque origin with no script, no cookie and no request leaving the app.
 //
-// The checks that read the bucket need the local storage API; CI starts Supabase with `-x storage-api`, so they skip
-// there (the flag-off, scope p and 404 checks still run). Fictional shop and example.com only.
+// The checks that read the bucket need the local storage API. CI starts it and sets SR_REQUIRE_STORAGE=1 (DEV-196o), so
+// they run there; a local stack without storage-api skips them (the flag-off, scope p and 404 checks still run).
+// Fictional shop and example.com only.
 
 const ON_PORT = Number(process.env.E2E_PORT ?? 3100) + 11;
 const ON = `http://127.0.0.1:${ON_PORT}`;
@@ -78,7 +79,7 @@ test.skip(({ isMobile }) => isMobile, "the flag-on server is started once, by th
 test.beforeAll(async () => {
   db = new pg.Pool({ connectionString: process.env.SUPABASE_DB_URL, max: 2 });
   svc = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-  // skipped ONLY when the storage service is not running (CI: `-x storage-api`); any other answer throws here
+  // skipped ONLY when the storage service is not running (and never with SR_REQUIRE_STORAGE=1, as in CI); any other answer throws here
   const storage = await storageStatus();
   storageUp = storage.available;
   storageSkipReason = storage.available ? "" : `${storage.reason} — covered without Storage by tests/unit/demo-frame (headers) and locally with Storage`;

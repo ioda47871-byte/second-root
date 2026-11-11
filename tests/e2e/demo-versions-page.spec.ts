@@ -10,8 +10,8 @@ import { solidWebp } from "../support/solid-webp";
 // DEV-196d-3 (spec §6.1・§6.7・§6.8・§7.2): the read-only admin demo version page at PC 1440 and SP 390.
 //
 // The suite's server keeps the flag OFF: the page must be 404 there. A second server from the same build runs with
-// the flag ON (startFlagOnServer). Checks that show the renders and the live page need the storage API, which CI does
-// not start (`-x storage-api`): they skip there with the reason, ONLY when the storage service is not running.
+// the flag ON (startFlagOnServer). Checks that show the renders and the live page need the storage API: they skip with
+// the reason ONLY when the storage service is not running, and never in CI (SR_REQUIRE_STORAGE=1, DEV-196o).
 // Fictional shop and example.com only.
 
 const ON_PORT = Number(process.env.E2E_PORT ?? 3100) + 12;

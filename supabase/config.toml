@@ -113,8 +113,8 @@ port = 54324
 
 [storage]
 # DEV-196c: local Storage on (spec §5). This file configures the LOCAL stack
-# only; it creates nothing on a hosted project. CI starts Supabase with
-# `-x storage-api`, so the Storage-dependent integration test skips there.
+# only; it creates nothing on a hosted project. CI starts storage-api too and
+# requires it (SR_REQUIRE_STORAGE=1, DEV-196o), so the Storage tests run there.
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "4MiB"
