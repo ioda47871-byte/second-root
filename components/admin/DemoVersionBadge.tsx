@@ -3,12 +3,27 @@
  * send approval is stopped by its approved version (sales_demo_version_send_block, the database decides; nothing here
  * changes the send action, its gating or its RPC). Fixed labels only. Rendered only when the flag is on.
  */
-import { DEMO_VERSION_BADGE_LABEL, DEMO_VERSION_BADGE_UNKNOWN, SEND_BLOCK_LABEL, TODAY_FACTS_NOT_CHECKED, TODAY_SEND_STOP_TITLE, UNSHAREABLE_REASON_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import {
+  DEMO_VERSION_BADGE_LABEL,
+  DEMO_VERSION_BADGE_UNKNOWN,
+  SEND_BLOCK_LABEL,
+  TODAY_FACTS_NOT_CHECKED,
+  TODAY_SEND_STOP_TITLE,
+  TODAY_SEND_STOP_UNKNOWN,
+  UNSHAREABLE_REASON_LABEL,
+} from "@/lib/sales/demo-version/admin-messages";
 import type { TodayDemoVersion } from "@/lib/admin/demo-version-badges";
 import styles from "./admin.module.css";
 
 export function DemoVersionBadge({ value }: { value: TodayDemoVersion }) {
   if (value.kind === "unknown") {
+    return (
+      <span className={styles.badge} data-testid="demo-version-badge" data-demo-version="unknown">
+        {DEMO_VERSION_BADGE_UNKNOWN}
+      </span>
+    );
+  }
+  if (value.state === "unknown") {
     return (
       <span className={styles.badge} data-testid="demo-version-badge" data-demo-version="unknown">
         {DEMO_VERSION_BADGE_UNKNOWN}
@@ -33,7 +48,15 @@ export function DemoVersionLink({ prospectId }: { prospectId: string }) {
 }
 
 export function DemoSendStopNotice({ value }: { value: TodayDemoVersion }) {
-  if (value.kind !== "ok" || !value.sendStop) return null;
+  if (value.kind === "unknown") {
+    if (!value.approvedUnknown) return null;
+    return (
+      <div className={styles.error} role="status" data-testid="demo-send-stop" data-send-stop="unknown">
+        <p style={{ margin: 0 }}>{TODAY_SEND_STOP_UNKNOWN}</p>
+      </div>
+    );
+  }
+  if (!value.sendStop) return null;
   const stop = value.sendStop;
   return (
     <div className={styles.error} role="status" data-testid="demo-send-stop" data-send-stop={stop.code}>

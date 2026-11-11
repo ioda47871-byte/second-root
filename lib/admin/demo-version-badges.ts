@@ -15,7 +15,11 @@ import { demoVersionBadge, type DemoVersionBadge } from "@/lib/sales/demo-versio
 import { demoVersionsEnabled, type Env } from "@/lib/sales/demo-version/flags";
 import { buildDemoVersionsView, type DemoImageDb, type QualityReviewDb, type VersionFileDb, type VersionRowDb } from "@/lib/sales/demo-version/view-model";
 
-export type TodayDemoVersion = ({ kind: "ok" } & DemoVersionBadge) | { kind: "unknown" };
+/**
+ * unknown: the state could not be read. `approvedUnknown`: the shop has an approved version whose row could not be
+ * read (sending may be stopped; the card says so without naming a reason).
+ */
+export type TodayDemoVersion = ({ kind: "ok" } & DemoVersionBadge) | { kind: "unknown"; approvedUnknown?: boolean };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** Versions read per shop (the newest; the badge needs the newest and the approved one). */
@@ -28,16 +32,30 @@ const IMAGE_COLUMNS =
   "id, sha256, width, height, format, source_kind, rights_status, depicts_real_shop, depicts_identifiable_person, depicts_real_product, depicts_real_interior, depicts_real_equipment, no_factual_impersonation_confirmed_at, rights_expiry, provenance, revoked_at";
 const REVIEW_COLUMNS = "id, version_id, decision, state, checklist, viewed_renders_sha256, reviewed_at, withdrawn_at, invalidated_at, invalidated_reason, bundle_sha256, facts_sha256";
 
-/** The one embedded select (versions by their demo_id: sales_demos also points at a version through approved_version_id). */
+const VERSION_TREE =
+  `${VERSION_COLUMNS}, sales_demo_version_files(${FILE_COLUMNS}, sales_demo_images(${IMAGE_COLUMNS})), ` +
+  `sales_demo_quality_reviews!sales_demo_quality_reviews_version_id_fkey(${REVIEW_COLUMNS})`;
+
+/**
+ * The one embedded select: the shop's newest versions (by their demo_id) AND, separately, its approved version (by
+ * sales_demos.approved_version_id — review of #252 L1: an approved version older than the newest
+ * TODAY_VERSIONS_PER_SHOP is still read), each with its files, images and quality decisions.
+ */
 export const TODAY_DEMO_SELECT =
   `id, prospect_id, approved_version_id, disabled_at, ` +
-  `sales_demo_versions!sales_demo_versions_demo_id_fkey(${VERSION_COLUMNS}, ` +
-  `sales_demo_version_files(${FILE_COLUMNS}, sales_demo_images(${IMAGE_COLUMNS})), ` +
-  `sales_demo_quality_reviews!sales_demo_quality_reviews_version_id_fkey(${REVIEW_COLUMNS}))`;
+  `sales_demo_versions!sales_demo_versions_demo_id_fkey(${VERSION_TREE}), ` +
+  `approved:sales_demo_versions!sales_demos_approved_version_id_fkey(${VERSION_TREE})`;
 
 type FileRow = VersionFileDb & { sales_demo_images: DemoImageDb | null };
 type VersionRow = VersionRowDb & { sales_demo_version_files: FileRow[] | null; sales_demo_quality_reviews: QualityReviewDb[] | null };
-type DemoRow = { id: string; prospect_id: string; approved_version_id: string | null; disabled_at: string | null; sales_demo_versions: VersionRow[] | null };
+type DemoRow = {
+  id: string;
+  prospect_id: string;
+  approved_version_id: string | null;
+  disabled_at: string | null;
+  sales_demo_versions: VersionRow[] | null;
+  approved: VersionRow | null;
+};
 
 export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectIds: readonly string[], o: { env: Env; now: Date }): Promise<Map<string, TodayDemoVersion> | null> {
   if (!demoVersionsEnabled(o.env)) return null;
@@ -60,7 +78,14 @@ export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectId
         out.set(id, { kind: "ok", state: "none", versionNo: null, sendStop: null });
         continue;
       }
-      const versions = d.sales_demo_versions ?? [];
+      // the approved version, read on its own, joins the newest ones when it is older than them
+      const versions = [...(d.sales_demo_versions ?? [])];
+      if (d.approved && !versions.some((v) => v.id === d.approved!.id)) versions.push(d.approved);
+      if (d.approved_version_id !== null && !versions.some((v) => v.id === d.approved_version_id)) {
+        // it could not be read here (RLS or a missing row): no specific reason that might be false
+        out.set(id, { kind: "unknown", approvedUnknown: true });
+        continue;
+      }
       const files = versions.flatMap((v) => v.sales_demo_version_files ?? []);
       const images = files.flatMap((f) => (f.sales_demo_images ? [f.sales_demo_images] : []));
       const reviews = versions.flatMap((v) => v.sales_demo_quality_reviews ?? []);
@@ -75,7 +100,8 @@ export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectId
         currentFactsSha256: null,
         now: o.now,
       });
-      out.set(id, { kind: "ok", ...demoVersionBadge(view) });
+      const badge = demoVersionBadge(view, o.now);
+      out.set(id, badge.state === "unknown" ? { kind: "unknown", approvedUnknown: d.approved_version_id !== null } : { kind: "ok", ...badge });
     }
     return out;
   } catch {

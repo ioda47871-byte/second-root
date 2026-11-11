@@ -4,7 +4,7 @@ import { DemoSendStopNotice, DemoVersionBadge } from "@/components/admin/DemoVer
 import TodayCard from "@/components/admin/TodayCard";
 import type { TodayDemoVersion } from "@/lib/admin/demo-version-badges";
 import type { TodayItem } from "@/lib/admin/today";
-import { DEMO_VERSION_BADGE_LABEL, DEMO_VERSION_BADGE_UNKNOWN, SEND_BLOCK_LABEL, TODAY_FACTS_NOT_CHECKED, TODAY_SEND_STOP_TITLE } from "@/lib/sales/demo-version/admin-messages";
+import { DEMO_VERSION_BADGE_LABEL, DEMO_VERSION_BADGE_UNKNOWN, SEND_BLOCK_LABEL, TODAY_FACTS_NOT_CHECKED, TODAY_SEND_STOP_TITLE, TODAY_SEND_STOP_UNKNOWN } from "@/lib/sales/demo-version/admin-messages";
 import { demoVersionBadge } from "@/lib/sales/demo-version/badge";
 import { buildDemoVersionsView, type QualityReviewDb, type VersionRowDb } from "@/lib/sales/demo-version/view-model";
 import { buildTodayEvidence, type EvidenceInput } from "@/lib/sales/evidence";
@@ -29,7 +29,7 @@ const review = (n: number, decision: string, state = "active"): QualityReviewDb 
   withdrawn_at: null, invalidated_at: null, invalidated_reason: null, bundle_sha256: h(String(n)), facts_sha256: h("f"),
 });
 const badge = (versions: VersionRowDb[], o: { reviews?: QualityReviewDb[]; approved?: string | null } = {}) =>
-  demoVersionBadge(buildDemoVersionsView({ versions, files: [], images: [], reviews: o.reviews ?? [], approvals: [], approvedVersionId: o.approved ?? null, demoDisabled: false, currentFactsSha256: null, now: NOW }));
+  demoVersionBadge(buildDemoVersionsView({ versions, files: [], images: [], reviews: o.reviews ?? [], approvals: [], approvedVersionId: o.approved ?? null, demoDisabled: false, currentFactsSha256: null, now: NOW }), NOW);
 
 describe("demoVersionBadge: one fixed state from the view model", () => {
   it("none / awaiting / changes requested / rejected / approved / revoked / uploading / validator rejected / expired", () => {
@@ -47,8 +47,27 @@ describe("demoVersionBadge: one fixed state from the view model", () => {
     expect(badge([version(1, { status: "expired" })]).state).toBe("expired");
     // the newest version decides when nothing is approved
     expect(badge([version(1, { status: "revoked", revoked_at: "2026-11-10T00:00:00Z" }), version(2)])).toMatchObject({ state: "awaiting_review", versionNo: 2 });
-    // an approved id that is not among the rows: the database says unavailable — the send stop says so
-    expect(badge([version(1)], { approved: id(9) }).sendStop).toMatchObject({ code: "demo_version_unavailable" });
+  });
+
+  it("review of #252 L2: expiry, unknown statuses and an approved status on a non-approved version are never guessed", () => {
+    // the shop's approved version past (or with an unreadable) expires_at: 期限切れ, never 品質承認済み
+    for (const expires_at of ["2026-11-01T00:00:00Z", NOW.toISOString(), "soon", ""]) {
+      expect(badge([version(1, { status: "approved", expires_at })], { reviews: [review(1, "approved")], approved: id(1) }).state, expires_at).toBe("expired");
+    }
+    // the approved version's row says something else: unknown (the database would refuse sending; no guess here)
+    expect(badge([version(1, { status: "draft" })], { approved: id(1) }).state).toBe("unknown");
+    expect(badge([version(1, { status: "superseded" })], { approved: id(1) }).state).toBe("unknown");
+    expect(badge([version(1, { status: "revoked", revoked_at: "2026-11-10T00:00:00Z" })], { approved: id(1) }).state).toBe("revoked");
+    // the approved id is not among the rows: unknown (the loader reads it on its own; see the integration test)
+    expect(badge([version(1)], { approved: id(9) })).toMatchObject({ state: "unknown", versionNo: null });
+    // the newest version past / unreadable expires_at: 期限切れ (draft, superseded, uploading)
+    for (const status of ["draft", "superseded", "uploading"]) {
+      expect(badge([version(1, { status, expires_at: "2026-11-01T00:00:00Z" })]).state, status).toBe("expired");
+      expect(badge([version(1, { status, expires_at: "not a date" })]).state, status).toBe("expired");
+    }
+    // an approved status on a version that is not the shop's approved one, or an unknown status: unknown
+    expect(badge([version(1, { status: "approved" })]).state).toBe("unknown");
+    expect(badge([version(1, { status: "made_up" })]).state).toBe("unknown");
   });
 });
 
@@ -60,6 +79,7 @@ describe("badge, link and send-stop markup (fixed labels only)", () => {
       expect(html).toContain(`data-demo-version="${state}"`);
     }
     expect(renderToStaticMarkup(<DemoVersionBadge value={{ kind: "unknown" }} />)).toContain(DEMO_VERSION_BADGE_UNKNOWN);
+    expect(DEMO_VERSION_BADGE_LABEL.unknown).toBe(DEMO_VERSION_BADGE_UNKNOWN);
   });
   it("the send stop shows the fixed reason and that the facts are not checked here; nothing when sending is not stopped", () => {
     const html = renderToStaticMarkup(
@@ -72,6 +92,11 @@ describe("badge, link and send-stop markup (fixed labels only)", () => {
     expect(html).not.toMatch(/<button|<form/);
     expect(renderToStaticMarkup(<DemoSendStopNotice value={{ kind: "ok", state: "awaiting_review", versionNo: 1, sendStop: null }} />)).toBe("");
     expect(renderToStaticMarkup(<DemoSendStopNotice value={{ kind: "unknown" }} />)).toBe("");
+    // review of #252 L1: an approved version that could not be read — a neutral notice, never a specific reason
+    const neutral = renderToStaticMarkup(<DemoSendStopNotice value={{ kind: "unknown", approvedUnknown: true }} />);
+    expect(neutral).toContain(TODAY_SEND_STOP_UNKNOWN);
+    expect(neutral).toContain('data-send-stop="unknown"');
+    for (const label of Object.values(SEND_BLOCK_LABEL)) expect(neutral).not.toContain(label);
   });
 });
 
@@ -170,3 +195,36 @@ describe("flag ON: badge, link and the send-stop explanation; the send action it
     expect(follow).not.toContain("demo-send-stop");
   });
 });
+
+describe("review of #252 L1: the loader never names a reason it could not read", () => {
+  it("an approved id whose row did not come back: a neutral unknown badge and notice", async () => {
+    const { loadTodayDemoVersions } = await import("@/lib/admin/demo-version-badges");
+    const client = {
+      from() {
+        const b: Record<string, unknown> = {};
+        for (const m of ["select", "in", "order", "limit"]) b[m] = () => b;
+        b.then = (ok: (v: unknown) => unknown) =>
+          ok({ data: [{ id: DEMO, prospect_id: PROSPECT, approved_version_id: id(9), disabled_at: null, sales_demo_versions: [{ ...version(30), sales_demo_version_files: [], sales_demo_quality_reviews: [] }], approved: null }], error: null });
+        return b;
+      },
+    };
+    const r = await loadTodayDemoVersions(client as never, [PROSPECT], { env: { SALES_DEMO_VERSIONS_ENABLED: "true" }, now: NOW });
+    expect(r!.get(PROSPECT)).toEqual({ kind: "unknown", approvedUnknown: true });
+  });
+  it("the approved version read on its own joins the newest ones", async () => {
+    const { loadTodayDemoVersions } = await import("@/lib/admin/demo-version-badges");
+    const old = { ...version(1, { status: "approved" }), sales_demo_version_files: [], sales_demo_quality_reviews: [review(1, "approved")] };
+    const client = {
+      from() {
+        const b: Record<string, unknown> = {};
+        for (const m of ["select", "in", "order", "limit"]) b[m] = () => b;
+        b.then = (ok: (v: unknown) => unknown) =>
+          ok({ data: [{ id: DEMO, prospect_id: PROSPECT, approved_version_id: id(1), disabled_at: null, sales_demo_versions: [{ ...version(30), sales_demo_version_files: [], sales_demo_quality_reviews: [] }], approved: old }], error: null });
+        return b;
+      },
+    };
+    const r = await loadTodayDemoVersions(client as never, [PROSPECT], { env: { SALES_DEMO_VERSIONS_ENABLED: "true" }, now: NOW });
+    expect(r!.get(PROSPECT)).toMatchObject({ kind: "ok", state: "approved", versionNo: 1, sendStop: { code: "demo_not_shareable" } });
+  });
+});
+

@@ -338,9 +338,15 @@ export const DEMO_VERSION_BADGE_LABEL: Readonly<Record<DemoVersionBadgeState, st
   uploading: "アップロード中",
   validator_rejected: "不採用",
   expired: "期限切れ",
+  unknown: "版の状態を取得できません",
 };
 /** The badge when the version state could not be read (the card itself is unaffected). */
 export const DEMO_VERSION_BADGE_UNKNOWN = "版の状態を取得できません";
+/**
+ * review of #252 L1: the shop has an approved version, but its row could not be read here — say that sending may be
+ * stopped, never a specific reason that might be false.
+ */
+export const TODAY_SEND_STOP_UNKNOWN = "この店舗には品質承認した版がありますが、その状態をここでは確かめられません。送信承認は止まっている可能性があります（版の頁で確認できます）。";
 /** Today: why the send action of this shop is stopped by its approved version (display only; the database decides). */
 export const TODAY_SEND_STOP_TITLE = "この店舗の送信承認は、デモの版のため止まっています。";
 /** Today does not read the shop's current facts: the facts check is left to the version page. */

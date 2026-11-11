@@ -329,3 +329,12 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 - e2e `tests/e2e/demo-today-badge.spec.ts` (desktop で 3 件): suite の server (旗は無効) で今日の card に印・リンク・説明が無く、承認済みの店の card も今までどおり送信の承認の操作がある。旗を立てた server で 1440 と 390: 承認済みの店に「品質承認済み（v1）」と送信停止の説明 (送信の操作はそのまま)、確認待ちの店に「品質確認待ち（v1）」と説明なし、リンクで版の頁へ移る、頁は横にはみ出さない。spec は作った下書きを `afterAll` で消す (共有の今日の画面のため)。
 - 既存の today・e2e-sales の spec はそのまま (変更なし) で通ることを全体の実行で確かめる (下)。
 - 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1278 件、統合の全体 28 files / 471 件、e2e の全体 152 passed / 34 skipped (旗を立てる 6 つの spec の mobile の複製。既存の today・mobile-qa・email-send などは変更なしで通る)。lint・typecheck・check:secrets・build 合格。
+
+### 196d-7 review round 1 (coordinator の独立レビュー、8ee4859: C0 H0 M0 L2) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (正確さ) | loader は店ごとに新しい 20 件の版だけを読むので、それより古い承認版を取りこぼし、説明が誤って `demo_version_unavailable` を言い、印は最新の版を出していた | **同じ 1 回の request** に、`sales_demos.approved_version_id` の FK (`sales_demos_approved_version_id_fkey`) で承認版を別名 `approved` として埋め込み (ファイル・画像・判定ごと)、新しい 20 件に無ければ加える。RLS のまま、service role なし、request は 1 回のまま。承認 id があるのにその行が読めないときは、中立の印 (`版の状態を取得できません`) と中立の説明 (`TODAY_SEND_STOP_UNKNOWN`「…止まっている可能性があります（版の頁で確認できます）」) で、具体的な理由は言わない | 統合: 版が 22 ある店で承認版が最も古い v1 → 1 回の request で「品質承認済み（v1）」と本当の送信停止 (`demo_not_shareable`)。unit: 承認 id の行が返らない → `{ kind: "unknown", approvedUnknown: true }`、中立の説明に `SEND_BLOCK_LABEL` のどれも含まれない、別に読んだ承認版が新しい版に加わる |
+| L2 (正確さ) | 承認版の `expires_at` が過ぎても「品質承認済み」、最新の版の期限切れを言わない、知らない状態や承認版でない版の `approved` を「品質確認待ち」と推測していた | `demoVersionBadge(view, now)`: 承認版が期限切れ (読めない `expires_at` も期限切れ、view model と同じ) なら「期限切れ」、取り消しなら「取り消し済み」、それ以外の状態や行が無いなら中立の `unknown`。最新の版 (下書き・superseded・アップロード中) が期限切れなら「期限切れ」。知らない状態・承認版でない版の `approved` は中立の `unknown` (`DEMO_VERSION_BADGE_UNKNOWN`) | unit: 承認版の期限切れ 4 通り (過ぎた・ちょうど今・読めない 2 つ)、承認版の行が別の状態 (下書き・superseded → unknown、取り消し → 取り消し済み)、承認 id が行に無い → unknown、最新の版の期限切れ (3 つの状態 × 過ぎた / 読めない)、承認版でない版の `approved`・知らない状態 → unknown |
+
+結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1281 件、統合 `demo-version-badges` 4 件、e2e `demo-today-badge`・`today`・`mobile-qa` 23 passed / 3 skipped (今日の印の spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。

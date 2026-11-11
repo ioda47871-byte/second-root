@@ -81,6 +81,21 @@ describe("loadTodayDemoVersions (local stack)", () => {
     expect(r!.get(revoked.prospectId)).toMatchObject({ kind: "ok", state: "revoked", sendStop: null });
   });
 
+  it("review of #252 L1: an approved version older than the newest 20 is still read (same request): 品質承認済み, the true send stop", async () => {
+    const v1 = await seedDemoVersion(db, serviceClient(), { upload: false });
+    await decide(v1, "approved");
+    let parent = v1;
+    for (let i = 0; i < 21; i++) parent = await seedDemoVersion(db, serviceClient(), { upload: false, into: { prospectId: v1.prospectId, demoId: v1.demoId, parentVersionId: parent.versionId } });
+    expect((await one("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [v1.demoId])).n).toBe(22);
+    const { client, calls } = counting(admin);
+    const r = await loadTodayDemoVersions(client, [v1.prospectId], { env: ENV, now: new Date() });
+    expect(calls).toEqual(["sales_demos"]);
+    expect(r!.get(v1.prospectId)).toEqual({
+      kind: "ok", state: "approved", versionNo: 1,
+      sendStop: { code: "demo_not_shareable", reasons: ["versioned_sharing_disabled", "photos_not_shareable"], factsUnknown: true },
+    });
+  });
+
   it("a signed-in non-admin reads no version rows (RLS): no state is revealed", async () => {
     const v = await seedDemoVersion(db, serviceClient(), { upload: false });
     const r = await loadTodayDemoVersions(outsider, [v.prospectId], { env: ENV, now: new Date() });
