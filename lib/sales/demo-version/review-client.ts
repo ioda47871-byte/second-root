@@ -24,8 +24,11 @@ export function normaliseNote(raw: string | null | undefined): { ok: true; note:
   const k = n.normalize("NFKC");
   const lower = k.toLowerCase();
   if (/([a-z][a-z0-9+.-]*:\/\/|https?:|www\.)/.test(lower)) return { ok: false };
-  // Postgres \M (end of word) after the top-level part: the next character is not a word character
-  if (/[a-z0-9_-]+(\.[a-z0-9_-]+)*\.[a-z]{2,}(?=[/:]|[^a-z0-9_]|$)/u.test(lower)) return { ok: false };
+  // Postgres \M (end of word) after the top-level part: the next character is not a word character. In the
+  // database's UTF-8 locale a word character is any letter or digit — Japanese included — or "_" (review of #250 L1:
+  // 「style.cssを直す」 passes in the database, so it passes here). The rule has no start anchor, so what precedes the
+  // word does not matter. tests/integration/demo-review.test.ts compares this with the real function.
+  if (/[a-z0-9_-]+(\.[a-z0-9_-]+)*\.[a-z]{2,}(?=[/:]|[^\p{L}\p{N}_]|$)/u.test(lower)) return { ok: false };
   if (/[^\s@]+@[^\s@]+\.[^\s@]+/u.test(k)) return { ok: false };
   return { ok: true, note: n };
 }

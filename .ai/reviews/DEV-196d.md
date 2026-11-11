@@ -244,3 +244,13 @@ branch `feature/dev-196d-5-quality-approval` (`origin/develop` 9e2a1ae から)�
 - 196d-3 の e2e: 「操作のボタンなし」を「取り消しはまだ無く、判定のボタンは初め押せない」に変えた (196d-5 で判定が入ったため)。
 - 結果 (2026-11-11、隔離した stack `sr-dev196d`、Storage あり): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1253 件、統合の全体 26 files / 460 件、e2e の全体 143 passed / 25 skipped (旗を立てる 4 つの spec の mobile の複製)。storage の container を止めた状態 (CI と同じ): e2e `demo-review` 3 passed / 3 skipped (3 回続けて)。lint・typecheck・check:secrets・build 合格。
 - 注: storage の container を**止めているその瞬間**に e2e を始めると、`storageStatus` が `beforeAll` で 1 度 throw した (止まりかけの storage-api 自身が答えたため。gateway の 503 `name resolution failed` は正しく「動いていない」と判定することを確かめた)。ローカルで container を止める操作の間だけの現象で、storage-api を起動しない CI では起きない。「想定外の答えは skip にせず落とす」は review of #247 L2 の意図どおり。
+
+### 196d-5 review round 1 (coordinator の独立レビュー、5cfedb4: C0 H0 M0 L1) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (正確さ) | DB の `sales_demo_note_valid` の `\M` (語の終わり) は日本語の文字を語の文字として扱う。だから「style.cssです」「style.cssを直してください」は DB では通るが、`normaliseNote` は拒み、DB が受ける note で判定のボタンがすべて止まっていた | 語の終わりの判定を DB に合わせた: `(?=[/:]|[^\p{L}\p{N}_]|$)` (`u` flag。文字・数字・`_` が語の文字)。規則に頭の錨は無いので、前の文字 (「修正style.css」) は結果に関わらない (DB と同じ) | 統合のコーパス (`tests/integration/demo-review.test.ts`) に 18 例を足し、**全例で app = DB** を照合: 「style.cssを直す」「example.comです」「style.cssです」「index.htmlの余白」(通る)、「修正style.css」(前が日本語でも拒否)、「修正style.cssを直す」(通る)、「style.css。」「example.com、」「style.css）」(全角の句読点は語の文字でない → 拒否)、空白・`_`・ー・々・数字・`-`・全角コロン・`!` の後、「見出しv1.de」。DB が受けるものと拒むものの両方を含むことと、日本語に隣る 4 例の DB の値も明示して固定。unit にも 8 例 |
+
+**DB の locale への依存**: `\M` の語の文字は DB の locale (`LC_CTYPE`) で決まる。ローカルと CI の DB は `datcollate = datctype = en_US.UTF-8`、encoding `UTF8` (確かめた)。この locale では日本語は語の文字。Staging / Production の locale が違って日本語を語の文字と見ない (たとえば UTF-8 でない `C`) なら、「style.cssを直す」は DB で拒まれ、app の事前の確認とずれる (app は通し、DB が `invalid_note` を返す。DB が判定者なので書き込みは安全側。画面は DB の拒否を Low (a) の同じ文言で出す)。上の統合テストは「style.cssを直す」などの DB の値を明示しているので、**その DB に対して走らせれば違いで落ちる**。Staging で確かめるなら (DEV-196h の Staging の承認の範囲で、今はしない): `select datctype from pg_database where datname = current_database()` と `select public.sales_demo_note_valid('style.cssを直す')` (true のはず)。DB は変えていない。
+
+結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1253 件合格、統合 `demo-review` 8 件、e2e `demo-review` 6 件、lint・typecheck・check:secrets・build 合格。

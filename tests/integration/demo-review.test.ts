@@ -135,10 +135,23 @@ describe("submitDemoReview (local stack, through sales_review_demo_version)", ()
     const corpus = [
       "店名を入れ替えても成り立つ", "style.css", "example.com", "v1.de", "https://x", "www.example", "info@example.com", "見出し。次へ", "ver 1.0",
       "ｓｔｙｌｅ．ｃｓｓ", "abc.de/", "a.b", "ﾃｽﾄ", "x".repeat(500), "x".repeat(501), "font:bold", "mailto:x", "1.5倍", "CSS の調整", "index.html を確認",
+      // review of #250 L1: the database's word boundary (\M) counts Japanese as word characters
+      "style.cssを直す", "example.comです", "style.cssです", "index.htmlの余白", "修正style.css", "修正style.cssを直す", "style.css。", "example.com、",
+      "style.css）", "style.css 直す", "style.css_x", "style.cssー", "style.css々", "style.css1", "style.css-x", "style.css：", "style.css!", "見出しv1.de",
     ];
+    const results: Array<[string, boolean]> = [];
     for (const n of corpus) {
       const db_ = (await db.query("select public.sales_demo_note_valid($1) as ok", [n])).rows[0].ok as boolean;
+      results.push([n, db_]);
       expect(normaliseNote(n).ok, n).toBe(db_);
     }
+    // both directions are exercised: the corpus holds notes the database accepts and notes it refuses, including
+    // the dot-word + Japanese cases (a locale whose word characters differ would flip these and fail this test)
+    const byNote = Object.fromEntries(results);
+    expect(byNote["style.cssを直す"]).toBe(true);
+    expect(byNote["example.comです"]).toBe(true);
+    expect(byNote["修正style.css"]).toBe(false);
+    expect(byNote["style.css。"]).toBe(false);
+    expect(results.some(([, ok]) => ok) && results.some(([, ok]) => !ok)).toBe(true);
   });
 });

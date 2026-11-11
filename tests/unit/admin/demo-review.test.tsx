@@ -109,6 +109,9 @@ describe("normaliseNote (Low a)", () => {
     expect(normaliseNote(null)).toEqual({ ok: true, note: null });
     for (const bad of ["style.css", "example.com を参考", "https://x", "www.x", "info@example.com", "ｓｔｙｌｅ．ｃｓｓ", "あ".repeat(501)]) expect(normaliseNote(bad).ok, bad).toBe(false);
     for (const good of ["ver 1.0", "1.5倍", "CSS の調整", "あ".repeat(500)]) expect(normaliseNote(good).ok, good).toBe(true);
+    // review of #250 L1: the database's \M counts Japanese as word characters (integration compares with the DB)
+    for (const good of ["style.cssを直す", "example.comです", "修正style.cssを直す", "style.cssー"]) expect(normaliseNote(good).ok, good).toBe(true);
+    for (const bad of ["修正style.css", "style.css。", "style.css）", "style.css 直す"]) expect(normaliseNote(bad).ok, bad).toBe(false);
     expect(REVIEW_REFUSAL_LABEL.INVALID_NOTE).toBe(INVALID_NOTE_MESSAGE);
   });
 });
