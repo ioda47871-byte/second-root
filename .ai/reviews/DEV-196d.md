@@ -354,3 +354,5 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 - unit `tests/unit/admin/flag-split.test.ts` (9 件): 2 つの旗の**すべての組み合わせ** (7 × 7 の綴り)、3 つの action が 6 通りの組み合わせ (両方無効・プレビューだけ・review が "false" / "TRUE"・review だけ・preview が "false") で、管理者の確認の前に固定の文言で拒否し `from` も `rpc` も呼ばない、core もプレビューだけで拒否、両方有効なら管理者の確認まで進む。
 - 既存の unit (demo-review・demo-lifecycle) と統合 (demo-review・demo-lifecycle・demo-version-badges) は、書き込みに両方の旗を立てるように直し、統合にプレビューだけで何も書かれない場合を足した。
 - e2e: 旗を立てる server の helper に `review` の option。demo-review・demo-lifecycle は両方、demo-versions-page はプレビューだけで「書き込みの欄が無く固定の文言」を確かめる。比較・今日の印・成果物の route はプレビューだけ (変更なし)。
+- 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1297 件、統合の全体 28 files / 472 件、e2e の全体 152 passed / 34 skipped (旗を立てる spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
+- 注: 長く使っているローカルの DB に、途中で止めた実行の行が溜まると、共有の今日の画面 (最大 5 件) が埋まり today・mobile-qa・email-send が落ちることがある (一度起きた)。統合の実行 (`resetSalesData`) の後の、きれいな DB からの全体の実行はすべて通った。CI は毎回きれいな DB から始まる。
