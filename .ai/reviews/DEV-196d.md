@@ -34,3 +34,19 @@ branch `feature/dev-196d-1-foundation` (`origin/develop` ae2720a から)。route
 - unit: `tests/unit/sales/demo-version/` に `flags.test.ts`・`admin-messages.test.ts`・`compare.test.ts`・`view-model.test.ts` を追加、`purity.test.ts` の module 一覧に 4 つを追加 (env を読まない・I/O なし・app から import されない、の規則は変えていない)。
 - 結果 (2026-11-11、worktree、develop ae2720a + この branch): `npx vitest run tests/unit/sales/demo-version tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 20 files / 647 tests 合格。`tests/unit/sales` 全体も合格。`npx tsc --noEmit`・eslint (変更した dir)・`npm run check:secrets`・`npm run build` 合格。
 - 全 unit (`npx vitest run`) では `tests/unit/design-agent/**` の Chromium を起動するテストだけが落ちる。container の `/opt/pw-browsers` にあるのは `chromium_headless_shell-1194` で、repo の Playwright が探す `-1234` が無いため (環境の問題。この PR は触れていない)。196d-2 以降の e2e では対処が要る。**決定**: ローカルだけ、commit しない上書き (env か未 commit の config で `executablePath: '/opt/pw-browsers/chromium'`) で既存の browser を使う。commit する Playwright の設定と CI は変えない。e2e の正本は CI。各 PR で、ローカルで何をどう走らせたかをこの記録に残す。
+
+### review round 1 (coordinator の独立レビュー、d456ee9: C0 H0 M0 L5) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 | `compare.ts` の `rightsCounts` が素の `{}` で、`constructor` などの key が `Object.prototype` を読み抜ける | 結果は `Object.create(null)`、読むのは `RIGHTS_STATUSES` の既知の状態だけ (`Object.hasOwn`)。`compareVersionMeta` の権利の行も既知の状態だけ (`RIGHTS_STATUSES` の順) | `compare.test.ts` 「review round 1 L1」(`constructor`・`__proto__`・`toString`・未知の状態) |
+| L2 | `lineage` が再帰で、20,000 版の鎖で stack overflow。`children.set` の spread と版ごとの `o.files.filter` が二乗 | 明示の stack で辿る (pre-order は同じ)、子の一覧は push、ファイルと判定は Map で 1 回だけ版ごとに分ける。画面の系譜は `LINEAGE_DISPLAY_LIMIT` (200) 行までで、残りは `lineageHidden` の件数 | `view-model.test.ts` 「review round 1 L2」(20,000 版の鎖、`lineage` と `buildDemoVersionsView` の両方) |
+| L3 | 読めない `expires_at` が NaN で期限切れ扱いにならない | 読めない日時は期限切れ (判定できない)。`canAdminPreview` と同じ fail closed | 「review round 1 L3」 |
+| L4 | `sendStoppedBy` が共有できるかだけ | `sendStop: { code, reasons, factsUnknown }`。`sales_demo_version_send_block` と同じ順で `demo_version_unavailable` (行が無い・approved でない・取り消し・期限切れ・読めない期限) → `demo_quality_not_approved` (bundle と facts が一致する有効な品質承認が無い) → `demo_facts_changed` → `demo_not_shareable` (+ 理由)。事実が読めなければ `factsUnknown`。文言は `SEND_BLOCK_LABEL` / `SEND_BLOCK_FACTS_UNKNOWN_TEXT`。`QualityReviewDb` に `bundle_sha256`・`facts_sha256` を足した | 「review round 1 L4」(view model の全分岐) と `admin-messages.test.ts` (migration の関数が返す符号すべてに文言) |
+| L5 | `facts: "unknown"` が承認を止めない | 承認の阻む理由に `FACTS_UNKNOWN` (修正の依頼と却下は止めない)。文言は `APPROVE_BLOCKER_LABEL.FACTS_UNKNOWN` | 「review round 1 L5」 |
+
+196d-5 への申し送り (coordinator):
+- 画像ごとの AI の確認は `approveBlockers` に無い。server action が画像 id と sha256 をサーバーで照合して強制する。
+- `ReviewView.invalidatedReason` は `INVALIDATED_REASON_LABEL` を通してだけ表示し、生の文字列は出さない (型の注記に書いた)。
+
+結果 (2026-11-11): `npx vitest run tests/unit/sales/demo-version tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 653 tests 合格。`npm run typecheck`・eslint (変更した dir)・`npm run check:secrets`・`npm run build` 合格。

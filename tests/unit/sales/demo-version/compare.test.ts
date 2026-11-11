@@ -111,6 +111,19 @@ describe("validatorCodes / rightsCounts / compareVersionMeta", () => {
     expect(rightsCounts("x")).toEqual({});
   });
 
+  it("review round 1 L1: prototype keys and unknown statuses never become counts (no read through Object.prototype)", () => {
+    const hostile = JSON.parse('{"by_status":{"constructor":3,"__proto__":4,"toString":1,"hasOwnProperty":2,"made_up_status":5,"owner_provided_internal":1}}');
+    const counts = rightsCounts(hostile);
+    expect(Object.keys(counts)).toEqual(["owner_provided_internal"]);
+    expect(Object.getPrototypeOf(counts)).toBeNull();
+    // the other side has no `constructor` key: its count must be 0, never the Object function
+    const base = { id: "a", bundle_sha256: h("1"), facts_sha256: h("2"), worker_commit: null, validator_result: { ok: true, codes: [] } };
+    const m = compareVersionMeta({ ...base, rights_summary: hostile }, { ...base, id: "b", rights_summary: { by_status: {} } });
+    expect(m.rights).toEqual([{ status: "owner_provided_internal", a: 1, b: 0 }]);
+    for (const r of m.rights) expect([typeof r.a, typeof r.b]).toEqual(["number", "number"]);
+    expect(compareVersionMeta({ ...base, rights_summary: null }, { ...base, rights_summary: hostile }).rights).toEqual([{ status: "owner_provided_internal", a: 0, b: 1 }]);
+  });
+
   it("compares hashes, facts, commit, validator codes and rights", () => {
     const base = { id: "a", bundle_sha256: h("1"), facts_sha256: h("2"), worker_commit: "abcdef1", validator_result: { ok: true, codes: ["X_ONE"] }, rights_summary: { by_status: { ai_concept_internal: 1 } } };
     const m = compareVersionMeta(base, { ...base, id: "b", bundle_sha256: h("3"), worker_commit: "not a commit", validator_result: { ok: true, codes: ["X_TWO"] }, rights_summary: { by_status: { owner_provided_internal: 2 } } });

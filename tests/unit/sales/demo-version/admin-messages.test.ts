@@ -80,10 +80,21 @@ describe("DEV-196d admin messages", () => {
   });
 
   it("every blocker the view model can return has the owner's words", () => {
-    const blockers = ["VERSION_NOT_REVIEWABLE", "DEMO_DISABLED", "FACTS_CHANGED", "VALIDATOR_NOT_OK", "RIGHTS_NOT_PREVIEWABLE", "RENDER_MISSING", "RENDER_UNVIEWABLE", "APPROVAL_OPEN"] as const;
+    const blockers = ["VERSION_NOT_REVIEWABLE", "DEMO_DISABLED", "FACTS_CHANGED", "FACTS_UNKNOWN", "VALIDATOR_NOT_OK", "RIGHTS_NOT_PREVIEWABLE", "RENDER_MISSING", "RENDER_UNVIEWABLE", "APPROVAL_OPEN"] as const;
     expect(Object.keys(messages.APPROVE_BLOCKER_LABEL).sort()).toEqual([...blockers].sort());
     for (const b of blockers) expect(messages.APPROVE_BLOCKER_LABEL[b], b).toBeTruthy();
     expect(messages.APPROVE_BLOCKER_LABEL.APPROVAL_OPEN).toBe(messages.APPROVAL_OPEN_MESSAGE);
+  });
+
+  it("review round 1 L4: every reason sales_demo_version_send_block can return has the owner's words", () => {
+    const fn = MIGRATION.slice(MIGRATION.indexOf("create function public.sales_demo_version_send_block("));
+    const body = fn.slice(0, fn.indexOf("\n$$;"));
+    const codes = [...body.matchAll(/return '([a-z_]+)'/g)].map((m) => m[1]!);
+    expect(codes).toEqual(["demo_version_unavailable", "demo_quality_not_approved", "demo_facts_changed", "demo_not_shareable"]);
+    expect(Object.keys(messages.SEND_BLOCK_LABEL).sort()).toEqual([...codes].sort());
+    for (const c of codes) expect(messages.SEND_BLOCK_LABEL[c as keyof typeof messages.SEND_BLOCK_LABEL], c).toBeTruthy();
+    expect(messages.SEND_BLOCK_LABEL.demo_version_unavailable).toContain("自動で切り替わりません");
+    expect(messages.SEND_BLOCK_FACTS_UNKNOWN_TEXT).toBeTruthy();
   });
 
   it("revoke reasons are fixed codes the database accepts", () => {

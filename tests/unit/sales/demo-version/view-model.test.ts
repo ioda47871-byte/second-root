@@ -5,6 +5,7 @@ import {
   buildDemoVersionsView,
   effectiveRights,
   lineage,
+  LINEAGE_DISPLAY_LIMIT,
   provenanceSummary,
   unshareableReasons,
   VERSIONED_SHARING_ENABLED,
@@ -113,6 +114,23 @@ describe("buildDemoVersionsView: preview and review", () => {
     expect(tablet.renders.map((r) => r.viewport)).toEqual(["desktop_1440", "tablet_768", "mobile_390"]);
   });
 
+  it("review round 1 L3: an unparseable expires_at counts as expired (not previewable, not reviewable)", () => {
+    for (const expires_at of ["not a date", "", "2026-13-45T99:00:00Z"]) {
+      const v = build({ versions: [version(1, { expires_at })] }).versions[0]!;
+      expect(v.previewable, expires_at).toBe(false);
+      expect(v.reviewBlockers, expires_at).toContain("VERSION_NOT_REVIEWABLE");
+    }
+  });
+
+  it("review round 1 L5: unknown facts block approving (fail safe) but not a rejection", () => {
+    for (const currentFactsSha256 of [null, "not-a-hash"]) {
+      const v = build({ currentFactsSha256 }).versions[0]!;
+      expect(v.facts).toBe("unknown");
+      expect(v.reviewBlockers).toEqual([]);
+      expect(v.approveBlockers).toEqual(["FACTS_UNKNOWN"]);
+    }
+  });
+
   it("revoked, expired, uploading and rejected versions are not previewable or reviewable", () => {
     for (const over of [{ status: "revoked", revoked_at: "2026-11-10T00:00:00Z", revoke_code: "FACT_ERROR" }, { expires_at: "2026-11-11T02:59:59Z" }, { status: "uploading" }, { status: "rejected" }, { status: "expired" }, { status: "nonsense" }]) {
       const v = build({ versions: [version(1, over)] }).versions[0]!;
@@ -219,6 +237,8 @@ describe("buildDemoVersionsView: reviews, approval and the send warning (Low d)"
     withdrawn_at: null,
     invalidated_at: null,
     invalidated_reason: null,
+    bundle_sha256: h("1"),
+    facts_sha256: FACTS,
     ...over,
   });
 
@@ -235,10 +255,48 @@ describe("buildDemoVersionsView: reviews, approval and the send warning (Low d)"
   });
 
   it("an approved version stops sending (demo_not_shareable) and says why; no approved version → React demo as before", () => {
-    expect(build().sendStoppedBy).toBeNull();
-    expect(build({ versions: [version(1, { status: "approved" })], approvedVersionId: id(1) }).sendStoppedBy).toEqual(["versioned_sharing_disabled"]);
-    // an approved id that is not among this demo's rows still blocks in the database
-    expect(build({ approvedVersionId: id(77) }).sendStoppedBy).toEqual(["versioned_sharing_disabled"]);
+    expect(build().sendStop).toBeNull();
+    expect(build({ versions: [version(1, { status: "approved" })], approvedVersionId: id(1), reviews: [review({})] }).sendStop).toEqual({
+      code: "demo_not_shareable",
+      reasons: ["versioned_sharing_disabled"],
+      factsUnknown: false,
+    });
+  });
+
+  it("review round 1 L4: the send stop gives the database's true reason, in sales_demo_version_send_block's order", () => {
+    const approved = (over: Partial<VersionRowDb> = {}) => [version(1, { status: "approved", ...over })];
+    const code = (o: Partial<Parameters<typeof buildDemoVersionsView>[0]>) => build({ approvedVersionId: id(1), reviews: [review({})], ...o }).sendStop?.code;
+    // the approved id is not among this demo's rows
+    expect(build({ approvedVersionId: id(77) }).sendStop?.code).toBe("demo_version_unavailable");
+    expect(code({ versions: approved({ revoked_at: "2026-11-10T00:00:00Z" }) })).toBe("demo_version_unavailable");
+    expect(code({ versions: approved({ status: "revoked" }) })).toBe("demo_version_unavailable");
+    expect(code({ versions: approved({ status: "superseded" }) })).toBe("demo_version_unavailable");
+    expect(code({ versions: approved({ expires_at: "2026-11-11T03:00:00Z" }) })).toBe("demo_version_unavailable");
+    expect(code({ versions: approved({ expires_at: "not a date" }) })).toBe("demo_version_unavailable");
+    // no active approval matching the version's bundle and facts
+    expect(code({ versions: approved(), reviews: [] })).toBe("demo_quality_not_approved");
+    expect(code({ versions: approved(), reviews: [review({ state: "withdrawn" })] })).toBe("demo_quality_not_approved");
+    expect(code({ versions: approved(), reviews: [review({ state: "invalidated" })] })).toBe("demo_quality_not_approved");
+    expect(code({ versions: approved(), reviews: [review({ decision: "changes_requested" })] })).toBe("demo_quality_not_approved");
+    expect(code({ versions: approved(), reviews: [review({ bundle_sha256: h("2") })] })).toBe("demo_quality_not_approved");
+    expect(code({ versions: approved(), reviews: [review({ facts_sha256: h("0") })] })).toBe("demo_quality_not_approved");
+    // the shop's facts changed after the version was made
+    expect(code({ versions: approved(), currentFactsSha256: h("0") })).toBe("demo_facts_changed");
+    // unreadable facts: the database decides; the screen says it could not rule a change out
+    expect(build({ versions: approved(), approvedVersionId: id(1), reviews: [review({})], currentFactsSha256: null }).sendStop).toEqual({
+      code: "demo_not_shareable",
+      reasons: ["versioned_sharing_disabled"],
+      factsUnknown: true,
+    });
+    // an AI image adds its own reason
+    const withAi = build({
+      versions: approved(),
+      approvedVersionId: id(1),
+      reviews: [review({})],
+      files: [...baseFiles(1), file(1, "page/photos/hero-desktop.webp", "photo", { sha256: h("c"), image_id: id(501) })],
+      images: [image(1)],
+    }).sendStop;
+    expect(withAi).toMatchObject({ code: "demo_not_shareable", reasons: ["versioned_sharing_disabled", "ai_images", "photos_not_shareable"] });
   });
 
   it("orders versions newest first and links parents", () => {
@@ -266,6 +324,24 @@ describe("lineage", () => {
       { id: "e", version_no: 5, parent_version_id: "a" },
     ];
     expect(lineage(rows).map((n) => `${n.versionNo}@${n.depth}`)).toEqual(["1@0", "2@1", "4@2", "5@1", "3@0"]);
+  });
+
+  it("review round 1 L2: a 20,000-version chain neither overflows the stack nor goes quadratic; the view caps the list", () => {
+    const N = 20_000;
+    const rows = Array.from({ length: N }, (_, i) => ({ id: `v${i}`, version_no: i + 1, parent_version_id: i === 0 ? null : `v${i - 1}` }));
+    const started = Date.now();
+    const out = lineage(rows);
+    expect(out).toHaveLength(N);
+    expect(out[N - 1]).toEqual({ id: `v${N - 1}`, versionNo: N, depth: N - 1 });
+    const versions = Array.from({ length: N }, (_, i) => version(i + 1, { parent_version_id: i === 0 ? null : id(i) }));
+    const files = versions.flatMap((v) => baseFiles(v.version_no));
+    const view = build({ versions, files });
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(view.versions).toHaveLength(N);
+    expect(view.lineage).toHaveLength(LINEAGE_DISPLAY_LIMIT);
+    expect(view.lineageHidden).toBe(N - LINEAGE_DISPLAY_LIMIT);
+    expect(view.versions[0]!.renders).toHaveLength(2);
+    expect(build().lineageHidden).toBe(0);
   });
 
   it("never drops a row: a missing parent is a root, a cycle is listed flat", () => {

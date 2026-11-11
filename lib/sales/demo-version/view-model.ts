@@ -93,6 +93,9 @@ export type QualityReviewDb = {
   withdrawn_at: string | null;
   invalidated_at: string | null;
   invalidated_reason: string | null;
+  /** what the review was given (sales_demo_version_send_block requires both to match the version) */
+  bundle_sha256: string;
+  facts_sha256: string;
 };
 
 export type SendApprovalDb = { id: string; outreach_id: string; state: string; demo_version_id: string | null };
@@ -126,6 +129,7 @@ export type ReviewView = {
   decision: QualityDecision | null;
   state: "active" | "withdrawn" | "invalidated" | null;
   reviewedAt: string;
+  /** a fixed code; show it only through INVALIDATED_REASON_LABEL, never as text */
   invalidatedReason: string | null;
   checklist: Partial<Record<QualityChecklistItem, "ok" | "ng">>;
 };
@@ -136,8 +140,20 @@ export type ReviewBlocker = "VERSION_NOT_REVIEWABLE" | "DEMO_DISABLED" | "FACTS_
  * sales_review_demo_version demands that every render of the version was viewed before approving, so the screen does
  * not offer an approval the database would refuse.
  */
-export type ApproveBlocker = ReviewBlocker | "RENDER_MISSING" | "RENDER_UNVIEWABLE" | "APPROVAL_OPEN";
+export type ApproveBlocker = ReviewBlocker | "FACTS_UNKNOWN" | "RENDER_MISSING" | "RENDER_UNVIEWABLE" | "APPROVAL_OPEN";
 export type UnshareableReason = "versioned_sharing_disabled" | "ai_images" | "photos_not_shareable";
+
+/**
+ * Low (d): why sales_demo_version_send_block refuses this shop's send approvals because of its approved version, in
+ * the database's order. `reasons` is filled for demo_not_shareable only. `factsUnknown`: the current facts hash could
+ * not be read, so the screen cannot rule out demo_facts_changed (the database decides; the screen does not claim the
+ * facts are unchanged).
+ */
+export type SendBlockCode = "demo_version_unavailable" | "demo_quality_not_approved" | "demo_facts_changed" | "demo_not_shareable";
+export type SendStop = { code: SendBlockCode; reasons: UnshareableReason[]; factsUnknown: boolean };
+
+/** At most this many lineage rows are listed; the rest are counted in lineageHidden. */
+export const LINEAGE_DISPLAY_LIMIT = 200;
 
 export type VersionView = {
   id: string;
@@ -176,11 +192,13 @@ export type DemoVersionsView = {
   /** §9.5: send approvals of this shop in send_opened (to settle on the Today screen first) */
   openSends: { approvalId: string; outreachId: string }[];
   /**
-   * Low (d): the shop has a quality-approved version, so its send approvals are refused (demo_not_shareable) while
-   * any of these reasons holds. null: no approved version (sending uses the React demo as before).
+   * Low (d): the shop has an approved version id, so its send approvals are refused for this reason (re-derived like
+   * sales_demo_version_send_block). null: no approved version (sending uses the React demo as before).
    */
-  sendStoppedBy: UnshareableReason[] | null;
+  sendStop: SendStop | null;
   lineage: { id: string; versionNo: number; depth: number }[];
+  /** lineage rows beyond LINEAGE_DISPLAY_LIMIT (shown as "and N more") */
+  lineageHidden: number;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -188,6 +206,23 @@ const AI_STATUSES: readonly RightsStatus[] = ["ai_demo_internal", "ai_concept_in
 
 const asStatus = (s: string): VersionStatus | null => ((VERSION_STATUSES as readonly string[]).includes(s) ? (s as VersionStatus) : null);
 const time = (s: string | null) => (s === null ? null : new Date(s));
+/** An unparseable time counts as already past (fail closed, like canAdminPreview with NaN). */
+const expired = (expiresAt: string, now: Date) => {
+  const t = Date.parse(expiresAt);
+  return !Number.isFinite(t) || t <= now.getTime();
+};
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    const list = m.get(k);
+    if (list) list.push(r);
+    else m.set(k, [r]);
+  }
+  return m;
+}
 
 /** sales_demo_image_previewable, re-derived at `now`; the status the screen shows. */
 export function effectiveRights(img: DemoImageDb | null, now: Date): { status: RightsStatus; previewable: boolean } {
@@ -249,13 +284,16 @@ export function buildDemoVersionsView(o: {
 }): DemoVersionsView {
   const byId = new Map(o.versions.map((v) => [v.id, v]));
   const imagesById = new Map(o.images.map((i) => [i.id, i]));
+  const filesByVersion = groupBy(o.files, (f) => f.version_id);
+  const reviewsByVersion = groupBy(o.reviews, (r) => r.version_id);
+  const factsKnown = o.currentFactsSha256 !== null && SHA256.test(o.currentFactsSha256);
   const openSends = o.approvals.filter((a) => a.state === "send_opened").map((a) => ({ approvalId: a.id, outreachId: a.outreach_id }));
 
   const versions = [...o.versions]
     .sort((a, b) => b.version_no - a.version_no)
     .map((v): VersionView => {
       const status = asStatus(v.status);
-      const files = o.files.filter((f) => f.version_id === v.id);
+      const files = filesByVersion.get(v.id) ?? [];
       const renders: RenderView[] = RENDER_VIEWPORTS.flatMap((viewport) => {
         const f = files.find((x) => x.path === `renders/${viewport}.webp` && x.role === "render");
         return f && f.width !== null && f.height !== null ? [{ viewport, urlPath: f.path, sha256: f.sha256, width: f.width, height: f.height }] : [];
@@ -290,22 +328,23 @@ export function buildDemoVersionsView(o: {
       const statusPreviewable = status !== null && canAdminPreview(versionRow, o.now);
       const rightsPreviewable = images.every((i) => i.previewable);
       const validator = validatorCodes(v.validator_result);
-      const facts = o.currentFactsSha256 === null || !/^[0-9a-f]{64}$/.test(o.currentFactsSha256) ? "unknown" : o.currentFactsSha256 === v.facts_sha256 ? "same" : "changed";
-      const reviews = o.reviews
-        .filter((r) => r.version_id === v.id)
+      const facts = !factsKnown ? "unknown" : o.currentFactsSha256 === v.facts_sha256 ? "same" : "changed";
+      const reviews = [...(reviewsByVersion.get(v.id) ?? [])]
         .sort((a, b) => (a.reviewed_at < b.reviewed_at ? 1 : -1))
         .map(reviewView);
       const activeApproval = reviews.find((r) => r.decision === "approved" && r.state === "active") ?? null;
 
       const reviewBlockers: ReviewBlocker[] = [];
       const reviewableStatus = status === "draft" || status === "superseded";
-      if (!reviewableStatus || v.revoked_at !== null || new Date(v.expires_at).getTime() <= o.now.getTime()) reviewBlockers.push("VERSION_NOT_REVIEWABLE");
+      if (!reviewableStatus || v.revoked_at !== null || expired(v.expires_at, o.now)) reviewBlockers.push("VERSION_NOT_REVIEWABLE");
       if (o.demoDisabled) reviewBlockers.push("DEMO_DISABLED");
       if (facts === "changed") reviewBlockers.push("FACTS_CHANGED");
       if (!validator.ok) reviewBlockers.push("VALIDATOR_NOT_OK");
       if (!rightsPreviewable) reviewBlockers.push("RIGHTS_NOT_PREVIEWABLE");
       const missingRequiredRenders = REQUIRED_RENDERS.filter((r) => !renders.some((x) => x.viewport === r));
       const approveBlockers: ApproveBlocker[] = [...reviewBlockers];
+      // the owner rule: facts that cannot be confirmed fail safe (a rejection or a change request stays possible)
+      if (facts === "unknown") approveBlockers.push("FACTS_UNKNOWN");
       if (missingRequiredRenders.length) approveBlockers.push("RENDER_MISSING");
       if (files.some((f) => f.role === "render" && !renders.some((r) => r.urlPath === f.path))) approveBlockers.push("RENDER_UNVIEWABLE");
       if (openSends.length) approveBlockers.push("APPROVAL_OPEN");
@@ -341,37 +380,70 @@ export function buildDemoVersionsView(o: {
       };
     });
 
-  const approved = o.approvedVersionId ? versions.find((v) => v.id === o.approvedVersionId) ?? null : null;
+  const fullLineage = lineage(o.versions);
   return {
     versions,
     approvedVersionId: o.approvedVersionId,
     openSends,
-    // an approved id that is not among the rows still blocks sending in the database (demo_version_unavailable)
-    sendStoppedBy: o.approvedVersionId === null ? null : approved ? approved.unshareableReasons : ["versioned_sharing_disabled"],
-    lineage: lineage(o.versions),
+    sendStop: sendStop(o, versions, factsKnown),
+    lineage: fullLineage.slice(0, LINEAGE_DISPLAY_LIMIT),
+    lineageHidden: Math.max(0, fullLineage.length - LINEAGE_DISPLAY_LIMIT),
   };
 }
 
-/** Lineage in display order: roots by version number, each followed by its descendants (depth-first). Cycle-safe. */
+/** sales_demo_version_send_block, re-derived from the rows the screen read (same order of checks). */
+function sendStop(
+  o: { versions: readonly VersionRowDb[]; reviews: readonly QualityReviewDb[]; approvedVersionId: string | null; currentFactsSha256: string | null; now: Date },
+  views: readonly VersionView[],
+  factsKnown: boolean,
+): SendStop | null {
+  if (o.approvedVersionId === null) return null;
+  const stop = (code: SendBlockCode, reasons: UnshareableReason[] = []): SendStop => ({ code, reasons, factsUnknown: !factsKnown });
+  const v = o.versions.find((x) => x.id === o.approvedVersionId);
+  const view = views.find((x) => x.id === o.approvedVersionId);
+  // not this demo's row, not approved, revoked or expired (an unparseable expiry counts as expired)
+  if (!v || !view || v.status !== "approved" || v.revoked_at !== null || expired(v.expires_at, o.now)) return stop("demo_version_unavailable");
+  const hasActiveApproval = o.reviews.some(
+    (r) => r.version_id === v.id && r.decision === "approved" && r.state === "active" && r.bundle_sha256 === v.bundle_sha256 && r.facts_sha256 === v.facts_sha256,
+  );
+  if (!hasActiveApproval) return stop("demo_quality_not_approved");
+  if (factsKnown && o.currentFactsSha256 !== v.facts_sha256) return stop("demo_facts_changed");
+  // versioned sharing is off (DEV-196g), so a version that got this far is never shareable today
+  const reasons = view.unshareableReasons;
+  return reasons.length ? stop("demo_not_shareable", reasons) : null;
+}
+
+/**
+ * Lineage in display order: roots by version number, each followed by its descendants (depth-first, pre-order).
+ * Iterative (a long chain never overflows the stack), linear apart from sorting, and cycle-safe.
+ */
 export function lineage(versions: readonly Pick<VersionRowDb, "id" | "version_no" | "parent_version_id">[]): { id: string; versionNo: number; depth: number }[] {
+  type Row = Pick<VersionRowDb, "id" | "version_no" | "parent_version_id">;
   const ids = new Set(versions.map((v) => v.id));
-  const children = new Map<string | null, Pick<VersionRowDb, "id" | "version_no" | "parent_version_id">[]>();
+  const children = new Map<string | null, Row[]>();
   for (const v of versions) {
     const parent = v.parent_version_id && ids.has(v.parent_version_id) && v.parent_version_id !== v.id ? v.parent_version_id : null;
-    children.set(parent, [...(children.get(parent) ?? []), v]);
+    const list = children.get(parent);
+    if (list) list.push(v);
+    else children.set(parent, [v]);
   }
   for (const list of children.values()) list.sort((a, b) => a.version_no - b.version_no);
   const out: { id: string; versionNo: number; depth: number }[] = [];
   const seen = new Set<string>();
-  const walk = (parent: string | null, depth: number) => {
-    for (const v of children.get(parent) ?? []) {
-      if (seen.has(v.id)) continue;
-      seen.add(v.id);
-      out.push({ id: v.id, versionNo: v.version_no, depth });
-      walk(v.id, depth + 1);
-    }
+  const stack: { row: Row; depth: number }[] = [];
+  const pushChildren = (parent: string | null, depth: number) => {
+    const list = children.get(parent) ?? [];
+    // reversed, so the lowest version number is popped first
+    for (let i = list.length - 1; i >= 0; i--) stack.push({ row: list[i]!, depth });
   };
-  walk(null, 0);
+  pushChildren(null, 0);
+  while (stack.length) {
+    const { row, depth } = stack.pop()!;
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push({ id: row.id, versionNo: row.version_no, depth });
+    pushChildren(row.id, depth + 1);
+  }
   // members of a parent cycle (the database forbids it; never drop a row from view)
   for (const v of [...versions].sort((a, b) => a.version_no - b.version_no)) if (!seen.has(v.id)) out.push({ id: v.id, versionNo: v.version_no, depth: 0 });
   return out;

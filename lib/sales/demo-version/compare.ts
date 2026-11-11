@@ -15,6 +15,7 @@
  * Pure.
  */
 import type { ArtifactManifest, ArtifactRole } from "./manifest";
+import { RIGHTS_STATUSES, type RightsStatus } from "./rights";
 
 export type FileChange = "added" | "removed" | "changed" | "same";
 export type FileDiffEntry = {
@@ -138,13 +139,20 @@ export function validatorCodes(result: unknown): { ok: boolean; codes: string[] 
   return { ok: r.ok === true, codes };
 }
 
-/** The `by_status` counts of a stored rights summary (§8.4), known keys and safe integers only. */
-export function rightsCounts(summary: unknown): Record<string, number> {
-  if (typeof summary !== "object" || summary === null || Array.isArray(summary)) return {};
+/**
+ * The `by_status` counts of a stored rights summary (§8.4): known rights statuses and safe non-negative integers only.
+ * The result has no prototype, so a key such as `constructor` can never read through to Object.prototype.
+ */
+export function rightsCounts(summary: unknown): Partial<Record<RightsStatus, number>> {
+  const out: Partial<Record<RightsStatus, number>> = Object.create(null);
+  if (typeof summary !== "object" || summary === null || Array.isArray(summary)) return out;
   const by = (summary as Record<string, unknown>).by_status;
-  if (typeof by !== "object" || by === null || Array.isArray(by)) return {};
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(by)) if (/^[a-z_]{1,40}$/.test(k) && Number.isSafeInteger(v) && (v as number) >= 0) out[k] = v as number;
+  if (typeof by !== "object" || by === null || Array.isArray(by)) return out;
+  for (const status of RIGHTS_STATUSES) {
+    if (!Object.hasOwn(by, status)) continue;
+    const v = (by as Record<string, unknown>)[status];
+    if (Number.isSafeInteger(v) && (v as number) >= 0) out[status] = v as number;
+  }
   return out;
 }
 
@@ -162,7 +170,7 @@ export type VersionMetaDiff = {
   factsChanged: boolean;
   workerCommit: { a: string | null; b: string | null; changed: boolean };
   validator: { a: { ok: boolean; codes: string[] }; b: { ok: boolean; codes: string[] }; added: string[]; removed: string[] };
-  rights: { status: string; a: number; b: number }[];
+  rights: { status: RightsStatus; a: number; b: number }[];
 };
 
 export function compareVersionMeta(a: VersionMetaInput, b: VersionMetaInput): VersionMetaDiff {
@@ -176,7 +184,7 @@ export function compareVersionMeta(a: VersionMetaInput, b: VersionMetaInput): Ve
     factsChanged: a.facts_sha256 !== b.facts_sha256,
     workerCommit: { a: commit(a.worker_commit), b: commit(b.worker_commit), changed: commit(a.worker_commit) !== commit(b.worker_commit) },
     validator: { a: va, b: vb, added: vb.codes.filter((c) => !va.codes.includes(c)), removed: va.codes.filter((c) => !vb.codes.includes(c)) },
-    rights: [...new Set([...Object.keys(ra), ...Object.keys(rb)])].sort().map((status) => ({ status, a: ra[status] ?? 0, b: rb[status] ?? 0 })),
+    rights: RIGHTS_STATUSES.filter((st) => Object.hasOwn(ra, st) || Object.hasOwn(rb, st)).map((status) => ({ status, a: ra[status] ?? 0, b: rb[status] ?? 0 })),
   };
 }
 

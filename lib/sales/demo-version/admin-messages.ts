@@ -9,7 +9,7 @@
 import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
 import type { RightsStatus } from "./rights";
 import type { VersionStatus } from "./version-state";
-import type { ApproveBlocker } from "./view-model";
+import type { ApproveBlocker, SendBlockCode } from "./view-model";
 
 /** The leading code of a database error message (`invalid_version_transition:draft->approved` → its first part). */
 export function errorCodeOf(message: string | null | undefined): string {
@@ -126,6 +126,7 @@ export const APPROVE_BLOCKER_LABEL: Readonly<Record<ApproveBlocker, string>> = {
   VERSION_NOT_REVIEWABLE: DEMO_VERSION_ERROR_LABEL.version_not_reviewable!,
   DEMO_DISABLED: DEMO_VERSION_ERROR_LABEL.demo_unavailable!,
   FACTS_CHANGED: DEMO_VERSION_ERROR_LABEL.demo_facts_changed!,
+  FACTS_UNKNOWN: "店舗の事実が今どうなっているかを確認できませんでした。確認できるまで品質承認はできません（修正の依頼と却下はできます）。画面を再読み込みしてください。",
   VALIDATOR_NOT_OK: DEMO_VERSION_ERROR_LABEL.validator_not_ok!,
   RIGHTS_NOT_PREVIEWABLE: DEMO_VERSION_ERROR_LABEL.rights_not_previewable!,
   RENDER_MISSING: DEMO_VERSION_ERROR_LABEL.render_missing!,
@@ -225,6 +226,21 @@ export const UNSHAREABLE_REASON_LABEL: Readonly<Record<"versioned_sharing_disabl
   ai_images: "AI 生成の画像を含みます（共有不可）",
   photos_not_shareable: "写真の共有は今は無効です",
 };
+
+/**
+ * Low (d): why this shop's send approvals are refused because of its approved version (sales_demo_version_send_block),
+ * in the owner's words. demo_not_shareable is followed by the UNSHAREABLE_REASON_LABEL lines.
+ */
+export const SEND_BLOCK_LABEL: Readonly<Record<SendBlockCode, string>> = {
+  demo_version_unavailable:
+    "品質承認した版が使えなくなりました（取り消し済み・期限切れ・見つからない）。この店舗の送信承認は止まっています。ほかの版や React のデモへは自動で切り替わりません。",
+  demo_quality_not_approved: "品質承認した版に有効な品質承認がありません。この店舗の送信承認は止まっています。",
+  demo_facts_changed: "品質承認した版を作った後に店舗の事実が変わりました。この店舗の送信承認は止まっています。新しい版を作り直してください。",
+  demo_not_shareable: "品質承認した版を共有できないため（「デモを共有できない」）、この店舗の送信承認は止まっています。送るには品質承認を取り下げてください（React のデモで送ることになります）。",
+};
+
+/** Shown beside the send stop when the current facts could not be read (the facts may also have changed). */
+export const SEND_BLOCK_FACTS_UNKNOWN_TEXT = "店舗の事実が今どうなっているかを確認できませんでした。事実が変わっている可能性もあります。";
 
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";
