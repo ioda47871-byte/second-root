@@ -34,6 +34,7 @@ describe("demo-version library purity", () => {
       "components/admin/demo/FactsPanel.tsx",
       "components/admin/demo/LiveFrame.tsx",
       "components/admin/demo/QualityReviewForm.tsx",
+      "components/admin/demo/RenderPane.tsx",
       "components/admin/demo/ReviewHistory.tsx",
       "components/admin/demo/RightsPanel.tsx",
       "components/admin/demo/TokenExpiry.tsx",

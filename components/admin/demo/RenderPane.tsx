@@ -1,7 +1,9 @@
 "use client";
 /**
  * DEV-196d-3 (spec §7.2): the full-page renders, PC1440 and SP390 (and tablet 768 when drawn), each in its own scroll
- * box so the whole page is reachable and nothing is cropped. PC can be fitted to the box or shown at actual size; SP
+ * box so the whole page is reachable and nothing is cropped. DEV-196r: a render stored narrower than its viewport (the
+ * server's 4096 px limit downscales a tall full page) says so — 「縮小表示（実寸の約N%）」 — and offers no "actual size"
+ * mode; the 1:1 check is the live page tab. Otherwise PC can be fitted to the box or shown at actual size; SP
  * is always 1:1 (390 CSS px). A sentinel under each image marks "viewed to the end" once it has been scrolled into
  * view inside its box; DEV-196d-5 uses that to enable the viewed confirmation.
  *
@@ -10,9 +12,13 @@
  * into view at once — so an error, a size mismatch or a new src resets "viewed" and stops watching.
  */
 import { useEffect, useRef, useState } from "react";
+import { scaledRenderNote } from "@/lib/sales/demo-version/admin-messages";
 import styles from "./demo.module.css";
 
 export type RenderItem = { viewport: "desktop_1440" | "tablet_768" | "mobile_390"; src: string; width: number; height: number };
+
+/** The CSS width each render was drawn at (a stored render narrower than this was downscaled). */
+export const RENDER_VIEWPORT_WIDTH: Record<RenderItem["viewport"], number> = { desktop_1440: 1440, tablet_768: 768, mobile_390: 390 };
 
 export const RENDER_LABEL: Record<RenderItem["viewport"], string> = {
   desktop_1440: "PC 1440",
@@ -68,6 +74,8 @@ function Render({ item, onViewed }: { item: RenderItem; onViewed?: (viewport: Re
 
   const label = RENDER_LABEL[item.viewport];
   const isPc = item.viewport === "desktop_1440";
+  // DEV-196r: a downscaled render is never offered as "actual size" (its pixels are not 1:1 with the page)
+  const scaledNote = scaledRenderNote(item.width, RENDER_VIEWPORT_WIDTH[item.viewport]);
   return (
     <figure
       className={`${styles.render} ${item.viewport === "tablet_768" ? styles.renderTablet : ""}`}
@@ -79,7 +87,7 @@ function Render({ item, onViewed }: { item: RenderItem; onViewed?: (viewport: Re
         <strong>
           {label}（全ページ {item.width}×{item.height}）
         </strong>
-        {isPc && (
+        {isPc && !scaledNote && (
           <button type="button" className={styles.tab} aria-pressed={!fit} onClick={() => setFit((f) => !f)}>
             {fit ? "実寸で見る" : "枠に合わせる"}
           </button>
@@ -87,6 +95,11 @@ function Render({ item, onViewed }: { item: RenderItem; onViewed?: (viewport: Re
         <span className={viewed ? styles.viewedDone : image === "broken" ? styles.unconfirmed : styles.viewed} role="status">
           {image === "broken" ? "描画画像を表示できませんでした（表示期限切れの可能性があります。再読み込みしてください）" : viewed ? "最後まで表示しました" : "最後まで見ていません"}
         </span>
+        {scaledNote && (
+          <span className={styles.note} style={{ flexBasis: "100%", margin: 0 }} data-scaled-note={item.viewport}>
+            {scaledNote}
+          </span>
+        )}
       </figcaption>
       <div ref={box} className={styles.scroll} tabIndex={0} aria-label={`${label} の描画画像（スクロールで全ページ）`} data-scroll={item.viewport}>
         {/* eslint-disable-next-line @next/next/no-img-element -- the server-checked render bytes, served by the artifact route */}

@@ -356,6 +356,16 @@ export const TODAY_FACTS_NOT_CHECKED = "店舗の事実が変わったかどう�
 export const QUALITY_REVIEW_DISABLED_TEXT =
   "品質の判定・取り下げ・取り消しは、今は無効です（表示だけ）。有効にするには設定が要ります。";
 
+/**
+ * DEV-196r: a render stored smaller than its viewport (the server's 4096 px limit: a tall full page is downscaled).
+ * The 1:1 check is the live page tab.
+ */
+export function scaledRenderNote(width: number, viewportWidth: number): string | null {
+  // only a downscaled render gets the note (a wider one is not something the package makes: say nothing)
+  if (!(width > 0 && viewportWidth > 0) || width >= viewportWidth) return null;
+  return `縮小表示（実寸の約${Math.round((width / viewportWidth) * 100)}%）。実寸は「生の頁」タブで確認できます。`;
+}
+
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";
 export const TOKEN_EXPIRED_TEXT = "表示期限が切れました";
