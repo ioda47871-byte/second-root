@@ -328,3 +328,4 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 - 統合 `tests/integration/demo-version-badges.test.ts` (3 件、CI でも走る): 管理者の session で**1 回の request** (client の request を数えて `["sales_demos"]` だけ) で 版なし・demo なし・確認待ち・修正依頼中・承認済み (送信停止 `demo_not_shareable`、理由、事実は不明)・取り消し、管理者でない session には何も見えない (RLS)、旗が無効なら null で request は 0。
 - e2e `tests/e2e/demo-today-badge.spec.ts` (desktop で 3 件): suite の server (旗は無効) で今日の card に印・リンク・説明が無く、承認済みの店の card も今までどおり送信の承認の操作がある。旗を立てた server で 1440 と 390: 承認済みの店に「品質承認済み（v1）」と送信停止の説明 (送信の操作はそのまま)、確認待ちの店に「品質確認待ち（v1）」と説明なし、リンクで版の頁へ移る、頁は横にはみ出さない。spec は作った下書きを `afterAll` で消す (共有の今日の画面のため)。
 - 既存の today・e2e-sales の spec はそのまま (変更なし) で通ることを全体の実行で確かめる (下)。
+- 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1278 件、統合の全体 28 files / 471 件、e2e の全体 152 passed / 34 skipped (旗を立てる 6 つの spec の mobile の複製。既存の today・mobile-qa・email-send などは変更なしで通る)。lint・typecheck・check:secrets・build 合格。
