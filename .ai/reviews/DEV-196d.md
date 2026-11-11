@@ -189,3 +189,56 @@ e2e の fixture: 架空の店の名前に「テスト」を含めない `shopNam
 
 L1 (検査に通った頁の見える本文だけ・大きさの上限)・L2 (中立の説明)・L3 (email を出さない・事実にしない) は、すべて直っていることを確認。新しい指摘なし: **C0 H0 M0 L0**。
 CI (b72efd7): `unit (1/2)` が一度だけ `tests/unit/design-agent/phase2f-live/steps.test.ts` の ENOENT (`image-request-A1.json`) で落ちた。この PR の外のテストで、ローカルでは 27/27 通る。落ちた job を一度だけ再実行して green、merge の時点 (9e2a1ae) ですべての検査が green。merged (#249 → 9e2a1ae)。
+
+## 196d-5: 7 項目の品質承認と、画像ごとの「事実の偽装なし」の確認
+
+branch `feature/dev-196d-5-quality-approval` (`origin/develop` 9e2a1ae から)。DB・migration・DB の関数・grant・next.config・workflow・依存の変更なし。書き込みは DEV-196c の `sales_review_demo_version` だけ (管理者の session)。
+
+| file | 中身 |
+|---|---|
+| `lib/sales/demo-version/review-input.ts` (純粋) | `ReviewInput` (zod): 7 項目すべての `ok` / `ng` (既定なし・推測なし)、最後まで見た描画画像 (viewport → sha256)、画面の bundle hash、AI 概念画像ごとの確認 (画像 id と sha256)、送信が止まることの確認、メモ。`checkReview`: **今の DB から導き直した版** (view model) と照らす — bundle が違えば `STALE`、view model の阻む理由 (状態・demo の無効・事実の変化 / 不明・検査・権利不明 / 取り消し / 期限切れ・描画の欠け / 表示できない描画・`send_opened`) があれば `BLOCKED`、承認は 7 項目すべて ok・版のすべての描画を最後まで見た (`evaluateQualityDecision`)・確認あり・AI 概念画像のすべてを id と**今の** sha256 で確認 (欠け・余分・重複・違う sha は拒否)、修正 / 却下は ng が 1 つ以上、見たと言う描画はこの版の描画だけ、メモは下の規則 |
+| `lib/sales/demo-version/review-client.ts` (純粋・import なし) | ブラウザが要る部分: メモの規則 `normaliseNote` (`sales_demo_note_valid` の写し、Low (a))、7 項目の順と強調 (quality.ts の写し。テストで一致を固定)。manifest / quality は node の組み込みを読むので client の form から import できない |
+| `lib/admin/demo-review.ts` (`server-only`) | 旗 (無効なら何も読まず書かず拒否) → 入力の形 → 版を管理者の session で読み直して `checkReview` → `sales_review_demo_version` (管理者の session)。DB の拒否は固定の文言 (`demoVersionErrorMessage`) |
+| `app/admin/sales/_actions/demo-versions.ts` | server action `reviewDemoVersion`: 旗 → `requireAdmin` → 上の core → `revalidatePath` |
+| `components/admin/demo/QualityReviewForm.tsx` | 7 項目 (3・4・5 は強調と「どうなら問題あり」)、画像ごとの確認 (固定の文 `NO_IMPERSONATION_STATEMENT`・赤い印・縮小画像)、メモ (その場で Low (a) の文言)、**承認の前の目立つ警告** `APPROVAL_STOPS_SENDING_BEFORE` と明示の確認 `SEND_STOP_ACKNOWLEDGEMENT` (Low (d))、承認の後に `APPROVAL_STOPS_SENDING_AFTER`。初めから選ばれているものは無い。品質承認は「7 項目すべて問題なし・PC と SP (と tablet) を最後まで見た・画像をすべて確認・送信停止を確認・view model の阻む理由なし・メモが正しい」まで押せず、押せない理由を並べる。修正を依頼 / 却下は問題ありが 1 つ以上。下に貼りつく要約 (「7項目 5/7・PC✓・SP–・画像 0/1」) と 44px のボタン |
+| `components/admin/demo/ReviewWorkspace.tsx` | 描画画像・生の頁・form が「最後まで見た」状態を共有する。form が受け取るのは RenderPane の (読み込みと大きさで守った) sentinel の結果だけで、手で入れられない |
+| `components/admin/demo/ReviewHistory.tsx` | この版の判定の記録。判定・状態・無効の理由は固定の label だけ (`INVALIDATED_REASON_LABEL`、知らない符号は「理由を表示できません」、行の文字列は出さない) |
+| `tests/support/seed-demo-version.ts` | AI 概念画像の版を作る option (取り込み時の確認は管理者の user id。画面での画像ごとの確認とは別) |
+
+### DEV-196c の Low
+
+- **(a) メモ**: form がその場で `INVALID_NOTE_MESSAGE` を出し、判定のボタンを止める。server も同じ規則で拒否し、DB の `invalid_note` も同じ文言。**規則の写しが DB の `sales_demo_note_valid` と一致することを、統合テストが 20 の例で照合**。
+- **(d) 送信が止まる警告**: 承認の前に目立つ警告と明示の確認 (確認が無ければ server が `SEND_STOP_NOT_ACKNOWLEDGED` で拒否)、承認の後に止まった旨。頁の上部には 196d-3 の `sendStop` (DB の `sales_demo_version_send_block` と同じ順の理由)。
+- **(c) 画像ごとの偽装なしの確認**: 画面で画像ごとの明示の確認、server が画像 id と今の sha256 で照合 (欠け・余分・違う sha は拒否、権利不明は版ごと拒否)。**DB に管理者の操作として記録する部分は作っていない (DB の変更が要る)。下に必要な変更を書いた。coordinator が owner に報告する。**
+
+### Low (c) に要る DB の変更 (提案。migration は書いていない)
+
+今の DB では: `sales_demo_images.no_factual_impersonation_confirmed_at/_by` は取り込み (`sales_ingest_demo_version`) の時に入り、行は `demo_image_immutable` の trigger で変えられない。`sales_review_demo_version` は画像の確認を受け取る引数を持たず、確認を調べない。だから「この管理者がこの品質承認のときに、この sha256 の画像を見て確認した」は DB に残らない (server action の照合だけ)。
+
+1. **新しい表** `public.sales_demo_review_image_confirmations`
+   - `review_id uuid not null references public.sales_demo_quality_reviews (id) on delete restrict`
+   - `image_id uuid not null references public.sales_demo_images (id) on delete restrict`
+   - `image_sha256 text not null check (image_sha256 ~ '^[0-9a-f]{64}$')`
+   - `confirmed_by uuid not null`、`confirmed_at timestamptz not null default now()`
+   - `primary key (review_id, image_id)`
+   - trigger: insert は下の関数の中からだけ (`confirmed_by = auth.uid()` かつ `sales_admins` に在る)、update / delete は拒否 (不変)。
+   - RLS: `for select to authenticated using ((select public.is_sales_admin()))`。grant: `revoke all … from public, anon, authenticated, service_role`、`grant select to authenticated`、`grant select to service_role`。staging の `SECURITY_CHECKS` に「client の書き込み grant なし」を足す。
+2. **`sales_review_demo_version` の変更**: 引数 `p_image_confirmations jsonb` (`[{"image_id": uuid, "sha256": hex}]`) を足す (旧い 6 引数の関数は drop して 7 引数で作り直す。`revoke all … from public, anon` / `grant execute … to authenticated`)。`p_decision = 'approved'` のとき:
+   - 版の `role = 'photo'` のファイルが指す画像のうち `source_kind = 'ai_concept_internal'` の集合と、`p_image_confirmations` の `image_id` の集合が**ちょうど一致** (欠け・余分・重複は `impersonation_not_confirmed`)。
+   - それぞれ `sha256` が `sales_demo_images.sha256` とファイルの `sha256` の両方に一致 (違えば `impersonation_not_confirmed`)。
+   - 画像が `sales_demo_image_previewable` (既存の `rights_not_previewable` の検査の後)。
+   - 品質承認の行を入れた後、同じ transaction で確認の行を入れる (`confirmed_by = auth.uid()`)。replay (同じ版の承認済み) は確認の行を足さない。
+   - `p_decision` が承認でないとき、`p_image_confirmations` は空でなければならない (`invalid_input`)。
+3. **テスト**: `tests/integration/demo-versions.test.ts` に — AI 概念画像の版は確認なし・一部・違う sha・余分で拒否、全部で承認され確認の行が管理者の id で残る、確認の行は update / delete できない、client の role から直接 insert できない、`db-security-audit` の grant の一覧、staging の検査。
+4. **画面の側** (この PR で済み): `lib/admin/demo-review.ts` の rpc 呼び出しに `p_image_confirmations` を足すだけ (server の照合はそのまま残す)。
+
+### 示さないもの
+
+- 計画の「テンプレート化の警告 (3・4 の横に参考)」は出していない。`templateWarnings` は構造記述子の検査の結果 (`StructureFindingInput`) を要るが、DEV-196c はそれを保存していない (worker の検査の結果の保存は DEV-196e / 196i の範囲)。作り話の警告は出さない。
+
+### テスト
+
+- unit `tests/unit/admin/demo-review.test.tsx` (16 件): `ReviewInput` の形 (7 項目の欠け・余分・値、hash・id、余分な key)、`review-client` の写しが quality.ts と一致し import なし・client の form が node を読む module を import しない、`normaliseNote` (Low (a))、`checkReview` のすべての拒否 (STALE・BLOCKED (事実の不明・`send_opened`・承認済み)・ng・送り返しに ng なし・描画の未表示 / 違う sha / この版に無い描画・確認なし・メモ) と画像の確認 (欠け・違う sha・重複・余分・権利不明 / 取り消しで全判定を拒否)、core が RPC だけに決めた値で書くこと・旗の無効で何も読まない・拒否で RPC を呼ばない・DB の生の文を出さない、server action の順 (旗 → 管理者、管理者でなければ throw で何も書かない)、form の markup (何も選ばれていない・3 つのボタンが押せない・3・4・5 の強調・画像ごとの確認・警告と確認・要約)、履歴 (固定の label だけ)。
+- 統合 `tests/integration/demo-review.test.ts` (8 件、CI でも走る): 承認が管理者の id・7 項目・見た描画とともに記録され `approved_version_id` が付く、旗の無効と管理者でない session で何も書かれない、STALE・項目の欠け・承認に ng・SP の未表示・違う描画・確認なし・知らない画像の確認で何も書かれない、AI 概念画像は id と今の sha256 で確認するまで承認できない、画像の取り消しで全判定を拒否、修正を依頼は ng が要り描画と確認は要らない、`style.css` のメモは Low (a) の文言で DB の前に拒否、メモの規則と DB の `sales_demo_note_valid` の一致 (20 例)。
+- e2e `tests/e2e/demo-review.spec.ts` (desktop で 6 件、1440 と 390): 何も選ばれていない・修正を依頼は ng が要り管理者として記録 (Storage なしで走る)、`style.css` のメモで文言が出てボタンが止まる (Storage なし)、Storage があるとき: 7 項目 ok だけでは押せず、両方の描画を最後まで見ても確認が無ければ押せず、確認して承認 → 承認の後の文言・承認済み・送信停止の理由・form が消える (1440 と 390)、AI 概念画像は画像ごとの確認まで押せない。
+- 196d-3 の e2e: 「操作のボタンなし」を「取り消しはまだ無く、判定のボタンは初め押せない」に変えた (196d-5 で判定が入ったため)。
