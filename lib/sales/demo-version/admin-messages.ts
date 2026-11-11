@@ -9,6 +9,7 @@
 import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
 import type { RightsStatus } from "./rights";
 import type { VersionStatus } from "./version-state";
+import type { DemoVersionBadgeState } from "./badge";
 import type { LifecycleRefusal } from "./lifecycle-input";
 import type { ReviewRefusal } from "./review-input";
 import type { ApproveBlocker, SendBlockCode } from "./view-model";
@@ -325,6 +326,25 @@ export const LIFECYCLE_REFUSAL_LABEL: Readonly<Record<LifecycleRefusal, string>>
   APPROVAL_OPEN: APPROVAL_OPEN_MESSAGE,
   URGENT_CODE: "急ぎの取り消しの理由は「事実の誤り」「権利の苦情・誤り」「安全上の懸念」から選んでください。",
 };
+
+/** DEV-196d-7: the Today card's demo version badge, in the owner's words. */
+export const DEMO_VERSION_BADGE_LABEL: Readonly<Record<DemoVersionBadgeState, string>> = {
+  none: "版なし",
+  awaiting_review: "品質確認待ち",
+  changes_requested: "修正依頼中",
+  rejected_by_admin: "却下",
+  approved: "品質承認済み",
+  revoked: "取り消し済み",
+  uploading: "アップロード中",
+  validator_rejected: "不採用",
+  expired: "期限切れ",
+};
+/** The badge when the version state could not be read (the card itself is unaffected). */
+export const DEMO_VERSION_BADGE_UNKNOWN = "版の状態を取得できません";
+/** Today: why the send action of this shop is stopped by its approved version (display only; the database decides). */
+export const TODAY_SEND_STOP_TITLE = "この店舗の送信承認は、デモの版のため止まっています。";
+/** Today does not read the shop's current facts: the facts check is left to the version page. */
+export const TODAY_FACTS_NOT_CHECKED = "店舗の事実が変わったかどうかは、ここでは確かめていません（版の頁で確認できます）。";
 
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";

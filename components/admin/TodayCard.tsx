@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import type { TodayDemoVersion } from "@/lib/admin/demo-version-badges";
 import type { TodayItem } from "@/lib/admin/today";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
 import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL, designErrorLabel, reviewAxisLines, reviewSummaryLine } from "@/lib/sales/design";
 import { formatJstDateTime } from "@/lib/sales/evidence";
+import { DemoSendStopNotice, DemoVersionBadge, DemoVersionLink } from "./DemoVersionBadge";
 import DncControl from "./DncControl";
 import DraftEditor from "./DraftEditor";
 import SkipDraft from "./SkipDraft";
@@ -18,7 +20,11 @@ function daysSince(iso: string, now: Date): number {
   return Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000);
 }
 
-export default function TodayCard({ item, now, action }: { item: TodayItem; now: Date; action: ReactNode }) {
+/**
+ * DEV-196d-7: `demoVersion` is passed only when SALES_DEMO_VERSIONS_ENABLED is on. Without it (the default) the card
+ * renders exactly as before: no badge, no link, no warning.
+ */
+export default function TodayCard({ item, now, action, demoVersion }: { item: TodayItem; now: Date; action: ReactNode; demoVersion?: TodayDemoVersion }) {
   const verdict = item.evidence.contact;
   return (
     <li className={styles.card} data-testid="today-item">
@@ -53,6 +59,7 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
         >
           {verdict.badge}
         </span>
+        {demoVersion !== undefined && <DemoVersionBadge value={demoVersion} />}
       </div>
       {!verdict.sendable && (
         <ul className={styles.blockers} data-testid="contact-blockers">
@@ -77,6 +84,8 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
           )}
         </p>
       )}
+      {demoVersion !== undefined && <DemoVersionLink prospectId={item.prospectId} />}
+      {demoVersion !== undefined && item.kind === "initial" && <DemoSendStopNotice value={demoVersion} />}
       <div className={styles.actions}>{action}</div>
       {/* DEV-194 review M1: a blocked follow-up has no send action and no 詳細 controls,
           so it would hold a slot for weeks. The existing DNC control (with its own

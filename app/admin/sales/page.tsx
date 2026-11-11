@@ -4,6 +4,7 @@ import SendRecordNotice from "@/components/admin/SendRecordNotice";
 import TodayCard from "@/components/admin/TodayCard";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
+import { loadTodayDemoVersions } from "@/lib/admin/demo-version-badges";
 import { composeFollowUp } from "@/lib/admin/followup";
 import { approvedSendLink, composeInitialSend } from "@/lib/admin/initial-send";
 import { loadTodayQueue, type TodayItem } from "@/lib/admin/today";
@@ -129,8 +130,10 @@ export default async function TodayPage() {
   await requireAdminPage();
   const now = new Date();
   let items;
+  let supabase;
   try {
-    items = await loadTodayQueue(await createAuthClient(), now);
+    supabase = await createAuthClient();
+    items = await loadTodayQueue(supabase, now);
   } catch {
     return (
       <>
@@ -141,6 +144,10 @@ export default async function TodayPage() {
       </>
     );
   }
+
+  // DEV-196d-7: the demo version badges — only with the flag on (off: null, nothing is read); one request for every
+  // shop on the page; a failure gives neutral badges and never breaks the list.
+  const demoVersions = await loadTodayDemoVersions(supabase, items.map((i) => i.prospectId), { env: process.env, now });
 
   // DEV-197: SendRecordNotice wraps everything (also the empty list) so the
   // notice of what was stored survives the card leaving the list.
@@ -156,7 +163,13 @@ export default async function TodayPage() {
         ) : (
           <ul className={styles.list}>
             {items.map((item) => (
-              <TodayCard key={`${item.kind}-${item.outreachId}`} item={item} now={now} action={actionFor(item)} />
+              <TodayCard
+                key={`${item.kind}-${item.outreachId}`}
+                item={item}
+                now={now}
+                action={actionFor(item)}
+                {...(demoVersions ? { demoVersion: demoVersions.get(item.prospectId) ?? { kind: "unknown" as const } } : {})}
+              />
             ))}
           </ul>
         )}
