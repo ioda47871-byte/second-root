@@ -237,6 +237,8 @@ describe("review of #251: the texts say exactly what the database does", () => {
     expect(WITHDRAW_CONFIRM_TEXT).not.toContain("やり直し");
     expect(unsentLegacyApprovalsText(0)).toBeNull();
     expect(unsentLegacyApprovalsText(2)).toContain("2 件");
+    // #251 nit: an upper bound — only unchanged approvals become current again
+    expect(unsentLegacyApprovalsText(2)).toContain("（変わっていないものだけが再び有効になります）");
   });
   it("L1 / L2: each revoke line only when it applies", () => {
     const plain = revokeEffects({ hasActiveApproval: false, isApprovedVersion: false }).join("\n");
