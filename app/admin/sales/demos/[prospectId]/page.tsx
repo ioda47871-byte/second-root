@@ -83,6 +83,11 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
           </h2>
           <VersionList view={view} prospectId={data.prospectId} selectedId={selected?.id ?? null} now={now} />
           {data.truncated && <p className={styles.note}>版が多いため、新しい 100 件だけを表示しています。</p>}
+          {view.versions.length >= 2 && (
+            <p className={styles.note}>
+              <Link href={`/admin/sales/demos/${data.prospectId}/compare${selected ? `?b=${selected.id}` : ""}`}>版を比べる</Link>
+            </p>
+          )}
         </section>
       )}
 

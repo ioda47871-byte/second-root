@@ -38,6 +38,8 @@ export type DemoVersionsPage =
       tokens: Record<string, string>;
       previewUnavailable: PreviewUnavailable | null;
       truncated: boolean;
+      /** the rows as read (server-side only; the compare page derives its diffs from them) */
+      rows: { versions: VersionRowDb[]; files: VersionFileDb[] };
     };
 
 /**
@@ -184,5 +186,6 @@ export async function loadDemoVersionsPage(
     tokens,
     previewUnavailable,
     truncated,
+    rows: { versions: listed, files },
   };
 }
