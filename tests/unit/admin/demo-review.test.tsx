@@ -74,7 +74,7 @@ const input = (over: Partial<ReviewInput> = {}): ReviewInput => ({
 describe("ReviewInput: the shape the server accepts", () => {
   it("needs every one of the 7 answers (no default), known keys only, and well-formed ids and hashes", () => {
     expect(ReviewInput.safeParse(input()).success).toBe(true);
-    const { not_a_copy: _drop, ...six } = ALL_OK;
+    const six = Object.fromEntries(Object.entries(ALL_OK).filter(([k]) => k !== "not_a_copy"));
     for (const bad of [
       { checklist: six },
       { checklist: { ...ALL_OK, extra: "ok" } },
@@ -155,7 +155,8 @@ describe("checkReview: the server's re-check against the version as the database
 
 // --- the core submit and the server action --------------------------------------------------------------------------
 
-const rpc = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({ data: { review_id: id(700), status: "approved", replayed: false }, error: null as { message: string } | null }));
+type RpcResult = { data: unknown; error: { message: string } | null };
+const rpc = vi.fn<(fn: string, args: Record<string, unknown>) => Promise<RpcResult>>(async () => ({ data: { review_id: id(700), status: "approved", replayed: false }, error: null }));
 const queries: string[] = [];
 function fakeClient(over: Record<string, { data: unknown; error?: { message: string } | null }> = {}, ai = false) {
   const tables: Record<string, { data: unknown; error?: { message: string } | null }> = {
@@ -235,9 +236,9 @@ describe("submitDemoReview", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
   it("a database refusal is shown in the owner's words (never the raw message)", async () => {
-    rpc.mockResolvedValueOnce({ data: null as never, error: { message: "invalid_note" } });
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "invalid_note" } });
     expect(await submit(input())).toEqual({ ok: false, error: INVALID_NOTE_MESSAGE });
-    rpc.mockResolvedValueOnce({ data: null as never, error: { message: "some internal detail: secret" } });
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "some internal detail: secret" } });
     expect(await submit(input())).toEqual({ ok: false, error: "記録できませんでした。画面を再読み込みしてください。" });
   });
 });
