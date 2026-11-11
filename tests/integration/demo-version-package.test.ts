@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import sharp from "sharp";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_VERSIONS_BUCKET, importPackage, supabasePackageStore, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, type DemoVersionPackage } from "@/lib/demo-version-package/package";
-import { seedRinShop, type FactsPack } from "@/lib/demo-version-package/seed-rin";
+import { RIN_PROSPECT_ID, seedRinShop, type FactsPack } from "@/lib/demo-version-package/seed-rin";
+import { prepareSwap, readOriginals, readSwapPage } from "@/lib/demo-version-package/swap-package";
+import { cleanupDirs, fixture } from "../support/rin-swap-fixture";
 import { storageStatus } from "../support/seed-demo-version";
 import { db, serviceClient } from "./helpers";
 
@@ -47,6 +49,8 @@ describe("the fictional 輪 shop", () => {
   it("is seeded idempotently with SR-001's facts as the demo content", async () => {
     const again = await seedRinShop(db, pack);
     expect(again).toEqual({ ...shop, created: false });
+    // DEV-196s: the fixed id
+    expect(shop.prospectId).toBe(RIN_PROSPECT_ID);
     const d = (await db.query("select content, template, expires_at from public.sales_demos where id = $1", [shop.demoId])).rows[0];
     expect(d.content).toMatchObject({ name: "架空自転車修理 輪", category: "bicycle_repair", facts_pack: "fictional-bicycle-repair-wa" });
     expect(d.expires_at).toBeNull();
@@ -110,5 +114,24 @@ describe("the real private bucket", () => {
     expect(again.files.every((f) => !f.uploaded)).toBe(true);
     const prefix = `v1/${shop.demoId}/${r.versionId}/`;
     await serviceClient().storage.from(DEMO_VERSIONS_BUCKET).remove(own.manifest.files.map((f) => `${prefix}${f.name}`));
+  });
+});
+
+// DEV-196s: a package with 輪's AI demo photos (synthetic fixture). The database rule that would accept these pictures for
+// the fictional 輪 only is PENDING the owner's decision (the table check sales_demo_images_real_shop_no_ai_demo and the
+// insert trigger's ai_demo_real_shop refuse every ai_generated_demo row today). Until then the ingest refuses it, and
+// nothing is written: no image, no version, no upload.
+describe("DEV-196s: 輪's AI demo photos against today's database (DB part pending the owner's decision)", () => {
+  afterAll(cleanupDirs);
+  it("the ingest refuses the photo package (invalid_image); no image row, no version, no upload", async () => {
+    const f = await fixture();
+    const p = await prepareSwap({ page: readSwapPage(f.page), rights: f.rights, summary: f.summary, originals: readOriginals(f.originals), forbiddenSha256: new Set(), now: "2026-11-11" });
+    const c = Math.floor(Math.random() * 200);
+    const photoPkg = await buildPackage({ html: p.html, css: p.css, renders: { desktop_1440: await png(1440, 900, c), mobile_390: await png(390, 844, c + 3) }, photos: p.photos, images: p.images, source: "swap-copy" });
+    const store = memoryStore();
+    await expect(importPackage(photoPkg, { client: serviceClient(), store, demoId: shop.demoId })).rejects.toThrow("INGEST_REFUSED: invalid_image");
+    expect(store.objects.size).toBe(0);
+    expect((await db.query("select count(*)::int as n from public.sales_demo_versions where bundle_sha256 = $1", [photoPkg.bundleSha256])).rows[0].n).toBe(0);
+    expect((await db.query("select count(*)::int as n from public.sales_demo_images where sha256 = any($1)", [p.images.map((i) => i.sha256)])).rows[0].n).toBe(0);
   });
 });

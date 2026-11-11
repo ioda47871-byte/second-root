@@ -9724,7 +9724,7 @@
     {
       "id": "DEV-196r",
       "title": "SR-001「輪」(d1-v9) を管理画面で PC1440 / SP390 で見られるようにする (案 C: ローカルの手動の取り込み)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196k"
@@ -9767,6 +9767,56 @@
         "描画の上限を上げる案 1 (sales_demo_version_files の check の migration) はオーナーの別の承認"
       ],
       "note": "記録は .ai/reviews/DEV-196d.md (DEV-196r の節)。DEV-196e-1 の項目はそのまま (案 C は別の作業として DEV-196r を足した)。"
+    },
+    {
+      "id": "DEV-196s",
+      "title": "SR-001「輪」を AI 写真 6 枚入りでローカルに再現する (写真入りの包み・取り込み。DB の部分はオーナーの判断待ち)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196r"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー承認 2026-11-11。WSL の写真差し替えの出力 (6 枚の元写真・差し替えた頁・権利の記録) を読むだけで、元の HTML・CSS・レスポンシブの構造を変えずに、輪を AI 写真入りの版としてローカルの管理画面で見られるようにする。新しい画像生成・作り直し・新しい table はしない。DB の変更 (既存の関数の最小の変更に加え、table の check sales_demo_images_real_shop_no_ai_demo の扱い) はオーナーの判断待ちで、この PR の後の commit で足す",
+      "acceptance_criteria": [
+        "package-local.ts に読むだけの --page・--rights・--originals (と --summary・--compare-renders): 写真は WebP (2,000,000 バイトに収まれば lossless、収まらなければ収まる最高の品質)、sRGB・ICC と metadata なし・画素の大きさは変えない、どちらか と元の sha256 を記録",
+        "名前は server の PHOTO_NAME (slot の hyphen を underscore に)。保存する HTML (と CSS) は写真の URL だけを書き換え、URL を正規化した比較でほかのバイトが変わっていないことを証明",
+        "p_images は権利の記録から (ai_generated_demo・出所・depicts_* はすべて false・public_web false)。欠けや食い違いは fail closed。各記録は元の写真と照合し、差し替えと同じ checkPhotoRights と prompt の固定",
+        "保存する頁を同じ renderPrototype で描き、--compare-renders で研究の描画との画素の差を報告、4096 px へ縮小は今までどおり",
+        "取り込みはローカルだけ、既存の ingest に images を渡す、AI のデモ画像は輪 (固定の id) だけ",
+        "テストは合成の fixture だけ (本物の写真は使わない)",
+        "WSL の手順 (preflight・checkout・npm ci・ローカルの Supabase・読むだけのコピー・seed・包み・取り込み・preview の旗だけで screenshot・後片付け、影響の一覧) を PR の本文と docs/operations に。WSL では何も実行しない",
+        "DB の部分 (オーナーの判断の後): 輪の固定の id と架空の印のときだけ ai_generated_demo を受け、ai_demo_internal を導く。実店舗は今までどおり ai_demo_real_shop"
+      ],
+      "required_tests": [
+        "unit tests/unit/demo-version-package (合成の fixture)",
+        "統合 tests/integration/demo-version-package (今の DB は写真入りの包みを拒否することを確かめる。DB の部分が入った後は受け入れと拒否の各分岐)",
+        "unit の全体・tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/demo-version-package/**",
+        "scripts/sales/demo-version/**",
+        "tests/**",
+        "docs/operations/rin-ai-photos-local.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-196d.md"
+      ],
+      "forbidden_scope": [
+        "新しい table・DB の設計 (既存の関数の最小の変更だけ。table の check はオーナーの判断待ち)",
+        "WSL の service・isolation・runner の変更、WSL での実行",
+        "新しい画像生成・デザインの作り直し",
+        "画像・権利の記録・秘密を Git・PR・Issue に入れる",
+        "Storage の CI・upload の API・管理画面の追加の機能・Staging / Production",
+        "package.json・lockfile",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "DB の部分 (table の check sales_demo_images_real_shop_no_ai_demo の扱い) はオーナーの判断",
+        "WSL での実行はオーナーが手順を見て決める",
+        "PR のレビューと merge (coordinator)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196d.md (DEV-196s の節)。"
     }
   ]
 }

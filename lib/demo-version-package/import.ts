@@ -10,11 +10,16 @@
  *  3. each file is uploaded to the private bucket at the version's prefix (an existing object is verified instead of
  *     overwritten), then downloaded again and its sha256 and size compared with the manifest.
  *
+ * DEV-196s: a package with photos (AI demo pictures, `images`) is imported only into the fictional 輪 demo
+ * (RIN_PROSPECT_ID, checked on the demo's row before anything is written); the images go through the existing ingest
+ * as its p_images, where the database derives each image's rights status.
+ *
  * Prints nothing itself; returns ids and hashes only (never a key).
  */
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DemoVersionPackage } from "./package";
+import { RIN_PROSPECT_ID } from "./seed-rin";
 
 export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";
 
@@ -81,6 +86,11 @@ export type ImportResult = {
 
 export async function importPackage(pkg: DemoVersionPackage, o: { client: SupabaseClient; store: PackageStore; demoId: string; workerCommit?: string | null }): Promise<ImportResult> {
   const jobId = manualImportJobId(pkg.bundleSha256);
+  if (pkg.images.length > 0) {
+    // AI demo pictures belong to the fictional 輪 only: the demo must be that prospect's
+    const d = await o.client.from("sales_demos").select("prospect_id").eq("id", o.demoId).maybeSingle();
+    if (d.error || !d.data || (d.data as { prospect_id: string }).prospect_id !== RIN_PROSPECT_ID) throw new ImportError("AI_DEMO_NOT_ALLOWED");
+  }
   const { data, error } = await o.client.rpc("sales_ingest_demo_version", {
     p_demo_id: o.demoId,
     p_generation_job_id: jobId,
@@ -90,7 +100,7 @@ export async function importPackage(pkg: DemoVersionPackage, o: { client: Supaba
     p_direction_sha256: null,
     p_bundle_sha256: pkg.bundleSha256,
     p_manifest: pkg.manifest,
-    p_images: [],
+    p_images: pkg.images,
     p_validator_result: pkg.validatorResult,
     p_worker_checks: pkg.workerChecks,
     p_structure_descriptor: null,

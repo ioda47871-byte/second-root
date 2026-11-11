@@ -409,3 +409,31 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 - 選んだのは、案 C (オーナー承認の DEV-196r) のローカルの運用 script **1 つの path だけ** を一覧に足すこと。pattern にはしない。test に DEV-196r と理由の comment を書き、DEV-159 と同じく名前の検査を足した: phase2f からは `render-prototype` の `renderPrototype` **だけ** (runner・prompt・Codex・`fetch(`・動的 import はなし)。描画は読むだけ (JavaScript off、network 遮断)。
 - 結果 (2026-11-11): unit の全体 (`npx vitest run`、design-agent を含む、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` を設定) 233 files passed / 2 skipped、5997 passed / 16 skipped、lint・typecheck 合格。変更は test と本記録だけ (script・lib はそのまま)。
 - round 3 の任意の nit: `package-local.ts` の import specifier の全体を正確な一覧で固定した (comp lane の項と同じ。新しい import が入れば test が落ちる)。isolation test・demo-version-package の unit・lint・typecheck 合格。
+
+## DEV-196s: SR-001「輪」を AI 写真 6 枚入りでローカルに再現する (オーナー承認 2026-11-11。DB の部分はオーナーの判断待ち)
+
+### 止めて報告したこと (DB)
+
+- 承認は「既存の関数の最小の変更だけ、新しい table なし」。ところが `sales_demo_images` には trigger (`sales_check_demo_image_write` の `ai_demo_real_shop`) に加えて **table の check** `sales_demo_images_real_shop_no_ai_demo` (DEV-196c review round 1 M1) があり、`ai_generated_demo` / `ai_demo_internal` の行をすべて拒否する。関数だけを変えても挿入は通らない (ingest は `invalid_image`)。check は他の行を引けないので、輪だけの規則は trigger に置き、check は外すか行の中だけの形 (輪の固定の id) に狭める必要がある。どちらも table の変更なので、オーナーの判断を待つ (coordinator は B: 輪の UUID に狭め、trigger の印の検査は残す、を推す)。
+- それまで DB には触れない。この PR は包み・取り込み・テスト・手順だけで、DB の migration は判断の後に同じ PR へ足せる形にした (取り込みは既存の ingest に `p_images` を渡すだけ。DB 側の導出がそのまま効く)。
+
+### 変更 (DB 以外)
+
+| ファイル | 内容 |
+|---|---|
+| `lib/demo-version-package/photos.ts` (新) | swap の写真 (`photos/<slot>-<range>.<png\|jpg>`) → WebP。2,000,000 バイトに収まれば lossless、収まらなければ 100 から下げて収まる最高の品質 (下限 60、収まらなければ拒否)。sRGB、ICC・metadata なし、画素の大きさは変えない (4096 px を超える辺は縮めずに拒否)。名前は `PHOTO_NAME` (slot の hyphen を underscore に)、衝突は拒否。HTML / CSS の `photos/…` の参照だけを書き換え、`provePhotoUrlRewrite` が「古い URL と新しい URL を同じ印に置き換えると両方がバイト単位で同じ」ことを確かめる |
+| `lib/demo-version-package/swap-rights.ts` (新) | `rights.private.json` (photo_swap_rights_private_v0)・`swap-summary.json`・**元の写真**から `p_images` を作る。各記録を元の写真のバイトと照合し、差し替えと同じ `checkPhotoRights` (quality_verification・AI のデモを許す・成功例の hash は禁止) と prompt の固定 (`AI_DEMO_PROMPT_NOT_APPROVED`)。`ai_generated_demo` でない・public_web が false でない・出所がない・頁が swap の写しでない (summary の HTML / CSS / 各写真の sha256)・切り抜きの出どころ (summary の crops → 記録の asset_id と pc / sp) が合わない、はすべて拒否。記録は DB が要るものだけ: 変換後の sha256・大きさ、`ai_generated_demo`、depicts_* はすべて false、public_web false、期限、DB の形の出所 (`admin_preview_only: true`)。owner・同意の記録・private path・focal box は出さない |
+| `lib/demo-version-package/swap-package.ts` (新) | 入力を読むだけ (普通のファイルだけ、link・予期しないファイルは拒否、copy.json は読まない)、写真が HTML / CSS に参照されていること・参照が写真にあること、`pixelDiff` |
+| `lib/demo-version-package/package.ts` | 写真の manifest の行、`images` (p_images) を manifest の写真と一対一で照合 (作るときと読み直すたび)、rights_summary を images から導く (読み直しで一致を確かめる)、worker_checks には写真の要約だけ (2000 バイトの上限内)、詳細 (変換・出どころ・証明・比較) は包みの local な記録だけ |
+| `lib/demo-version-package/import.ts` | images を `p_images` として既存の ingest へ。写真入りの包みは、demo の prospect が輪の固定の id でなければ ingest の前に `AI_DEMO_NOT_ALLOWED` |
+| `lib/demo-version-package/seed-rin.ts` | 輪を固定の id `c4d31f24-8c91-4495-8ba1-db4706f438f8` で作る (冪等)。その id の行が輪でない (名前・仮の住所・連絡先が一つでもある) なら `RIN_SEED_ID_TAKEN`、DEV-196r の古い seed (別の id) は `RIN_SEED_OLD_ROW` (ローカルの DB を reset)。DB の印の検査は DB の部分で足す |
+| `scripts/sales/demo-version/package-local.ts` | 読むだけの `--page`・`--rights`・`--originals`・`--summary` (既定は頁の隣)・`--compare-renders`。保存する写しを同じ `renderPrototype` で描き、研究の描画と画素の差を報告、4096 px への縮小は今までどおり。出力は id・hash・大きさ・mode・証明・比較だけ |
+| `tests/unit/design-agent/phase2f/isolation.test.ts` | package-local の import の一覧 (round 3 で全体を固定した) に `swap-package` を一つ足した (DEV-196s の comment)。phase2f から取る名前は `renderPrototype` だけのまま |
+| `docs/operations/rin-ai-photos-local.md` (新) | WSL の手順 (オーナーが自分のユーザーで実行。Claude は実行しない) と影響 (ディスク・メモリ・port・残るもの)。読むだけの sudo のコピーは「コピーである」と明記し、前後の sha256 で元が変わらないことを確かめる |
+
+### テスト (合成の fixture だけ。本物の写真は使わない)
+
+- `tests/support/rin-swap-fixture.ts`: commit 済みの d1-v9 を本物の photo-swap の transform で変えた頁 (5 枠 × 3 範囲 = 15 枚) と、生成した小さな画像・偽の権利の記録 (fixture の model 名、承認済みの prompt の sha256)・summary
+- unit `tests/unit/demo-version-package/swap-photos.test.ts`: 名前の対応と拒否、書き換えの証明 (1 バイトの違い・属性・古い URL の残りで失敗)、lossless / ICC と EXIF 付きの JPEG / 収まる最高の品質の lossy / 4096 px 超と PNG・JPEG 以外の拒否、15 枚の記録 (private なものが入らない、bench の SP は SP の元から)、包みと読み直し (改ざんの拒否)、fail closed の 12 の場合と期限切れ・禁止の hash・参照されない写真・予期しないファイル・link、**Chromium で描いた保存の写しが swap の写し (PNG・元の URL) と画素まで同じ** (写真なしとは違う)、CLI (出力に private なものが無い、入力は変わらない、usage と FAIL)、取り込みは輪以外を ingest の前に拒否
+- 統合: seed の固定の id、**今の DB は写真入りの包みを拒否する** (`INGEST_REFUSED: invalid_image`、版・画像・upload なし)。DB の部分が入ったらこの test を受け入れと各分岐に置き換える
+- 結果 (2026-11-11): unit の全体 (`npx vitest run`、design-agent を含む、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` を設定) 234 files passed / 2 skipped・6032 passed / 16 skipped、統合の全体 29 files / 478 件、lint・typecheck・check:secrets 合格
