@@ -70,14 +70,18 @@ export type SeededVersion = {
 
 const rgb = (): [number, number, number, number] => [randomInt(256), randomInt(256), randomInt(256), 255];
 
-export async function seedDemoVersion(db: pg.Pool | pg.Client, svc: SupabaseClient, opts: { html?: string; css?: string; upload?: boolean } = {}): Promise<SeededVersion> {
+export async function seedDemoVersion(
+  db: pg.Pool | pg.Client,
+  svc: SupabaseClient,
+  opts: { html?: string; css?: string; upload?: boolean; renderHeights?: { desktop: number; mobile: number } } = {},
+): Promise<SeededVersion> {
   const { prospectId } = await seedDemo(db, { expiresAt: null });
   const { rows } = await db.query("select id from public.sales_demos where prospect_id = $1", [prospectId]);
   const demoId = rows[0].id as string;
 
   const photo = solidWebp(40 + randomInt(200), 30 + randomInt(200), rgb());
-  const desktop = solidWebp(1440, 900 + randomInt(100), rgb());
-  const mobile = solidWebp(390, 1600 + randomInt(100), rgb());
+  const desktop = solidWebp(1440, opts.renderHeights?.desktop ?? 900 + randomInt(100), rgb());
+  const mobile = solidWebp(390, opts.renderHeights?.mobile ?? 1600 + randomInt(100), rgb());
   const objects: Record<string, Uint8Array> = {
     "page/index.html": new TextEncoder().encode(opts.html ?? DEFAULT_HTML),
     "page/style.css": new TextEncoder().encode(opts.css ?? DEFAULT_CSS),

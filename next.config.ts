@@ -13,6 +13,9 @@ const privateRouteHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+/** The admin demo version page: never framed itself, may frame only its own origin (lib/sales/demo-version/csp.ts outerFrameSrc). */
+export const ADMIN_DEMO_PAGE_CSP = "frame-ancestors 'none'; frame-src 'self'";
+
 const nextConfig: NextConfig = {
   // DEV-050: `next dev` logs every Server Function call with its arguments by
   // default. Admin actions receive shop emails (exclusion list), DM / email
@@ -24,6 +27,12 @@ const nextConfig: NextConfig = {
       { source: "/demo/:path*", headers: privateRouteHeaders },
       { source: "/design-preview/:path*", headers: privateRouteHeaders },
       { source: "/admin/:path*", headers: privateRouteHeaders },
+      // DEV-196d-3 (spec §6.7・§6.8): the admin demo version page frames the version's page from the interim
+      // /demo-frame/a/… on this same origin, so it may frame 'self' — and only that. The rule must stay AFTER
+      // "/admin/:path*": for the same header key the last matching rule wins (Next "Header Overriding Behavior"), so
+      // only the CSP changes here; X-Frame-Options DENY and every other admin header stay as above. When the
+      // dedicated artifact origin is set up (DEV-196g, its own approval), 'self' is replaced by that origin.
+      { source: "/admin/sales/demos/:path*", headers: [{ key: "Content-Security-Policy", value: ADMIN_DEMO_PAGE_CSP }] },
       { source: "/api/internal/:path*", headers: privateRouteHeaders },
       { source: "/api/webhooks/:path*", headers: privateRouteHeaders },
     ];

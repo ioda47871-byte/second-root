@@ -100,3 +100,46 @@ CI で走る、header の検査 (coordinator の指示):
 - CI で走るのは、それらの根拠となるヘッダ (上の route test)・判定のすべての分岐 (serve test)・DB の検査 (統合、`object()` を差し替えた 6 件) と、e2e の 3 件 (旗の無効の 404 の同一性、scope `p`、直接開く)。
 
 結果 (2026-11-11): unit `tests/unit/demo-frame` 44 件、`tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 全部合格。統合 `demo-frame` 8 件 (storage あり 8 passed / storage を止めて 6 passed・2 skipped)。e2e `demo-frame` (storage あり 5 passed / 止めて 3 passed・2 skipped)。lint・typecheck・check:secrets・build 合格。unit (demo-frame + sales + ai-tasks + guardrails) 1195 件、統合の全体 24 files / 447 件合格。
+
+## 196d-3: 閲覧だけの版の頁 `/admin/sales/demos/[prospectId]` と next.config の CSP
+
+branch `feature/dev-196d-3-preview-page` (`origin/develop` 59260b9 から)。DB・migration・workflow・依存の変更なし。承認・取り消し・今日の印は入れていない (196d-5〜7)。
+
+| file | 中身 |
+|---|---|
+| `app/admin/sales/demos/[prospectId]/layout.tsx` | 門: 旗が無効なら何も読まずに 404 → `requireAdminPage` → 店に demo があるか (管理者の session)。**loading.tsx の境界の外**に置いた。境界の中の `notFound()` は 200 で流れ始めた後なので状態を変えられない (Next の docs「loading.js › Status Codes」「not-found › trade-off」)。e2e で 200 になるのを見つけて直した |
+| `app/admin/sales/demos/[prospectId]/page.tsx` + `loading.tsx` | 版の一覧と系譜、選んだ版 (`?v=`、無ければプレビューできる最新) の描画画像と生の頁のタブ、事実、権利、送信が止まる理由と承認の前の警告、阻む理由。空 (版なし)・DB の誤り (`role=alert`)・署名鍵なし / 形の誤り / artifact origin の設定 (表示しない)・取り消し / 権利不明 / 期限切れ (表示しない、ほかの版へ切り替えない)・読み込み中 (skeleton)・15 分の token の期限 (再読み込み) |
+| `lib/admin/demo-versions.ts` (`server-only`) | 行はすべて管理者の session (RLS) で読む。例外は今の事実の hash: `sales_demo_facts_sha256` は service role だけが実行できるので、管理者を確かめた後に、その 1 つの demo の computed field として service role で読む。失敗したら「不明」(同じとは言わない、承認は FACTS_UNKNOWN で止まる)。view token は view model がプレビューできると言う版だけ、鍵があり artifact origin が未設定で demo が無効でないときだけ署名する |
+| `components/admin/demo/` | `RenderPane` (PC1440 / SP390 / あれば tablet 768 を、それぞれの縦の scroll 枠に全ページ。PC は枠に合わせる / 実寸、SP は常に 390px の 1:1。画像の下の sentinel が枠の中で見えたら「最後まで表示しました」と `data-viewed="true"`、196d-5 の確認で使う)、`LiveFrame` (`sandbox=""`・`referrerPolicy="no-referrer"`・`loading="lazy"`・`allow` なし・srcdoc なし、PC/SP の幅の切り替え、「判断の基準は描画画像」)、`PreviewTabs` (生の頁はタブを選ぶまで mount しない)、`VersionList`・`FactsPanel` (無い事実は 未確認、email は出さない、事実が同じ / 変わった / 不明)・`RightsPanel` (AI 概念画像に赤い「AI生成・管理者だけ・共有不可」、権利不明は「権利不明のため使用不可」で画像を出さない、出所は日付・承認の記録の有無・prompt の頭 8 字だけ)・`VersionNotices` (送信が止まる理由 `SEND_BLOCK_LABEL`、`send_opened` の件数と今日の画面へのリンク、承認の前の警告 `APPROVAL_STOPS_SENDING_BEFORE`、阻む理由)・`TokenExpiry`。文言はすべて固定の label。操作のボタン・form は無い |
+| `next.config.ts` | `/admin/sales/demos/:path*` の規則を `/admin/:path*` の**後**に足し、CSP だけを `frame-ancestors 'none'; frame-src 'self'` にする (同じ key は後の規則が勝つ: Next「headers › Header Overriding Behavior」)。`X-Frame-Options: DENY` ほか管理画面のヘッダは不変。ほかの管理画面の CSP は `frame-ancestors 'none'` のまま。値は DEV-196b の `outerFrameSrc` (管理者の頁・artifact origin なし) と一致することをテストで固定。専用の origin (DEV-196g) で `'self'` を置き換える |
+
+### テスト
+
+- unit `tests/unit/admin/demo-versions-page.test.tsx` (19 件): 描画の枠 (PC は fit、SP は 390px、画像は全体の寸法、sentinel、未表示から始まる)、iframe の属性が `sandbox=""` ちょうど・`allow`・srcdoc なし、生の頁はタブまで mount しない、事実の 未確認 と email の除外、権利の赤い印・権利不明で画像なし、警告と阻む理由・送信が止まる理由、系譜の順と選択、next.config のヘッダの解決 (demos の頁 / ほかの管理画面)、**`allow-same-origin` が app・components・lib のどこにも無い** guardrail と、管理画面の demo の iframe がすべて `sandbox=""`、loader (旗の無効と id の形で何も読まない、取り消した版に token を出さない、鍵なし・形の誤り・artifact origin・demo の無効で token なし、事実の不明、DB の誤り / 行なし)。
+- 統合 `tests/integration/demo-versions-page.test.ts` (3 件、CI でも走る): RLS の読み出しと service role の computed field の事実の hash が ingest の値と一致 (`same`)、事実を変えると `changed`、demo の無効で token なし、管理者でない session は not found。
+- e2e `tests/e2e/demo-versions-page.spec.ts` (desktop で 7 件。1440 と 390 は test の中で viewport を設定): suite の server (旗は無効) で管理者にも 404・`/admin/sales` の DENY と CSP は不変、旗を立てた server で頁のヘッダ (`frame-ancestors 'none'; frame-src 'self'`・DENY・no-store)、ほかの管理画面は不変、知らない prospect は 404、一覧・事実 (未確認)・権利・警告、操作のボタン無し、iframe の `sandbox=""` ちょうど (`allow`・srcdoc なし)。Storage があるとき: PC 1440 と SP 390 の両方で 2 つの描画画像が縦に最後まで scroll でき (画像は自分の縦横比のまま全体が配置され、枠の scrollHeight ≥ 画像の高さ、最下端まで届く)、sentinel で「最後まで表示しました」、PC の実寸は 1440px で頁は横にはみ出さない、frame の中は opaque origin。Storage が無いとき (CI) は表示の 2 件だけを理由つきで skip。
+- `tests/unit/sales/demo-version/purity.test.ts`: DEV-196b の「app から import されない」を、**承認された DEV-196d の頁と component の正確な一覧だけが import してよい**に変えた (それ以外の頁・`proxy.ts`・今日の画面からの import は落ちる)。緩めたのではなく、許す範囲を名指しで固定した。
+- 結果 (2026-11-11、隔離した stack `sr-dev196d`、Storage あり): unit `tests/unit/admin tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 1214 件合格。全 unit は環境の Chromium を `PLAYWRIGHT_CHROMIUM_EXECUTABLE` で渡すと design-agent の browser のテストも実際に走る (遅い)。その実行で design-agent 以外の失敗は上の purity の 1 件だけで、直した。統合の全体 25 files / 450 件合格。e2e の全体 130 passed / 12 skipped (旗を立てる 2 つの spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
+- 目で見た確認: 1440 と 390 の全ページの screenshot (commit しない一時の spec で撮り、消した)。1440 は PC と SP が横に並び、390 は縦に積まれ、頁は横にはみ出さない。
+
+### 判断が要ること (coordinator へ)
+
+- **事実の hash の読み出しに service role を使った** (上の `lib/admin/demo-versions.ts`)。DB の権限は変えていない。代わりに管理者の session で読むには、`sales_demo_facts_sha256` の `authenticated` への grant (= DB の変更) が要る。読まなければ全部の版が「事実が不明」になり、196d-5 で品質承認が常に止まる。
+  **決定 (coordinator、2026-11-11)**: 次の条件をすべて満たす限り可。`authenticated` への execute の grant はしない。
+  1. server だけ (`lib/admin/demo-versions.ts` は `server-only`)。
+  2. 旗の確認と管理者の確認の後: layout と page が `requireAdminPage` を先に呼び、loader も旗を確かめ、さらに**管理者の session (RLS) でその demo の行が読めた後**にだけ読む (管理者でない session には行が無く、ここに届かない)。
+  3. 検証した route の prospect id から RLS で引いた、1 つの demo の id だけ。
+  4. 返すのは hash だけ (`id, facts:sales_demo_facts_sha256`)。
+  5. client へは出さない: view model が same / changed / unknown に変える。
+  6. どんな失敗 (誤り・例外・sha256 でない値) も「不明」で、承認は FACTS_UNKNOWN で止まる (`readFactsSafely`)。
+  テスト (`tests/unit/admin/demo-versions-page.test.tsx`、3 件): 旗の無効・prospect が無い (RLS)・demo が無い・demo の誤り・版の誤りでは一度も呼ばれず、正常なときに 1 回だけその demo の id で呼ばれる。例外・null・sha256 でない値・大文字は不明で承認が止まる。読み出した hash は頁のデータのどこにも入らない。統合 (`tests/integration/demo-versions-page.test.ts`) で、本物の computed field の値が ingest の値と一致することを確かめている。
+
+### 196d-3 review round 1 (coordinator の独立レビュー、5ef01a5: C0 H0 M0 L2 + nit) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (承認) | 「最後まで表示しました」の sentinel を mount 時から見ていた。描画画像が 404 (token の期限切れ・object なし) だと画像が alt の文に縮み、sentinel がすぐ見えて「見た」になる。196d-5 はこれで承認を許す | 画像が読み込まれ、**natural の幅と高さが manifest の値とちょうど一致したとき**にだけ見始める (`data-image="ok"`)。`onError`・大きさの違いは `broken` にして「見た」を戻し、「描画画像を表示できませんでした（表示期限切れの可能性…再読み込み）」を出す。src が変わる (token・版) と component ごと作り直す (`key={r.src}`)。hydration の前に読み込みが終わっていた画像も mount の後に一度確かめる | e2e「review round 1 L1」(**Storage なしで CI でも走る**): PC の描画を 404、SP を大きさの違う本物の WebP にして、枠を最下まで scroll し sentinel が枠の中に見えていても `data-viewed="false"` のまま、表示できない旨が出る。unit: server の markup は `loading`、見始める条件・`onError` の戻し・src の key を固定 |
+| L2 (正確さ) | email を含む事実を 未確認 と表示していた (未確認ではない) | 固定の別の文「非表示（メールアドレスを含む）」(`data-fact-state="hidden"`、未確認の赤ではない)。上限で切った値には「…（以下略）」。メニューは email を含む項目を「（メールアドレスを含む項目は非表示）」と添え、13 件以上は「…（以下略）」 | unit「review round 1 L2」(電話の email、600 字の紹介文、ちょうど上限は切らない、未確認との区別、メニューの 2 通り) |
+| nit | 文書は「取り消し・期限切れはリンクなし」だが全部リンクしていた。`expires_at` を過ぎた下書きは灰色にならなかった | 文書どおりにした: 取り消し、または期限切れ (状態・`expires_at`・読めない `expires_at`) の版は灰色でリンクなし (`versionGone`)、「表示しません」。頁から `now` を渡す | unit「review round 1 nit」(5 通り) |
+
+結果 (2026-11-11): unit `tests/unit/admin` 25 件、`tests/unit/admin tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 1220 件合格。e2e `demo-versions-page` 8 件 (Storage あり 8 passed / 止めて 6 passed・2 skipped、L1 の検査は止めても走る)。lint・typecheck・check:secrets・build 合格。
