@@ -22,10 +22,21 @@ export type StorageStatus = { available: true } | { available: false; reason: st
 /**
  * Whether the local storage API is running, decided narrowly (review of #247): it counts as unavailable ONLY when the
  * gateway cannot reach it — a network error, or an answer from the gateway itself (Kong: a body with only `message`)
- * with a gateway / no-route status. CI starts Supabase with `-x storage-api`, which looks exactly like that. Any other
+ * with a gateway / no-route status (a local stack started with `-x storage-api` looks exactly like that). Any other
  * answer (the bucket missing, an auth error, a storage-api error) THROWS, so a broken setup never turns into a skip.
+ * With SR_REQUIRE_STORAGE=1 (set in CI, which starts the storage API since DEV-196o) "unavailable" throws as well.
  */
 export async function storageStatus(url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY): Promise<StorageStatus> {
+  const status = await probeStorage(url, key);
+  // DEV-196o: CI starts the storage API and sets SR_REQUIRE_STORAGE=1, so "not running" there is a failure, never a
+  // skip — the Storage tests cannot silently stop running in CI. Without the variable (local runs) nothing changes.
+  if (!status.available && process.env.SR_REQUIRE_STORAGE === "1") {
+    throw new Error(`storageStatus: SR_REQUIRE_STORAGE=1 but ${status.reason}`);
+  }
+  return status;
+}
+
+async function probeStorage(url: string | undefined, key: string | undefined): Promise<StorageStatus> {
   if (!url || !key) throw new Error("storageStatus: the local Supabase URL and service key are not set");
   let res: Response;
   try {
