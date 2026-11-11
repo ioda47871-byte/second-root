@@ -9437,7 +9437,7 @@
     {
       "id": "DEV-196k",
       "title": "店舗デモの版の旗を分ける: プレビュー (SALES_DEMO_VERSIONS_ENABLED) と品質の判定の書き込み (SALES_DEMO_QUALITY_REVIEW_ENABLED)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196d"
@@ -9478,7 +9478,7 @@
         "各 PR のレビューと merge (coordinator)",
         "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
       ],
-      "note": "記録は .ai/reviews/DEV-196d.md (DEV-196k の節)。"
+      "note": "記録は .ai/reviews/DEV-196d.md (DEV-196k の節)。PR #254 merged (1945e3a)。"
     },
     {
       "id": "DEV-196l",
@@ -9720,6 +9720,53 @@
         "DB の変更 (findings の保存)"
       ],
       "note": "DEV-196g (共有) の前に必須。"
+    },
+    {
+      "id": "DEV-196r",
+      "title": "SR-001「輪」(d1-v9) を管理画面で PC1440 / SP390 で見られるようにする (案 C: ローカルの手動の取り込み)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196k"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー承認 2026-11-11 (案 C)。新しい migration・upload API なしで、研究の成功例 SR-001「輪」d1-v9 を版として取り込み、管理画面の版の頁で PC1440 / SP390 を確かめられるようにする。描画画像は server の 4096 px の上限 (変えない) に収めるため比例縮小し、1:1 は生の頁のタブで確かめる。描画の上限を上げる案 1 (migration) はオーナーの別の承認待ち",
+      "acceptance_criteria": [
+        "scripts/sales/demo-version/package-local.ts: comp-lane の描画 (JS 無効・通信遮断・deviceScaleFactor 1) で PC1440 / SP390 の全頁を描き、4096 px を超える辺は比例縮小 (lanczos3・WebP 固定の品質・metadata なし・決定的)、DEV-196b の manifest と server と同じ検査 (checkArtifactHtml・validateManifest・checkFileBytes)、元の全頁の sha256 と大きさを worker_checks に、出力はリポジトリの外だけ",
+        "scripts/sales/demo-version/import-local.ts: ローカルの Supabase だけ (127.0.0.1 / localhost 以外は拒否)、service role はローカルの環境から、package を検め直し、既存の sales_ingest_demo_version (manual_import)、bucket へ upload して取り直して sha256 と大きさを照合、冪等 (同じ bundle で二つ目の版を作らない)、出力は id と hash だけ",
+        "架空の輪の店をローカルだけに seed (SR-001 の事実パック。registry の列は schema の制約のため仮の値)",
+        "RenderPane: 縮小した描画画像に「縮小表示（実寸の約N%）」、実寸の切り替えを出さない",
+        "ローカルで旗 (プレビューだけ) を立てて PC1440 / SP390 の screenshot をオーナーへ"
+      ],
+      "required_tests": [
+        "unit tests/unit/demo-version-package",
+        "統合 tests/integration/demo-version-package (Storage が無い CI では DB の部分だけ)",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "lib/demo-version-package/**",
+        "scripts/sales/demo-version/**",
+        "components/admin/demo/RenderPane.tsx",
+        "lib/sales/demo-version/admin-messages.ts (縮小の注記)",
+        "tests/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-196d.md"
+      ],
+      "forbidden_scope": [
+        "supabase/migrations (新しい migration・DB の設計)",
+        "upload の API・HTTP の endpoint",
+        "Staging / Production・WSL・画像生成・公開・送信",
+        "Storage の CI (.github/workflows/ci.yml、feature/dev-196o-storage-ci)",
+        "既存の安全の検査の緩和 (4096 px の上限を含む)",
+        "package.json・lockfile",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "PR のレビューと merge (coordinator)",
+        "描画の上限を上げる案 1 (sales_demo_version_files の check の migration) はオーナーの別の承認"
+      ],
+      "note": "記録は .ai/reviews/DEV-196d.md (DEV-196r の節)。DEV-196e-1 の項目はそのまま (案 C は別の作業として DEV-196r を足した)。"
     }
   ]
 }

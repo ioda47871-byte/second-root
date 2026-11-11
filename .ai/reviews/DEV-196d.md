@@ -356,3 +356,37 @@ branch `feature/dev-196d-7-today-badge` (`origin/develop` 355b642 から)。DB�
 - e2e: 旗を立てる server の helper に `review` の option。demo-review・demo-lifecycle は両方、demo-versions-page はプレビューだけで「書き込みの欄が無く固定の文言」を確かめる。比較・今日の印・成果物の route はプレビューだけ (変更なし)。
 - 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1297 件、統合の全体 28 files / 472 件、e2e の全体 152 passed / 34 skipped (旗を立てる spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
 - 注: 長く使っているローカルの DB に、途中で止めた実行の行が溜まると、共有の今日の画面 (最大 5 件) が埋まり today・mobile-qa・email-send が落ちることがある (一度起きた)。統合の実行 (`resetSalesData`) の後の、きれいな DB からの全体の実行はすべて通った。CI は毎回きれいな DB から始まる。
+
+## DEV-196r: SR-001「輪」(d1-v9) を管理画面で見る (案 C、ローカルの手動の取り込み)
+
+オーナー承認 2026-11-11 (案 C)。branch `feature/dev-196r-rin-manual-import` (`origin/develop` 1945e3a から)。**新しい migration・DB の設計・upload の API・HTTP の endpoint・Staging / Production・WSL・画像生成・公開・送信・`ci.yml` の変更なし。既存の安全の検査は緩めていない。** `.ai/tasks.json` は DEV-196r を足し (DEV-196e-1 はそのまま)、merge 済みの DEV-196k を done に。
+
+### 4096 px の上限 (変えていない) と案 1 (オーナーの承認待ち)
+
+- server は画像の 1 辺を 4096 px までに限る: manifest の schema (`ARTIFACT_LIMITS.imageSidePx`)、`checkFileBytes` (`FILE_IMAGE_TOO_LARGE`)、DB の `sales_demo_version_files` / `sales_demo_images` の `check (width / height between 1 and 4096)`。
+- 輪の全頁は、この容器の Chromium で **PC 1440×5352・SP 390×5586** (d1-v9 の README と同じ)。どちらも上限を超える。
+- coordinator の決定で**案 3**: 描画画像を比例縮小して最も長い辺を 4096 に (PC **1102×4096**、約 77%、SP **286×4096**、約 73%)。画面はそれを正直に書き、1:1 は生の頁のタブで確かめる。
+- **案 1** (描画画像の高さの上限を WebP の 16383 まで上げる。写真は 4096 のまま) は `sales_demo_version_files` の check の **migration が要る**ため、**オーナーの別の承認待ち**。
+
+### 作ったもの
+
+| file | 中身 |
+|---|---|
+| `lib/demo-version-package/package.ts` | `downscaleRender` (sharp: 比例縮小・lanczos3・WebP 品質 85・effort 6・metadata なし、決定的。sharp は lockfile にある next の任意の依存で、repo の script も使っている。package の変更なし)、`buildPackage` (DEV-196b の manifest と、server と同じ `checkArtifactHtml`・`validateManifest`・`checkFileBytes`・`bundleSha256`。元の全頁の sha256・bytes・大きさを `worker_checks.originals` に、既存の schema の範囲 (2048 bytes 以下の object))、`writePackage` (リポジトリの外だけ)、`readPackage` (読み直して検め直す) |
+| `lib/demo-version-package/import.ts` | `assertLocalSupabaseUrl` (http://127.0.0.1 / localhost 以外は拒否)、`importPackage`: 既存の `sales_ingest_demo_version` (`manual_import`、job id は bundle から決まる `manual-import-<bundle の頭 48>` = 再実行は replay)、`duplicate_bundle` なら既存の版を使う (二つ目の版を作らない)、各ファイルを非公開の bucket の版の prefix へ (既にあれば上書きせず照合)、取り直して sha256 と大きさを照合。出力は id と hash だけ |
+| `lib/demo-version-package/seed-rin.ts` | 架空の輪の店をローカルだけに (`assertLocalDbUrl`)。demo の content は SR-001 の事実パック (`fictional-bicycle-repair-wa`) のすべての事実 (業種 bicycle_repair・架空市架空区…・サービス 4 つ・文 2 つ・講座)。**registry の列は営業 MVP の schema の制約** (category は bakery / baked_goods / cafe、住所は名古屋市、template は React のもの) のため、固定の仮の値 (category "bakery"・template "bakery_v1"・住所「愛知県名古屋市（登録用の仮の住所。架空の研究用の店 輪、実在しない）」・区なし)。版の頁と事実の hash が読むのは content。outreach はなく今日の画面にも出ず送らない |
+| `scripts/sales/demo-version/package-local.ts` | comp-lane の `renderPrototype` (JS 無効・通信遮断・deviceScaleFactor 1・研究と同じこの機械の書体) で PC1440 / SP390 を描き (外への要求があれば止める)、package を作る |
+| `scripts/sales/demo-version/import-local.ts` | `--package <dir> (--prospect <uuid> | --seed-rin)`。ローカルだけ、検め直し、取り込み、upload と照合 |
+| `components/admin/demo/RenderPane.tsx` | 描画画像の幅が viewport (1440 / 768 / 390) と違えば「縮小表示（実寸の約N%）。実寸は「生の頁」タブで確認できます。」(`scaledRenderNote`) を出し、「実寸で見る」を出さない。読み込みと大きさの一致で見始める sentinel はそのまま |
+
+### ローカルでの実行 (隔離した stack `sr-dev196d`、Storage あり。結果はオーナー用の screenshot)
+
+- package: 元の全頁の sha256 は PC `b601a6406a6d…` (1440×5352)・SP `0958fc595159…` (390×5586) で **d1-v9 の README の記録と一致** (同じ描画と書体)。縮小後 PC `55e11f89cff0…` (1102×4096、218,996 bytes)・SP `e7fea21f4004…` (286×4096、97,990 bytes)、HTML `de7ccbc2469f…`・CSS `32957e480201…`、bundle `cccdb98fe3fd308ed0cba33d2d059f96ea2e2969b7fe73cfbf14b0df5a23e958`。
+- import: 版 `2113d17b-89ca-487e-b149-dd8bac46f0cd` (v1、下書き、manual_import)。再実行は同じ版で upload なし。リモートの URL は `SUPABASE_URL_NOT_LOCAL` で拒否。
+- app: `SALES_DEMO_VERSIONS_ENABLED=true`・ランダムなローカルの鍵 (commit しない)・`SALES_DEMO_QUALITY_REVIEW_ENABLED` なし。書き込みの欄 0、「今は無効です（表示だけ）」、PC / SP とも最後まで scroll して「最後まで表示しました」、縮小の注記 77% / 73%、390 で頁の横はみ出しなし、生の頁は `sandbox=""` で 1440 / 390 の 1:1。
+- screenshot は scratch の `rin/` (README.txt に一覧)。生の頁は、frame を頁の高さに伸ばすと描画されない部分が出たので、frame の中を scroll して段ごとに撮った (1440 / 390 の viewport と、frame の幅全体が見える 1600 / 480 の補助)。
+
+### テスト
+
+- unit `tests/unit/demo-version-package/package.test.tsx` (11 件): 実際の輪の大きさの縮小 (1102×4096・286×4096、短い頁は変えない、metadata なし)、PNG でないものの拒否、本物の d1-v9 の HTML / CSS が server と同じ検査を通る・worker_checks に元の大きさ、**決定的** (同じ入力で同じ bytes・manifest・bundle)、server が拒む頁 (script・外の URL) と描画の欠けを拒否 (緩めない)、リポジトリの中への書き出しの拒否・読み直しの検め直し・改ざんの拒否、ローカルでない URL / DB URL の拒否、job id、輪の content が事実パック、縮小の注記の % と markup (注記あり・「実寸で見る」なし / 縮小なしは今までどおり)。
+- 統合 `tests/integration/demo-version-package.test.ts` (5 件): 輪の seed の冪等、取り込み (manual_import・draft・job id・worker_checks・ファイルの行の大きさ)・再実行で二つ目の版なし・upload しない、保存された object が違えば上書きせず拒否、別の job の同じ bundle (`duplicate_bundle`) で既存の版、**本物の bucket** で upload・取り直し・照合 (storage の service が無いときだけ理由つきで skip)。DB の部分は CI でも走る (object は memory の store)。
