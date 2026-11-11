@@ -73,11 +73,30 @@ const rgb = (): [number, number, number, number] => [randomInt(256), randomInt(2
 export async function seedDemoVersion(
   db: pg.Pool | pg.Client,
   svc: SupabaseClient,
-  opts: { html?: string; css?: string; upload?: boolean; renderHeights?: { desktop: number; mobile: number } } = {},
+  opts: {
+    html?: string;
+    css?: string;
+    upload?: boolean;
+    renderHeights?: { desktop: number; mobile: number };
+    /** a new shop's name (stored as its fact before the first ingest), e.g. one without 「テスト」, which the server's HTML check refuses */
+    shopName?: string;
+    /** add the version to this shop's demo (with this parent) instead of seeding a new shop */
+    into?: { prospectId: string; demoId: string; parentVersionId?: string };
+  } = {},
 ): Promise<SeededVersion> {
-  const { prospectId } = await seedDemo(db, { expiresAt: null });
-  const { rows } = await db.query("select id from public.sales_demos where prospect_id = $1", [prospectId]);
-  const demoId = rows[0].id as string;
+  let prospectId: string;
+  let demoId: string;
+  if (opts.into) {
+    ({ prospectId, demoId } = opts.into);
+  } else {
+    ({ prospectId } = await seedDemo(db, { expiresAt: null }));
+    const { rows } = await db.query("select id from public.sales_demos where prospect_id = $1", [prospectId]);
+    demoId = rows[0].id as string;
+    if (opts.shopName) {
+      await db.query("update public.sales_prospects set name = $2, normalized_name = $2 where id = $1", [prospectId, opts.shopName]);
+      await db.query("update public.sales_demos set content = jsonb_set(content, '{name}', to_jsonb($2::text)) where id = $1", [demoId, opts.shopName]);
+    }
+  }
 
   const photo = solidWebp(40 + randomInt(200), 30 + randomInt(200), rgb());
   const desktop = solidWebp(1440, opts.renderHeights?.desktop ?? 900 + randomInt(100), rgb());
@@ -114,7 +133,7 @@ export async function seedDemoVersion(
   const res = await svc.rpc("sales_ingest_demo_version", {
     p_demo_id: demoId,
     p_generation_job_id: `job-${randomUUID()}`,
-    p_parent_version_id: null,
+    p_parent_version_id: opts.into?.parentVersionId ?? null,
     p_origin: "manual_import",
     p_worker_commit: "abcdef1",
     p_direction_sha256: sha256Hex("direction"),

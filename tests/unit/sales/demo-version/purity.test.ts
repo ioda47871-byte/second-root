@@ -17,14 +17,16 @@ describe("demo-version library purity", () => {
     expect(src).not.toMatch(/process\.env|\bfetch\s*\(|node:fs|node:https?|node:net|node:child_process|supabase|createClient|from ["']next\//);
   });
 
-  // DEV-196d-3: the owner-approved DEV-196d screens are the only app code that may use the library. The list is exact:
+  // DEV-196d-3: the owner-approved DEV-196d screens (196d-3 page, 196d-4 compare) are the only app code that may use the library. The list is exact:
   // a new importer anywhere else (another page, the share route, the Today card before DEV-196d-7, proxy.ts) fails.
   it("is imported only by the approved DEV-196d admin demo screens (an exact list), never by proxy.ts or other pages", () => {
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${d}/${e.name}`) : /\.(ts|tsx)$/.test(e.name) ? [`${d}/${e.name}`] : []));
     const importers = [...walk("app"), ...walk("components"), "proxy.ts"].filter((f) => readFileSync(f, "utf8").includes("demo-version")).sort();
     expect(importers).toEqual([
+      "app/admin/sales/demos/[prospectId]/compare/page.tsx",
       "app/admin/sales/demos/[prospectId]/layout.tsx",
       "app/admin/sales/demos/[prospectId]/page.tsx",
+      "components/admin/demo/CompareTables.tsx",
       "components/admin/demo/FactsPanel.tsx",
       "components/admin/demo/LiveFrame.tsx",
       "components/admin/demo/RightsPanel.tsx",

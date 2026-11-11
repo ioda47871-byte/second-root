@@ -143,3 +143,44 @@ branch `feature/dev-196d-3-preview-page` (`origin/develop` 59260b9 から)。DB�
 | nit | 文書は「取り消し・期限切れはリンクなし」だが全部リンクしていた。`expires_at` を過ぎた下書きは灰色にならなかった | 文書どおりにした: 取り消し、または期限切れ (状態・`expires_at`・読めない `expires_at`) の版は灰色でリンクなし (`versionGone`)、「表示しません」。頁から `now` を渡す | unit「review round 1 nit」(5 通り) |
 
 結果 (2026-11-11): unit `tests/unit/admin` 25 件、`tests/unit/admin tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 1220 件合格。e2e `demo-versions-page` 8 件 (Storage あり 8 passed / 止めて 6 passed・2 skipped、L1 の検査は止めても走る)。lint・typecheck・check:secrets・build 合格。
+
+### 196d-3 review round 2 (coordinator、差分 dc6dce4 → 89bda06)
+
+L1 (RenderPane: 読み込みと大きさが一致してから「最後まで表示しました」)、L2 (FactsPanel: 「非表示（メールアドレスを含む）」と「…（以下略）」)、VersionList の nit (取り消し・期限切れはリンクなし・灰色) は、すべて直っていることを確認。新しい指摘なし: **C=0 H=0 M=0 L=0**。CI 11/11 green (89bda06)。merged (#248 → a178892)。
+
+## 196d-4: 版の比較の頁 `/admin/sales/demos/[prospectId]/compare`
+
+branch `feature/dev-196d-4-compare-page` (`origin/develop` a178892 から)。DB・migration・next.config・workflow・依存の変更なし。閲覧だけ (承認・取り消しなし)。
+
+| file | 中身 |
+|---|---|
+| `app/admin/sales/demos/[prospectId]/compare/page.tsx` | 196d-3 の `[prospectId]/layout.tsx` の門 (旗・管理者・demo の有無で本物の 404) の下。頁でも旗と `requireAdminPage` を確かめてから読む。比べる 2 つ (`?a=&b=`、GET の form で選ぶ。書き込みなし)、見た目、中身・事実・検査・権利、構造記述子、頁の文、ファイル。空 (版なし)・比べる元なし (選ぶよう促す)・DB の誤り・鍵なしの状態。版の頁から「版を比べる」へリンク (版が 2 つ以上のとき) |
+| `lib/admin/demo-compare.ts` (`server-only`) | `b` は指定 (無ければ最新)、`a` は指定 (無ければ承認済みの版 → `b` の親、DEV-196d-1 の `defaultBaseVersion`)。この demo の版だけ、`a = b`・形の違う id・別の demo の id は既定へ。中身・事実・worker commit・検査の符号・権利の数 (`compareVersionMeta`)、ファイル (`diffManifests`)、構造 (`diffStructure`、語彙の語だけ) は管理者の session で読んだ行から。**頁の文**は 2 つの版の `index.html` を server が非公開の bucket から読み (service role、spec §5.1・§6.8 の「Storage は server だけが読む」)、manifest と照合 (大きさ・sha256・UTF-8) してから DEV-196b の `checkArtifactHtml(...).texts` で見える文を取り出し、上限つきの LCS で行の差分 (`diffLines`) |
+| `components/admin/demo/CompareVisual.tsx` | 2 つの版の全ページの描画画像を並べる (縦の位置の同期あり、切り替え可) か重ねる (不透明度の slider)。PC / SP の切り替え。画素の差分は出さない。読み込めない描画は「表示できませんでした」と出す。700px 未満では 2 枚を縦に積む (横に並べると 170px 幅になり、枠が scroll しなくなるため。e2e で見つけた) |
+| `components/admin/demo/CompareTables.tsx` | 中身・事実・検査・権利の表、構造の 8 観点 (どちらも計測なしは同じと扱わない)、頁の文 (追加・削除・同じ、事実の行に「事実」)、ファイル。文言はすべて固定の label・固定の符号・語彙の語・頁自身の見える文 |
+| `lib/admin/demo-versions.ts` | loader が読んだ行 (`rows`: 版とファイル) も server の中で返す (比較の頁が使う)。client へは出さない |
+| `tests/unit/sales/demo-version/purity.test.ts` | import してよい正確な一覧に compare の頁と `CompareTables` を足した |
+
+判断したこと・止まったこと:
+- **copy record の差分は DEV-196e へ送る** (coordinator 決定 2026-11-11)。
+- **copy record (`copy.json`) が保存されていない**: 計画の「copy.json の行の差分 (事実の行と創作の見出し)」は、DEV-196c が copy record を DB にも Storage にも保存しない (manifest の名前の規則と `sales_demo_version_files` の check に `copy.json` が無い) ため、元の資料が無い。保存するには **DB / manifest の変更** が要るので、その部分は作らずに止めた (coordinator へ報告)。代わりに頁の見える文の行で差分を出し、店舗の保存された事実と同じ文の行だけを「事実」とし、それ以外は「区別しない」(creative とは言わない) と画面に書いた。
+- **頁の文のための Storage の読み出し (service role)**: coordinator 承認 (2026-11-11、下の round 1 の L1 の条件つき)。196d-3 の事実の hash と同じ条件で読む — server だけ、旗と管理者の確認の後、検証した prospect の demo の版だけ、**プレビューできる版 (取り消し・期限切れ・権利不明でない) で demo が無効でないとき**だけ (view token と同じ規則)、`index.html` だけ、manifest と照合してから、取り出すのは頁自身の見える文だけ (管理者は frame で同じものを見られる)。読めない・照合に落ちたら「文の差分は出せません」。
+
+### テスト
+
+- unit `tests/unit/admin/demo-compare.test.tsx` (9 件): 既定の組 (親 / 承認済みを優先)、指定・`a = b`・形の違う id・別の demo の id、版が 1 つ / 0、中身・ファイル・構造 (自由文を出さない)・文の差分 (事実の行、creative と呼ばない)、Storage は previewable な版の `index.html` だけを読み、取り消しの版・無効の demo では store を作らない、manifest と違うバイト列・無い object は使わない、表と見た目の component。
+- 統合 `tests/integration/demo-versions-page.test.ts` に 2 件: 本物の行から既定の組と差分 (object はテストの中で差し替え、CI でも走る)、本物の bucket から 2 つの頁を読む (storage の service が止まっているときだけ理由つきで skip)。
+- e2e `tests/e2e/demo-compare.spec.ts` (desktop で 6 件、1440 と 390): 旗の無効で 404、旗を立てた server で既定の組 v1-v2・ヘッダ (`frame-src 'self'`・DENY)・表、知らない prospect は 404、GET の picker で組を入れ替え・版の頁からのリンク。Storage があるとき: 文の差分 (変えた文の削除と追加、店名の行が「事実」)、PC 1440 と SP 390 で 2 枚が scroll でき、片方を最下まで動かすともう片方も最下へ、SP の切り替え、重ねる表示の slider、頁は横にはみ出さない。
+- 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1229 件、統合の全体 25 files / 452 件、e2e の全体 137 passed / 19 skipped (旗を立てる 3 つの spec の mobile の複製)。storage の container を止めた状態 (CI と同じ): e2e `demo-compare` 3 passed / 3 skipped、統合 `demo-versions-page` 4 passed / 1 skipped。lint・typecheck・check:secrets・build 合格。
+
+### 196d-4 review round 1 (coordinator の独立レビュー、cddd8c1: C0 H0 M0 L3) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (安全) | `pageTexts` が `checkArtifactHtml` の合否を見ずに文を使っていた。読み出しの大きさに上限がない。`<title>`・属性の文なども行に入る | サーバーの HTML の検査 (`checkArtifactHtml(...).ok`) に落ちた頁は文を一切出さない (`unavailable`)。`ARTIFACT_LIMITS.htmlBytes` を超える entry は**読み出す前に**断り、読み出した object が超えていても断る。文は `visibleBodyText`: `<body>` の見える text node だけ (head・`<title>`・svg の title / desc・`hidden` 属性の要素とその中・script / style / template / noscript・comment・属性の文は入れない)。DEV-196b の bounded parser と操作の予算で読む | unit: `<title>` だけの行・svg の title / desc・`[hidden]` の文が差分に出ない、`visibleBodyText` の 9 通り、`<script>` を含む頁は `unavailable`、上限を超える entry は v2 を読み出さない、上限を超える object も断る |
+| L2 (正確さ) | 印のない行の説明が「創作の見出しか…」と決めつけていた | 「店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）」に | unit (文言の一致と旧い文言の不在) |
+| L3 (個人情報) | email を含む事実が `factValues` に入り、email を含む頁の行がそのまま表示されうる | email の判定と文言を `admin-messages.ts` に 1 つにし (`containsEmail`・`HIDDEN_EMAIL_LABEL`、FactsPanel も同じものを使う)、`factValues` は email を含む事実を入れない、頁の行で email を含むものは「非表示（メールアドレスを含む）」に置き換え、「事実」にしない | unit: `factValues` / `copyLines`、email の行が差分にも描いた一覧にもそのまま出ず、事実と同じでも「事実」にならない |
+
+e2e の fixture: 架空の店の名前に「テスト」を含めない `shopName` を seed に足した (サーバーの HTML の検査は「テスト」を拒むため、L1 の後は文の差分が出なくなる)。
+
+結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1235 件、統合 `demo-versions-page`・`demo-frame` 13 件、e2e `demo-compare` 6 件・`demo-versions-page` 8 件 (Storage あり)。lint・typecheck・check:secrets・build 合格。

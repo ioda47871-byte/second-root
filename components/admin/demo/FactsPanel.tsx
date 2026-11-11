@@ -6,14 +6,13 @@
  * the version was made from these same facts is shown as same / changed / unknown (unknown never reads as same).
  */
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
+import { containsEmail, HIDDEN_EMAIL_LABEL } from "@/lib/sales/demo-version/admin-messages";
 import { UNCONFIRMED } from "@/lib/sales/evidence";
 import type { VersionView } from "@/lib/sales/demo-version/view-model";
 import styles from "./demo.module.css";
 
-const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
-
 /** Review of #248 L2: a stored fact that holds an email address is hidden — which is not the same as unconfirmed. */
-export const FACT_HIDDEN_EMAIL = "非表示（メールアドレスを含む）";
+export const FACT_HIDDEN_EMAIL = HIDDEN_EMAIL_LABEL;
 /** …and a value cut at its display limit says so, so it never reads as the whole fact. */
 export const FACT_TRUNCATED = "…（以下略）";
 
@@ -25,7 +24,7 @@ function text(value: unknown, max: number): Text {
   if (typeof value !== "string") return { value: null, hidden: null };
   const t = value.trim();
   if (!t) return { value: null, hidden: null };
-  if (EMAIL.test(t)) return { value: null, hidden: "email" };
+  if (containsEmail(t)) return { value: null, hidden: "email" };
   return { value: t.length > max ? `${t.slice(0, max)}${FACT_TRUNCATED}` : t, hidden: null };
 }
 
