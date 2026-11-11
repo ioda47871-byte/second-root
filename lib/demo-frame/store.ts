@@ -6,7 +6,7 @@ import "server-only";
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
-import { DEMO_FRAME_BUCKET, type FrameFile, type FrameImage, type FrameStore, type FrameVersion } from "./serve";
+import { DEMO_FRAME_BUCKET, type FrameDemo, type FrameFile, type FrameImage, type FrameStore, type FrameVersion } from "./serve";
 
 export function supabaseFrameStore(client: SupabaseClient = createServiceClient()): FrameStore {
   return {
@@ -17,6 +17,10 @@ export function supabaseFrameStore(client: SupabaseClient = createServiceClient(
         .eq("id", id)
         .maybeSingle();
       return error || !data ? null : (data as FrameVersion);
+    },
+    async demo(id) {
+      const { data, error } = await client.from("sales_demos").select("id, disabled_at").eq("id", id).maybeSingle();
+      return error || !data ? null : (data as FrameDemo);
     },
     async files(versionId) {
       const { data, error } = await client

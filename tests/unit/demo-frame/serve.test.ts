@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { demoFrameNotFound, requestOrigin, serveDemoFrame, splitFramePath, type FrameFile, type FrameImage, type FrameRequest, type FrameStore, type FrameVersion } from "@/lib/demo-frame/serve";
+import { demoFrameNotFound, requestOrigin, serveDemoFrame, splitFramePath, type FrameDemo, type FrameFile, type FrameImage, type FrameRequest, type FrameStore, type FrameVersion } from "@/lib/demo-frame/serve";
 import { artifactResponseHeaders } from "@/lib/sales/demo-version/csp";
 import { sha256Hex } from "@/lib/sales/demo-version/manifest";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
@@ -41,11 +41,12 @@ const fileOf = (path: string, role: string, content_type: string, bytes: Uint8Ar
   image_id,
 });
 
-type World = { version: FrameVersion | null; files: FrameFile[]; images: FrameImage[]; objects: Record<string, Uint8Array>; throwOn?: keyof FrameStore };
+type World = { version: FrameVersion | null; demo: FrameDemo | null; files: FrameFile[]; images: FrameImage[]; objects: Record<string, Uint8Array>; throwOn?: keyof FrameStore };
 
 function world(over: Partial<World> = {}): World {
   return {
     version: { id: VID, demo_id: DEMO, status: "draft", revoked_at: null, expires_at: "2027-01-01T00:00:00Z", storage_prefix: `v1/${DEMO}/${VID}/` },
+    demo: { id: DEMO, disabled_at: null },
     files: [
       fileOf("page/index.html", "html", "text/html", HTML),
       fileOf("page/style.css", "css", "text/css", CSS),
@@ -67,6 +68,10 @@ function storeFor(w: World, calls: string[]): FrameStore {
     async version(id) {
       guard("version");
       return w.version && w.version.id === id ? w.version : null;
+    },
+    async demo(id) {
+      guard("demo");
+      return w.demo && w.demo.id === id ? w.demo : null;
     },
     async files() {
       guard("files");
@@ -271,6 +276,17 @@ describe("serveDemoFrame: every refusal is the same 404", () => {
     for (const [label, version] of variants) await expectUniform404((await serve(request("index.html"), { w: world({ version }) })).res, label);
   });
 
+  it("review round 1 L3: a disabled demo (admin or DNC), a missing demo or another demo's row → 404 for every file", async () => {
+    const variants: Array<[string, FrameDemo | null]> = [
+      ["disabled", { id: DEMO, disabled_at: "2026-11-10T00:00:00Z" }],
+      ["missing", null],
+      ["other demo", { id: "00000000-0000-4000-8000-0000000000d2", disabled_at: null }],
+    ];
+    for (const [label, demo] of variants) {
+      for (const p of Object.keys(DEST)) await expectUniform404((await serve(request(p), { w: world({ demo }) })).res, `${label} ${p}`);
+    }
+  });
+
   it("the file must be in the version's manifest with the role and type its name implies", async () => {
     const w = world();
     await expectUniform404((await serve(request("style.css"), { w: { ...w, files: w.files.filter((f) => f.path !== "page/style.css") } })).res, "absent");
@@ -310,7 +326,7 @@ describe("serveDemoFrame: every refusal is the same 404", () => {
   });
 
   it("a store that throws at any step answers the same 404", async () => {
-    for (const throwOn of ["version", "files", "images", "object"] as const) {
+    for (const throwOn of ["version", "demo", "files", "images", "object"] as const) {
       for (const p of Object.keys(DEST)) await expectUniform404((await serve(request(p), { w: world({ throwOn }) })).res, `${throwOn} ${p}`);
     }
   });

@@ -5,7 +5,7 @@ import { expect, test, type APIRequestContext, type Request } from "@playwright/
 import pg from "pg";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
 import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
-import { DEMO_VERSIONS_BUCKET, seedDemoVersion, storageAvailable, type SeededVersion } from "../support/seed-demo-version";
+import { DEMO_VERSIONS_BUCKET, seedDemoVersion, storageStatus, type SeededVersion } from "../support/seed-demo-version";
 
 // DEV-196d-2 (spec §6.3・§6.4・§6.7・§6.8・T1・T3): the admin artifact route `/demo-frame/a/<token>/<path>`.
 //
@@ -28,6 +28,7 @@ let server: ChildProcess | null = null;
 let db: pg.Pool;
 let svc: SupabaseClient;
 let storageUp = false;
+let storageSkipReason = "";
 let seeded: SeededVersion;
 
 const HTML =
@@ -77,7 +78,10 @@ test.skip(({ isMobile }) => isMobile, "the flag-on server is started once, by th
 test.beforeAll(async () => {
   db = new pg.Pool({ connectionString: process.env.SUPABASE_DB_URL, max: 2 });
   svc = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-  storageUp = await storageAvailable(svc);
+  // skipped ONLY when the storage service is not running (CI: `-x storage-api`); any other answer throws here
+  const storage = await storageStatus();
+  storageUp = storage.available;
+  storageSkipReason = storage.available ? "" : `${storage.reason} — covered without Storage by tests/unit/demo-frame (headers) and locally with Storage`;
   await ensureUsers(USERS_KEY);
   seeded = await seedDemoVersion(db, svc, { html: HTML, css: CSS });
   server = spawn("npm", ["run", "start", "--", "--port", String(ON_PORT)], {
@@ -145,7 +149,7 @@ test("opened directly (not in a frame) or fetched for the wrong purpose → 404"
 });
 
 test("framed in an admin page: opaque origin, no script, no cookie, images shown, zero requests leave the app", async ({ page, context }) => {
-  test.skip(!storageUp, "needs the local storage API (CI runs Supabase with -x storage-api)");
+  test.skip(!storageUp, storageSkipReason);
   const tok = token();
   const base = `${ON}/demo-frame/a/${tok}/`;
   // The admin session cookie the artifact must never reach (SameSite=Lax, readable by script, like @supabase/ssr's).
@@ -219,7 +223,7 @@ test("framed in an admin page: opaque origin, no script, no cookie, images shown
 });
 
 test("revoking the version makes the frame 404 on the next load (no fallback to another demo)", async ({ request }) => {
-  test.skip(!storageUp, "needs the local storage API (CI runs Supabase with -x storage-api)");
+  test.skip(!storageUp, storageSkipReason);
   const tok = token();
   expect((await request.get(`${ON}/demo-frame/a/${tok}/style.css`, { headers: { "Sec-Fetch-Dest": "style" } })).status()).toBe(200);
   // the admin's own action, through the database function (as the screen in DEV-196d-6 will call it)

@@ -17,14 +17,44 @@ export const DEFAULT_HTML =
   '<body><main><h1 id="shop">架空の焼き菓子店</h1><p>テスト用の版です。</p><img id="hero" src="photos/hero-desktop.webp" alt="店の写真" width="40" height="30"></main></body></html>';
 export const DEFAULT_CSS = "body{margin:0;font-family:sans-serif;background:#faf7f2}h1{color:#5a3e2b}";
 
-/** Whether the local storage API answers (CI starts Supabase with `-x storage-api`). */
-export async function storageAvailable(svc: SupabaseClient): Promise<boolean> {
+export type StorageStatus = { available: true } | { available: false; reason: string };
+
+/**
+ * Whether the local storage API is running, decided narrowly (review of #247): it counts as unavailable ONLY when the
+ * gateway cannot reach it — a network error, or an answer from the gateway itself (Kong: a body with only `message`)
+ * with a gateway / no-route status. CI starts Supabase with `-x storage-api`, which looks exactly like that. Any other
+ * answer (the bucket missing, an auth error, a storage-api error) THROWS, so a broken setup never turns into a skip.
+ */
+export async function storageStatus(url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY): Promise<StorageStatus> {
+  if (!url || !key) throw new Error("storageStatus: the local Supabase URL and service key are not set");
+  let res: Response;
   try {
-    const { error } = await svc.storage.getBucket(DEMO_VERSIONS_BUCKET);
-    return !error;
-  } catch {
-    return false;
+    res = await fetch(`${url}/storage/v1/bucket/${DEMO_VERSIONS_BUCKET}`, { headers: { Authorization: `Bearer ${key}`, apikey: key } });
+  } catch (e) {
+    return { available: false, reason: `storage API unreachable (${(e as Error).name})` };
   }
+  const text = await res.text();
+  if (res.status === 200) {
+    const body = JSON.parse(text) as { id?: string; public?: boolean };
+    if (body.id !== DEMO_VERSIONS_BUCKET || body.public !== false) throw new Error("storageStatus: the bucket is not the private sales-demo-versions bucket");
+    return { available: true };
+  }
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    // not JSON: not the gateway's own error either
+  }
+  const gatewayOnly = Object.keys(body).length === 1 && typeof body.message === "string";
+  if (gatewayOnly && [404, 500, 502, 503, 504].includes(res.status)) {
+    return { available: false, reason: `storage API not running behind the gateway (HTTP ${res.status}: ${String(body.message).slice(0, 80)})` };
+  }
+  throw new Error(`storageStatus: unexpected answer from the storage API (HTTP ${res.status})`);
+}
+
+/** Boolean form of storageStatus (throws on anything but "running" / "not running"). */
+export async function storageAvailable(): Promise<boolean> {
+  return (await storageStatus()).available;
 }
 
 export type SeededVersion = {
@@ -99,7 +129,7 @@ export async function seedDemoVersion(db: pg.Pool | pg.Client, svc: SupabaseClie
   const prefix = v.rows[0].storage_prefix as string;
 
   let uploaded = false;
-  if (opts.upload !== false && (await storageAvailable(svc))) {
+  if (opts.upload !== false && (await storageAvailable())) {
     for (const [name, bytes] of Object.entries(objects)) {
       const type = name.endsWith(".html") ? "text/html" : name.endsWith(".css") ? "text/css" : "image/webp";
       const up = await svc.storage.from(DEMO_VERSIONS_BUCKET).upload(`${prefix}${name}`, bytes, { contentType: type, upsert: true });

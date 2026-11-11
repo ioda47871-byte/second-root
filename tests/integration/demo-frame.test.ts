@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { demoFrameNotFound, serveDemoFrame, type FrameRequest } from "@/lib/demo-frame/serve";
 import { supabaseFrameStore } from "@/lib/demo-frame/store";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
-import { DEMO_VERSIONS_BUCKET, seedDemoVersion, storageAvailable, type SeededVersion } from "../support/seed-demo-version";
+import { DEMO_VERSIONS_BUCKET, seedDemoVersion, storageStatus, type SeededVersion } from "../support/seed-demo-version";
 import { createUser, db, makeAdmin, serviceClient, signedInClient } from "./helpers";
 
 // DEV-196d-2 (spec §6.4): the admin artifact route's decisions against the LOCAL Supabase stack (database + private
@@ -26,7 +26,10 @@ const NAME: Record<string, string> = {
 };
 
 const svc = serviceClient();
-const storageUp = await storageAvailable(svc);
+const storage = await storageStatus();
+const storageUp = storage.available;
+// Skipped ONLY when the storage service is not running (CI: `-x storage-api`); any other storage error fails the file.
+const STORAGE_SKIP = storage.available ? "" : ` [skipped: ${storage.reason}]`;
 let admin: SupabaseClient;
 const prospects: string[] = [];
 
@@ -42,6 +45,18 @@ function req(s: SeededVersion, urlPath: string, over: Partial<FrameRequest> = {}
 }
 
 const serve = (r: FrameRequest, env: Record<string, string | undefined> = ENV) => serveDemoFrame(r, { env, now: new Date(), store: () => supabaseFrameStore(svc) });
+
+/**
+ * The real database reads with the object read replaced IN THIS TEST by the seeded bytes (review of #247 L1): the
+ * revocation, rights and disabled-demo checks then run against the database in CI too, where there is no storage API
+ * — a 200 first proves the 404 afterwards comes from the database check, not from a missing object.
+ */
+const serveDbOnly = (s: SeededVersion, r: FrameRequest) =>
+  serveDemoFrame(r, {
+    env: ENV,
+    now: new Date(),
+    store: () => ({ ...supabaseFrameStore(svc), object: async (key: string) => (key.startsWith(s.prefix) ? s.objects[key.slice(s.prefix.length)] ?? null : null) }),
+  });
 const NOT_FOUND = [...demoFrameNotFound().headers.entries()].sort();
 
 async function expect404(res: Response, label = "") {
@@ -76,6 +91,7 @@ describe("the store reads only what the route needs (service role)", () => {
     expect(await store.version(s.versionId)).toMatchObject({ id: s.versionId, demo_id: s.demoId, status: "draft", revoked_at: null, storage_prefix: s.prefix });
     expect((await store.files(s.versionId)).map((f) => f.path).sort()).toEqual(Object.keys(s.objects).sort());
     expect(await store.images([s.imageId])).toEqual([expect.objectContaining({ id: s.imageId, rights_status: "owner_provided_internal", revoked_at: null })]);
+    expect(await store.demo(s.demoId)).toEqual({ id: s.demoId, disabled_at: null });
     expect(await store.version("00000000-0000-4000-8000-000000000000")).toBeNull();
     expect(await store.images([])).toEqual([]);
   });
@@ -87,7 +103,7 @@ describe("serveDemoFrame against the local stack", () => {
     for (const flag of [undefined, "false", "TRUE"]) await expect404(await serve(req(s, "index.html"), { ...ENV, SALES_DEMO_VERSIONS_ENABLED: flag }), String(flag));
   });
 
-  it.skipIf(!storageUp)("serves every file of a draft version, byte for byte, from the private bucket", async () => {
+  it.skipIf(!storageUp)(`serves every file of a draft version, byte for byte, from the private bucket${STORAGE_SKIP}`, async () => {
     const s = await seed();
     expect(s.uploaded).toBe(true);
     for (const urlPath of Object.keys(DEST)) {
@@ -99,22 +115,30 @@ describe("serveDemoFrame against the local stack", () => {
     }
   });
 
-  it("a revoked version is 404 from the next request on (and stays 404)", async () => {
+  it("a revoked version: served before, 404 for every file from the next request on (database check, runs in CI)", async () => {
     const s = await seed();
-    if (storageUp) expect((await serve(req(s, "index.html"))).status).toBe(200);
+    for (const urlPath of Object.keys(DEST)) expect((await serveDbOnly(s, req(s, urlPath))).status, urlPath).toBe(200);
     const r = await admin.rpc("sales_revoke_demo_version", { p_version_id: s.versionId, p_code: "QUALITY_PROBLEM" });
     expect(r.error, r.error?.message).toBeNull();
-    for (const urlPath of Object.keys(DEST)) await expect404(await serve(req(s, urlPath)), urlPath);
+    for (const urlPath of Object.keys(DEST)) await expect404(await serveDbOnly(s, req(s, urlPath)), urlPath);
   });
 
-  it("revoking the version's photo hides every file of the version (rights fail closed)", async () => {
+  it("revoking the version's photo: served before, then every file of the version is 404 (rights fail closed, runs in CI)", async () => {
     const s = await seed();
+    for (const urlPath of Object.keys(DEST)) expect((await serveDbOnly(s, req(s, urlPath))).status, urlPath).toBe(200);
     const r = await admin.rpc("sales_revoke_demo_image", { p_image_id: s.imageId, p_code: "RIGHTS_COMPLAINT" });
     expect(r.error, r.error?.message).toBeNull();
-    for (const urlPath of Object.keys(DEST)) await expect404(await serve(req(s, urlPath)), urlPath);
+    for (const urlPath of Object.keys(DEST)) await expect404(await serveDbOnly(s, req(s, urlPath)), urlPath);
   });
 
-  it.skipIf(!storageUp)("an object replaced or removed in the bucket is 404 (the bytes are checked against the manifest)", async () => {
+  it("review round 1 L3: a disabled demo (admin or DNC) is 404 in the admin preview too (runs in CI)", async () => {
+    const s = await seed();
+    expect((await serveDbOnly(s, req(s, "index.html"))).status).toBe(200);
+    await db.query("update public.sales_demos set disabled_at = now() where id = $1", [s.demoId]);
+    for (const urlPath of Object.keys(DEST)) await expect404(await serveDbOnly(s, req(s, urlPath)), urlPath);
+  });
+
+  it.skipIf(!storageUp)(`an object replaced or removed in the bucket is 404 (the bytes are checked against the manifest)${STORAGE_SKIP}`, async () => {
     const s = await seed();
     const bucket = svc.storage.from(DEMO_VERSIONS_BUCKET);
     const html = s.objects["page/index.html"]!;
@@ -131,6 +155,7 @@ describe("serveDemoFrame against the local stack", () => {
     const a = await seed();
     const b = await seed();
     const mixed = signViewToken({ scope: "a", versionId: b.versionId, demoId: a.demoId, now: new Date(), key: KEY });
-    await expect404(await serve({ ...req(a, "index.html"), pathname: `/demo-frame/a/${mixed}/index.html` }));
+    expect((await serveDbOnly(a, req(a, "index.html"))).status).toBe(200);
+    await expect404(await serveDbOnly(a, { ...req(a, "index.html"), pathname: `/demo-frame/a/${mixed}/index.html` }));
   });
 });

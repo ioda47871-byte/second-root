@@ -13,7 +13,8 @@ import "server-only";
  *  5. the URL path maps to a manifest name (§5.2), with no query string and no percent-encoding;
  *  6. `Sec-Fetch-Dest` matches the file's role (checked before any database read; still the same 404);
  *  3. the database (service role): the version exists, belongs to the token's demo, is not revoked, its status is
- *     draft / approved / superseded and it is within expires_at;
+ *     draft / approved / superseded and it is within expires_at; its demo is not disabled (disabled_at: an admin's
+ *     decision or a DNC request — fail safe, the admin preview stops too, review of #247 L3);
  *     + every photo of the version has rights the admin preview allows now (§8.1 fail closed: one unusable image hides
  *     the whole version, the same rule as sales_demo_image_previewable and the screen's view model);
  *  5. the name is one of the version's files (the normalised copy of its manifest);
@@ -48,11 +49,14 @@ export function demoFrameNotFound(): Response {
 
 export type FrameVersion = { id: string; demo_id: string; status: string; revoked_at: string | null; expires_at: string; storage_prefix: string };
 export type FrameFile = { path: string; role: string; sha256: string; bytes: number; content_type: string; width: number | null; height: number | null; image_id: string | null };
+export type FrameDemo = { id: string; disabled_at: string | null };
 export type FrameImage = { id: string; sha256: string; rights_status: string; rights_expiry: string | null; revoked_at: string | null };
 
 /** The reads the route needs. Each answers null / [] when there is nothing (or on any error). */
 export interface FrameStore {
   version(id: string): Promise<FrameVersion | null>;
+  /** the version's demo (disabled_at is set by an admin or by DNC) */
+  demo(id: string): Promise<FrameDemo | null>;
   files(versionId: string): Promise<FrameFile[]>;
   images(ids: readonly string[]): Promise<FrameImage[]>;
   /** the object's bytes, or null (missing, larger than maxBytes, or any error) */
@@ -146,6 +150,8 @@ async function decide(req: FrameRequest, deps: { env: Env; now: Date; store: () 
   const revokedAt = v.revoked_at === null ? null : new Date(v.revoked_at);
   if (!canAdminPreview({ id: v.id, demo_id: v.demo_id, status, revoked_at: revokedAt, expires_at: expiresAt }, deps.now)) return demoFrameNotFound();
   if (v.storage_prefix !== `v1/${v.demo_id}/${v.id}/`) return demoFrameNotFound();
+  const demo = await store.demo(v.demo_id);
+  if (!demo || demo.id !== v.demo_id || demo.disabled_at !== null) return demoFrameNotFound();
 
   // 5. the file is one of this version's files, with the role and type its name implies
   const files = await store.files(v.id);
