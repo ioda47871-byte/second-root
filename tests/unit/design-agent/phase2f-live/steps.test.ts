@@ -59,10 +59,11 @@ function world() {
     return { ...r, dir: out };
   };
   // DEV-198: a test that uses the pre-render's files checks its exit status first, so a failed pre-render on CI
-  // (e.g. the browser on a loaded runner) shows the CLI's stderr instead of an ENOENT for a request file never written
+  // (e.g. the browser on a loaded runner) fails here with the CLI's answer instead of an ENOENT for a request file
+  // never written. The stop code and the browser's detail (RENDER_FAILED) are on stdout, so both are in the message
   const prerenderOk = (designDir: string, route = "C") => {
     const pre = prerender(designDir, route);
-    expect(pre.status, pre.stderr).toBe(0);
+    expect(pre.status, `${JSON.stringify(pre.out)}\n${pre.stderr}`).toBe(0);
     return pre;
   };
   const image = async (request: ImageRequest, tool: ImageTool, o: { approvalId?: string; planId?: string; retryOf?: string } = {}) => {

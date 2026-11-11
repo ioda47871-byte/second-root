@@ -9437,7 +9437,7 @@
     {
       "id": "DEV-198",
       "title": "phase2f-live steps のテストで pre-render の終了コードを先に確かめる (CI の ENOENT の flake の原因を stderr で見えるようにする)",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [],
       "attempts": 0,
@@ -9469,7 +9469,7 @@
       "human_approval_triggers": [
         "PR のレビューと merge"
       ],
-      "note": "手元の container では repo の Playwright と同梱の Chromium の版が合わず、PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium で実行した (27/27)。CLI は想定外の例外を {status: refused, code: REFUSED}・exit 2・stderr 空にするので、その場合 stderr の message は空になる (停止の code は test の console.log に出る)。"
+      "note": "CI run 42961770373 の原因は RENDER_FAILED (page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot)。timeout ではないので上げない。CLI は停止を stdout の JSON に書くので、assertion の message は stdout の JSON と stderr。想定外の例外を REFUSED にして内容を捨てる CLI の catch は別 Task の候補。手元では Playwright と同梱の Chromium の版が合わず PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium で 27/27。Fresh Review PASS (C0/H0/M1/L1、M・L 対応済み)、記録は .ai/reviews/DEV-198.md。"
     }
   ]
 }
