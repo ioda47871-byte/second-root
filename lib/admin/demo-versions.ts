@@ -72,6 +72,23 @@ export async function demoVersionsPageExists(prospectId: string, o: { env: Env; 
   return error ? true : data !== null;
 }
 
+/**
+ * Coordinator decision 2026-11-11 (#248): the service-role facts read is allowed only (1) server-only, (2) after the
+ * flag check and the admin check — here, after the admin's own RLS read returned this demo (a non-admin session sees
+ * no row and never gets here; the page and layout also call requireAdminPage first), (3) for the single demo id that
+ * read returned for the validated prospect id, (4) returning only the hash, (5) never sent to the client (the view
+ * model turns it into same / changed / unknown), and (6) any failure (error, throw, not a sha256) is "unknown", which
+ * blocks approving.
+ */
+async function readFactsSafely(read: (demoId: string) => Promise<string | null>, demoId: string): Promise<string | null> {
+  try {
+    const h = await read(demoId);
+    return typeof h === "string" && SHA256.test(h) ? h : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadDemoVersionsPage(
   prospectId: string,
   o: { env: Env; now: Date; client?: Client; factsSha256?: (demoId: string) => Promise<string | null> },
@@ -136,7 +153,7 @@ export async function loadDemoVersionsPage(
     approvals,
     approvedVersionId: d.approved_version_id,
     demoDisabled: d.disabled_at !== null,
-    currentFactsSha256: await (o.factsSha256 ?? currentFactsSha256)(d.id),
+    currentFactsSha256: await readFactsSafely(o.factsSha256 ?? currentFactsSha256, d.id),
     now: o.now,
   });
 

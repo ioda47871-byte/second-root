@@ -299,3 +299,39 @@ describe("loadDemoVersionsPage", () => {
     expect(await load(ENV, tables({ sales_demos: { data: null } }))).toEqual({ kind: "not_found" });
   });
 });
+
+describe("the service-role facts read (coordinator decision on #248)", () => {
+  it("runs only after the flag and the admin's own RLS read found the demo, once, for that demo id only", async () => {
+    const calls: string[] = [];
+    const read = async (demoId: string) => {
+      calls.push(demoId);
+      return FACTS;
+    };
+    const run = (env: Record<string, string | undefined>, t: Tables) => loadDemoVersionsPage(PROSPECT, { env, now: NOW, client: fakeClient(t) as never, factsSha256: read });
+    await run({ ...ENV, SALES_DEMO_VERSIONS_ENABLED: undefined }, tables());
+    await run(ENV, tables({ sales_prospects: { data: null } })); // RLS: a non-admin sees no row
+    await run(ENV, tables({ sales_demos: { data: null } }));
+    await run(ENV, tables({ sales_demos: { data: null, error: { message: "x" } } }));
+    await run(ENV, tables({ sales_demo_versions: { data: null, error: { message: "x" } } }));
+    expect(calls).toEqual([]);
+    await run(ENV, tables());
+    expect(calls).toEqual([DEMO]);
+  });
+
+  it("any failure is unknown (approval blocked): a throw, an error (null) or a value that is not a sha256", async () => {
+    for (const read of [async () => Promise.reject(new Error("boom")), async () => null, async () => "not-a-hash", async () => FACTS.toUpperCase()]) {
+      const r = await loadDemoVersionsPage(PROSPECT, { env: ENV, now: NOW, client: fakeClient(tables()) as never, factsSha256: read as never });
+      if (r.kind !== "ok") throw new Error("expected ok");
+      const v = r.view.versions.find((x) => x.versionNo === 1)!;
+      expect(v.facts).toBe("unknown");
+      expect(v.approveBlockers).toContain("FACTS_UNKNOWN");
+    }
+  });
+
+  it("the hash itself never reaches the page data: only same / changed / unknown", async () => {
+    const r = await loadDemoVersionsPage(PROSPECT, { env: ENV, now: NOW, client: fakeClient(tables({ sales_demo_versions: { data: [version(1, { facts_sha256: h("0") })] } })) as never, factsSha256: async () => FACTS });
+    if (r.kind !== "ok") throw new Error("expected ok");
+    expect(JSON.stringify(r)).not.toContain(FACTS);
+    expect(r.view.versions[0]!.facts).toBe("changed");
+  });
+});

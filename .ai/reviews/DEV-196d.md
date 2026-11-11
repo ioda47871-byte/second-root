@@ -125,3 +125,11 @@ branch `feature/dev-196d-3-preview-page` (`origin/develop` 59260b9 から)。DB�
 ### 判断が要ること (coordinator へ)
 
 - **事実の hash の読み出しに service role を使った** (上の `lib/admin/demo-versions.ts`)。DB の権限は変えていない。代わりに管理者の session で読むには、`sales_demo_facts_sha256` の `authenticated` への grant (= DB の変更) が要る。読まなければ全部の版が「事実が不明」になり、196d-5 で品質承認が常に止まる。
+  **決定 (coordinator、2026-11-11)**: 次の条件をすべて満たす限り可。`authenticated` への execute の grant はしない。
+  1. server だけ (`lib/admin/demo-versions.ts` は `server-only`)。
+  2. 旗の確認と管理者の確認の後: layout と page が `requireAdminPage` を先に呼び、loader も旗を確かめ、さらに**管理者の session (RLS) でその demo の行が読めた後**にだけ読む (管理者でない session には行が無く、ここに届かない)。
+  3. 検証した route の prospect id から RLS で引いた、1 つの demo の id だけ。
+  4. 返すのは hash だけ (`id, facts:sales_demo_facts_sha256`)。
+  5. client へは出さない: view model が same / changed / unknown に変える。
+  6. どんな失敗 (誤り・例外・sha256 でない値) も「不明」で、承認は FACTS_UNKNOWN で止まる (`readFactsSafely`)。
+  テスト (`tests/unit/admin/demo-versions-page.test.tsx`、3 件): 旗の無効・prospect が無い (RLS)・demo が無い・demo の誤り・版の誤りでは一度も呼ばれず、正常なときに 1 回だけその demo の id で呼ばれる。例外・null・sha256 でない値・大文字は不明で承認が止まる。読み出した hash は頁のデータのどこにも入らない。統合 (`tests/integration/demo-versions-page.test.ts`) で、本物の computed field の値が ingest の値と一致することを確かめている。
