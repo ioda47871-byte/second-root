@@ -143,3 +143,7 @@ branch `feature/dev-196d-3-preview-page` (`origin/develop` 59260b9 から)。DB�
 | nit | 文書は「取り消し・期限切れはリンクなし」だが全部リンクしていた。`expires_at` を過ぎた下書きは灰色にならなかった | 文書どおりにした: 取り消し、または期限切れ (状態・`expires_at`・読めない `expires_at`) の版は灰色でリンクなし (`versionGone`)、「表示しません」。頁から `now` を渡す | unit「review round 1 nit」(5 通り) |
 
 結果 (2026-11-11): unit `tests/unit/admin` 25 件、`tests/unit/admin tests/unit/demo-frame tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 1220 件合格。e2e `demo-versions-page` 8 件 (Storage あり 8 passed / 止めて 6 passed・2 skipped、L1 の検査は止めても走る)。lint・typecheck・check:secrets・build 合格。
+
+### 196d-3 review round 2 (coordinator、差分 dc6dce4 → 89bda06)
+
+L1 (RenderPane: 読み込みと大きさが一致してから「最後まで表示しました」)、L2 (FactsPanel: 「非表示（メールアドレスを含む）」と「…（以下略）」)、VersionList の nit (取り消し・期限切れはリンクなし・灰色) は、すべて直っていることを確認。新しい指摘なし: **C=0 H=0 M=0 L=0**。CI 11/11 green (89bda06)。merged (#248 → a178892)。
