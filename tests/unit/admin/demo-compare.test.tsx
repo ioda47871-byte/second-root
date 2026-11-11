@@ -2,7 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import CompareVisual from "@/components/admin/demo/CompareVisual";
 import { CopyDiffList, FilesDiffTable, MetaDiffTable, StructureDiffTable } from "@/components/admin/demo/CompareTables";
-import { buildCompare, copyLines, factValues } from "@/lib/admin/demo-compare";
+import { buildCompare, copyLines, factValues, visibleBodyText } from "@/lib/admin/demo-compare";
+import { HIDDEN_EMAIL_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import { ARTIFACT_LIMITS } from "@/lib/sales/demo-version/manifest";
 import type { DemoVersionsPage } from "@/lib/admin/demo-versions";
 import type { FrameStore } from "@/lib/demo-frame/serve";
 import { sha256Hex } from "@/lib/sales/demo-version/manifest";
@@ -169,6 +171,9 @@ describe("compare components (display only)", () => {
     expect(copy).not.toMatch(/<form|<button/);
     expect(renderToStaticMarkup(<CopyDiffList copy={{ kind: "unavailable", side: "a" }} />)).toContain("比べる元の版の頁を読めない");
     expect(renderToStaticMarkup(<CopyDiffList copy={{ kind: "ok", result: { ok: false, reason: "TOO_LARGE" } }} />)).toContain("文が多すぎる");
+    // review round 1 L2: the unmarked lines are described neutrally
+    expect(copy).toContain("店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）");
+    expect(copy).not.toContain("創作の見出しか");
   });
 
   it("the visual starts side by side with synced scrolling; a missing render says so", () => {
@@ -187,3 +192,77 @@ describe("compare components (display only)", () => {
     expect(html).toContain("画素の差分は出しません");
   });
 });
+
+// --- review of #249, round 1 -----------------------------------------------------------------------------------------
+
+const page3 = (body: string, head = "<title>見出しだけの題</title>") =>
+  enc(`<!doctype html><html><head>${head}<link rel="stylesheet" href="style.css"></head><body>${body}</body></html>`);
+
+/** A page with these HTML bytes as v2 (v1 as before), for buildCompare. */
+function withV2(bytes: Uint8Array, entryBytes = bytes.byteLength) {
+  const p = page();
+  const fs = p.rows.files.map((f) => (f.version_id === id(2) && f.path === "page/index.html" ? { ...f, sha256: sha256Hex(bytes), bytes: entryBytes } : f));
+  return { ...p, rows: { ...p.rows, files: fs } };
+}
+
+describe("review round 1 L1: only the visible body text of a page that passes the server's check", () => {
+  it("no <title>, svg title / desc, [hidden], script / style / template / noscript, comments or attribute text", () => {
+    const t = visibleBodyText(
+      '<!doctype html><html><head><title>題だけ</title></head><body><h1 title="属性">見出し</h1><!-- 注釈 --><p hidden>隠した文</p><div hidden><p>入れ子の隠した文</p></div>' +
+        '<svg viewBox="0 0 1 1"><title>図の題</title><desc>図の説明</desc></svg><template><p>型</p></template><noscript>代わり</noscript><img alt="代替文"><p>本文</p></body></html>',
+    );
+    expect(t).toEqual(["見出し", "本文"]);
+  });
+
+  it("the diff never shows a <title>-only line, svg title / desc or [hidden] text", async () => {
+    const v2 = page3('<h1>架空の焼き菓子店</h1><p hidden>隠した文</p><svg viewBox="0 0 1 1"><title>図の題</title><desc>図の説明</desc></svg><p>静かな午後の一皿</p>');
+    const r = await buildCompare(withV2(v2), { a: null, b: null }, { store: store({ [`v1/${DEMO}/${id(2)}/page/index.html`]: v2 }).make });
+    if (r.kind !== "ok" || r.copy.kind !== "ok" || !r.copy.result.ok) throw new Error(JSON.stringify(r.kind === "ok" ? r.copy : r.kind));
+    const texts = r.copy.result.ops.map((o) => o.text);
+    for (const hidden of ["見出しだけの題", "架空の焼き菓子店のtitle", "隠した文", "図の題", "図の説明"]) expect(texts).not.toContain(hidden);
+    expect(texts).toContain("静かな午後の一皿");
+  });
+
+  it("a page that fails the server's HTML check gives no text at all (unavailable)", async () => {
+    const bad = page3('<p>見える文</p><script>alert(1)</script>');
+    const r = await buildCompare(withV2(bad), { a: null, b: null }, { store: store({ [`v1/${DEMO}/${id(2)}/page/index.html`]: bad }).make });
+    expect(r.kind === "ok" && r.copy).toEqual({ kind: "unavailable", side: "b" });
+  });
+
+  it("an entry over the HTML size limit is refused before downloading; an oversize download is refused too", async () => {
+    const s = store();
+    const big = withV2(HTML[2]!, ARTIFACT_LIMITS.htmlBytes + 1);
+    const r = await buildCompare(big, { a: null, b: null }, { store: s.make });
+    expect(r.kind === "ok" && r.copy).toEqual({ kind: "unavailable", side: "b" });
+    expect(s.reads).toEqual([`v1/${DEMO}/${id(1)}/page/index.html`]); // v2 was never downloaded
+    const huge = new Uint8Array(ARTIFACT_LIMITS.htmlBytes + 10);
+    const r2 = await buildCompare(page(), { a: null, b: null }, { store: store({ [`v1/${DEMO}/${id(2)}/page/index.html`]: huge }).make });
+    expect(r2.kind === "ok" && r2.copy).toEqual({ kind: "unavailable", side: "b" });
+  });
+});
+
+describe("review round 1 L3: email addresses are never shown and never a fact", () => {
+  it("factValues leaves out email-holding facts; copyLines replaces an email line with the hidden label", () => {
+    const f = factValues({ name: "店", phone: "連絡 info@example.com", menu_items: ["a@example.com", "パン"] });
+    expect([...f].sort()).toEqual(["パン", "店"]);
+    expect(copyLines(["連絡 info@example.com", "店"], new Set(["連絡 info@example.com", "店"]))).toEqual([
+      { text: HIDDEN_EMAIL_LABEL, kind: "unknown" },
+      { text: "店", kind: "fact" },
+    ]);
+  });
+
+  it("an email line in a page never appears verbatim in the diff or the rendered list, and is never 「事実」", async () => {
+    const v2 = page3("<h1>架空の焼き菓子店</h1><p>お問い合わせ info@example.com</p><p>8:00〜17:00</p>");
+    const p = withV2(v2);
+    const withEmailFact = { ...p, content: { ...CONTENT, phone: "お問い合わせ info@example.com" } };
+    const r = await buildCompare(withEmailFact, { a: null, b: null }, { store: store({ [`v1/${DEMO}/${id(2)}/page/index.html`]: v2 }).make });
+    if (r.kind !== "ok" || r.copy.kind !== "ok" || !r.copy.result.ok) throw new Error("copy");
+    expect(JSON.stringify(r.copy)).not.toContain("info@example.com");
+    const line = r.copy.result.ops.find((o) => o.text === HIDDEN_EMAIL_LABEL)!;
+    expect(line).toMatchObject({ op: "add", kind: "unknown" });
+    const html = renderToStaticMarkup(<CopyDiffList copy={r.copy} />);
+    expect(html).not.toContain("info@example.com");
+    expect(html).toContain(HIDDEN_EMAIL_LABEL);
+  });
+});
+

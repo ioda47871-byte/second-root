@@ -14,14 +14,24 @@ import "server-only";
  *    the page's own visible text is passed on — what the admin already sees in the frame.
  *
  * A line is "fact" when it equals one of the shop's stored facts; every other line is "unknown". The copy record that
- * would tell creative headings apart (copy.json) is not stored by DEV-196c, so no line is ever called creative here.
+ * would tell creative headings apart (copy.json) is not stored by DEV-196c, so no line is ever called creative here
+ * (the copy-record diff is deferred to DEV-196e).
+ *
+ * Review of #249: a page whose HTML does not pass the server's own check (checkArtifactHtml) gives no text at all;
+ * only the VISIBLE BODY TEXT is used (no <head> / <title>, no svg title / desc, nothing under [hidden], no script /
+ * style / template / noscript / comments, no attribute text); the read is capped at the HTML size limit before and
+ * after downloading; and a line holding an email address is replaced by the hidden label and never marked a fact.
  */
 import type { DemoVersionsPage } from "@/lib/admin/demo-versions";
 import { supabaseFrameStore } from "@/lib/demo-frame/store";
 import type { FrameStore } from "@/lib/demo-frame/serve";
 import { compareVersionMeta, defaultBaseVersion, diffLines, diffManifests, diffStructure, type CopyLine, type LineDiffResult, type StructureDiffEntry, type VersionMetaDiff, type FileDiffEntry, type FileChange } from "@/lib/sales/demo-version/compare";
-import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
-import { checkFileBytes, HTML_NAME, type ArtifactManifest, type ArtifactRole, type ArtifactContentType } from "@/lib/sales/demo-version/manifest";
+import type { DefaultTreeAdapterTypes } from "parse5";
+import { containsEmail, HIDDEN_EMAIL_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import { boundedParse } from "@/lib/sales/demo-version/bounded-parse";
+import { OpBudget } from "@/lib/sales/demo-version/budget";
+import { checkArtifactHtml, trimAsciiWs } from "@/lib/sales/demo-version/html-safety";
+import { ARTIFACT_LIMITS, checkFileBytes, HTML_NAME, type ArtifactManifest, type ArtifactRole, type ArtifactContentType } from "@/lib/sales/demo-version/manifest";
 import type { VersionFileDb, VersionRowDb, VersionView } from "@/lib/sales/demo-version/view-model";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -53,20 +63,55 @@ function manifestOf(files: readonly VersionFileDb[]): ArtifactManifest {
   };
 }
 
-/** The shop's stored fact values (the same fields the facts panel shows), for marking fact lines. */
+/** The shop's stored fact values (the same fields the facts panel shows), for marking fact lines. Never one holding an email. */
 export function factValues(content: unknown): Set<string> {
   const c = content && typeof content === "object" && !Array.isArray(content) ? (content as Record<string, unknown>) : {};
   const out = new Set<string>();
-  for (const k of ["name", "ward", "address", "hours", "closed_days", "access", "phone", "description"]) {
-    const v = c[k];
-    if (typeof v === "string" && v.trim()) out.add(v.trim());
-  }
-  if (Array.isArray(c.menu_items)) for (const m of c.menu_items) if (typeof m === "string" && m.trim()) out.add(m.trim());
+  const add = (v: unknown) => {
+    if (typeof v === "string" && v.trim() && !containsEmail(v)) out.add(v.trim());
+  };
+  for (const k of ["name", "ward", "address", "hours", "closed_days", "access", "phone", "description"]) add(c[k]);
+  if (Array.isArray(c.menu_items)) for (const m of c.menu_items) add(m);
   return out;
 }
 
+/** Lines for the diff: an email-holding line becomes the hidden label (never shown, never a fact). */
 export function copyLines(texts: readonly string[], facts: ReadonlySet<string>): CopyLine[] {
-  return texts.map((text) => ({ text, kind: facts.has(text) ? "fact" : "unknown" }));
+  return texts.map((text) => (containsEmail(text) ? { text: HIDDEN_EMAIL_LABEL, kind: "unknown" } : { text, kind: facts.has(text) ? "fact" : "unknown" }));
+}
+
+const SKIPPED = new Set(["head", "title", "desc", "script", "style", "template", "noscript"]);
+
+/**
+ * The text a reader sees in the page's <body>, in document order: text nodes only, skipping head / title (also svg
+ * title), svg desc, script / style / template / noscript, comments and every element with a `hidden` attribute.
+ * Bounded by the same parser limits and operation budget as the server's HTML check. null when it cannot be parsed.
+ */
+export function visibleBodyText(html: string): string[] | null {
+  const parsed = boundedParse(html, new OpBudget());
+  if (!parsed.ok) return null;
+  type Node = DefaultTreeAdapterTypes.ChildNode | DefaultTreeAdapterTypes.Document;
+  const htmlEl = parsed.document.childNodes.find((n) => n.nodeName === "html") as DefaultTreeAdapterTypes.Element | undefined;
+  const body = htmlEl?.childNodes.find((n) => n.nodeName === "body");
+  if (!body) return [];
+  const out: string[] = [];
+  const stack: Node[] = [body];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.nodeName === "#text") {
+      const t = trimAsciiWs((node as DefaultTreeAdapterTypes.TextNode).value).trim();
+      if (t) out.push(t);
+      continue;
+    }
+    if (!("tagName" in node)) {
+      if (node.nodeName === "#document" && "childNodes" in node) for (let i = node.childNodes.length - 1; i >= 0; i--) stack.push(node.childNodes[i]!);
+      continue; // comments and other non-elements
+    }
+    const el = node as DefaultTreeAdapterTypes.Element;
+    if (SKIPPED.has(el.tagName.toLowerCase()) || el.attrs.some((a) => a.name.toLowerCase() === "hidden")) continue;
+    for (let i = el.childNodes.length - 1; i >= 0; i--) stack.push(el.childNodes[i]!);
+  }
+  return out;
 }
 
 /** The visible text lines of one version's page, or null. Never throws. */
@@ -75,13 +120,17 @@ async function pageTexts(store: FrameStore, v: VersionRowDb, files: readonly Ver
     const entry = files.find((f) => f.path === HTML_NAME && f.role === "html");
     // the prefix is fixed by the table's check (sales_demo_versions_prefix): v1/<demo>/<version>/
     if (!entry || !UUID.test(v.id) || !UUID.test(v.demo_id)) return null;
+    // the HTML size limit, before downloading and again on what came back
+    if (!Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > ARTIFACT_LIMITS.htmlBytes) return null;
     const bytes = await store.object(`v1/${v.demo_id}/${v.id}/${HTML_NAME}`, entry.bytes);
-    if (!bytes) return null;
+    if (!bytes || bytes.byteLength > ARTIFACT_LIMITS.htmlBytes) return null;
     const checked = checkFileBytes({ name: HTML_NAME, role: "html", sha256: entry.sha256, bytes: entry.bytes, content_type: "text/html" }, bytes);
     if (!checked.ok) return null;
     const html = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const photos = new Set(files.filter((f) => f.role === "photo").map((f) => f.path.slice("page/".length)));
-    return checkArtifactHtml(html, "", photos).texts;
+    // a page the server's own HTML check refuses gives no text at all
+    if (!checkArtifactHtml(html, "", photos).ok) return null;
+    return visibleBodyText(html);
   } catch {
     return null;
   }

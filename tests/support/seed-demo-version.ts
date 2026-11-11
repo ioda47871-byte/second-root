@@ -78,6 +78,8 @@ export async function seedDemoVersion(
     css?: string;
     upload?: boolean;
     renderHeights?: { desktop: number; mobile: number };
+    /** a new shop's name (stored as its fact before the first ingest), e.g. one without 「テスト」, which the server's HTML check refuses */
+    shopName?: string;
     /** add the version to this shop's demo (with this parent) instead of seeding a new shop */
     into?: { prospectId: string; demoId: string; parentVersionId?: string };
   } = {},
@@ -90,6 +92,10 @@ export async function seedDemoVersion(
     ({ prospectId } = await seedDemo(db, { expiresAt: null }));
     const { rows } = await db.query("select id from public.sales_demos where prospect_id = $1", [prospectId]);
     demoId = rows[0].id as string;
+    if (opts.shopName) {
+      await db.query("update public.sales_prospects set name = $2, normalized_name = $2 where id = $1", [prospectId, opts.shopName]);
+      await db.query("update public.sales_demos set content = jsonb_set(content, '{name}', to_jsonb($2::text)) where id = $1", [demoId, opts.shopName]);
+    }
   }
 
   const photo = solidWebp(40 + randomInt(200), 30 + randomInt(200), rgb());

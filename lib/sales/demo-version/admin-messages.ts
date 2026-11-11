@@ -242,6 +242,16 @@ export const SEND_BLOCK_LABEL: Readonly<Record<SendBlockCode, string>> = {
 /** Shown beside the send stop when the current facts could not be read (the facts may also have changed). */
 export const SEND_BLOCK_FACTS_UNKNOWN_TEXT = "店舗の事実が今どうなっているかを確認できませんでした。事実が変わっている可能性もあります。";
 
+/**
+ * MVP_SPEC §7: an email address is never shown on the admin demo screens. A fact or a page line that holds one is
+ * replaced by this label (it exists; it is just not shown — not the same as 未確認).
+ */
+export const HIDDEN_EMAIL_LABEL = "非表示（メールアドレスを含む）";
+const EMAIL_LIKE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+export function containsEmail(text: string): boolean {
+  return EMAIL_LIKE.test(text);
+}
+
 export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
 export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";
 export const TOKEN_EXPIRED_TEXT = "表示期限が切れました";

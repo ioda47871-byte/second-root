@@ -153,7 +153,7 @@ export function CopyDiffList({ copy }: { copy: CopyDiff }) {
   return (
     <>
       <p className={styles.sub} data-copy-counts={`${added}/${removed}`}>
-        追加 {added} 行・削除 {removed} 行。「事実」は店舗の事実と同じ文の行です。それ以外の行は、創作の見出しか、事実と一致しない文です（copy record が保存されていないため、区別しません）。
+        追加 {added} 行・削除 {removed} 行。「事実」は店舗の事実と完全に一致する行です。印のない行は、店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）です。メールアドレスを含む行は表示しません。
       </p>
       <ol className={styles.lines} data-copy="ok">
         {ops.map((o, i) => (

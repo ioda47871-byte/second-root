@@ -39,8 +39,9 @@ test.beforeAll(async () => {
   storageUp = storage.available;
   skipReason = storage.available ? "" : `${storage.reason} — the text diff and renders run locally with Storage`;
   await ensureUsers(USERS_KEY);
-  v1 = await seedDemoVersion(db, svc, { html: page1, css: DEFAULT_CSS, renderHeights: { desktop: 3000, mobile: 3200 } });
-  shopName = (await db.query("select name from public.sales_prospects where id = $1", [v1.prospectId])).rows[0].name as string;
+  // a name without 「テスト」: the server's HTML check refuses that word, and a refused page gives no text
+  shopName = `架空の焼き菓子店${randomBytes(3).toString("hex")}`;
+  v1 = await seedDemoVersion(db, svc, { html: page1, css: DEFAULT_CSS, renderHeights: { desktop: 3000, mobile: 3200 }, shopName });
   v2 = await seedDemoVersion(db, svc, { html: page2(shopName), css: DEFAULT_CSS, renderHeights: { desktop: 3600, mobile: 3800 }, into: { prospectId: v1.prospectId, demoId: v1.demoId, parentVersionId: v1.versionId } });
   on = await startFlagOnServer(ON_PORT, randomBytes(32));
 });

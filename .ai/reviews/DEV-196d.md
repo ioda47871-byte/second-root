@@ -162,8 +162,9 @@ branch `feature/dev-196d-4-compare-page` (`origin/develop` a178892 から)。DB�
 | `tests/unit/sales/demo-version/purity.test.ts` | import してよい正確な一覧に compare の頁と `CompareTables` を足した |
 
 判断したこと・止まったこと:
+- **copy record の差分は DEV-196e へ送る** (coordinator 決定 2026-11-11)。
 - **copy record (`copy.json`) が保存されていない**: 計画の「copy.json の行の差分 (事実の行と創作の見出し)」は、DEV-196c が copy record を DB にも Storage にも保存しない (manifest の名前の規則と `sales_demo_version_files` の check に `copy.json` が無い) ため、元の資料が無い。保存するには **DB / manifest の変更** が要るので、その部分は作らずに止めた (coordinator へ報告)。代わりに頁の見える文の行で差分を出し、店舗の保存された事実と同じ文の行だけを「事実」とし、それ以外は「区別しない」(creative とは言わない) と画面に書いた。
-- **頁の文のための Storage の読み出し (service role)**: 196d-3 の事実の hash と同じ条件で読む — server だけ、旗と管理者の確認の後、検証した prospect の demo の版だけ、**プレビューできる版 (取り消し・期限切れ・権利不明でない) で demo が無効でないとき**だけ (view token と同じ規則)、`index.html` だけ、manifest と照合してから、取り出すのは頁自身の見える文だけ (管理者は frame で同じものを見られる)。読めない・照合に落ちたら「文の差分は出せません」。
+- **頁の文のための Storage の読み出し (service role)**: coordinator 承認 (2026-11-11、下の round 1 の L1 の条件つき)。196d-3 の事実の hash と同じ条件で読む — server だけ、旗と管理者の確認の後、検証した prospect の demo の版だけ、**プレビューできる版 (取り消し・期限切れ・権利不明でない) で demo が無効でないとき**だけ (view token と同じ規則)、`index.html` だけ、manifest と照合してから、取り出すのは頁自身の見える文だけ (管理者は frame で同じものを見られる)。読めない・照合に落ちたら「文の差分は出せません」。
 
 ### テスト
 
@@ -171,3 +172,15 @@ branch `feature/dev-196d-4-compare-page` (`origin/develop` a178892 から)。DB�
 - 統合 `tests/integration/demo-versions-page.test.ts` に 2 件: 本物の行から既定の組と差分 (object はテストの中で差し替え、CI でも走る)、本物の bucket から 2 つの頁を読む (storage の service が止まっているときだけ理由つきで skip)。
 - e2e `tests/e2e/demo-compare.spec.ts` (desktop で 6 件、1440 と 390): 旗の無効で 404、旗を立てた server で既定の組 v1-v2・ヘッダ (`frame-src 'self'`・DENY)・表、知らない prospect は 404、GET の picker で組を入れ替え・版の頁からのリンク。Storage があるとき: 文の差分 (変えた文の削除と追加、店名の行が「事実」)、PC 1440 と SP 390 で 2 枚が scroll でき、片方を最下まで動かすともう片方も最下へ、SP の切り替え、重ねる表示の slider、頁は横にはみ出さない。
 - 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1229 件、統合の全体 25 files / 452 件、e2e の全体 137 passed / 19 skipped (旗を立てる 3 つの spec の mobile の複製)。storage の container を止めた状態 (CI と同じ): e2e `demo-compare` 3 passed / 3 skipped、統合 `demo-versions-page` 4 passed / 1 skipped。lint・typecheck・check:secrets・build 合格。
+
+### 196d-4 review round 1 (coordinator の独立レビュー、cddd8c1: C0 H0 M0 L3) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (安全) | `pageTexts` が `checkArtifactHtml` の合否を見ずに文を使っていた。読み出しの大きさに上限がない。`<title>`・属性の文なども行に入る | サーバーの HTML の検査 (`checkArtifactHtml(...).ok`) に落ちた頁は文を一切出さない (`unavailable`)。`ARTIFACT_LIMITS.htmlBytes` を超える entry は**読み出す前に**断り、読み出した object が超えていても断る。文は `visibleBodyText`: `<body>` の見える text node だけ (head・`<title>`・svg の title / desc・`hidden` 属性の要素とその中・script / style / template / noscript・comment・属性の文は入れない)。DEV-196b の bounded parser と操作の予算で読む | unit: `<title>` だけの行・svg の title / desc・`[hidden]` の文が差分に出ない、`visibleBodyText` の 9 通り、`<script>` を含む頁は `unavailable`、上限を超える entry は v2 を読み出さない、上限を超える object も断る |
+| L2 (正確さ) | 印のない行の説明が「創作の見出しか…」と決めつけていた | 「店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）」に | unit (文言の一致と旧い文言の不在) |
+| L3 (個人情報) | email を含む事実が `factValues` に入り、email を含む頁の行がそのまま表示されうる | email の判定と文言を `admin-messages.ts` に 1 つにし (`containsEmail`・`HIDDEN_EMAIL_LABEL`、FactsPanel も同じものを使う)、`factValues` は email を含む事実を入れない、頁の行で email を含むものは「非表示（メールアドレスを含む）」に置き換え、「事実」にしない | unit: `factValues` / `copyLines`、email の行が差分にも描いた一覧にもそのまま出ず、事実と同じでも「事実」にならない |
+
+e2e の fixture: 架空の店の名前に「テスト」を含めない `shopName` を seed に足した (サーバーの HTML の検査は「テスト」を拒むため、L1 の後は文の差分が出なくなる)。
+
+結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1235 件、統合 `demo-versions-page`・`demo-frame` 13 件、e2e `demo-compare` 6 件・`demo-versions-page` 8 件 (Storage あり)。lint・typecheck・check:secrets・build 合格。
