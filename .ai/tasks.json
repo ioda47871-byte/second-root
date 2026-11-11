@@ -9428,7 +9428,7 @@
       ],
       "human_approval_triggers": [
         "各 PR のレビューと merge (coordinator)",
-        "新しい DB の関数・migration が要る場合 (Low (b) の生成時の事実の hash の照合、Low (c) の画像ごとの偽装なしの確認の記録)",
+        "新しい DB の関数・migration が要る場合 (Low (c) の画像ごとの偽装なしの確認の記録。Low (b) の生成時の事実の hash の照合は DEV-196e へ送る)",
         "環境変数の値の設定 (人)",
         "旗を Staging / Production で有効にすること (別の承認)"
       ],
