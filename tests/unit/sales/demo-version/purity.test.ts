@@ -2,13 +2,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // DEV-196b is an offline, pure library: no env reads, no network, no DB, no Storage, no file I/O, and not wired into
-// any route yet (DEV-196c+ need their own approvals).
+// any route yet (DEV-196c+ need their own approvals). DEV-196d-1 adds flags.ts (the environment is an argument, never
+// read here), admin-messages.ts, compare.ts and view-model.ts under the same rules.
 const DIR = "lib/sales/demo-version";
 const files = readdirSync(DIR).filter((f) => f.endsWith(".ts"));
 
 describe("demo-version library purity", () => {
   it("has the expected modules", () => {
-    expect(files.sort()).toEqual(["ai-concept-rights.ts", "bounded-parse.ts", "budget.ts", "copy-check.ts", "csp.ts", "css-scan.ts", "html-safety.ts", "manifest.ts", "quality.ts", "rights.ts", "rule-core.ts", "version-state.ts", "view-token.ts"]);
+    expect(files.sort()).toEqual(["admin-messages.ts", "ai-concept-rights.ts", "bounded-parse.ts", "budget.ts", "compare.ts", "copy-check.ts", "csp.ts", "css-scan.ts", "flags.ts", "html-safety.ts", "manifest.ts", "quality.ts", "rights.ts", "rule-core.ts", "version-state.ts", "view-model.ts", "view-token.ts"]);
   });
 
   it.each(files)("%s reads no env, does no I/O and talks to no service", (f) => {

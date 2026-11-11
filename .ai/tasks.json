@@ -9331,7 +9331,7 @@
     {
       "id": "DEV-196c",
       "title": "店舗デモの版の DB (版・系譜・生成 job の鍵・成果物の hash・画像の権利・品質承認) と送信承認への結び付け。ローカルだけ、版の共有は DB で無効",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196b"
@@ -9384,7 +9384,55 @@
         "版の共有を有効にする migration (専用の別 origin の DNS と Vercel の設定の後、DEV-196g)",
         "期限切れの版の削除 (DEV-196j)"
       ],
-      "note": "記録は .ai/reviews/DEV-196c.md。migration はローカルの Supabase だけに適用した。巻き戻しはコミットしない scratch の SQL (DEV-195 と同じ扱い)。"
+      "note": "記録は .ai/reviews/DEV-196c.md。migration はローカルの Supabase だけに適用した。巻き戻しはコミットしない scratch の SQL (DEV-195 と同じ扱い)。 PR #245 merged (ae2720a)。"
+    },
+    {
+      "id": "DEV-196d",
+      "title": "店舗デモの版の管理者プレビューと品質承認の画面 (旗は既定で無効。7 つの PR: 196d-1 旗・文言・比較・view model / 196d-2 /demo-frame/a / 196d-3 閲覧の頁と CSP / 196d-4 比較の頁 / 196d-5 品質承認 / 196d-6 取り下げ・取り消し / 196d-7 今日の印)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196c"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-196d-1-foundation (以降 feature/dev-196d-N-<slug>、PR ごとに develop から)",
+      "purpose": "DEV-196 仕様 §12 の DEV-196d (オーナー承認 2026-11-11、196d-1〜7)。管理者が実際の版の画面で、デザイン研究の品質基準 (PC1440 / SP390 の全頁、7 項目、特に 3・4・5) を正しく判断できるようにする。旗 SALES_DEMO_VERSIONS_ENABLED (既定で無効) の後ろに置き、無効のときは新しい route が 404 で、今日の画面・React のデモ・送信は変わらない。DEV-196c の Low 4 件 (note の文言・生成時の事実の hash・画像ごとの偽装なしの確認・品質承認で送信が止まる警告) を該当の PR で解く",
+      "acceptance_criteria": [
+        "196d-1: lib/sales/demo-version/flags.ts (server-only。env は引数、\"true\" だけ有効、署名鍵は base64/base64url で 32 bytes 以上・それ以外は null、artifact origin は unset / set / invalid)、admin-messages.ts (符号 → 日本語、DB の自由文を出さない。Low (a) の note の文言、Low (d) の前後の警告)、compare.ts (manifest の差分・上限つき LCS の行の差分・構造記述子の差分・hash / 検査の符号 / 権利の要約)、view-model.ts (プレビュー・判定・承認の可否を DB の規則と同じかより厳しく、権利は fail closed、AI 概念画像は画像ごとの確認が要る、承認済みの版があれば送信が止まる理由)。unit テストだけ、route・頁・DB の変更なし",
+        "196d-2〜7: 計画の PR の分け方のとおり (2 /demo-frame/a と Storage の読み出し、3 閲覧の頁と next.config の CSP、4 比較の頁、5 品質承認の form・action・偽装なしの確認、6 取り下げ・取り消し・急ぎ、7 今日の印とリンク)。各 PR で旗が無効のときの 404 と既存の画面の不変をテストする",
+        "共有の scope p は作らない (常に 404)。環境変数は名前だけで、値はどこにも登録しない",
+        "新しい migration・Protected Scope の仕様変更・権限の拡大が要るときは実装せずに止まって報告する",
+        "記録は .ai/reviews/DEV-196d.md (PR ごとの節)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/sales tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts",
+        "e2e (Playwright) と統合 (ローカル Supabase) は route・頁・RPC を足す PR (196d-2 以降) で",
+        "npx tsc --noEmit・eslint・npm run check:secrets・npm run build"
+      ],
+      "allowed_scope": [
+        "lib/sales/demo-version/ (flags.ts・admin-messages.ts・compare.ts・view-model.ts の追加。既存の DEV-196b の module は変えない)",
+        "tests/unit/sales/demo-version/ (新しいテストと purity.test.ts の module 一覧)",
+        "196d-2 以降: app/demo-frame/a/**、app/admin/sales/demos/**、app/admin/sales/_actions/demo-versions.ts、lib/admin/demo-versions.ts、components/admin/demo/**、components/admin/DemoVersionBadge.tsx、next.config.ts (/admin/sales/demos の CSP の frame-src だけ)、tests/e2e/**、tests/integration/**",
+        ".ai/tasks.json (DEV-196d の項目の追加と、台帳の保守: DEV-196c を done に)",
+        ".ai/reviews/DEV-196d.md"
+      ],
+      "forbidden_scope": [
+        "supabase/migrations (新しい migration は作らない。要るときは止まって報告)",
+        ".github/workflows・package.json・lockfile (依存の追加は本当に要るときだけ、レビュー記録に残す)",
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、WSL、画像生成、実店舗への送信、Production の deploy",
+        "環境変数の値の登録 (.env の値の commit を含む)",
+        "共有の route (/demo-frame/p/… は常に 404)、/demo/[publicToken] の変更",
+        "送信の規則・InitialSend・approveSend・DEV-195 の送信承認の変更",
+        "DEV-196b の module の規則の緩和"
+      ],
+      "human_approval_triggers": [
+        "各 PR のレビューと merge (coordinator)",
+        "新しい DB の関数・migration が要る場合 (Low (c) の画像ごとの偽装なしの確認の記録。Low (b) の生成時の事実の hash の照合は DEV-196e へ送る)",
+        "環境変数の値の設定 (人)",
+        "旗を Staging / Production で有効にすること (別の承認)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196d.md。196d-1 は PR を開いた段階 (旗・文言・比較・view model、unit だけ)。"
     }
   ]
 }
