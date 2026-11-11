@@ -206,6 +206,18 @@ describe("DEV-196r: the sales packaging script takes only renderPrototype from p
     expect(specifiers(source).filter((s) => s.includes("phase2f"))).toEqual(["../../../lib/design-agent/phase2f/render-prototype"]);
     expect(source).not.toMatch(/phase2f\/(runner|prompt)|codex|\bfetch\(|import\s*\(/i);
   });
+  it("the whole script: exactly these modules (a new import fails here)", () => {
+    const source = readFileSync(resolve(REPO, SALES_PACKAGE), "utf8");
+    // node:child_process is the script's own `git rev-parse HEAD` for the validator commit (execFileSync, fixed arguments)
+    expect(specifiers(source).sort()).toEqual([
+      "../../../lib/demo-version-package/package",
+      "../../../lib/design-agent/phase2f/render-prototype",
+      "node:child_process",
+      "node:fs",
+      "node:path",
+      "playwright",
+    ]);
+  });
 });
 
 describe("offline CLI", () => {
