@@ -184,3 +184,8 @@ branch `feature/dev-196d-4-compare-page` (`origin/develop` a178892 から)。DB�
 e2e の fixture: 架空の店の名前に「テスト」を含めない `shopName` を seed に足した (サーバーの HTML の検査は「テスト」を拒むため、L1 の後は文の差分が出なくなる)。
 
 結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1235 件、統合 `demo-versions-page`・`demo-frame` 13 件、e2e `demo-compare` 6 件・`demo-versions-page` 8 件 (Storage あり)。lint・typecheck・check:secrets・build 合格。
+
+### 196d-4 review round 2 (coordinator、差分 cddd8c1 → b72efd7)
+
+L1 (検査に通った頁の見える本文だけ・大きさの上限)・L2 (中立の説明)・L3 (email を出さない・事実にしない) は、すべて直っていることを確認。新しい指摘なし: **C0 H0 M0 L0**。
+CI (b72efd7): `unit (1/2)` が一度だけ `tests/unit/design-agent/phase2f-live/steps.test.ts` の ENOENT (`image-request-A1.json`) で落ちた。この PR の外のテストで、ローカルでは 27/27 通る。落ちた job を一度だけ再実行して green、merge の時点 (9e2a1ae) ですべての検査が green。merged (#249 → 9e2a1ae)。
