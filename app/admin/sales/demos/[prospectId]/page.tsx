@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import FactsPanel from "@/components/admin/demo/FactsPanel";
-import LiveFrame from "@/components/admin/demo/LiveFrame";
-import PreviewTabs from "@/components/admin/demo/PreviewTabs";
-import RenderPane, { type RenderItem } from "@/components/admin/demo/RenderPane";
+import type { RenderItem } from "@/components/admin/demo/RenderPane";
+import ReviewHistory from "@/components/admin/demo/ReviewHistory";
+import ReviewWorkspace from "@/components/admin/demo/ReviewWorkspace";
 import RightsPanel from "@/components/admin/demo/RightsPanel";
 import TokenExpiry from "@/components/admin/demo/TokenExpiry";
 import VersionList from "@/components/admin/demo/VersionList";
@@ -116,15 +116,34 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
                   {DEMO_VERSION_ERROR_LABEL.render_missing}
                 </p>
               )}
-              <PreviewTabs
-                renders={renders.length ? <RenderPane renders={renders} /> : <p className={styles.note}>描画画像がありません。</p>}
-                live={<LiveFrame src={`${base}index.html`} title={`v${selected.versionNo} の頁（sandbox）`} />}
+              <ReviewWorkspace
+                prospectId={data.prospectId}
+                renders={renders}
+                frameSrc={`${base}index.html`}
+                frameTitle={`v${selected.versionNo} の頁（sandbox）`}
+                review={
+                  // a decision is offered only when the database would take one (the server re-checks everything)
+                  selected.reviewBlockers.length === 0
+                    ? {
+                        id: selected.id,
+                        versionNo: selected.versionNo,
+                        bundleSha256: selected.bundleSha256,
+                        renders: selected.renders.map((r) => ({ viewport: r.viewport, sha256: r.sha256 })),
+                        approveBlockers: selected.approveBlockers,
+                        reviewBlockers: selected.reviewBlockers,
+                        aiImages: selected.images
+                          .filter((i) => i.aiConcept && i.imageId)
+                          .map((i) => ({ imageId: i.imageId!, sha256: i.sha256, path: i.path, thumbSrc: i.previewable ? `${base}${i.path.slice("page/".length)}` : null })),
+                      }
+                    : null
+                }
               />
             </>
           )}
         </section>
       )}
 
+      {selected && <ReviewHistory reviews={selected.reviews} />}
       <FactsPanel content={data.content} facts={selected?.facts ?? null} />
       {selected && <RightsPanel images={selected.images} photoBase={base} />}
     </div>
