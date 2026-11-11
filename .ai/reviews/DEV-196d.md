@@ -13,7 +13,7 @@ branch `feature/dev-196d-1-foundation` (`origin/develop` ae2720a から)。route
 | `flags.ts` (`server-only`) | `SALES_DEMO_VERSIONS_ENABLED` は `"true"` ちょうどだけ有効 (`TRUE`・`1`・前後の空白は無効)。無効なら他の設定を読まない (テストで固定)。`SALES_DEMO_VIEW_SIGNING_KEY` は base64 / base64url (padding 任意、正準の綴りだけ、2 つの alphabet の混在・空白・改行は拒否) で 32 bytes 以上。足りない・形が違えば null (token を発行しない)。`SALES_DEMO_ARTIFACT_ORIGIN` は unset / set / invalid (空文字も invalid。unset と取り違えない)。env は引数で、この module は env を読まない (purity の規則を緩めずに済む) | §6.2・§6.4 手順 1・§6.8、ARCHITECTURE §9 |
 | `admin-messages.ts` | 管理画面の文言をすべて固定の符号から引く。管理者の 5 つの RPC 関数 (品質承認・取り下げ・版の取り消し・画像の取り消し・`sales_demo_assert_no_open_send`) が raise する符号すべてに日本語がある (テストが migration から符号を読んで照合)。状態・権利・7 項目 (3・4・5 に「どうなら問題あり」の hint)・取り消しの固定の理由 (`^[A-Z][A-Z0-9_]{2,47}$`)・取り下げ / 取り消しの確認文・AI の赤い印・「事実の偽装なし」の固定の文 | §4.6・§6.6・§7.2・§8.1・§9.5 |
 | `compare.ts` | manifest の差分 (名前と sha256)、copy の行の LCS 差分 (事実の行と創作の見出しを区別、上限: 片側 2000 行・1 行 2000 字・共通の頭と尾を除いた DP 200 万 cell。超えたら `TOO_LARGE`)、構造記述子の 8 つの観点の差分 (structure の module は import しない。語彙の形 `[a-z_]` の語だけを表示し、自由文は出さない)、hash・事実・worker commit・検査の符号・権利の要約の差分、既定の比較相手 (承認済みの版 → 親 → なし) | §4.1・§7.2・§7.5 |
-| `view-model.ts` | 管理者の RLS のセッションが読む行から画面の内容を導く。プレビューは `canAdminPreview` と全画像の権利 (`sales_demo_image_previewable` と同じ: 許された状態・取り消しなし・JST の暦日で期限内) の両方。画像の行の sha256 がファイルと違えば権利は無いものとして扱う。1 枚でも使えなければ版ごと出さない。判定の可否は `sales_review_demo_version` が全判定に課す条件 (状態・demo の無効・事実の変化・検査・権利)、承認はさらに必須の描画 2 つと `send_opened` が無いこと。事実の hash が読めないときは「同じ」と言わない。出所は日付・承認 ID の有無・prompt の hash の頭 8 字だけ (モデル名・生成の手段の自由文は出さない) | §4.6・§6.1・§7.2・§8.1〜§8.3・§9.2〜§9.5 |
+| `view-model.ts` | 管理者の RLS のセッションが読む行から画面の内容を導く。プレビューは `canAdminPreview` と全画像の権利 (`sales_demo_image_previewable` と同じ: 許された状態・取り消しなし・JST の暦日で期限内) の両方。画像の行の sha256 がファイルと違えば権利は無いものとして扱う。1 枚でも使えなければ版ごと出さない。判定の可否は `sales_review_demo_version` が全判定に課す条件 (状態・demo の無効・事実の変化・検査・権利)、承認はさらに必須の描画 2 つ、版のすべての描画画像を画面で表示できること (`RENDER_UNVIEWABLE`: RPC は版の render のファイルすべてを見たことを承認に要求するので、表示できない viewport や寸法の無い render があれば承認を出さない)、`send_opened` が無いこと。阻む理由ごとの固定の文言は `APPROVE_BLOCKER_LABEL`。事実の hash が読めないときは「同じ」と言わない。出所は日付・承認 ID の有無・prompt の hash の頭 8 字だけ (モデル名・生成の手段の自由文は出さない) | §4.6・§6.1・§7.2・§8.1〜§8.3・§9.2〜§9.5 |
 
 ### オーナーの要求と DEV-196c の Low
 
@@ -32,4 +32,5 @@ branch `feature/dev-196d-1-foundation` (`origin/develop` ae2720a から)。route
 ### テスト
 
 - unit: `tests/unit/sales/demo-version/` に `flags.test.ts`・`admin-messages.test.ts`・`compare.test.ts`・`view-model.test.ts` を追加、`purity.test.ts` の module 一覧に 4 つを追加 (env を読まない・I/O なし・app から import されない、の規則は変えていない)。
-- 結果は PR の本文に記録。
+- 結果 (2026-11-11、worktree、develop ae2720a + この branch): `npx vitest run tests/unit/sales/demo-version tests/unit/ai-tasks.test.ts tests/unit/guardrails.test.ts` 20 files / 648 tests 合格。`tests/unit/sales` 全体も合格。`npx tsc --noEmit`・eslint (変更した dir)・`npm run check:secrets`・`npm run build` 合格。
+- 全 unit (`npx vitest run`) では `tests/unit/design-agent/**` の Chromium を起動するテストだけが落ちる。container の `/opt/pw-browsers` にあるのは `chromium_headless_shell-1194` で、repo の Playwright が探す `-1234` が無いため (環境の問題。この PR は触れていない)。196d-2 以降の e2e では対処が要る。
