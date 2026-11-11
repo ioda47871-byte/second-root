@@ -24,8 +24,8 @@ import {
   QUALITY_DECISION_LABEL,
   SEND_STOP_ACKNOWLEDGEMENT,
 } from "@/lib/sales/demo-version/admin-messages";
-import { EMPHASISED_ITEMS, QUALITY_CHECKLIST_ITEMS, type QualityChecklistItem, type QualityDecision } from "@/lib/sales/demo-version/quality";
-import { normaliseNote } from "@/lib/sales/demo-version/review-input";
+import type { QualityDecision } from "@/lib/sales/demo-version/quality";
+import { normaliseNote, REVIEW_EMPHASISED as EMPHASISED_ITEMS, REVIEW_ITEMS as QUALITY_CHECKLIST_ITEMS, type ReviewItem as QualityChecklistItem } from "@/lib/sales/demo-version/review-client";
 import type { ApproveBlocker } from "@/lib/sales/demo-version/view-model";
 import { RENDER_LABEL, type RenderItem } from "./RenderPane";
 import styles from "./demo.module.css";

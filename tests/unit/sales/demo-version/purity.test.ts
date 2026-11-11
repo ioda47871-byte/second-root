@@ -9,7 +9,7 @@ const files = readdirSync(DIR).filter((f) => f.endsWith(".ts"));
 
 describe("demo-version library purity", () => {
   it("has the expected modules", () => {
-    expect(files.sort()).toEqual(["admin-messages.ts", "ai-concept-rights.ts", "bounded-parse.ts", "budget.ts", "compare.ts", "copy-check.ts", "csp.ts", "css-scan.ts", "flags.ts", "html-safety.ts", "manifest.ts", "quality.ts", "review-input.ts", "rights.ts", "rule-core.ts", "version-state.ts", "view-model.ts", "view-token.ts"]);
+    expect(files.sort()).toEqual(["admin-messages.ts", "ai-concept-rights.ts", "bounded-parse.ts", "budget.ts", "compare.ts", "copy-check.ts", "csp.ts", "css-scan.ts", "flags.ts", "html-safety.ts", "manifest.ts", "quality.ts", "review-client.ts", "review-input.ts", "rights.ts", "rule-core.ts", "version-state.ts", "view-model.ts", "view-token.ts"]);
   });
 
   it.each(files)("%s reads no env, does no I/O and talks to no service", (f) => {

@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { RENDER_VIEWPORTS, type RenderViewport } from "./manifest";
 import { evaluateQualityDecision, QUALITY_CHECKLIST_ITEMS, QualityChecklist, QUALITY_DECISIONS, type QualityChecklistItem } from "./quality";
+import { normaliseNote } from "./review-client";
 import type { VersionView } from "./view-model";
 
 const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -32,23 +33,7 @@ export const ReviewInput = z.strictObject({
 });
 export type ReviewInput = z.infer<typeof ReviewInput>;
 
-/**
- * DEV-196c Low (a): sales_demo_note_valid, mirrored so the form can say what is wrong before sending (the database
- * stays the judge). Trims and turns an empty note into null; refuses a URL, a domain-like word ("style.css",
- * "example.com") or an email address, and more than 500 characters.
- */
-export function normaliseNote(raw: string | null | undefined): { ok: true; note: string | null } | { ok: false } {
-  const n = (raw ?? "").trim();
-  if (n === "") return { ok: true, note: null };
-  if ([...n].length > 500) return { ok: false };
-  const k = n.normalize("NFKC");
-  const lower = k.toLowerCase();
-  if (/([a-z][a-z0-9+.-]*:\/\/|https?:|www\.)/.test(lower)) return { ok: false };
-  // Postgres \M (end of word) after the top-level part: the next character is not a word character
-  if (/[a-z0-9_-]+(\.[a-z0-9_-]+)*\.[a-z]{2,}(?=[/:]|[^a-z0-9_]|$)/u.test(lower)) return { ok: false };
-  if (/[^\s@]+@[^\s@]+\.[^\s@]+/u.test(k)) return { ok: false };
-  return { ok: true, note: n };
-}
+export { normaliseNote } from "./review-client";
 
 export type ReviewRefusal =
   | "VERSION_NOT_FOUND"
