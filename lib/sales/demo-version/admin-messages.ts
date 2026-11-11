@@ -1,0 +1,219 @@
+/**
+ * DEV-196d (spec §4.6・§6.6・§7.2・§8.1・§9.2–§9.5, owner decisions 2026-11-10): every word the admin's demo version
+ * screens show, keyed by a fixed code. Nothing here repeats free text from the database, the worker or a page: a code
+ * the screen does not know gets a generic line (or is shown as the bare fixed code, which only ever holds
+ * `[A-Za-z0-9_]`).
+ *
+ * Pure.
+ */
+import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
+import type { RightsStatus } from "./rights";
+import type { VersionStatus } from "./version-state";
+
+/** The leading code of a database error message (`invalid_version_transition:draft->approved` → its first part). */
+export function errorCodeOf(message: string | null | undefined): string {
+  return String(message ?? "").split(":")[0]!.trim();
+}
+
+const RELOAD = "画面を再読み込みしてください。";
+
+/** §9.5: the shop has a send screen open (the owner may already have sent from their own app). */
+export const APPROVAL_OPEN_MESSAGE =
+  "この店舗には「送信画面を開いた」送信承認があります。版を変える操作は、その送信を先に決着させてからにしてください。実際に送った場合は今日の画面で「手動で送信済みにする」、送らなかった場合は「送らなかった」を押してください。ここからは決着させません。";
+
+/**
+ * DEV-196c Low (a): the note is checked like sales_demo_note_valid — no URL, no domain-like word, no email address.
+ * A file name such as "style.css" or a version label such as "v1.de" looks like a domain to that rule, so the message
+ * says so plainly.
+ */
+export const INVALID_NOTE_MESSAGE =
+  "メモに入れられない文字列があります。URL・メールアドレス、または「style.css」「example.com」のように「.」の後に英字が続く語（ファイル名やドメイン名に見えるもの）は書けません。「スタイルシート」のように言い換えるか、「.」を外してください（500 字まで）。";
+
+/** The owner's words for each refusal of the demo version RPCs and actions. Unknown codes get the fallback. */
+export const DEMO_VERSION_ERROR_LABEL: Readonly<Record<string, string>> = {
+  forbidden: "この操作はできません。ログインし直してください。",
+  admin_identity_required: "この操作はできません。ログインし直してください。",
+  feature_disabled: "この機能は無効です。",
+  not_found: `対象が見つかりません。${RELOAD}`,
+  invalid_input: `入力を確認できませんでした。${RELOAD}`,
+  invalid_decision: `判定を確認できませんでした。${RELOAD}`,
+  invalid_note: INVALID_NOTE_MESSAGE,
+  invalid_checklist: "7 項目すべてに「問題なし」か「問題あり」を選んでください。",
+  invalid_renders: `表示した描画画像を確認できませんでした。${RELOAD}`,
+  stale_version: `この版の内容が画面を開いた後に変わりました。${RELOAD}`,
+  render_missing: "PC1440 と SP390 の描画画像がそろっていない版は品質承認できません。",
+  render_not_viewed: "PC1440 と SP390 の描画画像を、それぞれ一番下まで見てから確認してください。",
+  checklist_has_ng: "「問題あり」の項目がある版は品質承認できません。「修正を依頼」か「却下」を選んでください。",
+  version_not_reviewable: "この版は今は判定できません（取り消し済み・期限切れ・承認済み・判定できない状態のどれかです）。",
+  demo_unavailable: "デモが無効のため判定できません。",
+  demo_facts_changed: "この版を作った後に店舗の事実が変わりました。この版は品質承認できません。新しい版を作り直してください。",
+  validator_not_ok: "サーバーの検査を通っていない版は品質承認できません。",
+  rights_not_previewable: "権利を確認できない画像を含むため、この版は使えません。",
+  approval_open: APPROVAL_OPEN_MESSAGE,
+  not_an_approval: "品質承認ではない判定は取り下げられません。",
+  review_not_active: `この品質承認はすでに取り下げ済みか無効です。${RELOAD}`,
+  invalid_code: `取り消しの理由を選んでください。`,
+  version_not_revocable: "この版は取り消せない状態です（アップロード中・不採用・期限切れ）。",
+  demo_version_final: "取り消した版は元に戻せません。",
+  quality_review_final: `この品質承認は変更できません。${RELOAD}`,
+  impersonation_not_confirmed: "AI 生成の概念画像ごとに「事実の偽装なし」を確認してください。",
+  token_expired: "表示期限が切れました。",
+  signing_key_missing: "閲覧の署名鍵が設定されていないため、描画画像と頁を表示できません。",
+};
+
+export function demoVersionErrorMessage(message: string | null | undefined, fallback = `記録できませんでした。${RELOAD}`): string {
+  const code = errorCodeOf(message);
+  return Object.hasOwn(DEMO_VERSION_ERROR_LABEL, code) ? DEMO_VERSION_ERROR_LABEL[code]! : fallback;
+}
+
+/** §4.6: a version's status. */
+export const VERSION_STATUS_LABEL: Readonly<Record<VersionStatus, string>> = {
+  uploading: "アップロード中",
+  rejected: "不採用（サーバーの検査で不合格）",
+  draft: "下書き（品質承認前）",
+  approved: "品質承認済み",
+  superseded: "以前の承認版",
+  revoked: "取り消し済み",
+  expired: "期限切れ",
+};
+
+export const QUALITY_DECISION_LABEL: Readonly<Record<QualityDecision, string>> = {
+  approved: "品質承認",
+  changes_requested: "修正を依頼",
+  rejected: "却下",
+};
+
+export const REVIEW_STATE_LABEL: Readonly<Record<"active" | "withdrawn" | "invalidated", string>> = {
+  active: "有効",
+  withdrawn: "取り下げ済み",
+  invalidated: "無効",
+};
+
+export const INVALIDATED_REASON_LABEL: Readonly<Record<string, string>> = {
+  rights_changed: "画像の権利が変わったため",
+  facts_changed: "店舗の事実が変わったため",
+  version_revoked: "版を取り消したため",
+  superseded_by_newer_approval: "別の版を品質承認したため",
+};
+
+/**
+ * §7.2: the 7 items in their order, with the question the owner answers. Items 3, 4 and 5 are weighed most and carry
+ * a hint saying when to answer ng.
+ */
+export const CHECKLIST_TEXT: Readonly<Record<QualityChecklistItem, { label: string; hint: string | null }>> = {
+  identity_lock: { label: "店名・業種が正しい（別の店名・別業種が混ざっていない）", hint: null },
+  facts_confirmed: { label: "表示された事実がすべて確認済み（未確認のことを作っていない）", hint: "創作の見出しは事実ではありません。事実として読めてしまうなら「問題あり」。" },
+  shop_specific_structure: { label: "その店舗でなければ成立しない構成である", hint: "店名を別の店に入れ替えても成り立つなら「問題あり」。" },
+  no_generic_lp_regression: { label: "凡庸な LP に戻っていない", hint: "帯やカードを積み重ねただけの頁なら「問題あり」。下の警告は参考です。" },
+  full_page_information: { label: "全ページで情報が伝わる（PC1440 と SP390 を上から下まで）", hint: "SP が PC の縮小にすぎない・横にはみ出す・文字が読めない・PC が間延びしているなら「問題あり」。" },
+  photos_truthful: { label: "写真が店の事実を偽らない", hint: "AI 生成の画像は、実在の商品・店内・人・設備に見えるなら「問題あり」。" },
+  not_a_copy: { label: "成功例の写しではない", hint: null },
+};
+
+export const CHECKLIST_ANSWER_LABEL = { ok: "問題なし", ng: "問題あり" } as const;
+
+export const QUALITY_CODE_LABEL: Readonly<Record<QualityDecisionCode, string>> = {
+  CHECKLIST_INVALID: "7 項目すべてに答えてください。",
+  CHECKLIST_HAS_NG: "「問題あり」の項目があります。",
+  RENDER_MISSING: "PC1440 か SP390 の描画画像がありません。",
+  RENDER_NOT_VIEWED: "描画画像を一番下まで見ていません。",
+  DECISION_INVALID: "判定を選んでください。",
+};
+
+/** §7.5: advisory only (never blocks). */
+export function templateWarningText(w: TemplateWarning): string {
+  switch (w.code) {
+    case "GENERIC_SKELETON":
+      return "汎用 LP の骨格の印があります（参考）。";
+    case "SAME_SKELETON_AS_OTHER_SHOP":
+      return `ほかの店舗の承認済みの版と骨格が近い（${Math.round(w.similarity * 100)}%、参考）。`;
+    case "TOO_CLOSE_TO_REFERENCE":
+      return `成功例と骨格が近い（${Math.round(w.similarity * 100)}%、参考）。`;
+    case "ASPECTS_UNKNOWN":
+      return "構造の一部を計測できませんでした（参考）。";
+  }
+}
+
+/** §8.1: each rights status, in the owner's words. */
+export const RIGHTS_STATUS_LABEL: Readonly<Record<RightsStatus, string>> = {
+  unknown: "権利不明",
+  ai_demo_internal: "AI 生成のデモ画像（架空の店・共有不可）",
+  ai_concept_internal: "AI 生成の概念画像（管理者だけ・共有不可）",
+  owner_provided_internal: "オーナー提供の写真（共有不可）",
+  shop_provided_internal: "店舗提供の写真（共有不可）",
+  licensed_terms_pinned_internal: "規約を固定した素材（共有不可）",
+  share_cleared: "共有の条件を満たす写真（写真の共有は今は無効）",
+  ai_share_approved: "（予約・使われない）",
+  expired: "権利の期限切れ",
+  revoked: "権利の取り消し済み",
+};
+
+/** §8.1 fail closed: shown instead of an image whose rights do not allow the admin preview. */
+export const RIGHTS_BLOCKED_LABEL = "権利不明のため使用不可";
+
+/** The red badge beside every real-shop AI concept image (the trusted admin frame shows it, never the artifact). */
+export const AI_CONCEPT_BADGE = "AI生成・管理者だけ・共有不可";
+
+/**
+ * DEV-196c Low (c), §8.3 condition 1: the fixed statement the admin confirms per AI concept image, bound to that
+ * image's sha256. Fixed text: the admin does not type it.
+ */
+export const NO_IMPERSONATION_STATEMENT =
+  "この画像は、実在の商品・店内・人・設備を事実として見せていません（質感・光・抽象的な形などの雰囲気だけです）。";
+
+export const SOURCE_KIND_LABEL: Readonly<Record<string, string>> = {
+  owner_provided: "オーナー提供",
+  shop_provided: "店舗提供",
+  licensed_stock_with_terms: "規約つき素材",
+  ai_generated_demo: "AI 生成（架空の店のデモ）",
+  ai_concept_internal: "AI 生成の概念画像",
+};
+
+export const VERSION_ORIGIN_LABEL: Readonly<Record<string, string>> = {
+  worker_autogen: "自動生成",
+  design_bridge: "デザインの橋渡し",
+  manual_import: "手動の取り込み",
+};
+
+/**
+ * §6.6: the fixed reasons an admin may revoke a version for (revoke_code, `^[A-Z][A-Z0-9_]{2,47}$`). The screen
+ * offers only these; no free text.
+ */
+export const REVOKE_REASONS = ["FACT_ERROR", "RIGHTS_COMPLAINT", "QUALITY_PROBLEM", "OWNER_DECISION", "SAFETY_CONCERN"] as const;
+export type RevokeReason = (typeof REVOKE_REASONS)[number];
+export const REVOKE_REASON_LABEL: Readonly<Record<RevokeReason, string>> = {
+  FACT_ERROR: "事実の誤り",
+  RIGHTS_COMPLAINT: "権利の苦情・誤り",
+  QUALITY_PROBLEM: "品質の問題",
+  OWNER_DECISION: "オーナーの判断",
+  SAFETY_CONCERN: "安全上の懸念",
+};
+
+/** §4.6・§9.4: what withdrawing a quality approval does (shown before the admin confirms). */
+export const WITHDRAW_CONFIRM_TEXT =
+  "品質承認を取り下げると、この版は下書きに戻ります。この版での送信承認はやり直しになります。すでに送信済みの相手には、送った版を出し続けます。";
+
+/** §6.6・§9.4 (owner decision 2026-11-10): what revoking a version does (two-step confirmation). */
+export const REVOKE_CONFIRM_TEXT =
+  "版を取り消すと元に戻せません。管理者のプレビューも、送信済みの相手の共有 URL も表示されなくなります（404）。ほかの版や React のデモへは自動で切り替わりません。";
+
+/**
+ * DEV-196c Low (d): while versioned sharing is disabled (DEV-196g), a quality-approved version stops that shop's send
+ * approvals with demo_not_shareable. Shown before the admin approves and after.
+ */
+export const APPROVAL_STOPS_SENDING_BEFORE =
+  "注意: この版を品質承認すると、この店舗の送信承認は止まります（「デモを共有できない」）。版での共有がまだ無効のためです。品質承認を取り下げるまで、React のデモでも送れません。";
+export const APPROVAL_STOPS_SENDING_AFTER =
+  "この店舗は品質承認済みの版があるため、今は送信承認ができません（「デモを共有できない」）。版での共有はまだ無効です。送るには品質承認を取り下げてください（React のデモで送ることになります）。";
+
+/** Why the approved version cannot be shared, in the owner's words (more than one may apply). */
+export const UNSHAREABLE_REASON_LABEL: Readonly<Record<"versioned_sharing_disabled" | "ai_images" | "photos_not_shareable", string>> = {
+  versioned_sharing_disabled: "版での共有がまだ無効です",
+  ai_images: "AI 生成の画像を含みます（共有不可）",
+  photos_not_shareable: "写真の共有は今は無効です",
+};
+
+export const NO_VERSIONS_TEXT = "デモの版はまだありません。";
+export const DRAFT_NOT_USED_TEXT = "下書きの版は送信に使われません。";
+export const TOKEN_EXPIRED_TEXT = "表示期限が切れました";
+export const RENDERS_ARE_THE_BASIS_TEXT = "判断の基準は描画画像です。生の頁は端末の書体で表示が変わることがあります。";
