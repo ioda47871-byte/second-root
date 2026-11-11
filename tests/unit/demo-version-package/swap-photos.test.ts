@@ -6,10 +6,10 @@ import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
 import { importPackage, ImportError, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, PackageError, readPackage, writePackage } from "@/lib/demo-version-package/package";
-import { convertPhoto, PhotoError, photoUrlMap, provePhotoUrlRewrite, rewritePhotoUrls, storedPhotoUrl } from "@/lib/demo-version-package/photos";
+import { convertPhoto, PhotoError, photoUrlMap, provePhotoUrlRewrite, rewriteCssPhotoUrls, rewriteHtmlPhotoUrls, storedPhotoUrl } from "@/lib/demo-version-package/photos";
 import { RIN_PROSPECT_ID } from "@/lib/demo-version-package/seed-rin";
 import { pixelDiff, prepareSwap, readOriginals, readSwapPage, SwapInputError } from "@/lib/demo-version-package/swap-package";
-import { packageImageProblems } from "@/lib/demo-version-package/swap-rights";
+import { DEPICTION_CONFIRMATION_STATEMENT, packageImageProblems } from "@/lib/demo-version-package/swap-rights";
 import { renderPrototype } from "@/lib/design-agent/phase2f/render-prototype";
 import { BICYCLE_PROMPT_SHA256 } from "@/lib/design-agent/quality-pipeline/bicycle-ai-photos";
 import { checkFileBytes, hasImageMetadata, PHOTO_NAME } from "@/lib/sales/demo-version/manifest";
@@ -22,7 +22,7 @@ import { cleanupDirs, fixture, INV, newDir, noise, NOW, PAGE, png, RANGES, recOf
 afterAll(cleanupDirs);
 
 const prepare = (f: Fixture, photoLimit?: number) =>
-  prepareSwap({ page: readSwapPage(f.page), rights: JSON.parse(readFileSync(f.rightsPath, "utf8")), summary: JSON.parse(readFileSync(f.summaryPath, "utf8")), originals: readOriginals(f.originals), forbiddenSha256: new Set(["0".repeat(64)]), now: NOW, ...(photoLimit ? { photoLimit } : {}) });
+  prepareSwap({ page: readSwapPage(f.page), rights: JSON.parse(readFileSync(f.rightsPath, "utf8")), depictions: JSON.parse(readFileSync(f.depictionPath, "utf8")), summary: JSON.parse(readFileSync(f.summaryPath, "utf8")), originals: readOriginals(f.originals), forbiddenSha256: new Set(["0".repeat(64)]), now: NOW, ...(photoLimit ? { photoLimit } : {}) });
 
 describe("photo names: the server's PHOTO_NAME, the slot's hyphens as underscores", () => {
   it("maps each swap name; the range and the slot stay readable", () => {
@@ -38,23 +38,61 @@ describe("photo names: the server's PHOTO_NAME, the slot's hyphens as underscore
   });
 });
 
-describe("the URL rewrite changes only the photo URLs (proved)", () => {
+describe("the URL rewrite changes only the photo URLs of <img src>/srcset, <source srcset> and CSS url() (proved)", () => {
   const map = photoUrlMap(["photos/ph-a-desktop.png", "photos/ph-a-mobile.png"]);
-  const before = '<picture data-slot="ph-a"><source media="(max-width: 600px)" srcset="photos/ph-a-mobile.png"><img src="photos/ph-a-desktop.png" alt="a"></picture><p>写真の説明 photos は文の語</p>';
-  it("rewrites every reference and the proof holds", () => {
-    const after = rewritePhotoUrls(before, map);
-    expect(after).toContain('srcset="photos/ph_a-mobile.webp"');
-    expect(after).toContain('src="photos/ph_a-desktop.webp"');
-    expect(provePhotoUrlRewrite(before, after, map)).toMatchObject({ refs: 2 });
+  const before = '<picture data-slot="ph-a"><source media="(max-width: 600px)" srcset="photos/ph-a-mobile.png 1x"><img src="photos/ph-a-desktop.png" srcset="photos/ph-a-desktop.png 1x, photos/ph-a-mobile.png 2x" alt="a"></picture><p>写真の説明 photos は文の語</p>';
+  it("rewrites every loading position and the proof holds", () => {
+    const r = rewriteHtmlPhotoUrls(before, map);
+    expect(r.text).toContain('srcset="photos/ph_a-mobile.webp 1x"');
+    expect(r.text).toContain('src="photos/ph_a-desktop.webp"');
+    expect(r.text).toContain('srcset="photos/ph_a-desktop.webp 1x, photos/ph_a-mobile.webp 2x"');
+    expect(r.refs.sort()).toEqual(["photos/ph-a-desktop.png", "photos/ph-a-desktop.png", "photos/ph-a-mobile.png", "photos/ph-a-mobile.png"]);
+    expect(provePhotoUrlRewrite(before, r.text, map)).toMatchObject({ refs: 4 });
   });
   it("the proof fails when anything else changed (one byte of text, an attribute, an old URL left)", () => {
-    const after = rewritePhotoUrls(before, map);
-    for (const bad of [after.replace("写真の説明", "写真の説朙"), after.replace('alt="a"', 'alt="b"'), after.replace("photos/ph_a-mobile.webp", "photos/ph-a-mobile.png"), `${after} `]) {
+    const after = rewriteHtmlPhotoUrls(before, map).text;
+    for (const bad of [after.replace("写真の説明", "写真の説朙"), after.replace('alt="a"', 'alt="b"'), after.replace("photos/ph_a-mobile.webp 1x", "photos/ph-a-mobile.png 1x"), `${after} `]) {
       expect(() => provePhotoUrlRewrite(before, bad, map)).toThrow(/REWRITE_CHANGED_MORE/);
     }
   });
-  it("a reference to a photo the copy does not hold is refused", () => {
-    expect(() => rewritePhotoUrls('<img src="photos/ph-z-desktop.png">', map)).toThrow(/PHOTO_REF_UNKNOWN/);
+  it("a loading position naming a photo the copy does not hold is refused", () => {
+    expect(() => rewriteHtmlPhotoUrls('<img src="photos/ph-z-desktop.png">', map)).toThrow(/PHOTO_REF_UNKNOWN/);
+  });
+  it.each([
+    ["a text node", '<img src="photos/ph-a-desktop.png" alt="a"><p>see photos/ph-a-desktop.png</p>'],
+    ["a comment", '<img src="photos/ph-a-desktop.png" alt="a"><!-- photos/ph-a-desktop.png -->'],
+    ["alt", '<img src="photos/ph-a-desktop.png" alt="photos/ph-a-desktop.png">'],
+    ["title", '<img src="photos/ph-a-desktop.png" alt="a" title="photos/ph-a-mobile.png">'],
+    ["data-*", '<picture data-src="photos/ph-a-mobile.png"><img src="photos/ph-a-desktop.png" alt="a"></picture>'],
+    ["an href", '<a href="photos/ph-a-desktop.png"><img src="photos/ph-a-desktop.png" alt="a"></a>'],
+    ["a srcset descriptor", '<img src="photos/ph-a-desktop.png" srcset="photos/ph-a-desktop.png photos/x" alt="a">'],
+    ["a myphotos/ tail in src", '<img src="myphotos/ph-a-desktop.png" alt="a">'],
+    ["a myphotos/ tail in srcset", '<img src="photos/ph-a-desktop.png" srcset="myphotos/ph-a-mobile.png 2x" alt="a">'],
+    ["a src with a path before it", '<img src="./photos/ph-a-desktop.png" alt="a">'],
+    ["a character reference", '<img src="photos&#47;ph-a-desktop.png" alt="a"><img src="photos/ph-a-desktop.png" alt="b">'],
+    ["an encoded src", '<img src="photos/ph-a-desktop&#46;png" alt="a">'],
+    ["a duplicate attribute the parser drops", '<img src="photos/ph-a-desktop.png" src="photos/ph-a-mobile.png" alt="a">'],
+    ["inside a template", '<img src="photos/ph-a-desktop.png" alt="a"><template><p>photos/ph-a-mobile.png</p></template>'],
+    ["an SVG image href", '<img src="photos/ph-a-desktop.png" alt="a"><svg><image href="photos/ph-a-mobile.png"/></svg>'],
+  ])("refuses a photos/ reference in %s (fail closed)", (_, html) => {
+    expect(() => rewriteHtmlPhotoUrls(html, map)).toThrow(PhotoError);
+  });
+  it("CSS: only url() values are rewritten", () => {
+    const css = '.a { background-image: url(photos/ph-a-desktop.png); } .b { background: url( "photos/ph-a-mobile.png" ) no-repeat; }';
+    const r = rewriteCssPhotoUrls(css, map);
+    expect(r.text).toBe('.a { background-image: url(photos/ph_a-desktop.webp); } .b { background: url( "photos/ph_a-mobile.webp" ) no-repeat; }');
+    expect(provePhotoUrlRewrite(css, r.text, map)).toMatchObject({ refs: 2 });
+    expect(rewriteCssPhotoUrls(".a { color: red; }", map)).toEqual({ text: ".a { color: red; }", refs: [] });
+  });
+  it.each([
+    ["a comment", "/* photos/ph-a-desktop.png */ .a { color: red; }"],
+    ["a string outside url()", '.a::after { content: "photos/ph-a-desktop.png"; }'],
+    ["an escape a tokenizer decodes", ".a { background: url(\\70 hotos/ph-a-desktop.png); }"],
+    ["a myphotos/ tail", ".a { background: url(myphotos/ph-a-desktop.png); }"],
+    ["not a url() token", ".a { background: xurl(photos/ph-a-desktop.png); }"],
+    ["a photo the copy does not hold", ".a { background: url(photos/ph-z-desktop.png); }"],
+  ])("CSS: refuses %s", (_, css) => {
+    expect(() => rewriteCssPhotoUrls(css, map)).toThrow(PhotoError);
   });
 });
 
@@ -62,7 +100,7 @@ describe("convertPhoto: WebP within the limit, same pixel size, sRGB, no ICC, no
   it("lossless when it fits; the original's sha256 is recorded; the server's byte check passes", async () => {
     const b = await png(40, 30, 77);
     const c = await convertPhoto(b);
-    expect(c).toMatchObject({ mode: "lossless", quality: null, width: 40, height: 30, original: { sha256: sha(b), format: "png", width: 40, height: 30, icc: false } });
+    expect(c).toMatchObject({ mode: "lossless", quality: null, width: 40, height: 30, original: { sha256: sha(b), format: "png", width: 40, height: 30, icc: false, bit_depth: 8 } });
     expect(hasImageMetadata(Buffer.from(c.webp))).toBe(false);
     expect(checkFileBytes({ name: "page/photos/ph_a-desktop.webp", role: "photo", sha256: sha(c.webp), bytes: c.webp.byteLength, content_type: "image/webp", width: 40, height: 30 }, c.webp)).toEqual({ ok: true });
     // the pixels are the original's (lossless)
@@ -73,11 +111,22 @@ describe("convertPhoto: WebP within the limit, same pixel size, sRGB, no ICC, no
     const jpg = await sharp(await png(40, 30, 99)).withIccProfile("p3").withExif({ IFD0: { Copyright: "fixture" } }).jpeg().toBuffer();
     expect((await sharp(jpg).metadata()).icc).toBeTruthy();
     const c = await convertPhoto(jpg);
-    expect(c.original).toMatchObject({ format: "jpeg", icc: true });
+    expect(c.original).toMatchObject({ format: "jpeg", icc: true, bit_depth: 8 });
+    // review round 1 nit: converted to 8-bit sRGB first, so not "lossless" against the original
+    expect(c.mode).toBe("lossless_after_srgb8_conversion");
     const m = await sharp(Buffer.from(c.webp)).metadata();
     expect(m.icc).toBeUndefined();
     expect(m.exif).toBeUndefined();
     expect(hasImageMetadata(Buffer.from(c.webp))).toBe(false);
+  });
+  it("a 16-bit PNG: its bit depth recorded, and the mode says it was converted to 8-bit first", async () => {
+    const raw = new Uint16Array(8 * 6 * 3).fill(16000);
+    const png16 = await sharp(raw, { raw: { width: 8, height: 6, channels: 3 } }).toColourspace("rgb16").png().toBuffer();
+    expect((await sharp(png16).metadata()).depth).toBe("ushort");
+    const c = await convertPhoto(png16);
+    expect(c.original).toMatchObject({ bit_depth: 16, icc: false });
+    expect(c.mode).toBe("lossless_after_srgb8_conversion");
+    expect((await sharp(Buffer.from(c.webp)).metadata()).depth).toBe("uchar");
   });
   it("lossy at the highest quality that fits when lossless does not; refused when nothing fits", async () => {
     const b = await noise(200, 150);
@@ -164,6 +213,17 @@ describe("prepareSwap on a synthetic 輪 swap (the real d1-v9 structure, 5 slots
     ["a photo that is not the swap's crop", { summary: (s: Obj) => (sub(s, "files")["photos/ph-a-desktop.png"] = "d".repeat(64)) }, /PAGE_PHOTOS_NOT_THE_SWAP_COPY/],
     ["another shop's summary", { summary: (s: Obj) => (s.shop = "tsugute") }, /SUMMARY_NOT_RIN/],
     ["a rights file of another shape", { rights: (r: Obj) => (r.schema = "photo_swap_rights_private_v1") }, /RIGHTS_FILE_INVALID/],
+    // review round 1 L2: the owner's depiction confirmation, never assumed
+    ["a photo missing from the depiction confirmation", { depictions: (d: Obj) => (d.photos as Obj[]).splice(2, 1) }, /DEPICTION_NOT_CONFIRMED/],
+    ["a confirmation entry for no photo (sha256 does not match)", { depictions: (d: Obj) => ((d.photos as Obj[])[0]!.sha256 = "e".repeat(64)) }, /DEPICTION_NOT_CONFIRMED|DEPICTION_PHOTO_UNKNOWN/],
+    ["an extra confirmation entry for no photo", { depictions: (d: Obj) => (d.photos as Obj[]).push({ sha256: "f".repeat(64), depicts_real_product: false, depicts_real_interior: false, depicts_real_equipment: false, confirmation: DEPICTION_CONFIRMATION_STATEMENT }) }, /DEPICTION_PHOTO_UNKNOWN/],
+    ["a real product confirmed", { depictions: (d: Obj) => ((d.photos as Obj[])[1]!.depicts_real_product = true) }, /DEPICTS_REAL/],
+    ["a real interior confirmed", { depictions: (d: Obj) => ((d.photos as Obj[])[3]!.depicts_real_interior = true) }, /DEPICTS_REAL/],
+    ["real equipment confirmed", { depictions: (d: Obj) => ((d.photos as Obj[])[5]!.depicts_real_equipment = true) }, /DEPICTS_REAL/],
+    ["a value missing", { depictions: (d: Obj) => delete (d.photos as Obj[])[0]!.depicts_real_equipment }, /DEPICTION_CONFIRMATION_INVALID/],
+    ["another statement", { depictions: (d: Obj) => ((d.photos as Obj[])[0]!.confirmation = "ok") }, /DEPICTION_CONFIRMATION_INVALID/],
+    ["a duplicate entry", { depictions: (d: Obj) => (d.photos as Obj[]).push({ ...(d.photos as Obj[])[0]! }) }, /DEPICTION_CONFIRMATION_INVALID/],
+    ["a confirmation of another shape", { depictions: (d: Obj) => (d.schema = "x") }, /DEPICTION_CONFIRMATION_INVALID/],
   ])("fails closed: %s", async (_, mutate, code) => {
     const f = await fixture(mutate);
     await expect(prepare(f)).rejects.toThrow(code);
@@ -174,7 +234,7 @@ describe("prepareSwap on a synthetic 輪 swap (the real d1-v9 structure, 5 slots
     await expect(prepare(expired)).rejects.toThrow(/RIGHTS_EXPIRED/);
     const f = await fixture();
     const first = recOf(f.rights, 0).sha256 as string;
-    await expect(prepareSwap({ page: readSwapPage(f.page), rights: f.rights, summary: f.summary, originals: readOriginals(f.originals), forbiddenSha256: new Set([first]), now: NOW })).rejects.toThrow(/FORBIDDEN_SOURCE_HASH/);
+    await expect(prepareSwap({ page: readSwapPage(f.page), rights: f.rights, depictions: f.depictions, summary: f.summary, originals: readOriginals(f.originals), forbiddenSha256: new Set([first]), now: NOW })).rejects.toThrow(/FORBIDDEN_SOURCE_HASH/);
   });
 
   it("refuses a photo the HTML does not use, an unexpected file and a link in the copy", async () => {
@@ -242,7 +302,7 @@ describe("package-local.ts --page (the operator's command, on the synthetic swap
     writeFileSync(join(renders, "desktop_1440.png"), await png(1440, 900, 5));
     const before = readFileSync(f.rightsPath);
     const out = join(newDir(), "pkg");
-    const r = cli(["--out", out, "--page", f.page, "--rights", f.rightsPath, "--originals", f.originals, "--compare-renders", renders]);
+    const r = cli(["--out", out, "--page", f.page, "--rights", f.rightsPath, "--originals", f.originals, "--depiction-confirmation", f.depictionPath, "--compare-renders", renders]);
     expect(r.status, r.stdout + r.stderr).toBe(0);
     const o = JSON.parse(r.stdout);
     expect(o).toMatchObject({ status: "OK", source: "swap-copy", rights_summary: { photos: 15, by_status: { ai_demo_internal: 15 } } });
@@ -255,13 +315,13 @@ describe("package-local.ts --page (the operator's command, on the synthetic swap
     expect(readPackage(out).images).toHaveLength(15);
     expect(Buffer.compare(readFileSync(f.rightsPath), before)).toBe(0);
   }, 120_000);
-  it("refuses a usage without the rights or the originals, and --page with --source (exit 2)", () => {
-    for (const args of [["--out", "/tmp/x", "--page", "/tmp/p"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r", "--originals", "/tmp/o", "--source", PAGE], ["--out", "/tmp/x", "--rights", "/tmp/r"]]) expect(cli(args).status, args.join(" ")).toBe(2);
+  it("refuses a usage without the rights, the originals or the depiction confirmation, and --page with --source (exit 2)", () => {
+    for (const args of [["--out", "/tmp/x", "--page", "/tmp/p"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r", "--originals", "/tmp/o"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r", "--originals", "/tmp/o", "--depiction-confirmation", "/tmp/d", "--source", PAGE], ["--out", "/tmp/x", "--rights", "/tmp/r"]]) expect(cli(args).status, args.join(" ")).toBe(2);
   });
   it("a refused rights file is a FAIL with its code (exit 1), and no package is written", async () => {
     const f = await fixture({ rights: (r) => (sub(recOf(r, 1), "allowed_uses").public_web = true) });
     const out = join(newDir(), "pkg");
-    const r = cli(["--out", out, "--page", f.page, "--rights", f.rightsPath, "--originals", f.originals]);
+    const r = cli(["--out", out, "--page", f.page, "--rights", f.rightsPath, "--originals", f.originals, "--depiction-confirmation", f.depictionPath]);
     expect(r.status).toBe(1);
     expect(JSON.parse(r.stdout)).toMatchObject({ status: "FAIL", code: "PUBLIC_WEB_NOT_FALSE" });
     expect(() => readFileSync(join(out, "package.json"))).toThrow();

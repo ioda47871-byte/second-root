@@ -12,7 +12,7 @@ import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-rights";
-import { convertPhoto, photoRefs, photoUrlMap, provePhotoUrlRewrite, rewritePhotoUrls, SWAP_PHOTO_URL, type ConvertedPhoto, type RewriteProof } from "./photos";
+import { convertPhoto, photoUrlMap, provePhotoUrlRewrite, rewriteCssPhotoUrls, rewriteHtmlPhotoUrls, SWAP_PHOTO_URL, type ConvertedPhoto, type RewriteProof } from "./photos";
 import { buildSwapImages, type PackageImage, type SwapImages } from "./swap-rights";
 
 export { PhotoError } from "./photos";
@@ -95,13 +95,15 @@ export type PreparedSwap = {
  * The swap's copy (`page`), its rights file and summary, and the run's originals → the stored copy. Every photo the
  * copy holds must be referenced by its HTML or CSS, and every reference must be a photo it holds.
  */
-export async function prepareSwap(o: { page: SwapPage; rights: unknown; summary: unknown; originals: readonly Uint8Array[]; forbiddenSha256: ReadonlySet<string>; now: string; photoLimit?: number }): Promise<PreparedSwap> {
-  const refs = new Set([...photoRefs(o.page.html), ...photoRefs(o.page.css)]);
-  for (const ref of refs) if (!o.page.photos.has(ref)) throw new SwapInputError("PHOTO_REF_UNKNOWN", [ref]);
-  for (const url of o.page.photos.keys()) if (!refs.has(url)) throw new SwapInputError("PHOTO_NOT_REFERENCED", [url]);
+export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictions: unknown; summary: unknown; originals: readonly Uint8Array[]; forbiddenSha256: ReadonlySet<string>; now: string; photoLimit?: number }): Promise<PreparedSwap> {
   const map = photoUrlMap(o.page.photos.keys());
-  const html = rewritePhotoUrls(o.page.html, map);
-  const css = rewritePhotoUrls(o.page.css, map);
+  // only <img src> / srcset, <source srcset> and CSS url() values are rewritten; a photos/ anywhere else is refused
+  const h = rewriteHtmlPhotoUrls(o.page.html, map);
+  const c = rewriteCssPhotoUrls(o.page.css, map);
+  const refs = new Set([...h.refs, ...c.refs]);
+  for (const url of o.page.photos.keys()) if (!refs.has(url)) throw new SwapInputError("PHOTO_NOT_REFERENCED", [url]);
+  const html = h.text;
+  const css = c.text;
   const proof = { html: provePhotoUrlRewrite(o.page.html, html, map), css: provePhotoUrlRewrite(o.page.css, css, map) };
   const photos = new Map<string, Uint8Array>();
   const conversions: PhotoConversion[] = [];
@@ -113,6 +115,7 @@ export async function prepareSwap(o: { page: SwapPage; rights: unknown; summary:
   }
   const built = buildSwapImages({
     rights: o.rights,
+    depictions: o.depictions,
     summary: o.summary,
     pageHtml: o.page.html,
     pageCss: o.page.css,

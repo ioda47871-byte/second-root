@@ -11,6 +11,11 @@
  *    checkPhotoRights runs exactly as the swap ran it (quality_verification, AI demo allowed for this fictional shop,
  *    the success-case hashes forbidden) plus the swap's prompt pin (AI_DEMO_PROMPT_NOT_APPROVED).
  *
+ *  - the owner's DEPICTION CONFIRMATION (review round 1 L2; written and kept by the owner outside the repository): for
+ *    each original photo, keyed by its sha256, `depicts_real_product`, `depicts_real_interior` and
+ *    `depicts_real_equipment` and the fixed statement that the admin looked at it and confirmed them. These three are
+ *    never assumed: a photo not listed, an entry for no photo, or any true value is refused.
+ *
  * Every record must be `ai_generated_demo`, depict nothing real, allow no public web use and carry full provenance;
  * anything missing or different → SwapRightsError. The image record says only what the database needs: the converted
  * file's sha256 / size / pixel size, `ai_generated_demo`, every depicts_* false, `public_web` false, the expiry and the
@@ -57,6 +62,26 @@ export const SwapSummaryFile = z.object({
   copy_hashes: z.strictObject({ html: Sha256, css: Sha256 }),
   crops: z.record(z.string(), z.object({ source: z.enum(["pc", "sp"]), asset_id: z.string() })),
   files: z.record(z.string(), Sha256),
+});
+
+/** The statement every entry of the depiction confirmation carries, exactly. */
+export const DEPICTION_CONFIRMATION_STATEMENT =
+  "The admin looked at this image and confirmed it shows no real product, no real shop interior and no real equipment. / 管理者がこの画像を目で確かめ、実在の商品・店内・設備を写していないことを確認した。";
+
+export const DepictionConfirmationFile = z.strictObject({
+  schema: z.literal("rin_depiction_confirmation_v0"),
+  photos: z
+    .array(
+      z.strictObject({
+        sha256: Sha256,
+        depicts_real_product: z.boolean(),
+        depicts_real_interior: z.boolean(),
+        depicts_real_equipment: z.boolean(),
+        confirmation: z.literal(DEPICTION_CONFIRMATION_STATEMENT),
+      }),
+    )
+    .min(1)
+    .max(20),
 });
 
 /** One element of p_images (the database's allowed keys only). */
@@ -108,6 +133,8 @@ export type ConvertedForImage = { swapUrl: string; storedUrl: string; webp: { sh
 
 export type SwapImagesInput = {
   rights: unknown;
+  /** the owner's depiction confirmation (DepictionConfirmationFile) */
+  depictions: unknown;
   summary: unknown;
   /** the copy's HTML and CSS as the swap wrote them (before any rewrite) */
   pageHtml: string;
@@ -135,6 +162,13 @@ const sha256Hex = (b: Uint8Array) => createHash("sha256").update(b).digest("hex"
 export function buildSwapImages(i: SwapImagesInput): SwapImages {
   const rights = SwapRightsFile.safeParse(i.rights);
   if (!rights.success) throw new SwapRightsError("RIGHTS_FILE_INVALID");
+  const depictions = DepictionConfirmationFile.safeParse(i.depictions);
+  if (!depictions.success) throw new SwapRightsError("DEPICTION_CONFIRMATION_INVALID");
+  const confirmed = new Map<string, z.infer<typeof DepictionConfirmationFile>["photos"][number]>();
+  for (const d of depictions.data.photos) {
+    if (confirmed.has(d.sha256)) throw new SwapRightsError("DEPICTION_CONFIRMATION_INVALID", ["duplicate"]);
+    confirmed.set(d.sha256, d);
+  }
   const summary = SwapSummaryFile.safeParse(i.summary);
   if (!summary.success) throw new SwapRightsError("SUMMARY_INVALID");
   const spec = swapShopSpec("bicycle");
@@ -168,9 +202,14 @@ export function buildSwapImages(i: SwapImagesInput): SwapImages {
       if (spec.aiDemoPromptSha256 && r.ai_provenance.prompt_sha256 !== spec.aiDemoPromptSha256) throw new SwapRightsError("AI_DEMO_PROMPT_NOT_APPROVED", [label]);
       if (r.allowed_uses.public_web !== false) throw new SwapRightsError("PUBLIC_WEB_NOT_FALSE", [label]);
       if (typeof asset !== "string" || records.has(asset)) throw new SwapRightsError("ASSET_ID_DUPLICATE", [label]);
+      const d = confirmed.get(r.sha256);
+      if (!d) throw new SwapRightsError("DEPICTION_NOT_CONFIRMED", [label]);
+      if (d.depicts_real_product || d.depicts_real_interior || d.depicts_real_equipment) throw new SwapRightsError("DEPICTS_REAL", [label]);
       records.set(asset, { slot_id: slot.slot_id, which: p.which, record: r });
     }
   }
+  const recorded = new Set([...records.values()].map((x) => x.record.sha256));
+  for (const sha of confirmed.keys()) if (!recorded.has(sha)) throw new SwapRightsError("DEPICTION_PHOTO_UNKNOWN", [sha.slice(0, 12)]);
 
   const images: PackageImage[] = [];
   const sources: SwapImages["sources"] = [];
@@ -186,6 +225,7 @@ export function buildSwapImages(i: SwapImagesInput): SwapImages {
     seen.add(c.webp.sha256);
     const r = src.record;
     const p = r.ai_provenance!;
+    const d = confirmed.get(r.sha256)!;
     const image: PackageImage = {
       sha256: c.webp.sha256,
       bytes: c.webp.bytes,
@@ -195,11 +235,13 @@ export function buildSwapImages(i: SwapImagesInput): SwapImages {
       record_schema: "photo_rights_v0",
       source_kind: "ai_generated_demo",
       rights_status: "ai_demo_internal",
-      depicts_real_shop: false,
-      depicts_identifiable_person: false,
-      depicts_real_product: false,
-      depicts_real_interior: false,
-      depicts_real_equipment: false,
+      // the rights record's own (checkPhotoRights refuses true)
+      depicts_real_shop: r.depicts_real_shop as false,
+      depicts_identifiable_person: r.depicts_identifiable_person as false,
+      // the owner's confirmation (checked above: all three false), never assumed
+      depicts_real_product: d.depicts_real_product as false,
+      depicts_real_interior: d.depicts_real_interior as false,
+      depicts_real_equipment: d.depicts_real_equipment as false,
       allowed_uses: { edit: r.allowed_uses.edit, crop: r.allowed_uses.crop, commercial: r.allowed_uses.commercial, public_web: false },
       rights_expiry: r.expiry === null ? null : utcDay(r.expiry),
       provenance: { generator: p.generator, model: p.model, generated_at: p.generated_at, prompt_sha256: p.prompt_sha256, approval_id: p.approval_id, admin_preview_only: true },

@@ -11,6 +11,7 @@ import sharp from "sharp";
 import { BICYCLE_PROMPT_SHA256 } from "@/lib/design-agent/quality-pipeline/bicycle-ai-photos";
 import { PhotoSlotInventory } from "@/lib/design-agent/quality-pipeline/photo-slots";
 import { BICYCLE_SWAP_CSS, SWAP_SHOP_SPECS } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
+import { DEPICTION_CONFIRMATION_STATEMENT } from "@/lib/demo-version-package/swap-rights";
 import { transformHtml } from "../../scripts/design-artifact/photo-swap";
 
 export const REPO = join(__dirname, "../..");
@@ -46,7 +47,7 @@ export type Obj = Record<string, unknown>;
 export const sub = (o: Obj, k: string) => o[k] as Obj;
 export const recOf = (r: Obj, slot: number, photo = 0) => (r.slots as { photos: { rights: Obj }[] }[])[slot]!.photos[photo]!.rights;
 
-export type Fixture = { root: string; page: string; rightsPath: string; summaryPath: string; originals: string; rights: Record<string, unknown>; summary: Record<string, unknown> };
+export type Fixture = { root: string; page: string; rightsPath: string; summaryPath: string; depictionPath: string; originals: string; rights: Record<string, unknown>; summary: Record<string, unknown>; depictions: Record<string, unknown> };
 
 export const SOURCES = ["ph-a", "ph-b", "ph-c", "ph-d", "ph-bench-pc", "ph-bench-sp"] as const;
 export function record(id: string, bytes: Buffer, w: number, h: number): Record<string, unknown> {
@@ -74,11 +75,11 @@ export function record(id: string, bytes: Buffer, w: number, h: number): Record<
 }
 
 /** A swap output in the photo-swap layout, built from synthetic pictures. */
-export async function fixture(mutate?: { rights?: (r: Record<string, unknown>) => void; summary?: (s: Record<string, unknown>) => void }): Promise<Fixture> {
+export async function fixture(mutate?: { rights?: (r: Record<string, unknown>) => void; summary?: (s: Record<string, unknown>) => void; depictions?: (d: Record<string, unknown>) => void }): Promise<Fixture> {
   const root = newDir();
   const page = join(root, "swap", "page");
   mkdirSync(join(page, "photos"), { recursive: true });
-  const originals = join(root, "photos", "bicycle-photos-fixture");
+  const originals = join(root, "photos", "photo-bundle-fixture");
   mkdirSync(originals, { recursive: true });
   const recs: Record<string, Record<string, unknown>> = {};
   for (const [i, id] of SOURCES.entries()) {
@@ -119,12 +120,20 @@ export async function fixture(mutate?: { rights?: (r: Record<string, unknown>) =
     })),
   };
   const summary: Record<string, unknown> = { schema: "photo_swap_summary_v0", shop: "bicycle", page_dir: PAGE, copy_hashes: { html: sha(html), css: sha(css) }, crops, files, renders: [] };
+  // the owner's per-photo depiction confirmation (review round 1 L2), keyed by each original's sha256
+  const depictions: Record<string, unknown> = {
+    schema: "rin_depiction_confirmation_v0",
+    photos: SOURCES.map((id) => ({ sha256: recs[id]!.sha256, depicts_real_product: false, depicts_real_interior: false, depicts_real_equipment: false, confirmation: DEPICTION_CONFIRMATION_STATEMENT })),
+  };
   mutate?.rights?.(rights);
   mutate?.summary?.(summary);
+  mutate?.depictions?.(depictions);
   const rightsPath = join(root, "swap", "rights.private.json");
   const summaryPath = join(root, "swap", "swap-summary.json");
   writeFileSync(rightsPath, JSON.stringify(rights));
   writeFileSync(summaryPath, JSON.stringify(summary));
-  return { root, page, rightsPath, summaryPath, originals, rights, summary };
+  const depictionPath = join(root, "depiction-confirmation.json");
+  writeFileSync(depictionPath, JSON.stringify(depictions));
+  return { root, page, rightsPath, summaryPath, depictionPath, originals, rights, summary, depictions };
 }
 

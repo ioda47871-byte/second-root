@@ -125,7 +125,7 @@ describe("DEV-196s: 輪's AI demo photos against today's database (DB part pendi
   afterAll(cleanupDirs);
   it("the ingest refuses the photo package (invalid_image); no image row, no version, no upload", async () => {
     const f = await fixture();
-    const p = await prepareSwap({ page: readSwapPage(f.page), rights: f.rights, summary: f.summary, originals: readOriginals(f.originals), forbiddenSha256: new Set(), now: "2026-11-11" });
+    const p = await prepareSwap({ page: readSwapPage(f.page), rights: f.rights, depictions: f.depictions, summary: f.summary, originals: readOriginals(f.originals), forbiddenSha256: new Set(), now: "2026-11-11" });
     const c = Math.floor(Math.random() * 200);
     const photoPkg = await buildPackage({ html: p.html, css: p.css, renders: { desktop_1440: await png(1440, 900, c), mobile_390: await png(390, 844, c + 3) }, photos: p.photos, images: p.images, source: "swap-copy" });
     const store = memoryStore();
