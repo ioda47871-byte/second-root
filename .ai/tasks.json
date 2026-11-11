@@ -9413,7 +9413,7 @@
       "allowed_scope": [
         "lib/sales/demo-version/ (flags.ts・admin-messages.ts・compare.ts・view-model.ts の追加。既存の DEV-196b の module は変えない)",
         "tests/unit/sales/demo-version/ (新しいテストと purity.test.ts の module 一覧)",
-        "196d-2 以降: app/demo-frame/a/**、app/admin/sales/demos/**、app/admin/sales/_actions/demo-versions.ts、lib/admin/demo-versions.ts、components/admin/demo/**、components/admin/DemoVersionBadge.tsx、next.config.ts (/admin/sales/demos の CSP の frame-src だけ)、tests/e2e/**、tests/integration/**",
+        "196d-2 以降: app/demo-frame/** (a の route と、p を含むそれ以外を同じ 404 にする catch-all)、lib/demo-frame/** (route の判定と service role の読み出し)、tests/support/** (版の seed と単色の WebP の fixture)、tests/unit/demo-frame/**、app/admin/sales/demos/**、app/admin/sales/_actions/demo-versions.ts、lib/admin/demo-versions.ts、components/admin/demo/**、components/admin/DemoVersionBadge.tsx、next.config.ts (/admin/sales/demos の CSP の frame-src だけ)、tests/e2e/**、tests/integration/**",
         ".ai/tasks.json (DEV-196d の項目の追加と、台帳の保守: DEV-196c を done に)",
         ".ai/reviews/DEV-196d.md"
       ],
@@ -9432,7 +9432,7 @@
         "環境変数の値の設定 (人)",
         "旗を Staging / Production で有効にすること (別の承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-196d.md。196d-1 は PR を開いた段階 (旗・文言・比較・view model、unit だけ)。"
+      "note": "記録は .ai/reviews/DEV-196d.md。196d-1 merged (#246 → 68298eb)。196d-2 は PR を開いた段階 (/demo-frame/a の route と Storage の読み出し、p は常に 404)。"
     }
   ]
 }
