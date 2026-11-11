@@ -9433,6 +9433,43 @@
         "旗を Staging / Production で有効にすること (別の承認)"
       ],
       "note": "記録は .ai/reviews/DEV-196d.md。196d-1 merged (#246 → 68298eb)。196d-2 merged (#247 → 59260b9)。196d-3 merged (#248 → a178892)。196d-4 merged (#249 → 9e2a1ae)。196d-5 merged (#250 → 11c44b7、Low (c) の DB 側は報告済み)。196d-6 merged (#251 → 355b642)。196d-7 は PR を開いた段階 (今日の画面の版の印・リンク・送信停止の説明。旗が無効なら何も読まず何も変えない)。"
+    },
+    {
+      "id": "DEV-198",
+      "title": "phase2f-live steps のテストで pre-render の終了コードを先に確かめる (CI の ENOENT の flake の原因を stderr で見えるようにする)",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-198-prerender-status-asserts",
+      "purpose": "2026-11-11 の CI run 42961770373 (PR #249, unit (1/2)) で tests/unit/design-agent/phase2f-live/steps.test.ts の『an image request changed after the pre-render is refused before the approval is used』が ENOENT …/runs/pre-12/image-request-A1.json で落ち、再実行で通った。pre-render の終了コードを確かめずに出力を読むため、本当の失敗 (負荷の高い runner での Chromium の pre-render の失敗と推定) が『ファイルが無い』に隠れる。test の正しさの欠陥なので Task 化する",
+      "acceptance_criteria": [
+        "pre-render の出力 (image-request-*.json・prerender.md・JSON の ready) を使うすべての test が、読む前に expect(pre.status, pre.stderr).toBe(0) を確かめる (world() の prerenderOk。最初の test と同じ確認)",
+        "test の skip・retry・弱体化・timeout や閾値の変更をしない。停止を期待する test (RECORD_MISMATCH) はそのまま",
+        "CI で stderr が本当の timeout・描画の失敗を示したら、timeout を上げずに報告する",
+        "記録 .ai/reviews/DEV-198.md (独立レビュー)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/phase2f-live/steps.test.ts",
+        "npm test",
+        "npx eslint・npm run typecheck"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/phase2f-live/steps.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-198.md"
+      ],
+      "forbidden_scope": [
+        ".github/workflows・package.json・lockfile",
+        ".ai/progress.md (feature branch では編集しない)",
+        "scripts/design-artifact/phase2f-steps.ts ほか本体の変更",
+        "test の skip・retry・timeout・閾値の変更"
+      ],
+      "human_approval_triggers": [
+        "PR のレビューと merge"
+      ],
+      "note": "手元の container では repo の Playwright と同梱の Chromium の版が合わず、PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium で実行した (27/27)。CLI は想定外の例外を {status: refused, code: REFUSED}・exit 2・stderr 空にするので、その場合 stderr の message は空になる (停止の code は test の console.log に出る)。"
     }
   ]
 }

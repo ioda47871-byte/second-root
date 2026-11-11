@@ -58,6 +58,13 @@ function world() {
     const r = cli(["--prerender", "--route", route, "--design", designDir, "--facts", factsPath, "--out", out]);
     return { ...r, dir: out };
   };
+  // DEV-198: a test that uses the pre-render's files checks its exit status first, so a failed pre-render on CI
+  // (e.g. the browser on a loaded runner) shows the CLI's stderr instead of an ENOENT for a request file never written
+  const prerenderOk = (designDir: string, route = "C") => {
+    const pre = prerender(designDir, route);
+    expect(pre.status, pre.stderr).toBe(0);
+    return pre;
+  };
   const image = async (request: ImageRequest, tool: ImageTool, o: { approvalId?: string; planId?: string; retryOf?: string } = {}) => {
     const outDir = join(runs, `image-${++n}`);
     const r = await runImageCall(
@@ -72,7 +79,7 @@ function world() {
     const r = cli(["--package", "--route", route, "--facts", factsPath, "--artifact-id", `DA-20261029-pk${String(id).padStart(4, "0")}`, "--shop-id", "fictional-wagashi", "--shop-name", "架空菓庵", "--out", join(runs, `pkg-${id}`), "--result", result, ...extra]);
     return { ...r, result };
   };
-  return { base, state, runs, ledger, factsPath, briefPath, cli, design, prerender, image, pkg };
+  return { base, state, runs, ledger, factsPath, briefPath, cli, design, prerender, prerenderOk, image, pkg };
 }
 
 const saved: ImageTool = async () => ({ png: colourPng(1024, 1024), width: 1024, height: 1024, outcome: "IMAGE_SAVED", stopCode: null, cliVersion: "0.163.0", model: "gpt-fictional-image", threadId: null });
@@ -130,7 +137,7 @@ describe("route C end to end: design → pre-render → one approved image → p
     const a = answer({ asset: "story", css });
     a.prototype.html = a.prototype.html.replace("</footer>", '</footer><svg width="40" height="40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#6b2e2e"/></svg>');
     const d = await w.design("C_hybrid", a);
-    expect(w.prerender(d.outDir).out).toMatchObject({ status: "ready" });
+    expect(w.prerenderOk(d.outDir).out).toMatchObject({ status: "ready" });
   }, 60_000);
 });
 
@@ -138,7 +145,7 @@ describe("records must agree before anything is used", () => {
   it("an image request changed after the pre-render is refused before the approval is used", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     let called = 0;
     const tool: ImageTool = async (o) => ((called += 1), saved(o));
     // the prompt changed but not its SHA
@@ -187,7 +194,7 @@ describe("records must agree before anything is used", () => {
   it("a picture made from another prompt than the one the checks rebuild is not packaged", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     const other = `${req.prompt} (edited)`;
     const img = await w.image({ ...req, prompt: other, prompt_sha256: sha256(Buffer.from(other, "utf8")), prompt_chars: other.length }, saved);
     expect(img.r.status).toBe("succeeded");
@@ -197,7 +204,7 @@ describe("records must agree before anything is used", () => {
   it("a picture file swapped after the call is not packaged", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const img = await w.image(readRequest(w.prerender(d.outDir).dir), saved);
+    const img = await w.image(readRequest(w.prerenderOk(d.outDir).dir), saved);
     writeFileSync(join(img.outDir, "image.png"), colourPng(1024, 1000));
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "RECORD_MISMATCH" });
   }, 60_000);
@@ -211,7 +218,7 @@ describe("image failures follow the owner's rules (never rewritten as a success)
     expect(none.out).toMatchObject({ status: "done", record: { route: "B_html_prototype" } });
     expect((none.out.record as { warnings: string[] }).warnings).toContain("fallback_from_c_hybrid:image_TOOL_NOT_CALLED");
 
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     const img = await w.image(req, failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"));
     expect(img.r).toMatchObject({ status: "stopped", stage: "call", code: "CODEX_IMAGE_TOOL_FAILED", outcome: "TOOL_FAILED" });
     expect(existsSync(join(img.outDir, "image.png"))).toBe(false);
@@ -223,7 +230,7 @@ describe("image failures follow the owner's rules (never rewritten as a success)
   it("an essential picture that failed stops for the owner; a policy refusal is never bypassed", async () => {
     const w = world();
     const hero = await w.design("C_hybrid", answer({ asset: "hero" }));
-    const req = readRequest(w.prerender(hero.outDir).dir);
+    const req = readRequest(w.prerenderOk(hero.outDir).dir);
     expect(req.essential).toBe(true);
     expect(readFileSync(join(w.runs, readdirSync(w.runs).filter((f) => f.startsWith("pre-")).at(-1)!, "prerender.md"), "utf8")).toContain("主役画像: はい");
     const img = await w.image(req, failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"));
@@ -234,14 +241,14 @@ describe("image failures follow the owner's rules (never rewritten as a success)
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", hero2.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED" });
 
     const story = await w.design("C_hybrid", answer({ asset: "story" }), { plan: "plan-fictional-2" });
-    const policy = await w.image(readRequest(w.prerender(story.outDir).dir), failed("TOOL_FAILED_POLICY", "CODEX_IMAGE_TOOL_FAILED"));
+    const policy = await w.image(readRequest(w.prerenderOk(story.outDir).dir), failed("TOOL_FAILED_POLICY", "CODEX_IMAGE_TOOL_FAILED"));
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", story.outDir, "--image", policy.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_POLICY_REFUSAL", ownerCheck: true });
   }, 120_000);
 
   it("a tool result that claims a saved picture without one is a fault, never a success", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const img = await w.image(readRequest(w.prerender(d.outDir).dir), async () => ({ png: null, width: null, height: null, outcome: "IMAGE_SAVED", stopCode: null, cliVersion: null, model: null, threadId: null }));
+    const img = await w.image(readRequest(w.prerenderOk(d.outDir).dir), async () => ({ png: null, width: null, height: null, outcome: "IMAGE_SAVED", stopCode: null, cliVersion: null, model: null, threadId: null }));
     expect(img.r).toMatchObject({ status: "stopped", code: "IMAGE_TOOL_RESULT_INVALID" });
   }, 60_000);
 });
@@ -250,7 +257,7 @@ describe("each image is its own approval, inside the plan's limits", () => {
   it("an approval is never reused: not the design's, not an earlier image's, whatever the outcome", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     expect((await w.image(req, saved, { approvalId: req.design.approval_id })).r).toMatchObject({ code: "APPROVAL_ALREADY_USED", stage: "precheck" });
     await w.image(req, failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"), { approvalId: "fictional-image-once" });
     expect((await w.image(req, saved, { approvalId: "fictional-image-once" })).r).toMatchObject({ code: "APPROVAL_ALREADY_USED" });
@@ -260,7 +267,7 @@ describe("each image is its own approval, inside the plan's limits", () => {
     const w = world();
     const c = await w.design("C_hybrid", answer({ asset: "story" }));
     await w.design("B_html_prototype", answer());
-    const req = readRequest(w.prerender(c.outDir).dir);
+    const req = readRequest(w.prerenderOk(c.outDir).dir);
     await w.image(req, saved);
     const a = await runImageCall(
       { route: "A_image", prompt: "concept", common: { humanApprovalConfirmed: true, approvalId: "fictional-concept-1", planId: "plan-fictional-1", retryOf: null, expected: { promptSha256: sha256(Buffer.from("concept")), promptChars: 7, commit: COMMIT }, outDir: join(w.runs, "concept-1") } },
@@ -282,14 +289,14 @@ describe("Fresh Review 1 fixes", () => {
   it("an image call the ledger knows of must be given to the package: never packaged as 'not run'", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    await w.image(readRequest(w.prerender(d.outDir).dir), failed("TOOL_FAILED_POLICY", "CODEX_IMAGE_TOOL_FAILED"));
+    await w.image(readRequest(w.prerenderOk(d.outDir).dir), failed("TOOL_FAILED_POLICY", "CODEX_IMAGE_TOOL_FAILED"));
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_RUN_NOT_GIVEN" });
   }, 60_000);
 
   it("an image request for a design run that did not succeed, or under another plan, is refused before anything is used", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     let called = 0;
     const tool: ImageTool = async (o) => ((called += 1), saved(o));
     expect((await w.image(req, tool, { planId: "plan-fictional-9" })).r).toMatchObject({ code: "IMAGE_REQUEST_OTHER_PLAN", stage: "precheck" });
@@ -303,7 +310,7 @@ describe("Fresh Review 1 fixes", () => {
   it("an aborted image is never a fallback: the package stops", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const img = await w.image(readRequest(w.prerender(d.outDir).dir), async () => Promise.reject(new CodexAbortedError()));
+    const img = await w.image(readRequest(w.prerenderOk(d.outDir).dir), async () => Promise.reject(new CodexAbortedError()));
     expect(img.r).toMatchObject({ status: "stopped", code: "CODEX_ABORTED", aborted: true });
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "CODEX_IMAGE_ABORTED" });
   }, 60_000);
@@ -311,12 +318,12 @@ describe("Fresh Review 1 fixes", () => {
   it("a failure without an image outcome: 'not called' only when it stopped before the tool; otherwise the run stops", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     const signIn = await w.image(req, async () => Promise.reject(new CodexError("CODEX_NOT_SIGNED_IN", "x")));
     const fell = w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", signIn.outDir]);
     expect(fell.out).toMatchObject({ status: "done", record: { route: "B_html_prototype" } });
     const d2 = await w.design("C_hybrid", answer({ asset: "story" }), { plan: "plan-fictional-2" });
-    const odd = await w.image(readRequest(w.prerender(d2.outDir).dir), async () => Promise.reject(new Error("boom")));
+    const odd = await w.image(readRequest(w.prerenderOk(d2.outDir).dir), async () => Promise.reject(new Error("boom")));
     expect(odd.r).toMatchObject({ code: "CODEX_UNEXPECTED" });
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d2.outDir, "--image", odd.outDir]).out).toMatchObject({ status: "stopped", code: "RUN_ASSET_PORT_FAILED" });
   }, 120_000);
@@ -339,7 +346,7 @@ describe("Fresh Review 2 fixes", () => {
   it("a .env found after Codex ran: never 'not called' — the package stops", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const img = await w.image(readRequest(w.prerender(d.outDir).dir), failed("not_applicable", "CODEX_RESULT_DISCARDED_DOTENV"));
+    const img = await w.image(readRequest(w.prerenderOk(d.outDir).dir), failed("not_applicable", "CODEX_RESULT_DISCARDED_DOTENV"));
     expect(img.r).toMatchObject({ code: "CODEX_RESULT_DISCARDED_DOTENV" });
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "RUN_ASSET_PORT_FAILED" });
   }, 60_000);
@@ -347,14 +354,14 @@ describe("Fresh Review 2 fixes", () => {
   it("a usage limit waits: never a fallback to B", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const img = await w.image(readRequest(w.prerender(d.outDir).dir), failed("TOOL_NOT_CALLED", "CODEX_QUOTA"));
+    const img = await w.image(readRequest(w.prerenderOk(d.outDir).dir), failed("TOOL_NOT_CALLED", "CODEX_QUOTA"));
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "CODEX_QUOTA" });
   }, 60_000);
 
   it("a failed image whose retry succeeded: the successful call must be the one given", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const req = readRequest(w.prerender(d.outDir).dir);
+    const req = readRequest(w.prerenderOk(d.outDir).dir);
     const first = await w.image(req, failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"), { approvalId: "fictional-img-first" });
     const retry = await w.image(req, saved, { approvalId: "fictional-img-retry", retryOf: "fictional-img-first" });
     expect(retry.r).toMatchObject({ status: "succeeded", receipt: { slot: "retry-1" } });
@@ -365,7 +372,7 @@ describe("Fresh Review 2 fixes", () => {
   it("an image call for another picture (another prompt) does not block a design that had none", async () => {
     const w = world();
     const one = await w.design("C_hybrid", answer({ asset: "story" }));
-    await w.image(readRequest(w.prerender(one.outDir).dir), failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"));
+    await w.image(readRequest(w.prerenderOk(one.outDir).dir), failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"));
     const other = answer({ asset: "story" });
     other.prototype.html = other.prototype.html.replace("A wrapped dorayaki on rice paper, morning light", "Two wrapped sweets side by side in soft evening light");
     const two = await w.design("C_hybrid", other);
@@ -375,7 +382,7 @@ describe("Fresh Review 2 fixes", () => {
   it("an image recorded under another plan than its design is not packaged", async () => {
     const w = world();
     const d = await w.design("C_hybrid", answer({ asset: "story" }));
-    const img = await w.image(readRequest(w.prerender(d.outDir).dir), saved);
+    const img = await w.image(readRequest(w.prerenderOk(d.outDir).dir), saved);
     const id = (img.r as { receipt: { approval_id: string } }).receipt.approval_id;
     for (const f of [join(img.outDir, "call.json"), join(w.state, "approvals", id, "receipt.json")]) {
       const j = JSON.parse(readFileSync(f, "utf8"));
