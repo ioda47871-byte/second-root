@@ -206,8 +206,11 @@ export const REVOKE_REASON_LABEL: Readonly<Record<RevokeReason, string>> = {
 };
 
 /** §4.6・§9.4: what withdrawing a quality approval does (shown before the admin confirms). */
-export const WITHDRAW_CONFIRM_TEXT =
-  "品質承認を取り下げると、この版は下書きに戻ります。この版での送信承認はやり直しになります。すでに送信済みの相手には、送った版を出し続けます。";
+/**
+ * review of #251 L1: no send approval can pin a version while versioned sharing is off, so nothing here is "redone";
+ * what changes for sending is said by WITHDRAW_SEND_EFFECT_TEXT.
+ */
+export const WITHDRAW_CONFIRM_TEXT = "品質承認を取り下げると、この版は下書きに戻り、この店舗には品質承認済みの版が無くなります。";
 
 /** §6.6・§9.4 (owner decision 2026-11-10): what revoking a version does (two-step confirmation). */
 export const REVOKE_CONFIRM_TEXT =
@@ -278,14 +281,37 @@ export const SEND_STOP_ACKNOWLEDGEMENT = "品質承認すると、この店舗�
  * (sales_withdraw_demo_quality_review / sales_revoke_demo_version clear sales_demos.approved_version_id, and
  * sales_demo_version_send_block refuses nothing without an approved version). Nothing is approved automatically.
  */
-export const WITHDRAW_SEND_EFFECT_TEXT =
-  "取り下げると、この店舗には品質承認済みの版が無くなり、送信承認の「デモを共有できない」の停止は外れます。新しい送信は今までどおり React のデモで承認できます。ほかの版を自動で品質承認することはありません。";
-export const REVOKE_EFFECTS: readonly string[] = [
-  "この版の描画画像と頁は、管理者のプレビューでも次の読み込みから表示されなくなります（404）。",
-  "この版の品質承認は無効になります。取り消しは元に戻せません。",
-  "この版が送信に使う品質承認版なら、承認版は外れます。新しい送信は品質承認済みの版が無い状態（React のデモ）で承認します。ほかの版を自動で品質承認することはありません。",
-  "送信済みの相手の共有 URL はこの版を表示せず 404 になります。ほかの版や React のデモへは自動で切り替わりません。",
-];
+/**
+ * review of #251 L1 — what the database does when the approved version goes away (DEV-196c): approved_version_id
+ * becomes null, so sales_demo_version(d) is the legacy hash again and sales_approval_is_current matches
+ * demo_version_id = null again. A send approval made with the React demo before the quality approval, not yet sent,
+ * whose draft, recipient and demo are unchanged, becomes current — sendable — again WITHOUT being approved again.
+ * (tests/integration/demo-lifecycle.test.ts pins this.)
+ */
+export const APPROVED_VERSION_REMOVED_SEND_EFFECT =
+  "品質承認の前に承認していた未送信の送信承認（React のデモ）は、文面・宛先・デモが変わっていなければ、再承認なしで再び有効になり、送れるようになります。新しい送信も React のデモで承認できます。ほかの版を自動で品質承認することはありません。";
+export const WITHDRAW_SEND_EFFECT_TEXT = `取り下げると、送信承認の「デモを共有できない」の停止は外れます。${APPROVED_VERSION_REMOVED_SEND_EFFECT}`;
+
+/** How many such unsent React-demo send approvals the shop has (an upper bound: unchanged ones only become current). */
+export function unsentLegacyApprovalsText(n: number): string | null {
+  return n > 0 ? `この店舗には、品質承認の前に承認した未送信の送信承認（React のデモ）が ${n} 件あります。` : null;
+}
+
+/**
+ * What revoking this version does (review of #251 L2: each line only when it applies).
+ * - hasActiveApproval: the version has an active quality approval (it is invalidated)
+ * - isApprovedVersion: the version is the shop's approved version (it is removed; see above)
+ */
+export function revokeEffects(o: { hasActiveApproval: boolean; isApprovedVersion: boolean }): string[] {
+  return [
+    "この版の描画画像と頁は、管理者のプレビューでも次の読み込みから表示されなくなります（404）。",
+    o.hasActiveApproval ? "この版の品質承認は無効になります。取り消しは元に戻せません。" : "取り消しは元に戻せません。",
+    o.isApprovedVersion
+      ? `この版は送信に使う品質承認版なので、承認版は外れ、送信承認の「デモを共有できない」の停止は外れます。${APPROVED_VERSION_REMOVED_SEND_EFFECT}`
+      : "ほかの版を自動で品質承認することはありません。",
+    "版での共有はまだ無効なので、相手に送った共有 URL でこの版が表示されていることはありません（共有が有効になった後も、取り消した版は 404 で、ほかの版や React のデモへは切り替わりません）。",
+  ];
+}
 /** The urgent revoke says what it is for and that it is the same, immediate, irreversible revoke. */
 export const URGENT_REVOKE_TEXT =
   "急ぎの取り消し: 事実の誤り・権利の苦情・安全上の懸念で、今すぐこの版を止めるときに使います。取り消しの効果は通常と同じで、すぐに効き、元に戻せません。";

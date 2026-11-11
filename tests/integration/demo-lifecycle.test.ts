@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { submitRevoke, submitWithdraw } from "@/lib/admin/demo-lifecycle";
@@ -10,7 +10,7 @@ import { APPROVAL_OPEN_MESSAGE } from "@/lib/sales/demo-version/admin-messages";
 import { QUALITY_CHECKLIST_ITEMS } from "@/lib/sales/demo-version/quality";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
 import { seedDemoVersion, type SeededVersion } from "../support/seed-demo-version";
-import { createUser, db, makeAdmin, serviceClient, signedInClient } from "./helpers";
+import { approve as approveSend, candidate, createUser, db, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-196d-6: withdrawing a quality approval and revoking a version (normal / urgent) through the server's re-check
 // and the DEV-196c functions, on the LOCAL stack, as a signed-in admin. No object is read from Storage (the artifact
@@ -24,6 +24,8 @@ let adminId: string;
 let outsider: SupabaseClient;
 
 beforeAll(async () => {
+  // like the other integration files: a clean sales schema (no run left in progress, no open approval)
+  await resetSalesData();
   const n = randomBytes(4).toString("hex");
   adminId = await createUser(`demo-life-admin-${n}@test.example.com`);
   await makeAdmin(adminId);
@@ -170,3 +172,55 @@ describe("an open send (send_opened)", () => {
     expect((await admin.rpc("sales_revoke_demo_version", { p_version_id: v.versionId, p_code: "FACT_ERROR" })).error?.message).toContain("approval_open");
   });
 });
+
+// review of #251 L1: the screen says that removing the approved version makes an earlier, unsent React-demo send
+// approval current — sendable — again without re-approval. This pins that sentence to what the database does.
+describe("the database behaviour the withdraw / revoke texts describe (DEV-196c)", () => {
+  async function shopWithSendApproval() {
+    const runId = randomUUID();
+    // a recipient of its own every time (the open-approval recipient index is shared across runs)
+    const handle = `life_${randomBytes(5).toString("hex")}`;
+    await verifiedRun(runId, { c01: candidate({ instagram_handle: handle, instagram_url: `https://www.instagram.com/${handle}/` }) });
+    await rpc("sales_run_begin_persist", { p_run_id: runId });
+    const p = await rpc<{ prospect_id: string; stage: string }>("sales_persist_candidate", { p_run_id: runId, p_key: "c01" });
+    expect(p.stage).toBe("outreach_ready");
+    await rpc("sales_run_finalize", { p_run_id: runId });
+    const { rows } = await db.query(
+      "select d.id as demo_id, o.id as outreach_id from public.sales_demos d join public.sales_outreaches o on o.prospect_id = d.prospect_id and o.kind = 'initial' where d.prospect_id = $1",
+      [p.prospect_id],
+    );
+    const sent = await approveSend(admin, rows[0].outreach_id);
+    expect(sent.error, sent.error?.message).toBeNull();
+    return { prospectId: p.prospect_id as string, demoId: rows[0].demo_id as string, outreachId: rows[0].outreach_id as string, approvalId: (sent.data as { approval_id: string }).approval_id };
+  }
+  const current = async (approvalId: string) =>
+    (await one(
+      `select public.sales_approval_is_current(a, o, d) as current, a.state, a.demo_version_id
+         from public.sales_outreach_approvals a join public.sales_outreaches o on o.id = a.outreach_id join public.sales_demos d on d.prospect_id = a.prospect_id
+        where a.id = $1`,
+      [approvalId],
+    )) as { current: boolean; state: string; demo_version_id: string | null };
+
+  for (const how of ["withdraw", "revoke"] as const) {
+    it(`a React-demo send approval: current → not current after the quality approval → current again after the ${how}, without re-approval`, async () => {
+      const s = await shopWithSendApproval();
+      expect(await current(s.approvalId)).toEqual({ current: true, state: "approved", demo_version_id: null });
+      const v = await seedDemoVersion(db, serviceClient(), { upload: false, into: { prospectId: s.prospectId, demoId: s.demoId } });
+      const reviewId = await approve(v);
+      expect(await current(s.approvalId)).toEqual({ current: false, state: "approved", demo_version_id: null });
+      // the page counts it (the shop's unsent React-demo send approvals)
+      const page = await loadDemoVersionsPage(s.prospectId, { env: ENV, now: new Date(), client: admin as never });
+      expect(page.kind === "ok" && page.view.unsentLegacyApprovals).toBe(1);
+      const r =
+        how === "withdraw"
+          ? await submitWithdraw({ prospectId: s.prospectId, versionId: v.versionId, reviewId, bundleSha256: await bundle(v), confirmed: true }, deps())
+          : await submitRevoke({ prospectId: s.prospectId, versionId: v.versionId, bundleSha256: await bundle(v), code: "QUALITY_PROBLEM", urgent: false, confirmed: true }, deps());
+      expect(r.ok, JSON.stringify(r)).toBe(true);
+      // the same approval row, never approved again, is current — and the send screen can be opened with it
+      expect(await current(s.approvalId)).toEqual({ current: true, state: "approved", demo_version_id: null });
+      const opened = await admin.rpc("sales_mark_send_opened", { p_approval_id: s.approvalId, p_via: "instagram_profile", p_design_enabled: false });
+      expect(opened.error, opened.error?.message).toBeNull();
+    });
+  }
+});
+

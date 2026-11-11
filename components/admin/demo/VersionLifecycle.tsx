@@ -12,9 +12,10 @@ import { useState, useTransition } from "react";
 import { revokeDemoVersion, withdrawDemoApproval } from "@/app/admin/sales/_actions/demo-versions";
 import {
   APPROVAL_OPEN_MESSAGE,
-  REVOKE_EFFECTS,
   REVOKE_REASON_LABEL,
   REVOKE_REASONS,
+  revokeEffects,
+  unsentLegacyApprovalsText,
   URGENT_REVOKE_TEXT,
   WITHDRAW_CONFIRM_TEXT,
   WITHDRAW_SEND_EFFECT_TEXT,
@@ -23,10 +24,29 @@ import {
 import { URGENT_REVOKE_REASONS } from "@/lib/sales/demo-version/lifecycle-input";
 import styles from "./demo.module.css";
 
-export type LifecycleVersion = { id: string; versionNo: number; bundleSha256: string; revocable: boolean; activeApprovalId: string | null };
+export type LifecycleVersion = {
+  id: string;
+  versionNo: number;
+  bundleSha256: string;
+  revocable: boolean;
+  activeApprovalId: string | null;
+  /** this version is the shop's approved version (sales_demos.approved_version_id) */
+  isApprovedVersion: boolean;
+};
 type Step = null | "withdraw" | "revoke" | "urgent";
 
-export default function VersionLifecycle({ prospectId, version, openSends }: { prospectId: string; version: LifecycleVersion; openSends: number }) {
+export default function VersionLifecycle({
+  prospectId,
+  version,
+  openSends,
+  unsentLegacyApprovals = 0,
+}: {
+  prospectId: string;
+  version: LifecycleVersion;
+  openSends: number;
+  /** unsent React-demo send approvals of this shop (shown when removing the approved version would reactivate them) */
+  unsentLegacyApprovals?: number;
+}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(null);
   const [code, setCode] = useState<RevokeReason | "">("");
@@ -60,11 +80,13 @@ export default function VersionLifecycle({ prospectId, version, openSends }: { p
       else setResult({ kind: "error", text: r.error });
     });
 
+  const legacyCount = unsentLegacyApprovalsText(unsentLegacyApprovals);
   const effects = (
     <ul className={styles.list} data-revoke-effects="">
-      {REVOKE_EFFECTS.map((e) => (
+      {revokeEffects({ hasActiveApproval: version.activeApprovalId !== null, isApprovedVersion: version.isApprovedVersion }).map((e) => (
         <li key={e}>{e}</li>
       ))}
+      {version.isApprovedVersion && legacyCount && <li data-legacy-approvals={unsentLegacyApprovals}>{legacyCount}</li>}
     </ul>
   );
 
@@ -86,6 +108,11 @@ export default function VersionLifecycle({ prospectId, version, openSends }: { p
         <div className={styles.item} data-withdraw="">
           <p style={{ margin: 0 }}>{WITHDRAW_CONFIRM_TEXT}</p>
           <p className={styles.note}>{WITHDRAW_SEND_EFFECT_TEXT}</p>
+          {legacyCount && (
+            <p className={styles.note} data-legacy-approvals={unsentLegacyApprovals}>
+              {legacyCount}
+            </p>
+          )}
           {step === "withdraw" ? (
             <div className={styles.warn} data-confirm-step="withdraw">
               <p style={{ margin: 0 }}>本当に品質承認を取り下げますか。</p>

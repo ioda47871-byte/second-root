@@ -194,6 +194,11 @@ export type DemoVersionsView = {
   /** §9.5: send approvals of this shop in send_opened (to settle on the Today screen first) */
   openSends: { approvalId: string; outreachId: string }[];
   /**
+   * review of #251 L1: unsent send approvals made with the React demo (state approved, no version pinned). If the
+   * approved version goes away, those whose draft / recipient / demo are unchanged become current again.
+   */
+  unsentLegacyApprovals: number;
+  /**
    * Low (d): the shop has an approved version id, so its send approvals are refused for this reason (re-derived like
    * sales_demo_version_send_block). null: no approved version (sending uses the React demo as before).
    */
@@ -388,6 +393,7 @@ export function buildDemoVersionsView(o: {
     versions,
     approvedVersionId: o.approvedVersionId,
     openSends,
+    unsentLegacyApprovals: o.approvals.filter((a) => a.state === "approved" && a.demo_version_id === null).length,
     sendStop: sendStop(o, versions, factsKnown),
     lineage: fullLineage.slice(0, LINEAGE_DISPLAY_LIMIT),
     lineageHidden: Math.max(0, fullLineage.length - LINEAGE_DISPLAY_LIMIT),

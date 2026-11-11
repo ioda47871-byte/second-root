@@ -147,8 +147,16 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
       {selected && !selected.revoked && (selected.revocable || selected.activeApproval) && (
         <VersionLifecycle
           prospectId={data.prospectId}
-          version={{ id: selected.id, versionNo: selected.versionNo, bundleSha256: selected.bundleSha256, revocable: selected.revocable, activeApprovalId: selected.activeApproval?.id ?? null }}
+          version={{
+            id: selected.id,
+            versionNo: selected.versionNo,
+            bundleSha256: selected.bundleSha256,
+            revocable: selected.revocable,
+            activeApprovalId: selected.activeApproval?.id ?? null,
+            isApprovedVersion: view.approvedVersionId === selected.id,
+          }}
           openSends={view.openSends.length}
+          unsentLegacyApprovals={view.unsentLegacyApprovals}
         />
       )}
       {selected && <ReviewHistory reviews={selected.reviews} />}

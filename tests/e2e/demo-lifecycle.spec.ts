@@ -84,7 +84,8 @@ for (const vp of [
     await login(page);
     await open(page, v2);
     const panel = page.locator("[data-lifecycle]");
-    await expect(panel.locator("[data-withdraw]")).toContainText("この版は下書きに戻ります");
+    await expect(panel.locator("[data-withdraw]")).toContainText("この版は下書きに戻り");
+    await expect(panel.locator("[data-withdraw]")).toContainText("再承認なしで再び有効");
     await expect(panel.locator("[data-withdraw]")).toContainText("「デモを共有できない」の停止は外れます");
     await panel.getByRole("button", { name: "品質承認を取り下げる…" }).click();
     await expect(panel.locator('[data-confirm-step="withdraw"]')).toBeVisible();

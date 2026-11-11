@@ -4,8 +4,10 @@ import VersionLifecycle from "@/components/admin/demo/VersionLifecycle";
 import {
   APPROVAL_OPEN_MESSAGE,
   LIFECYCLE_REFUSAL_LABEL,
-  REVOKE_EFFECTS,
+  APPROVED_VERSION_REMOVED_SEND_EFFECT,
   REVOKE_REASON_LABEL,
+  revokeEffects,
+  unsentLegacyApprovalsText,
   URGENT_REVOKE_TEXT,
   WITHDRAW_CONFIRM_TEXT,
   WITHDRAW_SEND_EFFECT_TEXT,
@@ -187,15 +189,17 @@ describe("withdrawDemoApproval / revokeDemoVersion (server actions)", () => {
   });
 });
 
+const panel = (o: { approval?: boolean; revocable?: boolean; openSends?: number; legacy?: number } = {}) =>
+  renderToStaticMarkup(
+    <VersionLifecycle
+      prospectId={PROSPECT}
+      version={{ id: id(1), versionNo: 1, bundleSha256: h("1"), revocable: o.revocable ?? true, activeApprovalId: o.approval === false ? null : REVIEW, isApprovedVersion: o.approval !== false }}
+      openSends={o.openSends ?? 0}
+      unsentLegacyApprovals={o.legacy ?? 0}
+    />,
+  );
+
 describe("VersionLifecycle (markup)", () => {
-  const panel = (o: { approval?: boolean; revocable?: boolean; openSends?: number } = {}) =>
-    renderToStaticMarkup(
-      <VersionLifecycle
-        prospectId={PROSPECT}
-        version={{ id: id(1), versionNo: 1, bundleSha256: h("1"), revocable: o.revocable ?? true, activeApprovalId: o.approval === false ? null : REVIEW }}
-        openSends={o.openSends ?? 0}
-      />,
-    );
   it("each action starts as a first step only; revoking needs a reason chosen (no default); the urgent revoke is distinct", () => {
     const html = panel();
     expect(html).toContain(WITHDRAW_CONFIRM_TEXT);
@@ -212,8 +216,7 @@ describe("VersionLifecycle (markup)", () => {
     const urgent = html.split('data-revoke="urgent"')[1]!;
     for (const r of URGENT_REVOKE_REASONS) expect(urgent).toContain(REVOKE_REASON_LABEL[r]);
     expect(urgent).not.toContain(REVOKE_REASON_LABEL.OWNER_DECISION);
-    expect(REVOKE_EFFECTS.join("")).toContain("404");
-    expect(REVOKE_EFFECTS.join("")).toContain("自動で品質承認することはありません");
+    expect(revokeEffects({ hasActiveApproval: false, isApprovedVersion: false }).join("")).toContain("404");
   });
   it("an open send: every action is disabled, the fixed message and the way to the Today screen are shown", () => {
     const html = panel({ openSends: 1 });
@@ -226,3 +229,45 @@ describe("VersionLifecycle (markup)", () => {
     expect(panel({ revocable: false })).not.toContain("版を取り消す");
   });
 });
+
+describe("review of #251: the texts say exactly what the database does", () => {
+  it("L1: withdrawing says earlier unsent React-demo send approvals become current again without re-approval; nothing is 'redone'", () => {
+    expect(WITHDRAW_SEND_EFFECT_TEXT).toContain("再承認なしで再び有効");
+    expect(WITHDRAW_SEND_EFFECT_TEXT).toContain(APPROVED_VERSION_REMOVED_SEND_EFFECT);
+    expect(WITHDRAW_CONFIRM_TEXT).not.toContain("やり直し");
+    expect(unsentLegacyApprovalsText(0)).toBeNull();
+    expect(unsentLegacyApprovalsText(2)).toContain("2 件");
+  });
+  it("L1 / L2: each revoke line only when it applies", () => {
+    const plain = revokeEffects({ hasActiveApproval: false, isApprovedVersion: false }).join("\n");
+    expect(plain).not.toContain("品質承認は無効になります");
+    expect(plain).not.toContain("再び有効");
+    expect(plain).toContain("取り消しは元に戻せません");
+    expect(plain).toContain("自動で品質承認することはありません");
+    const approved = revokeEffects({ hasActiveApproval: true, isApprovedVersion: true }).join("\n");
+    expect(approved).toContain("この版の品質承認は無効になります");
+    expect(approved).toContain(APPROVED_VERSION_REMOVED_SEND_EFFECT);
+    const superseded = revokeEffects({ hasActiveApproval: false, isApprovedVersion: false });
+    expect(superseded.join("")).not.toContain("承認版は外れ");
+  });
+  it("the panel shows the count of unsent React-demo send approvals only when there are some", () => {
+    expect(panel({ legacy: 3 })).toContain("未送信の送信承認（React のデモ）が 3 件");
+    expect(panel({ legacy: 0 })).not.toContain("data-legacy-approvals");
+    // a draft with no approval: the revoke's effects never mention an approval to invalidate
+    const draft = panel({ approval: false });
+    expect(draft).not.toContain("品質承認は無効");
+  });
+  it("the view model counts unsent React-demo send approvals (approved, no version pinned)", () => {
+    const v = buildDemoVersionsView({
+      versions: [version()], files, images: [], reviews: [approval], approvedVersionId: id(1), demoDisabled: false, currentFactsSha256: h("f"), now: NOW,
+      approvals: [
+        { id: id(810), outreach_id: id(811), state: "approved", demo_version_id: null },
+        { id: id(812), outreach_id: id(813), state: "sent", demo_version_id: null },
+        { id: id(814), outreach_id: id(815), state: "superseded", demo_version_id: null },
+        { id: id(816), outreach_id: id(817), state: "approved", demo_version_id: id(1) },
+      ],
+    });
+    expect(v.unsentLegacyApprovals).toBe(1);
+  });
+});
+

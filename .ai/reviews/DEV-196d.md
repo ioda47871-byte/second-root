@@ -292,3 +292,14 @@ branch `feature/dev-196d-6-withdraw-revoke` (`origin/develop` 11c44b7 から)。
 - 196d-3 の e2e: 「取り消しはまだ無い」を「判定と取り消しのボタンは初め押せない」に変えた。
 - 結果 (2026-11-11、隔離した stack `sr-dev196d`): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1265 件、統合の全体 27 files / 466 件、e2e の全体 149 passed / 31 skipped (旗を立てる 5 つの spec の mobile の複製)。lint・typecheck・check:secrets・build 合格。
 - 見つけて直したこと: open send の e2e が作った `send_opened` の承認を残すと、共有の今日の画面 (最大 5 件) を使うほかの spec (today・mobile-qa・email-send の mobile) が落ちた。spec の `afterAll` で、その spec が作った outreach (承認は cascade) を消すようにした。実行の後に `send_opened` が 0 件であることを確かめた。
+
+### 196d-6 review round 1 (coordinator の独立レビュー、f6b0343: C0 H0 M0 L2) と修正
+
+| # | 指摘 | 修正 | 回帰テスト |
+|---|---|---|---|
+| L1 (正確さ) | 取り下げ・承認版の取り消しの後の送信の説明が DB の動きと違った。両方の関数が `approved_version_id` を null にすると、`sales_demo_version(d)` は昔の hash に戻り、`sales_approval_is_current` は `demo_version_id = null` で再び一致する。だから品質承認の前に React のデモで承認していた未送信の送信承認は、**再承認なしで再び有効** (送れる) になる。また「この版での送信承認はやり直し」は、版での共有が無効の間は版を固定した送信承認が無いので誤り | 文言を DB のとおりに: `APPROVED_VERSION_REMOVED_SEND_EFFECT` (「品質承認の前に承認していた未送信の送信承認（React のデモ）は、文面・宛先・デモが変わっていなければ、再承認なしで再び有効になり、送れるようになります。新しい送信も React のデモで承認できます。ほかの版を自動で品質承認することはありません。」)。`WITHDRAW_CONFIRM_TEXT` から「やり直し」と「送った版を出し続けます」を外した。取り消しでは**承認版のときだけ**この文を出す。件数: 既にある RLS の読み出し (`sales_outreach_approvals` の `state`・`demo_version_id`) から、この店舗の未送信の React のデモの送信承認 (`approved` で版の固定なし) の数を出す (`unsentLegacyApprovals`、「…が N 件あります」。文面などが変わっていないものだけが有効になるので上限の数)。新しい query・grant はない | unit: 文言 (「再承認なしで再び有効」・「やり直し」が無い)・件数の文・view model の数え方 (approved かつ版の固定なしだけ)・panel の件数の表示。**統合: React のデモの送信承認が current → 品質承認で not current → 取り下げ / 取り消しで同じ行が再承認なしに current に戻り、送信画面を開ける** (2 件、本物の関数) |
+| L2 (正確さ) | 取り消しの説明「この版の品質承認は無効になります」がすべての取り消しで出ていた | `revokeEffects({ hasActiveApproval, isApprovedVersion })` で、有効な品質承認があるときだけその行を出す (無ければ「取り消しは元に戻せません」だけ) | unit: 承認なし (その文が無い)・承認あり (その文がある)・承認版でないとき「承認版は外れ」が無い、panel (下書きの版で「品質承認は無効」が出ない) |
+
+結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1269 件、統合の全体 27 files / 468 件、統合 `demo-lifecycle` 8 件 (2 回続けて)、e2e `demo-lifecycle`・`demo-versions-page` 14 件、lint・typecheck・check:secrets・build 合格。統合の file は他の file と同じく `beforeAll` で `resetSalesData` し、送信承認の宛先は毎回別にした (2 回目の実行で、前の実行の途中の run が `run_in_progress` で残ったため)。
+
+**以前の送信承認が再び有効になることは DEV-196c の DB の動き**であり、この PR は変えていない (画面はそれを正しく書いただけ)。coordinator が DEV-196f の決定として owner に上げる。

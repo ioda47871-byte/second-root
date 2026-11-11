@@ -64,8 +64,9 @@ describe("DEV-196d admin messages", () => {
   it("revoke and withdraw say what happens, including no automatic switch to another demo", () => {
     expect(messages.REVOKE_CONFIRM_TEXT).toContain("自動で切り替わりません");
     expect(messages.REVOKE_CONFIRM_TEXT).toContain("404");
-    expect(messages.WITHDRAW_CONFIRM_TEXT).toContain("下書きに戻ります");
-    expect(messages.WITHDRAW_CONFIRM_TEXT).toContain("送った版を出し続けます");
+    expect(messages.WITHDRAW_CONFIRM_TEXT).toContain("下書きに戻り");
+    // review of #251 L1: no send approval pins a version while versioned sharing is off: nothing is "redone"
+    expect(messages.WITHDRAW_CONFIRM_TEXT).not.toContain("やり直し");
   });
 
   it("covers every status, rights status, checklist item and quality code", () => {
