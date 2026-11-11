@@ -254,3 +254,7 @@ branch `feature/dev-196d-5-quality-approval` (`origin/develop` 9e2a1ae から)�
 **DB の locale への依存**: `\M` の語の文字は DB の locale (`LC_CTYPE`) で決まる。ローカルと CI の DB は `datcollate = datctype = en_US.UTF-8`、encoding `UTF8` (確かめた)。この locale では日本語は語の文字。Staging / Production の locale が違って日本語を語の文字と見ない (たとえば UTF-8 でない `C`) なら、「style.cssを直す」は DB で拒まれ、app の事前の確認とずれる (app は通し、DB が `invalid_note` を返す。DB が判定者なので書き込みは安全側。画面は DB の拒否を Low (a) の同じ文言で出す)。上の統合テストは「style.cssを直す」などの DB の値を明示しているので、**その DB に対して走らせれば違いで落ちる**。Staging で確かめるなら (DEV-196h の Staging の承認の範囲で、今はしない): `select datctype from pg_database where datname = current_database()` と `select public.sales_demo_note_valid('style.cssを直す')` (true のはず)。DB は変えていない。
 
 結果 (2026-11-11): unit (admin・demo-frame・sales・ai-tasks・guardrails) 1253 件合格、統合 `demo-review` 8 件、e2e `demo-review` 6 件、lint・typecheck・check:secrets・build 合格。
+
+### 196d-5 review round 2 (coordinator、差分 5cfedb4 → 1616645)
+
+L1 は直っている: app のメモの規則は DB と両方向で一致 (生成した 868 例と手で選んだ 35 例)。新しい指摘なし: **C0 H0 M0 L0**。CI (1616645) すべて green。merged (#250 → 11c44b7)。
