@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { chromium } from "playwright";
 import sharp from "sharp";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { importPackage, ImportError, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, PackageError, readPackage, writePackage } from "@/lib/demo-version-package/package";
 import { convertPhoto, PhotoError, photoUrlMap, provePhotoUrlRewrite, rewriteCssPhotoUrls, rewriteHtmlPhotoUrls, storedPhotoUrl } from "@/lib/demo-version-package/photos";
@@ -20,6 +20,9 @@ import { cleanupDirs, fixture, INV, newDir, noise, NOW, PAGE, png, RANGES, recOf
 // image and the rights file is fake (a fixture model name, the approved prompt's sha256). The real photos never enter.
 
 afterAll(cleanupDirs);
+// review round 1 CI: the fixtures (sharp), the renders (Chromium) and the CLI (a tsx start per spawn) are slow on a
+// loaded CI shard; the default 5 s is too short for them (as tests/unit/design-agent/browser.test.ts sets)
+vi.setConfig({ testTimeout: 60_000 });
 
 const prepare = (f: Fixture, photoLimit?: number) =>
   prepareSwap({ page: readSwapPage(f.page), rights: JSON.parse(readFileSync(f.rightsPath, "utf8")), depictions: JSON.parse(readFileSync(f.depictionPath, "utf8")), summary: JSON.parse(readFileSync(f.summaryPath, "utf8")), originals: readOriginals(f.originals), forbiddenSha256: new Set(["0".repeat(64)]), now: NOW, ...(photoLimit ? { photoLimit } : {}) });
@@ -317,7 +320,7 @@ describe("package-local.ts --page (the operator's command, on the synthetic swap
   }, 120_000);
   it("refuses a usage without the rights, the originals or the depiction confirmation, and --page with --source (exit 2)", () => {
     for (const args of [["--out", "/tmp/x", "--page", "/tmp/p"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r", "--originals", "/tmp/o"], ["--out", "/tmp/x", "--page", "/tmp/p", "--rights", "/tmp/r", "--originals", "/tmp/o", "--depiction-confirmation", "/tmp/d", "--source", PAGE], ["--out", "/tmp/x", "--rights", "/tmp/r"]]) expect(cli(args).status, args.join(" ")).toBe(2);
-  });
+  }, 120_000);
   it("a refused rights file is a FAIL with its code (exit 1), and no package is written", async () => {
     const f = await fixture({ rights: (r) => (sub(recOf(r, 1), "allowed_uses").public_web = true) });
     const out = join(newDir(), "pkg");
