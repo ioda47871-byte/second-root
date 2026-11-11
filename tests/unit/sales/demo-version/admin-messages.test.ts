@@ -79,6 +79,13 @@ describe("DEV-196d admin messages", () => {
     for (const c of ["CHECKLIST_INVALID", "CHECKLIST_HAS_NG", "RENDER_MISSING", "RENDER_NOT_VIEWED", "DECISION_INVALID"] as const) expect(QUALITY_CODE_LABEL[c]).toBeTruthy();
   });
 
+  it("every blocker the view model can return has the owner's words", () => {
+    const blockers = ["VERSION_NOT_REVIEWABLE", "DEMO_DISABLED", "FACTS_CHANGED", "VALIDATOR_NOT_OK", "RIGHTS_NOT_PREVIEWABLE", "RENDER_MISSING", "RENDER_UNVIEWABLE", "APPROVAL_OPEN"] as const;
+    expect(Object.keys(messages.APPROVE_BLOCKER_LABEL).sort()).toEqual([...blockers].sort());
+    for (const b of blockers) expect(messages.APPROVE_BLOCKER_LABEL[b], b).toBeTruthy();
+    expect(messages.APPROVE_BLOCKER_LABEL.APPROVAL_OPEN).toBe(messages.APPROVAL_OPEN_MESSAGE);
+  });
+
   it("revoke reasons are fixed codes the database accepts", () => {
     for (const r of REVOKE_REASONS) {
       expect(r).toMatch(/^[A-Z][A-Z0-9_]{2,47}$/);

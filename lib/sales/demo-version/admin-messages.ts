@@ -9,6 +9,7 @@
 import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
 import type { RightsStatus } from "./rights";
 import type { VersionStatus } from "./version-state";
+import type { ApproveBlocker } from "./view-model";
 
 /** The leading code of a database error message (`invalid_version_transition:draft->approved` → its first part). */
 export function errorCodeOf(message: string | null | undefined): string {
@@ -118,6 +119,18 @@ export const QUALITY_CODE_LABEL: Readonly<Record<QualityDecisionCode, string>> =
   RENDER_MISSING: "PC1440 か SP390 の描画画像がありません。",
   RENDER_NOT_VIEWED: "描画画像を一番下まで見ていません。",
   DECISION_INVALID: "判定を選んでください。",
+};
+
+/** Why the screen offers no decision (or no approval) for a version: the view model's blockers, in the owner's words. */
+export const APPROVE_BLOCKER_LABEL: Readonly<Record<ApproveBlocker, string>> = {
+  VERSION_NOT_REVIEWABLE: DEMO_VERSION_ERROR_LABEL.version_not_reviewable!,
+  DEMO_DISABLED: DEMO_VERSION_ERROR_LABEL.demo_unavailable!,
+  FACTS_CHANGED: DEMO_VERSION_ERROR_LABEL.demo_facts_changed!,
+  VALIDATOR_NOT_OK: DEMO_VERSION_ERROR_LABEL.validator_not_ok!,
+  RIGHTS_NOT_PREVIEWABLE: DEMO_VERSION_ERROR_LABEL.rights_not_previewable!,
+  RENDER_MISSING: DEMO_VERSION_ERROR_LABEL.render_missing!,
+  RENDER_UNVIEWABLE: "この版には画面で表示できない描画画像があります。すべての描画画像を見られない版は品質承認できません。",
+  APPROVAL_OPEN: APPROVAL_OPEN_MESSAGE,
 };
 
 /** §7.5: advisory only (never blocks). */

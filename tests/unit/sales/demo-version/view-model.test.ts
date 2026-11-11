@@ -102,6 +102,17 @@ describe("buildDemoVersionsView: preview and review", () => {
     expect(v.reviewBlockers).toEqual([]);
   });
 
+  it("a render the screen cannot show (unknown viewport or no size) blocks approval: the database demands every render viewed", () => {
+    const odd = build({ files: [...baseFiles(1), file(1, "renders/watch_200.webp", "render")] }).versions[0]!;
+    expect(odd.approveBlockers).toEqual(["RENDER_UNVIEWABLE"]);
+    expect(odd.reviewBlockers).toEqual([]);
+    const noSize = build({ files: [...baseFiles(1), file(1, "renders/tablet_768.webp", "render", { width: null })] }).versions[0]!;
+    expect(noSize.approveBlockers).toEqual(["RENDER_UNVIEWABLE"]);
+    const tablet = build({ files: [...baseFiles(1), file(1, "renders/tablet_768.webp", "render")] }).versions[0]!;
+    expect(tablet.approveBlockers).toEqual([]);
+    expect(tablet.renders.map((r) => r.viewport)).toEqual(["desktop_1440", "tablet_768", "mobile_390"]);
+  });
+
   it("revoked, expired, uploading and rejected versions are not previewable or reviewable", () => {
     for (const over of [{ status: "revoked", revoked_at: "2026-11-10T00:00:00Z", revoke_code: "FACT_ERROR" }, { expires_at: "2026-11-11T02:59:59Z" }, { status: "uploading" }, { status: "rejected" }, { status: "expired" }, { status: "nonsense" }]) {
       const v = build({ versions: [version(1, over)] }).versions[0]!;

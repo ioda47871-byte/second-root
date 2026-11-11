@@ -131,7 +131,12 @@ export type ReviewView = {
 };
 
 export type ReviewBlocker = "VERSION_NOT_REVIEWABLE" | "DEMO_DISABLED" | "FACTS_CHANGED" | "VALIDATOR_NOT_OK" | "RIGHTS_NOT_PREVIEWABLE";
-export type ApproveBlocker = ReviewBlocker | "RENDER_MISSING" | "APPROVAL_OPEN";
+/**
+ * RENDER_UNVIEWABLE: the version has a render file the screen cannot show (an unknown viewport or no dimensions).
+ * sales_review_demo_version demands that every render of the version was viewed before approving, so the screen does
+ * not offer an approval the database would refuse.
+ */
+export type ApproveBlocker = ReviewBlocker | "RENDER_MISSING" | "RENDER_UNVIEWABLE" | "APPROVAL_OPEN";
 export type UnshareableReason = "versioned_sharing_disabled" | "ai_images" | "photos_not_shareable";
 
 export type VersionView = {
@@ -302,6 +307,7 @@ export function buildDemoVersionsView(o: {
       const missingRequiredRenders = REQUIRED_RENDERS.filter((r) => !renders.some((x) => x.viewport === r));
       const approveBlockers: ApproveBlocker[] = [...reviewBlockers];
       if (missingRequiredRenders.length) approveBlockers.push("RENDER_MISSING");
+      if (files.some((f) => f.role === "render" && !renders.some((r) => r.urlPath === f.path))) approveBlockers.push("RENDER_UNVIEWABLE");
       if (openSends.length) approveBlockers.push("APPROVAL_OPEN");
 
       const parent = v.parent_version_id ? byId.get(v.parent_version_id) ?? null : null;
