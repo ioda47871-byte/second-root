@@ -163,6 +163,21 @@ export const PLAIN_HEADING =
 const PLAIN_HEADING_PREFIX = /^(ご(利用|案内|予約|挨拶|あいさつ|相談|注文|来店|質問|依頼|連絡|支払|契約|紹介)|お(客様|客さま|問い合わせ|問合せ|申し込み|申込|支払い|持ち帰り|手入れ|すすめ|知らせ))/;
 /** A heading addressed to the visitor (こんな方へ, お客様へ): plain, not poetic. 「特別な朝へ」 stays a slogan. */
 const ADDRESSEE_HEADING = /(方|皆さま|皆様|みなさま|お客様|お客さま)へ$/;
+/** What may follow a guide word and still read as a plain heading (ご来店の前に, ご利用の際は). */
+const PLAIN_AFTER_GUIDE = /^(前に|際に|際は|後に|あとに|とき|ときは|方法|注意|注意点|お願い)$/;
+/**
+ * A plain heading: ends in a plain word, is addressed to the visitor, or is a guide word (ご利用, お問い合わせ …)
+ * followed by nothing, a plain word or a plain timing (round 4 L3: the guide word alone does not exempt 「ご利用の朝」
+ * 「ご案内の光」; the rest of the heading is judged too).
+ */
+export function isPlainHeading(text: string): boolean {
+  const n = norm(text);
+  if (PLAIN_HEADING.test(n) || ADDRESSEE_HEADING.test(n)) return true;
+  const m = n.match(PLAIN_HEADING_PREFIX);
+  if (!m) return false;
+  const rest = n.slice(m[0].length).replace(/^[のをとへ・]+/, "");
+  return rest === "" || PLAIN_HEADING.test(rest) || PLAIN_AFTER_GUIDE.test(rest);
+}
 /** Words every fictional research shop carries (架空市…): never evidence that a line is about this shop. */
 const FICTIONAL_MARKERS = ["架空"];
 
@@ -339,6 +354,22 @@ const lineTerms = (text: string, c: ShopContext) => {
   for (const s of [...c.nameStrings, ...FICTIONAL_MARKERS]) t = t.split(s).join("\u0000");
   return terms(t);
 };
+/** Grammar at the edges of a kana run (particles, polite endings), taken off before the run is compared. */
+const KANA_EDGE_END = /(ます|ました|します|して|しています|ています|です|でした|ください|に|を|は|が|で|と|も|へ|の|て|や)+$/;
+const KANA_EDGE_START = /^(に|を|は|が|で|と|も|へ|の|て|や)+/;
+/**
+ * The words of a line that a dropped fact held (round 4 M1): its terms (kanji / katakana / alphanumeric runs) held
+ * by the dropped facts' values, and its kana words of three or more letters (particles and polite endings taken off
+ * the edges) found in them, so 「ゆがみを整えて、まっすぐに」 takes over F10's まっすぐ without a kanji term.
+ */
+function wordsTakenOver(text: string, c: ShopContext, dropped: string): string[] {
+  const out = lineTerms(text, c).filter((t) => termHeldBy(t, dropped));
+  for (const m of norm(text).matchAll(/[ぁ-ゖー]{3,}/g)) {
+    const w = m[0].replace(KANA_EDGE_END, "").replace(KANA_EDGE_START, "");
+    if (w.length >= 3 && dropped.includes(w)) out.push(w);
+  }
+  return [...new Set(out)];
+}
 /** A term is held by a text when it appears in it (a kanji compound of 3+ also by any 2-kanji part). */
 const termHeldBy = (term: string, corpus: string) => {
   if (corpus.includes(term)) return true;
@@ -356,7 +387,7 @@ export const genericSignals = (text: string) => GENERIC_PHRASE_SIGNALS.filter((p
 /** A short noun-phrase heading with no 。 that names nothing from the shop's facts and is no plain label (review M5). */
 export function isPoeticHeading(text: string, c: ShopContext): boolean {
   const n = norm(text);
-  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || PLAIN_HEADING.test(n) || PLAIN_HEADING_PREFIX.test(n) || ADDRESSEE_HEADING.test(n)) return false;
+  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || isPlainHeading(n)) return false;
   return isSwappable(text, c);
 }
 
@@ -520,7 +551,8 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
     });
 
   // -- one shape repeated across sections
-  const shaped = prose.filter((e) => e.section_id !== OUTSIDE_SECTIONS && norm(e.text).length <= 30 && !isPolite(e.text) && (e.role === "heading" || isSloganShaped(e.text)));
+  // a plain heading (お店の情報, ご来店の前に, お持ち帰りについて) is no line shape, even when it ends in に / て (round 4 L1)
+  const shaped = prose.filter((e) => e.section_id !== OUTSIDE_SECTIONS && norm(e.text).length <= 30 && !isPolite(e.text) && ((e.role === "heading" && !isPlainHeading(e.text)) || isSloganShaped(e.text)));
   const cadence: string[] = [];
   for (const shape of ["terminal_period", "comma_split", "noun_period", "particle_fragment"] as const) {
     const hit = shaped.filter((e) => shapes(e.text).includes(shape));
@@ -956,12 +988,14 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
     const fact = restatesFact(i.text, o.facts);
     const signs = unsourcedClaimSigns(i.text, c);
     const statement = isStatement(i.text);
-    // round 2 M3 / round 3 M2: a new sentence is a terminal FAIL only when it carries a claim sign, restates a fact, or
-    // names a term of a fact this same revision stopped showing verbatim (the fact taken over by prose: 「車輪のゆがみを
+    // round 2 M3 / round 3 M2 / round 4 M1: a new sentence is a terminal FAIL when it carries a claim sign or restates a
+    // fact; any new or changed prose line (heading and fragment too) is a terminal FAIL when it names a word of a fact
+    // this same revision stopped showing verbatim (the fact taken over by prose: 「車輪のゆがみを
     // 整えます」 with the F10 item dropped). A sentence naming a fact term while that fact stays on the page verbatim
     // (「パンの香りが通りに広がります。」) is REVISE (REVISION_PROSE_ABOUT_FACTS): the re-audit and the owner judge it,
     // as COPY_GENERIC_FOR_SHOP asks for exactly such lines. A sentence naming nothing of the facts is REVISE too.
-    const takesOver = statement && droppedCorpus !== "" ? lineTerms(i.text, c).filter((t) => termHeldBy(t, droppedCorpus)) : [];
+    // round 4 M1: every new or changed prose line (heading, fragment or sentence) is checked, not only sentences
+    const takesOver = droppedCorpus !== "" ? wordsTakenOver(i.text, c, droppedCorpus) : [];
     if (signs.length || (statement && fact)) f.push({ code: fact ? "REVISION_PROSE_RESTATES_FACT" : "REVISION_NEW_PROSE_CLAIM", severity: "fail", item: i.id, ...(fact ? { detail: fact } : { detail: signs.join(",") }) });
     else if (takesOver.length) f.push({ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: i.id, detail: takesOver.join(",").slice(0, 120) });
     else if (fact) f.push({ code: "REVISION_PROSE_ECHOES_FACT", severity: "revise", item: i.id, detail: fact });

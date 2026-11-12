@@ -493,8 +493,46 @@ describe("M2: no fact laundering in a revision", () => {
     const oldHtml = readFileSync(resolve(fx.REPO, RIN_HTML), "utf8");
     const next = { ...old, items: old.items.filter((i) => i.id !== "truing").concat([fx.creative("truing-2", "車輪のゆがみ取り")]) };
     const newHtml = oldHtml.replace("振れ取りでは、<wbr>スポークを<wbr>一本ずつ<wbr>締めて<wbr>車輪を<wbr>まっすぐに<wbr>します", "車輪のゆがみ取り");
-    expect(validateCopyRevision(old, next, { facts }).verdict).toBe("ok");
-    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([{ code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: "truing" }]);
+    // round 4 M1: the heading taking over the dropped F10 is refused even without the pages
+    expect(validateCopyRevision(old, next, { facts }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "truing-2", detail: "車輪" }]);
+    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([
+      { code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "truing-2", detail: "車輪" },
+      { code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: "truing" },
+    ]);
+  });
+});
+
+describe("PR #259 round 4 M1: any new prose line taking over a dropped fact is FAIL (heading, fragment or sentence)", () => {
+  const facts = FactsPack.parse(JSON.parse(fx.rinFile("facts-pack.json").toString("utf8"))).facts;
+  const rin = () => JSON.parse(readFileSync(resolve(fx.REPO, RIN_COPY), "utf8")) as { items: fx.Item[] } & Record<string, unknown>;
+  const oldHtml = readFileSync(resolve(fx.REPO, RIN_HTML), "utf8");
+  const F10_HTML = "振れ取りでは、<wbr>スポークを<wbr>一本ずつ<wbr>締めて<wbr>車輪を<wbr>まっすぐに<wbr>します";
+
+  it.each([
+    ["車輪のゆがみを整える", "車輪"],
+    ["車輪のゆがみ取り", "車輪"],
+    ["ゆがみを整えて、まっすぐに", "まっすぐ"],
+  ])("「%s」 added after dropping the F10 item is REVISION_PROSE_TAKES_OVER_FACT", (line, word) => {
+    const old = rin();
+    const next = { ...old, items: old.items.filter((i) => i.id !== "truing").concat([fx.creative("probe", line)]) };
+    expect(validateCopyRevision(old, next, { facts }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "probe", detail: word }]);
+    // while F10 stays verbatim the same line is no takeover
+    expect(validateCopyRevision(old, { ...old, items: [...old.items, fx.creative("probe", line)] }, { facts }).findings.map((f) => f.code)).not.toContain("REVISION_PROSE_TAKES_OVER_FACT");
+  });
+
+  it("in the same section (with the pages): takeover and fact replaced by prose", () => {
+    const old = rin();
+    const next = { ...old, items: old.items.filter((i) => i.id !== "truing").concat([fx.creative("probe", "車輪のゆがみを整える")]) };
+    const newHtml = oldHtml.replace(F10_HTML, "車輪のゆがみを整える");
+    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings.map((f) => f.code)).toEqual(["REVISION_PROSE_TAKES_OVER_FACT", "REVISION_FACT_REPLACED_BY_PROSE"]);
+  });
+
+  it("in a different section (the lesson heading rewritten, the truing fact dropped): still takeover", () => {
+    const old = rin();
+    const next = { ...old, items: old.items.filter((i) => i.id !== "truing").map((i) => (i.id === "h-lesson" ? { ...i, text: "ゆがみを整えて、まっすぐに" } : i)) };
+    const newHtml = oldHtml.replace(`<p class="truing-fact">${F10_HTML}</p>`, "").replace("空気を<wbr>入れる日。", "ゆがみを整えて、まっすぐに");
+    expect(newHtml).not.toContain("振れ取りでは");
+    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "h-lesson", detail: "まっすぐ" }]);
   });
 });
 
@@ -558,6 +596,42 @@ describe("M5: poetic headings without 。", () => {
   });
   it("round 3 L1: a ご / お店 opening that is no guide word stays poetic (「ご褒美の朝」「お店の灯り」「ご縁の棚」)", () => {
     expect(reviewCopyQuality(bakeryWithHeadings(["ご褒美の朝", "お店の灯り", "ご縁の棚"])).findings.find((f) => f.code === "COPY_RHETORICAL_OVERUSE")!.texts).toEqual(["ご褒美の朝", "お店の灯り", "ご縁の棚"]);
+  });
+  it("round 4 L3: a guide word does not exempt a poetic rest (「ご利用の朝」「ご案内の光」); 「ご利用の手順」 stays plain", () => {
+    expect(reviewCopyQuality(bakeryWithHeadings(["ご利用の朝", "ご案内の光", "通りの角"])).findings.find((f) => f.code === "COPY_RHETORICAL_OVERUSE")!.texts).toEqual(["ご利用の朝", "ご案内の光", "通りの角"]);
+    expect(reviewCopyQuality(bakeryWithHeadings(["ご利用の手順", "ご来店の前に", "お問い合わせ"])).findings).toEqual([]);
+  });
+  it("round 4 L1: plain headings ending in に / て are no cadence (「お店の情報」「ご来店の前に」「お持ち帰りについて」, hero ending in を)", () => {
+    const g = fx.bakeryGood();
+    const items = [...(g.record.items as fx.Item[]), fx.creative("hx", "焼きたてのパンを"), fx.creative("h1x", "お店の情報"), fx.creative("h2x", "ご来店の前に"), fx.creative("h3x", "お持ち帰りについて")];
+    const r = reviewCopyQuality(
+      fx.shopFiles({
+        facts: fx.bakeryFacts(),
+        items,
+        sections: [
+          { id: "hero", blocks: [["h1", "name"], ["p", "name-full"], ["p", "hx"]] },
+          { id: "croissant", blocks: [["h2", "h1x"], ["p", "croissant"], ["p", "croissant-how"]] },
+          { id: "bread", blocks: [["h2", "h2x"], ["p", "bread"], ["p", "bread-how"]] },
+          { id: "info", blocks: [["h2", "h3x"], ["dt", "hours", "label"], ["dd", "hours"], ["dt", "address", "label"], ["dd", "address"]] },
+        ],
+      }),
+    );
+    expect(r.findings).toEqual([]);
+    // three particle-fragment headings that are not plain still make a cadence
+    const items2 = [...(g.record.items as fx.Item[]), fx.creative("hx", "焼きたてのパンを"), fx.creative("h1x", "朝の窓に"), fx.creative("h2x", "棚の奥で"), fx.creative("h3x", "通りの角まで")];
+    const r2 = reviewCopyQuality(
+      fx.shopFiles({
+        facts: fx.bakeryFacts(),
+        items: items2,
+        sections: [
+          { id: "hero", blocks: [["h1", "name"], ["p", "name-full"], ["p", "hx"]] },
+          { id: "croissant", blocks: [["h2", "h1x"], ["p", "croissant"], ["p", "croissant-how"]] },
+          { id: "bread", blocks: [["h2", "h2x"], ["p", "bread"], ["p", "bread-how"]] },
+          { id: "info", blocks: [["h2", "h3x"], ["dt", "hours", "label"], ["dd", "hours"], ["dt", "address", "label"], ["dd", "address"]] },
+        ],
+      }),
+    );
+    expect(rules(r2)).toContain("cadence_particle_fragment");
   });
   it("round 2 M4: the poetic headings stay flagged next to the widened plain set", () => {
     expect(codes(reviewCopyQuality(bakeryWithHeadings(["朝の光", "棚の記憶", "通りの角"])))).toContain("COPY_RHETORICAL_OVERUSE");
