@@ -99,10 +99,10 @@ SR-001「輪」は画像と PC/SP のレイアウトで成功したが、ほぼ�
 ## 7. 改稿の規則
 
 - 改稿の前に、**守る部分** (強い Hero の1行、よく働いている区画) を名指しする。良い箇所は変えない
-- 改稿は指摘された箇所だけの局所修正。1巡に1つの原因、最大2巡 (`MAX_COPY_REVISION_ROUNDS = 2`)。2巡で通らなければ止めて報告する
+- 改稿は指摘された箇所だけの局所修正。1巡に1つの原因、最大2巡 (`MAX_COPY_REVISION_ROUNDS = 2`。DEV-199a、PR #259、develop に未マージ)。2巡で通らなければ止めて報告する
 - **改稿で `claim_type` を変えない。**`creative_expression` を `fact` に、`fact` を `creative_expression` に付け替えて通さない
 - **事実は逐語のまま。**改稿で事実の value を言い換え・要約・つなぎ直さない。事実を言い換えた新しい創作行も作らない
-  (`validateCopyRevision` が FAIL にする。DEV-199a)
+  (`validateCopyRevision` が FAIL にする。DEV-199a、PR #259、develop に未マージ)
 - 改稿したら、事実パック・文の記録・HTML・CSS の SHA-256 が変わる。**古い審査を再利用しない。**改稿後のページで審査をやり直す
 
 ## 8. 報告に書くこと

@@ -27,13 +27,13 @@ const rules = COPY_V3_RULES.join("\n");
 describe("the v3 prompt (proposal, not activated)", () => {
   it("is pinned for both wagashi directions on routes B and C", () => {
     expect([build("B_html_prototype", "v3", DIRS[0]), build("C_hybrid", "v3", DIRS[0]), build("B_html_prototype", "v3", DIRS[1]), build("C_hybrid", "v3", DIRS[1])].map((b) => [b.sha256, b.chars])).toEqual([
-      ["b213764b57eab85dd36e7e448a36dd3ed03abe1d55649cfe7e3b6272c80470eb", 9296],
-      ["0e36caf53360ac13451033cc06a151643c141110f6efe228e7a69617b33a5733", 9742],
-      ["f565544f86c55e100056cadfc11f49442186de2e18e5478284fb90559f39a986", 9178],
-      ["b3739ce4e7b0169cac462541f1e195891f38edd83a7c4ae8b69f27ee94e1954f", 9624],
+      ["3ca3f33da64c669a90bc8a9e912c4199136d8433e3031c9482d25a20c7b0f487", 9594],
+      ["09de0749fabee3ae9705e37cb2aeecf242e28b8a67c3ff0f08a31153c7880fff", 10040],
+      ["a90d99c0b2a69ebb367e9d0ad8db06944115407aa81f2045689f874c074ee4a4", 9476],
+      ["faf40d24a92dce62d47dc4911c0044b015cbeef5e3fa5d60a76fc31786fc39f2", 9922],
     ]);
-    // v3 = v2, a newline, then the rules: 9296 - 6996 - 1
-    expect(rules.length).toBe(2299);
+    // v3 = v2, a newline, then the rules: 9594 - 6996 - 1
+    expect(rules.length).toBe(2597);
   });
 
   it("is v2 + the copy rules at the end, byte for byte; nothing else differs", () => {
@@ -52,7 +52,7 @@ describe("the v3 prompt (proposal, not activated)", () => {
     // section roles: each section has a job the visitor can name, its text cites facts, no fact = no section
     expect(rules).toMatch(/Give each section one job a visitor can name: what they learn there/);
     expect(rules).toMatch(/Its live_text lists the facts it shows/);
-    expect(rules).toMatch(/A section with no fact to show is dropped, not filled with decoration/);
+    expect(rules).toMatch(/A content section with no fact to show is dropped, not filled with decoration; navigation made only of neutral ui_label words .* is not a content section/);
     // the five axes, in the spec's order, framed as guidance and not a blacklist
     expect(rules).toMatch(/five axes\. They guide the writing; they are not a list of banned words/);
     expect(COPY_V3_RULES.filter((l) => /^ {2}[1-5]\. /.test(l)).map((l) => l.slice(5, l.indexOf(":")))).toEqual(["Natural Japanese", "This shop only", "Useful", "Restraint and variety", "Faithful"]);
@@ -60,6 +60,11 @@ describe("the v3 prompt (proposal, not activated)", () => {
     expect(rules).toMatch(/Facts and labels only, for every shop: each text shown is a fact's value quoted verbatim \(fact_ref\) or a short neutral UI label \(ui_label\)/);
     expect(rules).toMatch(/Never rephrase, paraphrase, shorten mid-sentence, merge or embellish a fact/);
     expect(rules).toMatch(/Write no slogan, tagline, motto, poem or other creative line/);
+    // review M1: v2's address rule is the one allowed partial value, so the two rules do not conflict
+    expect(rules).toMatch(/One exception: the address rule above \(show only 名古屋市東区\) is the one allowed partial value of a fact/);
+    expect(V2_FACT_RULES[0]).toContain("for the address show only 名古屋市東区");
+    // review L5: labels are plain sign words naming only what the facts contain
+    expect(rules).toMatch(/labels are plain words a shop sign would use \(メニュー, 営業時間\), naming only what the facts contain/);
     // never invent (spec axis 5)
     for (const w of ["a price", "a booking or reservation route", "stock or availability", "years in business or of experience", "words of the owner or staff", "a customer review or voice"]) expect(rules).toContain(w);
     expect(rules).toMatch(/Never invent a price/);
@@ -80,7 +85,8 @@ describe("the v3 prompt (proposal, not activated)", () => {
     for (const re of permissive) expect(rules).not.toMatch(re);
     // every use of "invent" in the whole prompt is a prohibition
     for (const line of p.split("\n").filter((l) => /invent/i.test(l))) expect(line).toMatch(/\bnever invent\b|\bNever invent\b/);
-    // the rules name no shop, model or product; they are the same for every shop
+    // the rules name no shop, model or product (the address exception repeats v2's fixture rule, review M1, and adds
+    // no new fact)
     expect(rules).not.toMatch(/菓|和菓子|wagashi|輪|自転車|SR-001|gpt|claude|codex|opus|sonnet/i);
     // no line asks the page to sound poetic
     for (const line of COPY_V3_RULES.filter((l) => /poetic/i.test(l))) expect(line).toMatch(/Do not make the page sound poetic/);
@@ -125,9 +131,24 @@ describe("existing prompts and the default selection are unchanged", () => {
       expect(r.stdout).not.toContain("prompt_sha256");
       return { status: r.status, out: JSON.parse(r.stdout || "{}") as Record<string, unknown> };
     };
-    // with a direction (the v2 shape) the CLI does not even take the arguments; with a brief, the parser refuses v3
-    expect(run(["--references", resolve(REPO, REFS), "--direction", resolve(REPO, DIRS[0]!)])).toMatchObject({ status: 2, out: { status: "refused", code: "USAGE" } });
-    expect(run(["--brief", resolve(REPO, "design-library/phase2f/wagashi-brief-v4.json")])).toMatchObject({ status: 2, out: { status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" } });
+    // review L4: the v3 refusal wins in every case: the v2 shape (direction + references), a brief, nothing more, or an
+    // unknown flag never turns it into USAGE
+    const refused = { status: 2, out: { status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" } };
+    expect(run(["--references", resolve(REPO, REFS), "--direction", resolve(REPO, DIRS[0]!)])).toMatchObject(refused);
+    expect(run(["--brief", resolve(REPO, "design-library/phase2f/wagashi-brief-v4.json")])).toMatchObject(refused);
+    expect(run([])).toMatchObject(refused);
+    expect(run(["--no-such-flag"])).toMatchObject(refused);
+    expect(readdirSync(state)).toEqual([]);
+  }, 60_000);
+
+  it("the steps CLI refuses --prompt-version v3 before anything else (the v2 shape included), and writes nothing", () => {
+    const state = mkdtempSync(join(tmpdir(), "dev199f-steps-"));
+    const out = join(state, "out");
+    const r = spawnSync(process.execPath, ["--import", "tsx", resolve(REPO, "scripts/design-artifact/phase2f-steps.ts"), "--package", "--route", "B", "--facts", resolve(REPO, "design-library/phase2f/wagashi-facts-pack.json"), "--design", join(state, "design"), "--out", out, "--result", join(state, "result.json"), "--artifact-id", "a", "--shop-id", "s", "--shop-name", "n", "--prompt-version", "v3", "--direction", resolve(REPO, DIRS[0]!), "--references", resolve(REPO, REFS)], {
+      encoding: "utf8",
+      env: { ...process.env, SR_PHASE2F_STATE: state },
+    });
+    expect({ status: r.status, out: JSON.parse(r.stdout || "{}") as Record<string, unknown> }).toMatchObject({ status: 2, out: { status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" } });
     expect(readdirSync(state)).toEqual([]);
   }, 60_000);
 });

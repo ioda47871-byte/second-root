@@ -9829,7 +9829,7 @@
       "purpose": "オーナー Issue #258 (新しい版の設計・開発・テストだけ承認)・仕様案 PR #257。コピー生成の prompt とデザインディレクターの文章審査に、区画の役割・五軸・発明しない一覧・事実の逐語・HOLD・改稿の規則を、既存の承認済み・固定済みの版を変えずに新しい版として加える。有効化・実際の生成は別の承認",
       "acceptance_criteria": [
         "lib/design-agent/phase2f/prompt.ts に v3 (= v2 + COPY_V3_RULES を末尾に追加)。v1・v1.1・v2・tm0・三方式の pin はバイト単位で不変、既存のテストは変更なしで通る",
-        "promptVariantOf は v3 を PROMPT_VERSION_NOT_ACTIVATED で拒否 (どの CLI からも選べない)。既定は v1 のまま",
+        "promptVariantOf は v3 を PROMPT_VERSION_NOT_ACTIVATED で拒否 (どの CLI からも選べない)。phase2f-design / phase2f-steps は、どの引数の組み合わせでも v3 を同じコードで拒否し、何も書かない。既定は v1 のまま",
         "v3 の SHA-256 と文字数を新しいテストで固定 (B/C × 方向 A/B)",
         "v3 は区画の役割・五軸 (手引き、禁止一覧ではない)・発明しない一覧・事実は逐語か中立なラベルを含み、発明・言い換え・創作の許可を含まない (テスト)",
         "docs/design/design-director-copy-review-v2.md: 五軸、決め台詞の累積と1つの強い Hero の行、道ごとの規則、事実不足は HOLD、改稿で claim_type を変えない・事実は逐語。SKILL.md からは読まれない (テスト)、有効化はオーナーの承認",
@@ -9843,6 +9843,7 @@
       "allowed_scope": [
         "lib/design-agent/phase2f/prompt.ts (新しい版の追加だけ)",
         "tests/unit/design-agent/phase2f/prompt-v3.test.ts",
+        "scripts/design-artifact/phase2f-design.ts・phase2f-steps.ts (Fresh Review L4: --prompt-version v3 を冒頭で PROMPT_VERSION_NOT_ACTIVATED で拒否する行だけ)",
         "docs/design/design-director-copy-review-v2.md",
         "docs/design/copy-prompt-v3-comparison.md",
         ".ai/tasks.json",
