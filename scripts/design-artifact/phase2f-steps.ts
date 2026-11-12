@@ -246,7 +246,11 @@ async function sheet(args: Map<string, string>): Promise<number> {
 }
 
 async function main(): Promise<number> {
-  const args = parseArgs(process.argv.slice(2));
+  // DEV-199f review L4: the v3 proposal is refused before anything else (before the ledger is opened, whatever the
+  // other flags), so it never reads as a usage error and nothing is read or written
+  const argv = process.argv.slice(2);
+  if (argv.some((a, i) => a === "--prompt-version" && argv[i + 1] === "v3")) return refuse("PROMPT_VERSION_NOT_ACTIVATED");
+  const args = parseArgs(argv);
   if (!args) return refuse("USAGE");
   const ledger = openLedger(resolve(defaultLedgerDir(process.env, homedir())));
   try {
