@@ -70,7 +70,7 @@ import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
 import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
 import { CopyRecord, factParts, INVENTED_FACT_SIGNS, type CopyItem } from "./copy-record";
 import { FactsPack } from "./facts-pack";
-import { OUTSIDE_SECTIONS, pageText, type EntryRole, type PageSection } from "./copy-quality-page";
+import { OUTSIDE_SECTIONS, pageSkeleton, pageText, type EntryRole, type PageSection } from "./copy-quality-page";
 
 export const COPY_QUALITY_AUDITOR_VERSION = "copy_quality_rules_v1";
 /** The hard cap on audit → local revision → re-audit rounds (as comp-review.ts caps its self-critique rounds at 2). */
@@ -300,7 +300,7 @@ export const CopyQualityReview = z
     if (r.base_checks.ok && hasFail && !r.findings.some((f) => f.code === "COPY_REVISION_INVALID")) bad("fail_without_base_or_revision_failure");
     if (r.round === 0 && r.revision_findings.length) bad("revision_findings_in_round_0");
     const revFail = r.revision_findings.some((x) => x.severity === "fail");
-    const revRevise = !revFail && r.revision_findings.length > 0;
+    const revRevise = !revFail && r.revision_findings.some((x) => CAPPING_REVISION_CODES.has(x.code));
     if (revFail !== r.findings.some((f) => f.code === "COPY_REVISION_INVALID")) bad("revision_invalid_finding_disagrees");
     if (revRevise !== r.findings.some((f) => f.code === "COPY_REVISION_NEEDS_REVIEW")) bad("revision_needs_review_finding_disagrees");
     if (r.lane === "real_shop_proposal" && !r.findings.some((f) => f.code === "COPY_APPROVAL_MISSING")) bad("real_shop_without_approval_missing");
@@ -686,14 +686,21 @@ export type ReviewOptions = {
    * Round n ≥ 1: the copy record and page HTML of rounds 0 … n-1, in order (round 6 M1). The audit derives this round's
    * revision_findings from them; a revision round without them is refused (an Error), never audited as if it were new.
    */
-  earlierRounds?: ReadonlyArray<{ copyRecord: string | Uint8Array; pageHtml: string | Uint8Array }>;
+  earlierRounds?: ReadonlyArray<{ copyRecord: string | Uint8Array; pageHtml: string | Uint8Array; pageCss: string | Uint8Array }>;
 };
 
 /** This round's revision findings against the earlier rounds (see `revision_findings`). */
-function revisionFindingsOf(copyRaw: unknown, html: string, facts: readonly Fact[], earlier: NonNullable<ReviewOptions["earlierRounds"]>): CopyQualityReview["revision_findings"] {
+/**
+ * The revise-level revision findings that cap a round's verdict (round 7 L1): a fact dropped while prose was added, and a
+ * page changed beyond its words. The others (REVISION_PROSE_ECHOES_FACT, _ABOUT_FACTS, _NEW_PROSE_STATEMENT) stay in
+ * revision_findings as notes for the owner (recorded, bound and re-derived) without capping.
+ */
+export const CAPPING_REVISION_CODES: ReadonlySet<string> = new Set(["REVISION_FACT_DROPPED_WITH_NEW_PROSE", "REVISION_PAGE_CHANGED_BEYOND_COPY"]);
+
+function revisionFindingsOf(copyRaw: unknown, html: string, css: string, facts: readonly Fact[], earlier: NonNullable<ReviewOptions["earlierRounds"]>): CopyQualityReview["revision_findings"] {
   if (!earlier.length) return [];
-  const against = (r: (typeof earlier)[number]) => validateCopyRevision(parseJson(utf8(r.copyRecord)), copyRaw, { facts, oldPageHtml: utf8(r.pageHtml), newPageHtml: html }).findings;
-  const all = [...against(earlier.at(-1)!), ...(earlier.length > 1 ? against(earlier[0]!).filter((x) => x.severity === "fail" || x.code === "REVISION_FACT_DROPPED_WITH_NEW_PROSE") : [])];
+  const against = (r: (typeof earlier)[number]) => validateCopyRevision(parseJson(utf8(r.copyRecord)), copyRaw, { facts, oldPageHtml: utf8(r.pageHtml), newPageHtml: html, oldPageCss: utf8(r.pageCss), newPageCss: css }).findings;
+  const all = [...against(earlier.at(-1)!), ...(earlier.length > 1 ? against(earlier[0]!).filter((x) => x.severity === "fail" || CAPPING_REVISION_CODES.has(x.code)) : [])];
   const out = new Map<string, CopyQualityReview["revision_findings"][number]>();
   for (const x of all) {
     const v = { code: x.code.slice(0, 70), severity: x.severity, item: x.item?.slice(0, 41) ?? null, detail: x.detail?.slice(0, 120) ?? null };
@@ -748,8 +755,9 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
   const round = o.round ?? 0;
   const earlier = o.earlierRounds ?? [];
   if (earlier.length !== round) throw new Error(`REVISION_EARLIER_ROUNDS_REQUIRED: round ${round} needs ${round} earlier rounds, got ${earlier.length}`);
-  const revisionFindings = revisionFindingsOf(copyRaw, html, factList, earlier);
+  const revisionFindings = revisionFindingsOf(copyRaw, html, utf8(files.pageCss), factList, earlier);
   const revisionFail = revisionFindings.some((x) => x.severity === "fail");
+  const revisionCaps = revisionFail || revisionFindings.some((x) => CAPPING_REVISION_CODES.has(x.code));
 
   // a record that does not parse is judged on the stricter lane
   const lane = record.success ? record.data.lane : "real_shop_proposal";
@@ -782,8 +790,9 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
       evidence: [`lane real_shop_proposal; ${prose.length} proposal_pending_review lines on the page`],
     });
   }
-  // round 6 M1: what the revision step found reaches the record and caps the verdict (fail, or at least revise)
-  if (revisionFindings.length)
+  // round 6 M1 / round 7 L1: what the revision step found reaches the record (revision_findings); a fail, a dropped
+  // fact with new prose or a page changed beyond its words caps the verdict, the other findings are notes for the owner
+  if (revisionCaps)
     findings.push({
       code: revisionFail ? "COPY_REVISION_INVALID" : "COPY_REVISION_NEEDS_REVIEW",
       severity: revisionFail ? "fail" : "revise",
@@ -792,7 +801,7 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
       texts: [],
       reason: revisionFail
         ? "The revision from the earlier rounds launders facts (validateCopyRevision fails); a failed revision is terminal."
-        : "The revision from the earlier rounds changed facts or added prose the re-audit alone cannot clear (e.g. a fact dropped while prose was added); this round cannot be a send candidate.",
+        : "The revision from the earlier rounds dropped a fact while adding prose, or changed the page beyond its words (HTML structure, attributes or CSS); this round cannot be a send candidate.",
       evidence: revisionFindings.map((x) => [x.code, x.item, x.detail].filter(Boolean).join(" ").slice(0, 400)).slice(0, 40),
     });
   const verdict = worstVerdict(findings.map((f) => f.severity));
@@ -914,7 +923,7 @@ function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: rea
       if (canonical(q) !== canonical(redone)) codes.push("PREVIOUS_REVIEW_DOES_NOT_MATCH_AUDIT");
     }
     if (next.review.success && next.review.data.previous_copy_sha256 !== q.copy_sha256) codes.push("REVISION_CHAIN_BROKEN");
-    const step = validateCopyRevision(parseJson(utf8(cur.copyRecord)), parseJson(utf8(next.copyRecord)), { facts: factList, oldPageHtml: utf8(cur.pageHtml), newPageHtml: utf8(next.pageHtml) });
+    const step = validateCopyRevision(parseJson(utf8(cur.copyRecord)), parseJson(utf8(next.copyRecord)), { facts: factList, oldPageHtml: utf8(cur.pageHtml), newPageHtml: utf8(next.pageHtml), oldPageCss: utf8(cur.pageCss), newPageCss: utf8(next.pageCss) });
     if (step.verdict === "fail") codes.push("REVISION_INVALID", ...step.findings.filter((f) => f.severity === "fail").map((f) => f.code));
   }
   return codes;
@@ -1053,7 +1062,11 @@ export type RevisionFinding = { code: string; severity: "fail" | "revise"; item?
  * page (REVISION_PROSE_ABOUT_FACTS, 「パンの香りが通りに広がります。」, round 3 M2); and a new sentence that names
  * nothing of the facts and carries no claim sign (「ご来店をお待ちしております。」, round 2 M3).
  */
-export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { facts: readonly Fact[]; oldPageHtml?: string; newPageHtml?: string }): { ok: boolean; verdict: "ok" | "revise" | "fail"; findings: RevisionFinding[] } {
+export function validateCopyRevision(
+  oldRaw: unknown,
+  newRaw: unknown,
+  o: { facts: readonly Fact[]; oldPageHtml?: string; newPageHtml?: string; oldPageCss?: string; newPageCss?: string },
+): { ok: boolean; verdict: "ok" | "revise" | "fail"; findings: RevisionFinding[] } {
   const a = CopyRecord.safeParse(oldRaw);
   const b = CopyRecord.safeParse(newRaw);
   if (!a.success || !b.success) return { ok: false, verdict: "fail", findings: [{ code: "REVISION_SCHEMA", severity: "fail" }] };
@@ -1082,7 +1095,8 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
       pagesRead = false;
       f.push({ code: "REVISION_PAGE_UNREADABLE", severity: "fail" });
     }
-  const shownOn = (sections: readonly PageSection[]) => new Set(sections.flatMap((x) => x.entries.map((e) => norm(e.text))));
+  // round 7 M1: an entry under hidden / aria-hidden (role decoration) is not shown
+  const shownOn = (sections: readonly PageSection[]) => new Set(sections.flatMap((x) => x.entries.filter((e) => e.role !== "decoration").map((e) => norm(e.text))));
   const shownOld = pagesRead ? shownOn(oldSections) : null;
   const shownNew = pagesRead ? shownOn(newSections) : null;
   const verbatim = (i: CopyItem) => i.claim_type === "fact" && i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)));
@@ -1126,15 +1140,38 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
   // round 5 M1, structural backstop: a revision that drops or rewords a fact item and adds or changes prose is never a
   // clean step; the re-audit and the owner compare it with the dropped facts (named here)
   if (droppedItems.length && changedProse.size) f.push({ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: (droppedFactIds.join(",") || droppedItems.map((i) => i.id).join(",")).slice(0, 120) });
-  // a fact removed (from the page, round 6 M2) and prose put where it stood
-  if (pagesRead) {
-    const removed = new Set(droppedItems.map((i) => norm(i.text)));
-    if (removed.size && changedProse.size) {
-      const where = new Set(oldSections.filter((s) => s.entries.some((e) => removed.has(norm(e.text)))).map((s) => s.section_id));
-      for (const s of newSections)
-        if (where.has(s.section_id)) for (const e of s.entries) if (changedProse.has(norm(e.text))) f.push({ code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: s.section_id.slice(0, 40) });
+  // a fact removed (from the page, round 6 M2) and prose put where it stood. Round 7 M2: FAIL only when that prose uses
+  // a word only the dropped facts held, or the dropped fact's text is shown nowhere on the new page; a fact whose text
+  // is still shown elsewhere (a duplicate label dropped) leaves the backstop's REVISE
+  if (pagesRead && droppedItems.length && changedProse.size) {
+    const shownNewText = [...(shownNew ?? [])].join("\u0000");
+    const failed = new Set<string>();
+    for (const d of droppedItems) {
+      const r = norm(d.text);
+      const where = new Set(oldSections.filter((s) => s.entries.some((e) => norm(e.text) === r)).map((s) => s.section_id));
+      const goneFromPage = !shownNewText.includes(r);
+      for (const s of newSections) {
+        if (!where.has(s.section_id) || failed.has(s.section_id)) continue;
+        const prose = s.entries.filter((e) => changedProse.has(norm(e.text)));
+        if (prose.length && (goneFromPage || prose.some((e) => wordsTakenOver(e.text, c, droppedCorpus, keptCorpus).length))) {
+          failed.add(s.section_id);
+          f.push({ code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: s.section_id.slice(0, 40) });
+        }
+      }
     }
   }
+  // round 7 M1: a copy revision changes words only. A changed stylesheet, or HTML that differs once every text is taken
+  // out (elements, attributes, classes, structure), can hide a fact without touching its words: REVISE, recorded, capping
+  const changedBeyondCopy: string[] = [];
+  if (o.oldPageCss !== undefined && o.newPageCss !== undefined && o.oldPageCss !== o.newPageCss) changedBeyondCopy.push("css");
+  if (pagesRead) {
+    try {
+      if (pageSkeleton(o.oldPageHtml!) !== pageSkeleton(o.newPageHtml!)) changedBeyondCopy.push("html");
+    } catch {
+      changedBeyondCopy.push("html");
+    }
+  }
+  if (changedBeyondCopy.length) f.push({ code: "REVISION_PAGE_CHANGED_BEYOND_COPY", severity: "revise", detail: changedBeyondCopy.join(",") });
   const verdict = f.some((x) => x.severity === "fail") ? "fail" : f.length ? "revise" : "ok";
   return { ok: verdict !== "fail", verdict, findings: f };
 }

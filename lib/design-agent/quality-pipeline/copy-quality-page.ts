@@ -112,3 +112,21 @@ export function pageText(html: string): PageText {
   for (const c of doc.childNodes) walk(c, { section: OUTSIDE_SECTIONS, heading: false, label: false, hidden: false });
   return { sections, otherTexts };
 }
+
+/**
+ * The page with every text taken out (round 7 M1 of PR #259): elements in order, each with its attributes sorted,
+ * <template> content included; text and comments dropped. Two pages with the same skeleton differ in their words only.
+ */
+export function pageSkeleton(html: string): string {
+  if (html.length > MAX_PAGE_CHARS) throw new PageTextError("PAGE_TOO_LARGE");
+  const out: string[] = [];
+  const visit = (n: Node) => {
+    if (!isElement(n)) return;
+    const attrs = [...n.attrs].map((a) => `${a.name}=${JSON.stringify(a.value)}`).sort();
+    out.push(`<${n.tagName}${attrs.length ? " " + attrs.join(" ") : ""}>`);
+    for (const c of kids(n)) visit(c);
+    out.push(`</${n.tagName}>`);
+  };
+  for (const c of parse(html).childNodes) visit(c);
+  return out.join("");
+}

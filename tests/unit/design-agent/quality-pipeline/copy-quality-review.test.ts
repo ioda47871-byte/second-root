@@ -8,6 +8,7 @@ import {
   ALLOWED_SEVERITIES,
   checkCopyQualityReview,
   copyGateSendBlockers,
+  CAPPING_REVISION_CODES,
   copyReviewAppendBlockers,
   factsContentSha256,
   isPlainHeading,
@@ -35,7 +36,7 @@ const sha = (b: string | Uint8Array) => createHash("sha256").update(b).digest("h
 const codes = (r: CopyQualityReview) => [...new Set(r.findings.map((f) => f.code))].sort();
 const rules = (r: CopyQualityReview) => r.findings.map((f) => f.rule);
 /** the earlier rounds a revision round's audit takes (round 6 M1) */
-const er = (...fs: CopyQualityFiles[]) => fs.map((f) => ({ copyRecord: f.copyRecord, pageHtml: f.pageHtml }));
+const er = (...fs: CopyQualityFiles[]) => fs.map((f) => ({ copyRecord: f.copyRecord, pageHtml: f.pageHtml, pageCss: f.pageCss }));
 
 const RIN_COPY = `${fx.RIN_DIR}/fidelity/d1-v9/copy.json`;
 const RIN_HTML = `${fx.RIN_DIR}/fidelity/d1-v9/index.html`;
@@ -396,11 +397,13 @@ describe("L2/L6: rounds", () => {
 });
 
 describe("M1: a revised review can pass the send gate only with its verified chain", () => {
-  it("real shop: round 0 revise (prose without a fact), round 1 clean, owner approval → this gate does not block", () => {
+  it("real shop: round 0 revise (prose without a fact), round 1 clean (words only), owner approval → this gate does not block", () => {
     const f0 = fx.realShop({ prose: ["朝の棚に、焼きたてを。"] });
     const r0 = reviewCopyQuality(f0);
     expect(nextCopyStep(r0)).toBe("revise");
-    const f1 = fx.realShop();
+    // round 7 M1: a copy revision changes words only; the prose heading now shows the croissant fact's words
+    const rec1 = { ...f0.record, items: (f0.record.items as fx.Item[]).filter((i) => i.id !== "p1") };
+    const f1 = { ...f0, copyRecord: `${JSON.stringify(rec1, null, 2)}\n`, pageHtml: String(f0.pageHtml).replace("朝の棚に、焼きたてを。", "クロワッサン"), record: rec1 };
     const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
     const approval: OwnerCopyApproval = { shop_id: r1.shop_id, facts_sha256: r1.facts_sha256, copy_sha256: r1.copy_sha256, page_html_sha256: r1.page_html_sha256, page_css_sha256: r1.page_css_sha256, decision: "approve" };
     const previous = [{ review: r0, copyRecord: f0.copyRecord, pageHtml: f0.pageHtml, pageCss: f0.pageCss }];
@@ -517,6 +520,7 @@ describe("M2: no fact laundering in a revision", () => {
     expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([
       { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" },
       { code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: "truing" },
+      { code: "REVISION_PAGE_CHANGED_BEYOND_COPY", severity: "revise", detail: "html" },
     ]);
   });
 });
@@ -571,6 +575,7 @@ describe("PR #259 round 4 / 5 M1, round 5 L1: prose taking over a dropped fact",
     expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings.map((f) => [f.code, f.severity])).toEqual([
       ["REVISION_FACT_DROPPED_WITH_NEW_PROSE", "revise"],
       ["REVISION_FACT_REPLACED_BY_PROSE", "fail"],
+      ["REVISION_PAGE_CHANGED_BEYOND_COPY", "revise"],
     ]);
   });
 
@@ -582,6 +587,7 @@ describe("PR #259 round 4 / 5 M1, round 5 L1: prose taking over a dropped fact",
     expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([
       { code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "h-lesson", detail: "まっすぐ" },
       { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" },
+      { code: "REVISION_PAGE_CHANGED_BEYOND_COPY", severity: "revise", detail: "html" },
     ]);
   });
 
@@ -803,7 +809,9 @@ describe("PR #259 round 2 M1: every earlier round is re-audited", () => {
     expect(copyReviewAppendBlockers([q0], replay)).toEqual(["ROUND_0_ALREADY_STORED", "NOT_LINKED_TO_LAST_ROUND"]);
     // nothing follows a round that does not allow a revision (approve_candidate here; fail and hold alike)
     expect(copyReviewAppendBlockers([r0], r1)).toEqual(["LAST_ROUND_DOES_NOT_ALLOW_REVISION"]);
-    expect(copyReviewAppendBlockers([q0, q1], reviewCopyQuality(f1, { round: 2, previousCopySha256: q1.copy_sha256, earlierRounds: er(c0, f0) }))).toEqual(["LAST_ROUND_DOES_NOT_ALLOW_REVISION"]);
+    // round 7 M1: q1 changed the page beyond its words (bakeryCliche → bakeryGood), so it is revise and a round 2 may follow
+    expect(q1.revision_findings.map((x) => x.code)).toContain("REVISION_PAGE_CHANGED_BEYOND_COPY");
+    expect(copyReviewAppendBlockers([q0, q1], reviewCopyQuality(f1, { round: 2, previousCopySha256: q1.copy_sha256, earlierRounds: er(c0, f0) }))).toEqual([]);
     // another facts pack is another chain; a stored chain must be in order
     expect(copyReviewAppendBlockers([reviewCopyQuality(fx.realShop({ prose: ["朝の棚に、焼きたてを。"] }))], q1)).toContain("STORED_REVIEW_OF_ANOTHER_SHOP");
     expect(copyReviewAppendBlockers([q0], reviewCopyQuality(f1, { round: 2, previousCopySha256: q0.copy_sha256, earlierRounds: er(c0, f0) }))).toEqual(["ROUND_NOT_NEXT"]);
@@ -1016,6 +1024,101 @@ describe("PR #259 round 6: revision findings reach the review (M1), the page dec
     // a word only F9 held (作業台) still FAILs
     const w = validateCopyRevision(old, { ...old, items: old.items.filter((i) => i.id !== "how" && i.id !== "fictional").concat([fx.creative("probe", "作業台のある店")]) }, { facts });
     expect(w.findings).toContainEqual({ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "probe", detail: "作業台" });
+  });
+});
+
+describe("PR #259 round 7: hidden facts (M1), duplicate labels dropped (M2), notes that do not cap (L1)", () => {
+  type Opts = { headings: [string, string, string]; extra?: string; drop?: string[] };
+  const build = (o: Opts) => {
+    const g = fx.bakeryGood();
+    const drop = new Set(o.drop ?? []);
+    const items = [...(g.record.items as fx.Item[]), fx.creative("h1x", o.headings[0]), fx.creative("h2x", o.headings[1]), fx.creative("h3x", o.headings[2]), ...(o.extra ? [fx.creative("extra", o.extra)] : [])].filter((i) => !drop.has(i.id));
+    const keep = (b: fx.Block) => !drop.has(b[1]);
+    return fx.shopFiles({
+      facts: fx.bakeryFacts(),
+      items,
+      sections: [
+        { id: "hero", blocks: [["h1", "name"], ["p", "name-full"]] },
+        { id: "croissant", blocks: ([["h2", "h1x"], ["p", "croissant"], ["p", "croissant-how"], ...(o.extra ? [["p", "extra"]] : [])] as fx.Block[]).filter(keep) },
+        { id: "bread", blocks: ([["h2", "h2x"], ["p", "bread"], ["p", "bread-how"]] as fx.Block[]).filter(keep) },
+        { id: "info", blocks: [["h2", "h3x"], ["dt", "hours", "label"], ["dd", "hours"], ["dt", "address", "label"], ["dd", "address"]] },
+      ],
+    });
+  };
+  const POETIC: [string, string, string] = ["朝の光", "棚の記憶", "通りの角"];
+  const F5_P = "<p>食パンは前日の夜に生地を仕込みます。</p>";
+
+  describe("M1: a fact hidden instead of removed", () => {
+    const f0 = build({ headings: POETIC, extra: "朝の棚に、焼きたてを。" });
+    const r0 = reviewCopyQuality(f0);
+    const base1 = build({ headings: ["パンのご案内", "棚の記憶", "店舗情報"], extra: "ひと晩ねかせてから焼きあげる食パン" });
+    const audit = (f: CopyQualityFiles) => reviewCopyQuality(f, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
+
+    it("control: the same words with F5 shown are approve_candidate (only the words changed)", () => {
+      expect(r0.verdict).toBe("revise");
+      const r1 = audit(base1);
+      expect(r1.verdict).toBe("approve_candidate");
+      expect(r1.revision_findings.map((x) => x.code)).not.toContain("REVISION_PAGE_CHANGED_BEYOND_COPY");
+    });
+
+    it.each([
+      ["<p hidden>", (f: CopyQualityFiles) => ({ ...f, pageHtml: String(f.pageHtml).replace(F5_P, F5_P.replace("<p>", "<p hidden>")) }), true],
+      ["aria-hidden", (f: CopyQualityFiles) => ({ ...f, pageHtml: String(f.pageHtml).replace(F5_P, F5_P.replace("<p>", '<p aria-hidden="true">')) }), true],
+      ["display:none", (f: CopyQualityFiles) => ({ ...f, pageHtml: String(f.pageHtml).replace(F5_P, F5_P.replace("<p>", '<p class="x">')), pageCss: `${String(f.pageCss)}.x{display:none}\n` }), false],
+      ["font-size:0", (f: CopyQualityFiles) => ({ ...f, pageHtml: String(f.pageHtml).replace(F5_P, F5_P.replace("<p>", '<p class="x">')), pageCss: `${String(f.pageCss)}.x{font-size:0}\n` }), false],
+      ["left:-9999px", (f: CopyQualityFiles) => ({ ...f, pageHtml: String(f.pageHtml).replace(F5_P, F5_P.replace("<p>", '<p class="x">')), pageCss: `${String(f.pageCss)}.x{position:absolute;left:-9999px}\n` }), false],
+      ["color:transparent", (f: CopyQualityFiles) => ({ ...f, pageHtml: String(f.pageHtml).replace(F5_P, F5_P.replace("<p>", '<p class="x">')), pageCss: `${String(f.pageCss)}.x{color:transparent}\n` }), false],
+    ] as Array<[string, (f: CopyQualityFiles) => CopyQualityFiles, boolean]>)("F5 kept but hidden with %s while new prose is added: never approve_candidate, the change is recorded", (_n, hide, hiddenInDom) => {
+      const f1 = hide(base1);
+      expect(String(f1.pageHtml)).not.toBe(String(base1.pageHtml));
+      const r1 = audit(f1);
+      expect(r1.verdict).not.toBe("approve_candidate");
+      expect(r1.revision_findings.map((x) => x.code)).toContain("REVISION_PAGE_CHANGED_BEYOND_COPY");
+      // hidden in the DOM: the fact no longer counts as shown, so the dropped-fact backstop names F5 too
+      if (hiddenInDom) expect(r1.revision_findings).toContainEqual({ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", item: null, detail: "F5" });
+    });
+  });
+
+  describe("M2: duplicate fact labels dropped while headings get the facts' words", () => {
+    const f0 = build({ headings: POETIC });
+    const r0 = reviewCopyQuality(f0);
+    const f1 = build({ headings: ["クロワッサンのご案内", "食パンのご案内", "店舗情報"], drop: ["croissant", "bread"] });
+    const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
+
+    it("round 1 is REVISE (backstop, page structure changed), not FAIL: the dropped labels' words are still shown", () => {
+      expect(r1.verdict).toBe("revise");
+      expect(r1.revision_findings.filter((x) => x.severity === "fail")).toEqual([]);
+      expect(r1.revision_findings.map((x) => x.code)).toEqual(expect.arrayContaining(["REVISION_FACT_DROPPED_WITH_NEW_PROSE", "REVISION_PAGE_CHANGED_BEYOND_COPY"]));
+      expect(checkCopyQualityReview(r1, f1, { previous: [{ review: r0, copyRecord: f0.copyRecord, pageHtml: f0.pageHtml, pageCss: f0.pageCss }] })).toEqual({ ok: true, codes: [] });
+    });
+
+    it("round 2 changing a heading in that section again is not FAIL against round 0", () => {
+      const f2 = build({ headings: ["クロワッサンについて", "食パンのご案内", "店舗情報"], drop: ["croissant", "bread"] });
+      const r2 = reviewCopyQuality(f2, { round: 2, previousCopySha256: r1.copy_sha256, earlierRounds: er(f0, f1) });
+      expect(r2.revision_findings.filter((x) => x.severity === "fail")).toEqual([]);
+      expect(r2.verdict).toBe("revise");
+      expect(nextCopyStep(r2)).toBe("stop_hold");
+    });
+  });
+
+  describe("L1: owner notes do not cap the verdict", () => {
+    it("round 1 replacing the poetic headings with 「クロワッサンのご案内」「食パンのご案内」「お店の情報」 is approve_candidate, with the notes recorded", () => {
+      const f0 = build({ headings: POETIC });
+      const r0 = reviewCopyQuality(f0);
+      const f1 = build({ headings: ["クロワッサンのご案内", "食パンのご案内", "お店の情報"] });
+      const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
+      expect(r1.verdict).toBe("approve_candidate");
+      expect(r1.revision_findings.length).toBeGreaterThan(0);
+      expect(r1.revision_findings.every((x) => x.severity === "revise" && !CAPPING_REVISION_CODES.has(x.code))).toBe(true);
+      expect(r1.revision_findings.map((x) => x.code)).toContain("REVISION_PROSE_ECHOES_FACT");
+      expect(r1.findings.map((f) => f.code)).not.toContain("COPY_REVISION_NEEDS_REVIEW");
+      const previous = [{ review: r0, copyRecord: f0.copyRecord, pageHtml: f0.pageHtml, pageCss: f0.pageCss }];
+      expect(checkCopyQualityReview(r1, f1, { previous })).toEqual({ ok: true, codes: [] });
+      // the notes are bound: removing them does not match the re-derived audit
+      expect(checkCopyQualityReview({ ...r1, revision_findings: [] }, f1, { previous }).codes).toContain("REVIEW_DOES_NOT_MATCH_AUDIT");
+      // notes do not block, and nothing replaces the owner: fictional research is never sendable, and without an approval the gate blocks
+      expect(copyGateSendBlockers(r1, f1, null, { previous })).toEqual(["FICTIONAL_RESEARCH_NOT_SENDABLE", "OWNER_APPROVAL_MISSING"]);
+    });
   });
 });
 
