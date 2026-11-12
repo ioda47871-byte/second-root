@@ -386,7 +386,7 @@ describe("L2/L6: rounds", () => {
     const f1 = { ...f0, copyRecord: copy1, pageHtml: html1 };
     const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256 });
     const check = checkCopyQualityReview(r1, f1, { previous: [{ review: r0, copyRecord: f0.copyRecord, pageHtml: f0.pageHtml, pageCss: f0.pageCss }] });
-    expect(check.codes).toEqual(expect.arrayContaining(["REVISION_INVALID", "REVISION_PROSE_TAKES_OVER_FACT", "REVISION_FACT_REPLACED_BY_PROSE"]));
+    expect(check.codes).toEqual(expect.arrayContaining(["REVISION_INVALID", "REVISION_FACT_REPLACED_BY_PROSE"]));
   });
 });
 
@@ -443,13 +443,20 @@ describe("M2: no fact laundering in a revision", () => {
   it("rewriting the F10 sentence as a creative line 「スポークを丁寧に締め直し…」 is FAIL", () => {
     const old = rin();
     const next = { ...old, items: [...old.items.filter((i) => i.id !== "truing"), fx.creative("truing-copy", "スポークを丁寧に締め直し、車輪をまっすぐにします。", ["F10"])] };
-    expect(validateCopyRevision(old, next, { facts })).toEqual({ ok: false, verdict: "fail", findings: [{ code: "REVISION_PROSE_RESTATES_FACT", severity: "fail", item: "truing-copy", detail: "F10" }] });
+    expect(validateCopyRevision(old, next, { facts })).toEqual({
+      ok: false,
+      verdict: "fail",
+      findings: [
+        { code: "REVISION_PROSE_RESTATES_FACT", severity: "fail", item: "truing-copy", detail: "F10" },
+        { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" },
+      ],
+    });
   });
 
   it("changing an item's claim_type (the F10 fact made creative under the same id) is FAIL", () => {
     const old = rin();
     const next = { ...old, items: old.items.map((i) => (i.id === "truing" ? fx.creative("truing", "スポークを丁寧に締め直し、車輪をまっすぐにします。", ["F10"]) : i)) };
-    expect(validateCopyRevision(old, next, { facts }).findings.map((f) => f.code)).toEqual(["REVISION_CLAIM_TYPE_CHANGED", "REVISION_PROSE_RESTATES_FACT"]);
+    expect(validateCopyRevision(old, next, { facts }).findings.map((f) => f.code)).toEqual(["REVISION_CLAIM_TYPE_CHANGED", "REVISION_PROSE_RESTATES_FACT", "REVISION_FACT_DROPPED_WITH_NEW_PROSE"]);
   });
 
   it("a fact item reworded is FAIL; re-selecting a whole sentence or removing a fact is allowed", () => {
@@ -476,13 +483,20 @@ describe("M2: no fact laundering in a revision", () => {
   });
 
   // ... and not easy to evade
-  it("M3 / round 3 M2: a synonym paraphrase (「車輪のゆがみを整えます」) taking over the F10 item it drops or changes is FAIL, even with no shared wording", () => {
+  it("M3 / round 5 M1: a synonym paraphrase (「車輪のゆがみを整えます」) after dropping F10, whose only fact word 車輪 is still shown (F15), is REVISE with the dropped fact named", () => {
     const old = rin();
     const para = (i: fx.Item) => (i.id === "h-truing" ? { ...i, text: "車輪のゆがみを整えます" } : i);
     const dropped = { ...old, items: old.items.filter((i) => i.id !== "truing").map(para) };
-    expect(validateCopyRevision(old, dropped, { facts }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "h-truing", detail: "車輪" }]);
+    expect(validateCopyRevision(old, dropped, { facts })).toEqual({
+      ok: true,
+      verdict: "revise",
+      findings: [
+        { code: "REVISION_PROSE_ABOUT_FACTS", severity: "revise", item: "h-truing" },
+        { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" },
+      ],
+    });
     const changed = { ...old, items: old.items.map((i) => (i.id === "truing" ? { ...i, text: "振れ取りでは、スポークを丁寧に締めます" } : para(i))) };
-    expect(validateCopyRevision(old, changed, { facts }).findings.map((f) => f.code)).toEqual(["REVISION_PROSE_TAKES_OVER_FACT", "REVISION_FACT_NOT_VERBATIM"]);
+    expect(validateCopyRevision(old, changed, { facts }).findings.map((f) => f.code)).toEqual(["REVISION_PROSE_ABOUT_FACTS", "REVISION_FACT_NOT_VERBATIM", "REVISION_FACT_DROPPED_WITH_NEW_PROSE"]);
     // while the F10 item stays verbatim, the same sentence is about the facts: REVISE (the re-audit and the owner judge it)
     const kept = { ...old, items: old.items.map(para) };
     expect(validateCopyRevision(old, kept, { facts })).toEqual({ ok: true, verdict: "revise", findings: [{ code: "REVISION_PROSE_ABOUT_FACTS", severity: "revise", item: "h-truing" }] });
@@ -493,46 +507,97 @@ describe("M2: no fact laundering in a revision", () => {
     const oldHtml = readFileSync(resolve(fx.REPO, RIN_HTML), "utf8");
     const next = { ...old, items: old.items.filter((i) => i.id !== "truing").concat([fx.creative("truing-2", "車輪のゆがみ取り")]) };
     const newHtml = oldHtml.replace("振れ取りでは、<wbr>スポークを<wbr>一本ずつ<wbr>締めて<wbr>車輪を<wbr>まっすぐに<wbr>します", "車輪のゆがみ取り");
-    // round 4 M1: the heading taking over the dropped F10 is refused even without the pages
-    expect(validateCopyRevision(old, next, { facts }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "truing-2", detail: "車輪" }]);
+    // round 5 M1: without the pages the structural backstop makes it REVISE (車輪 is still shown by F15), never ok
+    expect(validateCopyRevision(old, next, { facts })).toEqual({ ok: true, verdict: "revise", findings: [{ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" }] });
     expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([
-      { code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "truing-2", detail: "車輪" },
+      { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" },
       { code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: "truing" },
     ]);
   });
 });
 
-describe("PR #259 round 4 M1: any new prose line taking over a dropped fact is FAIL (heading, fragment or sentence)", () => {
+describe("PR #259 round 4 / 5 M1, round 5 L1: prose taking over a dropped fact", () => {
   const facts = FactsPack.parse(JSON.parse(fx.rinFile("facts-pack.json").toString("utf8"))).facts;
   const rin = () => JSON.parse(readFileSync(resolve(fx.REPO, RIN_COPY), "utf8")) as { items: fx.Item[] } & Record<string, unknown>;
   const oldHtml = readFileSync(resolve(fx.REPO, RIN_HTML), "utf8");
   const F10_HTML = "振れ取りでは、<wbr>スポークを<wbr>一本ずつ<wbr>締めて<wbr>車輪を<wbr>まっすぐに<wbr>します";
-
-  it.each([
-    ["車輪のゆがみを整える", "車輪"],
-    ["車輪のゆがみ取り", "車輪"],
-    ["ゆがみを整えて、まっすぐに", "まっすぐ"],
-  ])("「%s」 added after dropping the F10 item is REVISION_PROSE_TAKES_OVER_FACT", (line, word) => {
+  const without = (drop: string, line: string) => {
     const old = rin();
-    const next = { ...old, items: old.items.filter((i) => i.id !== "truing").concat([fx.creative("probe", line)]) };
-    expect(validateCopyRevision(old, next, { facts }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "probe", detail: word }]);
+    return validateCopyRevision(old, { ...old, items: old.items.filter((i) => i.id !== drop).concat([fx.creative("probe", line)]) }, { facts });
+  };
+
+  // words held only by the dropped F10 (no kept fact holds まっすぐ, スポーク or 一本), any line shape, katakana folded
+  it.each([
+    ["ゆがみを整えて、まっすぐに", "まっすぐ"],
+    ["スポークを締め直す", "すぽーく"],
+    ["一本ずつ、丁寧に", "一本"],
+    ["マッスグに整える", "まっすぐ"],
+    ["すぽーくを締める", "すぽーく"],
+  ])("「%s」 after dropping F10 uses a word only F10 held: REVISION_PROSE_TAKES_OVER_FACT (FAIL)", (line, word) => {
+    const v = without("truing", line);
+    expect(v.verdict).toBe("fail");
+    expect(v.findings).toContainEqual({ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "probe", detail: word });
+    expect(v.findings).toContainEqual({ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" });
     // while F10 stays verbatim the same line is no takeover
+    const old = rin();
     expect(validateCopyRevision(old, { ...old, items: [...old.items, fx.creative("probe", line)] }, { facts }).findings.map((f) => f.code)).not.toContain("REVISION_PROSE_TAKES_OVER_FACT");
   });
 
-  it("in the same section (with the pages): takeover and fact replaced by prose", () => {
+  // words a kept fact also holds (車輪 in F15, 自転車 / 店先 / 作業台 in F9 still shown by `fictional`), and a kanji word
+  // spelled in kana (しゃりん): REVISE through the structural backstop, the re-audit and the owner compare
+  it.each([
+    ["truing", "車輪のゆがみを整える", "F10"],
+    ["truing", "車輪のゆがみ取り", "F10"],
+    ["truing", "車輪のこと、まずご相談を", "F10"],
+    ["truing", "しゃりんのゆがみを整える", "F10"],
+    ["how", "自転車のことならご相談ください", "F9"],
+    ["how", "店先の作業台で", "F9"],
+  ])("dropping %s and adding 「%s」 is REVISE (REVISION_FACT_DROPPED_WITH_NEW_PROSE names %s), not FAIL", (drop, line, id) => {
+    const v = without(drop, line);
+    expect(v.verdict).toBe("revise");
+    expect(v.findings).toContainEqual({ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: id });
+    expect(v.findings.filter((f) => f.severity === "fail")).toEqual([]);
+  });
+
+  it("「車輪のゆがみを整える」 in the same section with the pages is FAIL (fact replaced by prose)", () => {
     const old = rin();
     const next = { ...old, items: old.items.filter((i) => i.id !== "truing").concat([fx.creative("probe", "車輪のゆがみを整える")]) };
     const newHtml = oldHtml.replace(F10_HTML, "車輪のゆがみを整える");
-    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings.map((f) => f.code)).toEqual(["REVISION_PROSE_TAKES_OVER_FACT", "REVISION_FACT_REPLACED_BY_PROSE"]);
+    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings.map((f) => [f.code, f.severity])).toEqual([
+      ["REVISION_FACT_DROPPED_WITH_NEW_PROSE", "revise"],
+      ["REVISION_FACT_REPLACED_BY_PROSE", "fail"],
+    ]);
   });
 
-  it("in a different section (the lesson heading rewritten, the truing fact dropped): still takeover", () => {
+  it("a dropped-only word in a different section (the lesson heading rewritten, the truing fact dropped) is FAIL", () => {
     const old = rin();
     const next = { ...old, items: old.items.filter((i) => i.id !== "truing").map((i) => (i.id === "h-lesson" ? { ...i, text: "ゆがみを整えて、まっすぐに" } : i)) };
     const newHtml = oldHtml.replace(`<p class="truing-fact">${F10_HTML}</p>`, "").replace("空気を<wbr>入れる日。", "ゆがみを整えて、まっすぐに");
     expect(newHtml).not.toContain("振れ取りでは");
-    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "h-lesson", detail: "まっすぐ" }]);
+    expect(validateCopyRevision(old, next, { facts, oldPageHtml: oldHtml, newPageHtml: newHtml }).findings).toEqual([
+      { code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "h-lesson", detail: "まっすぐ" },
+      { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F10" },
+    ]);
+  });
+
+  describe("bakery (round 5 probes)", () => {
+    const bfacts = FactsPack.parse(JSON.parse(fx.bakeryFacts())).facts;
+    const bwithout = (drop: string, line: string) => {
+      const old = fx.bakeryGood().record as { items: fx.Item[] } & Record<string, unknown>;
+      return validateCopyRevision(old, { ...old, items: old.items.filter((i) => i.id !== drop).concat([fx.creative("probe", line)]) }, { facts: bfacts });
+    };
+    it.each([
+      ["bread", "焼きたてのパンを"],
+      ["croissant-how", "クロワッサンもどうぞ"],
+    ])("dropping %s and adding 「%s」 (its words still shown by a kept fact) is REVISE", (drop, line) => {
+      const v = bwithout(drop, line);
+      expect(v.verdict).toBe("revise");
+      expect(v.findings.map((f) => f.code)).toContain("REVISION_FACT_DROPPED_WITH_NEW_PROSE");
+    });
+    it("dropping bread-how and adding 「前日からの準備」: 前日 is held only by the dropped F5, so the stated rule makes it FAIL", () => {
+      const v = bwithout("bread-how", "前日からの準備");
+      expect(v.findings).toContainEqual({ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "probe", detail: "前日" });
+    });
   });
 });
 
@@ -596,6 +661,11 @@ describe("M5: poetic headings without 。", () => {
   });
   it("round 3 L1: a ご / お店 opening that is no guide word stays poetic (「ご褒美の朝」「お店の灯り」「ご縁の棚」)", () => {
     expect(reviewCopyQuality(bakeryWithHeadings(["ご褒美の朝", "お店の灯り", "ご縁の棚"])).findings.find((f) => f.code === "COPY_RHETORICAL_OVERUSE")!.texts).toEqual(["ご褒美の朝", "お店の灯り", "ご縁の棚"]);
+  });
+  it("round 5 L2: a weak plain ending does not exempt a poetic front (「光の情報」「夢のご相談」「月のおすすめ」)", () => {
+    expect(reviewCopyQuality(bakeryWithHeadings(["光の情報", "夢のご相談", "月のおすすめ"])).findings.find((f) => f.code === "COPY_RHETORICAL_OVERUSE")!.texts).toEqual(["光の情報", "夢のご相談", "月のおすすめ"]);
+    expect(reviewCopyQuality(bakeryWithHeadings(["お店の情報", "よくあるご相談", "おすすめ"])).findings).toEqual([]);
+    expect(reviewCopyQuality(bakeryWithHeadings(["店舗情報", "食パンのおすすめ", "ご利用のご相談"])).findings).toEqual([]);
   });
   it("round 4 L3: a guide word does not exempt a poetic rest (「ご利用の朝」「ご案内の光」); 「ご利用の手順」 stays plain", () => {
     expect(reviewCopyQuality(bakeryWithHeadings(["ご利用の朝", "ご案内の光", "通りの角"])).findings.find((f) => f.code === "COPY_RHETORICAL_OVERUSE")!.texts).toEqual(["ご利用の朝", "ご案内の光", "通りの角"]);
@@ -759,7 +829,10 @@ describe("PR #259 round 3 M2: a new sentence about facts that stay on the page i
   it("the same sentence FAILs when the revision drops the fact item that held its term", () => {
     const old = fx.bakeryGood().record as { items: fx.Item[] } & Record<string, unknown>;
     const items = [...old.items.filter((i) => i.id !== "bread" && i.id !== "bread-how"), fx.creative("extra", "食パンは厚切りもおすすめです。")];
-    expect(validateCopyRevision(old, { ...old, items }, { facts }).findings).toEqual([{ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "extra", detail: "パン" }]);
+    expect(validateCopyRevision(old, { ...old, items }, { facts }).findings).toEqual([
+      { code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: "extra", detail: "ぱん" },
+      { code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: "F4,F5" },
+    ]);
   });
 });
 

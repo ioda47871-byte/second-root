@@ -166,17 +166,33 @@ const ADDRESSEE_HEADING = /(方|皆さま|皆様|みなさま|お客様|お客�
 /** What may follow a guide word and still read as a plain heading (ご来店の前に, ご利用の際は). */
 const PLAIN_AFTER_GUIDE = /^(前に|際に|際は|後に|あとに|とき|ときは|方法|注意|注意点|お願い)$/;
 /**
+ * Plain endings that say little on their own (情報, ご相談, おすすめ): plain only when what stands before them is
+ * empty, a plain or guide word, or names something from the shop's facts (round 5 L2: 「光の情報」「夢のご相談」
+ * 「月のおすすめ」 are not plain; 「お店の情報」「よくあるご相談」「おすすめ」 are).
+ */
+const WEAK_PLAIN_SUFFIX = /(情報|ご相談|相談|おすすめ|オススメ)$/;
+const PLAIN_BEFORE_WEAK = /^(お店|店舗|当店|よくある|最新|新着|本日|今月|今週|季節|基本|詳細|各種)$/;
+/**
  * A plain heading: ends in a plain word, is addressed to the visitor, or is a guide word (ご利用, お問い合わせ …)
  * followed by nothing, a plain word or a plain timing (round 4 L3: the guide word alone does not exempt 「ご利用の朝」
- * 「ご案内の光」; the rest of the heading is judged too).
+ * 「ご案内の光」; the rest of the heading is judged too). A weak plain ending is judged by what stands before it.
  */
-export function isPlainHeading(text: string): boolean {
+export function isPlainHeading(text: string, c: ShopContext): boolean {
   const n = norm(text);
+  if (!n) return true;
+  const weak = n.match(WEAK_PLAIN_SUFFIX);
+  if (weak) {
+    const before = n.slice(0, weak.index).replace(/[のご]+$/, "");
+    if (before === "" || PLAIN_BEFORE_WEAK.test(before)) return true;
+    const guide = before.match(PLAIN_HEADING_PREFIX);
+    if (guide && guide[0] === before) return true;
+    return isPlainHeading(before, c) || (lineTerms(before, c).length > 0 && !isSwappable(before, c));
+  }
   if (PLAIN_HEADING.test(n) || ADDRESSEE_HEADING.test(n)) return true;
   const m = n.match(PLAIN_HEADING_PREFIX);
   if (!m) return false;
   const rest = n.slice(m[0].length).replace(/^[のをとへ・]+/, "");
-  return rest === "" || PLAIN_HEADING.test(rest) || PLAIN_AFTER_GUIDE.test(rest);
+  return rest === "" || PLAIN_AFTER_GUIDE.test(rest) || isPlainHeading(rest, c);
 }
 /** Words every fictional research shop carries (架空市…): never evidence that a line is about this shop. */
 const FICTIONAL_MARKERS = ["架空"];
@@ -357,16 +373,25 @@ const lineTerms = (text: string, c: ShopContext) => {
 /** Grammar at the edges of a kana run (particles, polite endings), taken off before the run is compared. */
 const KANA_EDGE_END = /(ます|ました|します|して|しています|ています|です|でした|ください|に|を|は|が|で|と|も|へ|の|て|や)+$/;
 const KANA_EDGE_START = /^(に|を|は|が|で|と|も|へ|の|て|や)+/;
+/** Katakana folded to hiragana (after NFKC, which also folds width): マッスグ and まっすぐ compare equal (round 5 L1). */
+export const foldKana = (s: string) => norm(s).replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
 /**
- * The words of a line that a dropped fact held (round 4 M1): its terms (kanji / katakana / alphanumeric runs) held
- * by the dropped facts' values, and its kana words of three or more letters (particles and polite endings taken off
- * the edges) found in them, so 「ゆがみを整えて、まっすぐに」 takes over F10's まっすぐ without a kanji term.
+ * The words of a line held ONLY by facts this revision stopped showing (round 4 M1, round 5 M1, L1): its terms
+ * (kanji / katakana / alphanumeric runs) and its kana words of three or more letters (particles and polite endings
+ * taken off the edges), katakana folded to hiragana, that a dropped fact's value holds and no fact still shown
+ * verbatim holds. 「ゆがみを整えて、まっすぐに」 / 「マッスグに整える」 take over F10's まっすぐ; 「車輪のゆがみを
+ * 整える」 does not, because 車輪 is still shown (F15). The shop's name is taken out first. Synonyms and kanji / kana
+ * respellings (しゃりん for 車輪) are not matched: the structural REVISE (REVISION_FACT_DROPPED_WITH_NEW_PROSE), the
+ * re-audit and the owner review catch those.
  */
-function wordsTakenOver(text: string, c: ShopContext, dropped: string): string[] {
-  const out = lineTerms(text, c).filter((t) => termHeldBy(t, dropped));
-  for (const m of norm(text).matchAll(/[ぁ-ゖー]{3,}/g)) {
+function wordsTakenOver(text: string, c: ShopContext, dropped: string, kept: string): string[] {
+  const only = (w: string) => termHeldBy(w, dropped) && !termHeldBy(w, kept);
+  const out = lineTerms(text, c).map(foldKana).filter(only);
+  let t = norm(text);
+  for (const n of c.nameStrings) t = t.split(n).join("\u0000");
+  for (const m of foldKana(t).matchAll(/[ぁ-ゖー]{3,}/g)) {
     const w = m[0].replace(KANA_EDGE_END, "").replace(KANA_EDGE_START, "");
-    if (w.length >= 3 && dropped.includes(w)) out.push(w);
+    if (w.length >= 3 && only(w)) out.push(w);
   }
   return [...new Set(out)];
 }
@@ -387,7 +412,7 @@ export const genericSignals = (text: string) => GENERIC_PHRASE_SIGNALS.filter((p
 /** A short noun-phrase heading with no 。 that names nothing from the shop's facts and is no plain label (review M5). */
 export function isPoeticHeading(text: string, c: ShopContext): boolean {
   const n = norm(text);
-  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || isPlainHeading(n)) return false;
+  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || isPlainHeading(n, c)) return false;
   return isSwappable(text, c);
 }
 
@@ -552,7 +577,7 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
 
   // -- one shape repeated across sections
   // a plain heading (お店の情報, ご来店の前に, お持ち帰りについて) is no line shape, even when it ends in に / て (round 4 L1)
-  const shaped = prose.filter((e) => e.section_id !== OUTSIDE_SECTIONS && norm(e.text).length <= 30 && !isPolite(e.text) && ((e.role === "heading" && !isPlainHeading(e.text)) || isSloganShaped(e.text)));
+  const shaped = prose.filter((e) => e.section_id !== OUTSIDE_SECTIONS && norm(e.text).length <= 30 && !isPolite(e.text) && ((e.role === "heading" && !isPlainHeading(e.text, c)) || isSloganShaped(e.text)));
   const cadence: string[] = [];
   for (const shape of ["terminal_period", "comma_split", "noun_period", "particle_fragment"] as const) {
     const hit = shaped.filter((e) => shapes(e.text).includes(shape));
@@ -968,14 +993,18 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
   const byId = new Map(o.facts.map((x) => [x.id, x.value]));
   const c = shopContext(o.facts);
   const changedProse = new Set<string>();
-  // facts this revision no longer shows verbatim: a fact item of the old record whose text no verbatim fact item of the
-  // new record keeps; their source facts' values are what a new sentence must not take over (round 3 M2)
+  // round 3 M2 / round 5 M1: the fact items of the old record whose text no verbatim fact item of the new record keeps
+  // (dropped or reworded), the facts they came from (name and category aside), and the facts still shown verbatim.
+  // A word held only by the dropped facts may not reappear in new prose; a word a kept fact also holds may (REVISE).
   const verbatim = (i: CopyItem) => i.claim_type === "fact" && i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)));
-  const keptVerbatim = new Set(b.data.items.filter(verbatim).map((i) => norm(i.text)));
-  const droppedCorpus = a.data.items
-    .filter((i) => i.claim_type === "fact" && !keptVerbatim.has(norm(i.text)))
-    .flatMap((i) => i.source_fact_ids.filter((s) => byId.has(s)).map((s) => norm(byId.get(s)!)))
-    .join("\u0000");
+  const keptItems = b.data.items.filter(verbatim);
+  const keptVerbatim = new Set(keptItems.map((i) => norm(i.text)));
+  const droppedItems = a.data.items.filter((i) => i.claim_type === "fact" && !keptVerbatim.has(norm(i.text)));
+  const keyOf = new Map(o.facts.map((x) => [x.id, x.key]));
+  const droppedFactIds = [...new Set(droppedItems.flatMap((i) => i.source_fact_ids.filter((s) => byId.has(s))))].sort();
+  const valuesOf = (ids: readonly string[]) => ids.filter((s) => byId.has(s) && !/^(name|category)$/.test(keyOf.get(s) ?? "")).map((s) => foldKana(byId.get(s)!)).join("\u0000");
+  const droppedCorpus = valuesOf(droppedFactIds);
+  const keptCorpus = valuesOf([...new Set(keptItems.flatMap((i) => i.source_fact_ids))]);
   for (const i of b.data.items) {
     const old = before.get(i.id);
     if (old && old.claim_type !== i.claim_type) f.push({ code: "REVISION_CLAIM_TYPE_CHANGED", severity: "fail", item: i.id, detail: `${old.claim_type}->${i.claim_type}` });
@@ -988,20 +1017,24 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
     const fact = restatesFact(i.text, o.facts);
     const signs = unsourcedClaimSigns(i.text, c);
     const statement = isStatement(i.text);
-    // round 2 M3 / round 3 M2 / round 4 M1: a new sentence is a terminal FAIL when it carries a claim sign or restates a
-    // fact; any new or changed prose line (heading and fragment too) is a terminal FAIL when it names a word of a fact
-    // this same revision stopped showing verbatim (the fact taken over by prose: 「車輪のゆがみを
-    // 整えます」 with the F10 item dropped). A sentence naming a fact term while that fact stays on the page verbatim
+    // round 2 M3 / round 3 M2 / round 4 M1 / round 5 M1: a new sentence is a terminal FAIL when it carries a claim sign
+    // or restates a fact; any new or changed prose line (heading and fragment too) is a terminal FAIL when it names a
+    // word that only a fact this same revision stopped showing verbatim held (the fact taken over by prose:
+    // 「ゆがみを整えて、まっすぐに」 with the F10 item dropped). A sentence naming a fact term while that fact stays on the page verbatim
     // (「パンの香りが通りに広がります。」) is REVISE (REVISION_PROSE_ABOUT_FACTS): the re-audit and the owner judge it,
     // as COPY_GENERIC_FOR_SHOP asks for exactly such lines. A sentence naming nothing of the facts is REVISE too.
-    // round 4 M1: every new or changed prose line (heading, fragment or sentence) is checked, not only sentences
-    const takesOver = droppedCorpus !== "" ? wordsTakenOver(i.text, c, droppedCorpus) : [];
+    // round 4 M1: every new or changed prose line (heading, fragment or sentence) is checked, not only sentences;
+    // round 5 M1: only words no fact still shown verbatim holds
+    const takesOver = droppedCorpus !== "" ? wordsTakenOver(i.text, c, droppedCorpus, keptCorpus) : [];
     if (signs.length || (statement && fact)) f.push({ code: fact ? "REVISION_PROSE_RESTATES_FACT" : "REVISION_NEW_PROSE_CLAIM", severity: "fail", item: i.id, ...(fact ? { detail: fact } : { detail: signs.join(",") }) });
     else if (takesOver.length) f.push({ code: "REVISION_PROSE_TAKES_OVER_FACT", severity: "fail", item: i.id, detail: takesOver.join(",").slice(0, 120) });
     else if (fact) f.push({ code: "REVISION_PROSE_ECHOES_FACT", severity: "revise", item: i.id, detail: fact });
     else if (statement && !isSwappable(i.text, c)) f.push({ code: "REVISION_PROSE_ABOUT_FACTS", severity: "revise", item: i.id });
     else if (statement) f.push({ code: "REVISION_NEW_PROSE_STATEMENT", severity: "revise", item: i.id });
   }
+  // round 5 M1, structural backstop: a revision that drops or rewords a fact item and adds or changes prose is never a
+  // clean step; the re-audit and the owner compare it with the dropped facts (named here)
+  if (droppedItems.length && changedProse.size) f.push({ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: (droppedFactIds.join(",") || droppedItems.map((i) => i.id).join(",")).slice(0, 120) });
   // a fact removed and prose put where it stood
   if (o.oldPageHtml !== undefined && o.newPageHtml !== undefined) {
     const kept = new Set(b.data.items.filter((i) => i.claim_type === "fact").map((i) => norm(i.text)));
