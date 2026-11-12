@@ -131,3 +131,20 @@ describe("existing prompts and the default selection are unchanged", () => {
     expect(readdirSync(state)).toEqual([]);
   }, 60_000);
 });
+
+describe("the design-director copy review v2 (proposal, not loaded by the skill)", () => {
+  const SKILL = ".claude/skills/second-root-design-director";
+  const proposal = readFileSync(resolve(REPO, "docs/design/design-director-copy-review-v2.md"), "utf8");
+
+  it("is not loaded: neither the skill nor its references name it", () => {
+    const refs = readdirSync(resolve(REPO, SKILL, "references"));
+    expect(refs).not.toContain("copy-review.md");
+    for (const f of ["SKILL.md", ...refs.map((n) => `references/${n}`)]) expect(readFileSync(resolve(REPO, SKILL, f), "utf8")).not.toMatch(/copy-review-v2|copy-review\.md/);
+  });
+
+  it("says activation needs the owner's approval and covers the review rules", () => {
+    expect(proposal).toMatch(/提案 \/ 未有効/);
+    expect(proposal).toMatch(/有効にする .*オーナーの承認が要る/);
+    for (const s of ["自然な日本語", "店舗固有性", "情報の有用性", "表現の抑制と一貫性", "事実・出典の正しさ", "COPY_RHETORICAL_OVERUSE", "HOLD", "claim_type` を変えない", "事実は逐語のまま", "quality_research_fictional", "real_shop_proposal"]) expect(proposal).toContain(s);
+  });
+});
