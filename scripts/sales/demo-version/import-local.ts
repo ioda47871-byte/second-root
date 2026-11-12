@@ -8,6 +8,9 @@
  * environment. --seed-rin creates (or finds) the fictional 輪 shop from SR-001's facts pack. Verifies the package
  * again, ingests it with sales_ingest_demo_version (manual_import; a re-run replays), uploads and re-verifies every
  * file. Prints ids and hashes only — never a key.
+ *
+ * DEV-196s: `--seed-rin --seed-only` creates (or finds) the 輪 shop and stops, so the local-only patch
+ * (apply-local-rin-patch.ts, which needs the seed row) can be applied before the photo package is imported.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -29,8 +32,9 @@ async function main(): Promise<number> {
   const dir = arg("--package");
   const prospectArg = arg("--prospect");
   const seedRin = process.argv.includes("--seed-rin");
-  if (!dir || (!prospectArg && !seedRin) || (prospectArg && !UUID.test(prospectArg))) {
-    process.stderr.write("usage: import-local.ts --package <dir> (--prospect <uuid> | --seed-rin)\n");
+  const seedOnly = process.argv.includes("--seed-only");
+  if (seedOnly ? !seedRin || dir || prospectArg : !dir || (!prospectArg && !seedRin) || (prospectArg && !UUID.test(prospectArg))) {
+    process.stderr.write("usage: import-local.ts --package <dir> (--prospect <uuid> | --seed-rin) | import-local.ts --seed-rin --seed-only\n");
     return 2;
   }
   const url = assertLocalSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
@@ -39,7 +43,7 @@ async function main(): Promise<number> {
     process.stderr.write("the local service role key is not set\n");
     return 2;
   }
-  const pkg = readPackage(dir);
+  const pkg = seedOnly ? null : readPackage(dir!);
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 
   let prospectId = prospectArg ?? null;
@@ -60,6 +64,10 @@ async function main(): Promise<number> {
     const d = await client.from("sales_demos").select("id").eq("prospect_id", prospectId!).maybeSingle();
     if (d.error || !d.data) throw new ImportError("DEMO_NOT_FOUND");
     demoId = (d.data as { id: string }).id;
+  }
+  if (!pkg) {
+    process.stdout.write(`${JSON.stringify({ status: "OK", seeded: true, prospect_id: prospectId, demo_id: demoId })}\n`);
+    return 0;
   }
   const result = await importPackage(pkg, { client, store: supabasePackageStore(client), demoId, workerCommit: (pkg.validatorResult.validator_commit ?? "").match(/^[0-9a-f]{7,40}$/) ? pkg.validatorResult.validator_commit : null });
   process.stdout.write(`${JSON.stringify({ status: "OK", prospect_id: prospectId, ...result }, null, 2)}\n`);

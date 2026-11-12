@@ -10,6 +10,10 @@
  * the page is the live page tab. Raising the render limit (up to WebP's 16383) needs a migration on the
  * sales_demo_version_files check — pending the owner's approval (option 1).
  *
+ * DEV-196s: a package may also hold a photo-swapped page's photos (WebP, prepared by swap-package.ts) and their
+ * image records (`images`, the p_images of the ingest: AI demo pictures of the fictional 輪 only). The records are
+ * checked against the manifest's photos (one each, same sha256 / size / pixel size) on build and on every read.
+ *
  * Node only (sharp, the file system). Not part of the pure library.
  */
 import { createHash } from "node:crypto";
@@ -28,6 +32,8 @@ import {
   type ManifestFile,
   type RenderViewport,
 } from "@/lib/sales/demo-version/manifest";
+import type { RightsSummary } from "@/lib/sales/demo-version/rights";
+import { packageImageProblems, type PackageImage } from "./swap-rights";
 
 export const PACKAGE_FORMAT = "sales_demo_version_package_v1";
 /** Fixed WebP settings (deterministic output for the same input). */
@@ -74,10 +80,44 @@ export type DemoVersionPackage = {
   files: Record<string, Uint8Array>;
   workerChecks: Record<string, unknown>;
   validatorResult: { version: 1; ok: true; codes: string[]; validator_commit: string | null; checked_at: string };
-  rightsSummary: { version: 1; photos: 0; by_status: Record<string, never>; earliest_expiry: null; label_required: false };
-  /** where the page came from (a repository path), for the record only */
+  rightsSummary: RightsSummary;
+  /** DEV-196s: the p_images of the ingest, one per photo of the manifest (empty for a page without photos) */
+  images: PackageImage[];
+  /** DEV-196s: the package's own local record (never sent to the database): conversions, sources, proofs, comparison */
+  local?: Record<string, unknown>;
+  /** where the page came from (a repository path, or "swap-copy" for a photo-swapped page), for the record only */
   source: string;
 };
+
+/**
+ * DEV-196s: the image records against the manifest: exactly one record per photo (same sha256, size and pixel size),
+ * no record without a photo, every record in the fixed AI-demo shape. Throws PackageError("IMAGES_INVALID").
+ */
+export function checkPackageImages(manifest: ArtifactManifest, images: readonly unknown[]): PackageImage[] {
+  const photos = manifest.files.filter((f) => f.role === "photo");
+  if (!Array.isArray(images) || images.length !== photos.length) throw new PackageError("IMAGES_INVALID", ["count"]);
+  const bySha = new Map<string, unknown>();
+  for (const e of images) {
+    const problems = packageImageProblems(e);
+    if (problems.length) throw new PackageError("IMAGES_INVALID", problems);
+    const sha = (e as PackageImage).sha256;
+    if (bySha.has(sha)) throw new PackageError("IMAGES_INVALID", ["duplicate"]);
+    bySha.set(sha, e);
+  }
+  for (const f of photos) {
+    const e = bySha.get(f.sha256) as PackageImage | undefined;
+    if (!e || e.bytes !== f.bytes || e.width !== f.width || e.height !== f.height) throw new PackageError("IMAGES_INVALID", [f.name]);
+  }
+  return images as PackageImage[];
+}
+
+/** The §8.4 summary of a package's images (all AI demo pictures, admin preview only). */
+export function packageRightsSummary(images: readonly PackageImage[]): RightsSummary {
+  const expiries = images.map((i) => i.rights_expiry).filter((e): e is string => e !== null).sort();
+  return images.length === 0
+    ? { version: 1, photos: 0, by_status: {}, earliest_expiry: null, label_required: false }
+    : { version: 1, photos: images.length, by_status: { ai_demo_internal: images.length }, earliest_expiry: expiries[0] ?? null, label_required: true };
+}
 
 /** Everything the server would check, on bytes in memory. Throws PackageError with the fixed codes. */
 export function checkPackageFiles(manifest: unknown, files: Readonly<Record<string, Uint8Array>>): ArtifactManifest {
@@ -105,6 +145,13 @@ export async function buildPackage(o: {
   css: string;
   /** full-page PNGs at deviceScaleFactor 1 */
   renders: Partial<Record<RenderViewport, Uint8Array>>;
+  /** DEV-196s: the page's photos, by their URL path in the page (photos/<slot>-<range>.webp) */
+  photos?: ReadonlyMap<string, Uint8Array>;
+  /** DEV-196s: their image records (required with photos) */
+  images?: readonly PackageImage[];
+  /** DEV-196s: compact facts for worker_checks (kept within its size limit) */
+  photoChecks?: Record<string, unknown>;
+  local?: Record<string, unknown>;
   source: string;
   validatorCommit?: string | null;
   now?: Date;
@@ -118,6 +165,13 @@ export async function buildPackage(o: {
     { name: HTML_NAME, role: "html", sha256: sha256(files[HTML_NAME]!), bytes: files[HTML_NAME]!.byteLength, content_type: "text/html" },
     { name: CSS_NAME, role: "css", sha256: sha256(files[CSS_NAME]!), bytes: files[CSS_NAME]!.byteLength, content_type: "text/css" },
   ];
+  for (const [url, bytes] of [...(o.photos ?? new Map<string, Uint8Array>())].sort(([a], [b]) => a.localeCompare(b))) {
+    const name = `page/${url}`;
+    const meta = await sharp(bytes).metadata();
+    if (meta.format !== "webp" || !meta.width || !meta.height) throw new PackageError("PHOTO_NOT_WEBP", [url]);
+    files[name] = bytes;
+    entries.push({ name, role: "photo", sha256: sha256(bytes), bytes: bytes.byteLength, content_type: "image/webp", width: meta.width, height: meta.height });
+  }
   const originals: Record<string, RenderOriginal & { scaled: boolean }> = {};
   for (const viewport of ["desktop_1440", "tablet_768", "mobile_390"] as const) {
     const png = o.renders[viewport];
@@ -129,6 +183,7 @@ export async function buildPackage(o: {
     originals[viewport] = { ...r.original, scaled: r.width !== r.original.width || r.height !== r.original.height };
   }
   const manifest = checkPackageFiles({ version: 1, files: entries }, files);
+  const images = checkPackageImages(manifest, [...(o.images ?? [])]);
   const workerChecks = {
     // traceability of the full-size renders (the stored ones are downscaled to the 4096 px limit)
     renderer: "comp-lane renderPrototype: JavaScript off, network blocked, deviceScaleFactor 1",
@@ -136,6 +191,7 @@ export async function buildPackage(o: {
     webp: RENDER_WEBP,
     resize_kernel: "lanczos3",
     originals,
+    ...(o.photoChecks ? { photos: o.photoChecks } : {}),
   };
   if (Buffer.byteLength(JSON.stringify(workerChecks)) > 2000) throw new PackageError("WORKER_CHECKS_TOO_LARGE");
   return {
@@ -145,7 +201,9 @@ export async function buildPackage(o: {
     files,
     workerChecks,
     validatorResult: { version: 1, ok: true, codes: [], validator_commit: o.validatorCommit ?? null, checked_at: (o.now ?? new Date()).toISOString() },
-    rightsSummary: { version: 1, photos: 0, by_status: {}, earliest_expiry: null, label_required: false },
+    rightsSummary: packageRightsSummary(images),
+    images,
+    ...(o.local ? { local: o.local } : {}),
     source: o.source,
   };
 }
@@ -170,7 +228,7 @@ type PackageMeta = Omit<DemoVersionPackage, "files">;
 /** Writes the package directory (outside the repository only): package.json (meta + manifest) and the files. */
 export function writePackage(dir: string, pkg: DemoVersionPackage, repo?: string): void {
   if (insideRepo(dir, repo)) throw new PackageError("OUT_INSIDE_REPOSITORY");
-  const meta: PackageMeta = { format: pkg.format, manifest: pkg.manifest, bundleSha256: pkg.bundleSha256, workerChecks: pkg.workerChecks, validatorResult: pkg.validatorResult, rightsSummary: pkg.rightsSummary, source: pkg.source };
+  const meta: PackageMeta = { format: pkg.format, manifest: pkg.manifest, bundleSha256: pkg.bundleSha256, workerChecks: pkg.workerChecks, validatorResult: pkg.validatorResult, rightsSummary: pkg.rightsSummary, images: pkg.images, ...(pkg.local ? { local: pkg.local } : {}), source: pkg.source };
   mkdirSync(dir, { recursive: true });
   for (const [name, bytes] of Object.entries(pkg.files)) {
     const path = join(dir, name);
@@ -201,5 +259,9 @@ export function readPackage(dir: string): DemoVersionPackage {
   const manifest = checkPackageFiles(m.manifest, files);
   if (bundleSha256(manifest) !== meta.bundleSha256) throw new PackageError("BUNDLE_MISMATCH");
   if (meta.validatorResult?.ok !== true) throw new PackageError("VALIDATOR_NOT_OK");
-  return { ...meta, manifest, files };
+  // a package written before DEV-196s has no images: only valid when it has no photos
+  const images = checkPackageImages(manifest, meta.images ?? []);
+  const summary = packageRightsSummary(images);
+  if (JSON.stringify(meta.rightsSummary) !== JSON.stringify(summary)) throw new PackageError("RIGHTS_SUMMARY_MISMATCH");
+  return { ...meta, manifest, images, rightsSummary: summary, files };
 }

@@ -1,10 +1,14 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import sharp from "sharp";
-import { beforeAll, describe, expect, it } from "vitest";
+import type { PoolClient } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_VERSIONS_BUCKET, importPackage, supabasePackageStore, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, type DemoVersionPackage } from "@/lib/demo-version-package/package";
-import { seedRinShop, type FactsPack } from "@/lib/demo-version-package/seed-rin";
+import { assertRinSeedRow, readRinPatchSql } from "@/lib/demo-version-package/local-rin-patch";
+import { RIN_PROSPECT_ID, RIN_REGISTRY_ADDRESS, seedRinShop, type FactsPack } from "@/lib/demo-version-package/seed-rin";
+import { prepareSwap, readOriginals, readSwapPage } from "@/lib/demo-version-package/swap-package";
+import { cleanupDirs, fixture } from "../support/rin-swap-fixture";
 import { storageStatus } from "../support/seed-demo-version";
 import { db, serviceClient } from "./helpers";
 
@@ -47,6 +51,8 @@ describe("the fictional 輪 shop", () => {
   it("is seeded idempotently with SR-001's facts as the demo content", async () => {
     const again = await seedRinShop(db, pack);
     expect(again).toEqual({ ...shop, created: false });
+    // DEV-196s: the fixed id
+    expect(shop.prospectId).toBe(RIN_PROSPECT_ID);
     const d = (await db.query("select content, template, expires_at from public.sales_demos where id = $1", [shop.demoId])).rows[0];
     expect(d.content).toMatchObject({ name: "架空自転車修理 輪", category: "bicycle_repair", facts_pack: "fictional-bicycle-repair-wa" });
     expect(d.expires_at).toBeNull();
@@ -110,5 +116,129 @@ describe("the real private bucket", () => {
     expect(again.files.every((f) => !f.uploaded)).toBe(true);
     const prefix = `v1/${shop.demoId}/${r.versionId}/`;
     await serviceClient().storage.from(DEMO_VERSIONS_BUCKET).remove(own.manifest.files.map((f) => `${prefix}${f.name}`));
+  });
+});
+
+// DEV-196s (owner decision 2026-11-12): 輪's AI demo photos with the LOCAL-ONLY patch
+// (scripts/sales/demo-version/local-rin-ai-photos.sql). The patch is applied inside a transaction that is always
+// ROLLED BACK, so the shared schema never changes (the existing tests that pin today's refusal keep passing). Inside:
+// the real ingest takes 輪's photo package; a real shop and a fictional-looking other prospect are refused; each
+// derivation branch; nothing is shareable; immutability and revocation still hold.
+describe("DEV-196s: 輪's AI demo photos with the local-only patch (applied in a rolled-back transaction)", () => {
+  afterAll(cleanupDirs);
+  const provenance = { generator: "fixture generator", model: "fixture-gen", generated_at: "2026-11-06T20:10:51+09:00", prompt_sha256: "a".repeat(64), approval_id: "fixture-approval-01", admin_preview_only: true };
+  const image = (prospectId: string, o: Record<string, unknown> = {}) => ({
+    prospect_id: prospectId, sha256: randomBytes(32).toString("hex"), bytes: 100, width: 10, height: 10, format: "webp", record_schema: "photo_rights_v0",
+    source_kind: "ai_generated_demo", rights_status: "ai_demo_internal", depicts_real_shop: false, depicts_identifiable_person: false, depicts_real_product: false,
+    depicts_real_interior: false, depicts_real_equipment: false, allowed_uses: JSON.stringify({ edit: true, crop: true, commercial: true, public_web: false }),
+    rights_expiry: null, provenance: JSON.stringify(provenance), ...o,
+  });
+  const insert = (c: PoolClient, row: Record<string, unknown>) => {
+    const keys = Object.keys(row);
+    return c.query<{ id: string; rights_status: string }>(`insert into public.sales_demo_images (${keys.join(", ")}) values (${keys.map((_, i) => `$${i + 1}`).join(", ")}) returning id, rights_status`, keys.map((k) => row[k]));
+  };
+  /** runs f in a savepoint; returns the error message (the transaction goes on) or throws when nothing was refused */
+  const refused = async (c: PoolClient, f: () => Promise<unknown>): Promise<string> => {
+    await c.query("savepoint s");
+    try {
+      await f();
+    } catch (e) {
+      await c.query("rollback to savepoint s");
+      return (e as Error).message;
+    }
+    await c.query("release savepoint s");
+    throw new Error("not refused");
+  };
+  const ingest = (c: PoolClient, pkg: DemoVersionPackage, demoId: string) =>
+    c.query<{ r: { version_id: string; status: string } }>(
+      "select public.sales_ingest_demo_version($1::uuid, $2, null, 'manual_import', null, null, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, null, $8::jsonb) as r",
+      [demoId, `manual-import-${pkg.bundleSha256.slice(0, 48)}`, pkg.bundleSha256, JSON.stringify(pkg.manifest), JSON.stringify(pkg.images), JSON.stringify(pkg.validatorResult), JSON.stringify(pkg.workerChecks), JSON.stringify(pkg.rightsSummary)],
+    );
+  const constraintDef = async () => (await db.query("select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'sales_demo_images_real_shop_no_ai_demo'")).rows[0].d as string;
+
+  it("輪 is accepted through the real ingest; others are refused; each branch; nothing shareable; the schema is restored", async () => {
+    const f = await fixture();
+    const p = await prepareSwap({ page: readSwapPage(f.page), rights: f.rights, depictions: f.depictions, summary: f.summary, originals: readOriginals(f.originals), forbiddenSha256: new Set(), now: "2026-11-11" });
+    const c0 = Math.floor(Math.random() * 200);
+    const photoPkg = await buildPackage({ html: p.html, css: p.css, renders: { desktop_1440: await png(1440, 900, c0), mobile_390: await png(390, 844, c0 + 3) }, photos: p.photos, images: p.images, source: "swap-copy" });
+    const before = await constraintDef();
+    expect(before).not.toContain(RIN_PROSPECT_ID);
+
+    const c = await db.connect();
+    try {
+      await c.query("begin");
+      // without the patch, today's schema refuses the photo package (the shared rule)
+      expect(await refused(c, () => ingest(c, photoPkg, shop.demoId))).toMatch(/invalid_image/);
+      await assertRinSeedRow(c, pack);
+      await c.query(readRinPatchSql(process.cwd()));
+      // inside this transaction the check is row-local (another connection would wait on the table lock until rollback)
+      expect((await c.query("select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'sales_demo_images_real_shop_no_ai_demo'")).rows[0].d).toContain(RIN_PROSPECT_ID);
+
+      // 輪: the real ingest takes the whole photo package
+      const r = (await ingest(c, photoPkg, shop.demoId)).rows[0]!.r;
+      expect(r.status).toBe("draft");
+      const imgs = (await c.query("select i.rights_status, public.sales_demo_image_shareable(i) as shareable, public.sales_demo_image_previewable(i) as previewable from public.sales_demo_images i join public.sales_demo_version_files f on f.image_id = i.id where f.version_id = $1", [r.version_id])).rows;
+      expect(imgs).toHaveLength(15);
+      for (const i of imgs) expect(i).toEqual({ rights_status: "ai_demo_internal", shareable: false, previewable: true });
+      const v = (await c.query("select share_eligible, status from public.sales_demo_versions where id = $1", [r.version_id])).rows[0];
+      expect(v).toEqual({ share_eligible: false, status: "draft" });
+      expect((await c.query("select public.sales_demo_versioned_sharing_enabled() as on")).rows[0].on).toBe(false);
+
+      // a real shop is refused
+      const real = (await c.query("insert into public.sales_prospects (name, normalized_name, address, normalized_address, category, website_status) values ('テストのパン屋', 'テストのパン屋', '愛知県名古屋市中区テスト1-1', '愛知県名古屋市中区テスト1-1', 'bakery', 'not_found') returning id")).rows[0].id as string;
+      expect(await refused(c, () => insert(c, image(real)))).toMatch(/ai_demo_real_shop/);
+      // another fictional-looking prospect (no contact, a 輪-like name) is refused: only the one id
+      const lookalike = (await c.query("insert into public.sales_prospects (name, normalized_name, address, normalized_address, category, website_status) values ('架空自転車修理 輪2', '架空自転車修理 輪2', $1, $1, 'bakery', 'not_found') returning id", [`${RIN_REGISTRY_ADDRESS}2`])).rows[0].id as string;
+      expect(await refused(c, () => insert(c, image(lookalike)))).toMatch(/ai_demo_real_shop/);
+      // 輪 itself, once its row loses a marker (a contact channel), is refused
+      expect(
+        await refused(c, async () => {
+          await c.query("update public.sales_prospects set public_email = 'rin@test.example.com' where id = $1", [RIN_PROSPECT_ID]);
+          await insert(c, image(RIN_PROSPECT_ID));
+        }),
+      ).toMatch(/ai_demo_real_shop/);
+      // ai_demo_internal on another source kind is refused, even for 輪
+      expect(await refused(c, () => insert(c, image(RIN_PROSPECT_ID, { source_kind: "owner_provided" })))).toMatch(/ai_demo_real_shop/);
+
+      // each derivation branch (輪)
+      const status = async (o: Record<string, unknown>) => (await insert(c, image(RIN_PROSPECT_ID, o))).rows[0]!.rights_status;
+      expect(await status({})).toBe("ai_demo_internal");
+      expect(await status({ rights_status: "unknown" })).toBe("unknown");
+      for (const k of ["depicts_real_shop", "depicts_identifiable_person", "depicts_real_product", "depicts_real_interior", "depicts_real_equipment"]) expect(await status({ [k]: true }), k).toBe("unknown");
+      expect(await status({ provenance: JSON.stringify({ ...provenance, model: "unknown" }) })).toBe("unknown");
+      expect(await status({ provenance: null })).toBe("unknown");
+      expect(await status({ allowed_uses: JSON.stringify({ edit: true, crop: true, commercial: true, public_web: true }) })).toBe("unknown");
+      expect(await status({ rights_expiry: "2020-01-01" })).toBe("expired");
+
+      // immutability and revocation still hold
+      const one = (await insert(c, image(RIN_PROSPECT_ID))).rows[0]!;
+      expect(await refused(c, () => c.query("update public.sales_demo_images set width = 11 where id = $1", [one.id]))).toMatch(/demo_image_immutable/);
+      expect(await refused(c, () => c.query("update public.sales_demo_images set rights_status = 'share_cleared' where id = $1", [one.id]))).toMatch(/demo_image_rights_upgrade_forbidden|sales_demo_images_/);
+      await c.query("update public.sales_demo_images set rights_status = 'revoked', revoked_at = now(), revoke_code = 'TEST_REVOKE' where id = $1", [one.id]);
+      expect(await refused(c, () => c.query("update public.sales_demo_images set revoke_code = 'OTHER_CODE' where id = $1", [one.id]))).toMatch(/demo_image_revoked_final/);
+      expect((await c.query("select public.sales_demo_image_shareable(i) as s from public.sales_demo_images i where id = $1", [one.id])).rows[0].s).toBe(false);
+    } finally {
+      await c.query("rollback");
+      c.release();
+    }
+    // rolled back: the shared schema and the data are as before
+    expect(await constraintDef()).toBe(before);
+    expect((await db.query("select count(*)::int as n from public.sales_demo_versions where bundle_sha256 = $1", [photoPkg.bundleSha256])).rows[0].n).toBe(0);
+    expect((await db.query("select public_email from public.sales_prospects where id = $1", [RIN_PROSPECT_ID])).rows[0].public_email).toBeNull();
+  }, 120_000);
+});
+
+describe("DEV-196s: the local patch's command refuses a 輪 row without its markers", () => {
+  it("RIN_SEED_MARKERS once the row has a contact channel (checked in a rolled-back transaction)", async () => {
+    const c = await db.connect();
+    try {
+      await c.query("begin");
+      await assertRinSeedRow(c, pack);
+      await c.query("update public.sales_prospects set public_email = 'rin@test.example.com' where id = $1", [RIN_PROSPECT_ID]);
+      await expect(assertRinSeedRow(c, pack)).rejects.toThrow("RIN_SEED_MARKERS");
+    } finally {
+      await c.query("rollback");
+      c.release();
+    }
   });
 });
