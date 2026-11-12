@@ -140,11 +140,18 @@ export function makeCopyFiles(input: CopyInput, bundle: string): { copy: CopyMan
   return { copy: { version: COPY_MANIFEST_VERSION, bundle_sha256: bundle, files: entries }, copyFiles: files };
 }
 
-/** What the check computed about a package's copy. Never sendable here: the owner's approval is not in a package. */
+/**
+ * What the check computed about a package's copy. Never sendable here: the owner's approval is not in a package.
+ *
+ * `checked` means only that the copy files are intact, the existing checks pass and the review is valid for these exact
+ * files (fail is refused before this). It does NOT mean the copy passed: hold and revise are `checked` too. What the
+ * copy earns is `copy_verdict`, and whether anything stands in the way of sending is `send_blockers` (non-empty here
+ * always, at least OWNER_APPROVAL_MISSING). A send path must decide on those two, never on `status` or `verdict` alone.
+ */
 export type PackageCopyResult =
   | { status: "copy_unreviewed"; sendable: false; send_blockers: ["COPY_UNREVIEWED_LEGACY_PACKAGE"] }
   | {
-      status: "reviewed";
+      status: "checked";
       sendable: false;
       shop_id: string;
       lane: CopyRecord["lane"];
@@ -192,7 +199,7 @@ const parse = (code: string, s: string): unknown => {
 export function verifyPackageCopy(
   pkg: { manifest: ArtifactManifest; bundleSha256: string; files: Readonly<Record<string, Uint8Array>>; images: readonly unknown[]; copy?: unknown; copyFiles?: Readonly<Record<string, Uint8Array>> },
   o: { trustedFactsPack?: string | Uint8Array | null } = {},
-): Extract<PackageCopyResult, { status: "reviewed" }> {
+): Extract<PackageCopyResult, { status: "checked" }> {
   // 1. the copy manifest and the bytes
   const cm = CopyManifest.safeParse(pkg.copy);
   if (!cm.success) throw new CopyPackageError("COPY_MANIFEST_INVALID");
@@ -248,7 +255,8 @@ export function verifyPackageCopy(
   const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
   const page = pageText(html);
   const shown = [...page.sections.flatMap((s) => s.entries.map((e) => e.text)), ...page.otherTexts].map(norm);
-  const missing = record.items.filter((i) => !shown.some((t) => t.includes(norm(i.text))) && !(i.label && shown.some((t) => t.includes(norm(i.label!)))));
+  // the item's own text must be on the page: a label alone (所在地, 営業時間 …) does not show the item it introduces
+  const missing = record.items.filter((i) => !shown.some((t) => t.includes(norm(i.text))));
   if (missing.length) throw new CopyPackageError("COPY_RECORD_ITEM_NOT_ON_PAGE", missing.map((i) => i.id).slice(0, 20));
   if (pkg.images.length > 0 && record.lane !== "quality_research_fictional") throw new CopyPackageError("COPY_REAL_SHOP_LANE_WITH_AI_IMAGES");
 
@@ -281,7 +289,7 @@ export function verifyPackageCopy(
   const factsFromPath = trusted !== null;
   const send = copyGateSendBlockers(computed, files, null, { previous, photoUrls });
   return {
-    status: "reviewed",
+    status: "checked",
     sendable: false,
     shop_id: computed.shop_id,
     lane: computed.lane,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, verifyPackageCopy, CopyPackageError, type CopyInput } from "@/lib/demo-version-package/copy";
@@ -86,9 +86,9 @@ describe("v2 package: a valid copy passes with the verdict the check computes", 
     ]);
 
     const res = checkPackageCopy(pkg);
-    expect(res).toMatchObject({ status: "reviewed", sendable: false, lane: "quality_research_fictional", round: 0, verdict: "approve_candidate", copy_verdict: "approve_candidate", next_step: "owner_review", facts_from_facts_path: false, auditor_version: "copy_quality_rules_v1" });
+    expect(res).toMatchObject({ status: "checked", sendable: false, lane: "quality_research_fictional", round: 0, verdict: "approve_candidate", copy_verdict: "approve_candidate", next_step: "owner_review", facts_from_facts_path: false, auditor_version: "copy_quality_rules_v1" });
     expect(res.send_blockers).toEqual(["FICTIONAL_RESEARCH_NOT_SENDABLE", "OWNER_APPROVAL_MISSING", "FACTS_NOT_FROM_FACTS_PATH"]);
-    if (res.status === "reviewed") {
+    if (res.status === "checked") {
       expect([res.facts_sha256, res.copy_sha256, res.page_html_sha256, res.page_css_sha256]).toEqual([sha(f.factsPack), sha(f.copyRecord), sha(f.pageHtml), sha(f.pageCss)]);
       expect(res.review_sha256).toBe(sha(json(r)));
     }
@@ -109,14 +109,14 @@ describe("v2 package: a valid copy passes with the verdict the check computes", 
     expect(Object.keys(meta.copy)).toEqual(["version", "bundle_sha256", "files"]);
     const back = readPackage(dir);
     expect(back.copy).toEqual(pkg.copy);
-    expect(checkPackageCopy(back)).toMatchObject({ status: "reviewed", verdict: "approve_candidate" });
+    expect(checkPackageCopy(back)).toMatchObject({ status: "checked", verdict: "approve_candidate" });
   });
 
   it("real-shop lane: verdict hold (COPY_APPROVAL_MISSING), the copy itself passes, goes to the owner, never sendable here", async () => {
     const f = fx.realShop();
     const r = reviewCopyQuality(f);
     const res = checkPackageCopy(await pkgOf(f, r), { trustedFactsPack: f.factsPack });
-    expect(res).toMatchObject({ status: "reviewed", sendable: false, lane: "real_shop_proposal", verdict: "hold", copy_verdict: "approve_candidate", next_step: "owner_review", unresolved: ["COPY_APPROVAL_MISSING"] });
+    expect(res).toMatchObject({ status: "checked", sendable: false, lane: "real_shop_proposal", verdict: "hold", copy_verdict: "approve_candidate", next_step: "owner_review", unresolved: ["COPY_APPROVAL_MISSING"] });
     expect(res.send_blockers).toEqual(["OWNER_APPROVAL_MISSING"]);
   });
 
@@ -135,7 +135,7 @@ describe("v2 package: a valid copy passes with the verdict the check computes", 
     expect(r1.verdict).toBe("approve_candidate");
     const pkg = await pkgOf(f1, r1, [round(f0, r0)]);
     expect(pkg.copy!.files.map((x) => x.name)).toEqual([COPY_RECORD_NAME, COPY_FACTS_NAME, COPY_REVIEW_NAME, priorName(0, "copy.json"), priorName(0, "index.html"), priorName(0, "review.json"), priorName(0, "style.css")]);
-    expect(checkPackageCopy(pkg)).toMatchObject({ status: "reviewed", round: 1, verdict: "approve_candidate" });
+    expect(checkPackageCopy(pkg)).toMatchObject({ status: "checked", round: 1, verdict: "approve_candidate" });
     const dir = outDir();
     writePackage(dir, pkg);
     expect(checkPackageCopy(readPackage(dir))).toMatchObject({ round: 1 });
@@ -316,6 +316,61 @@ describe("refused (or never sendable) as designed", () => {
   });
 });
 
+describe("Fresh Review (L4–L6)", () => {
+  it("L4: a record item whose label is on the page but whose text is not is refused", async () => {
+    const f = bakery(PLAIN);
+    const hours = (JSON.parse(String(f.copyRecord)).items as fx.Item[]).find((i) => i.id === "hours")!;
+    expect(String(f.pageHtml)).toContain(`<dt>${hours.label}</dt>`);
+    const html = String(f.pageHtml).replace(`<dd>${hours.text}</dd>\n`, "");
+    expect(html).not.toContain(hours.text);
+    const g = { ...f, pageHtml: html };
+    expect(await refusal(pkgOf(g, reviewCopyQuality(g)))).toEqual(["COPY_INVALID", "COPY_RECORD_ITEM_NOT_ON_PAGE", "hours"]);
+  });
+
+  it("L5: readPackage checks the copy manifest's schema, names and each size on disk before reading a copy file", async () => {
+    const f = fx.bakeryGood();
+    const pkg = await pkgOf(f, reviewCopyQuality(f));
+    const base = outDir();
+    const variant = (edit: (copy: Record<string, unknown>) => void, disk?: (dir: string) => void) => {
+      const dir = join(base, `v${Math.random().toString(16).slice(2)}`);
+      writePackage(dir, pkg);
+      const meta = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+      edit(meta.copy);
+      writeFileSync(join(dir, "package.json"), JSON.stringify(meta));
+      disk?.(dir);
+      return dir;
+    };
+    // an over-long list (beyond the schema's cap) and an entry claiming more than the size cap
+    const longList = variant((c) => (c.files = Array.from({ length: 50 }, (_, i) => ({ name: `copy/rounds/0/copy.json`, role: "prior_copy_record", sha256: sha(String(i)), bytes: 1 }))));
+    expect(await refusal(() => readPackage(longList))).toEqual(["COPY_INVALID", "COPY_MANIFEST_INVALID"]);
+    const huge = variant((c) => ((c.files as Array<{ name: string; bytes: number }>).find((x) => x.name === COPY_REVIEW_NAME)!.bytes = 50 * 1024 * 1024));
+    expect(await refusal(() => readPackage(huge))).toEqual(["COPY_INVALID", "COPY_MANIFEST_INVALID"]);
+    // a name outside the shapes, and a role that is not the name's, before anything is read
+    const badName = variant((c) => (c.files as Array<{ name: string }>).push({ ...(c.files as Array<{ name: string }>)[0]!, name: "copy/../../etc.json" }));
+    expect(await refusal(() => readPackage(badName))).toEqual(["COPY_INVALID", "COPY_NAME_NOT_ALLOWED", "copy/../../etc.json"]);
+    const badRole = variant((c) => ((c.files as Array<{ name: string; role: string }>).find((x) => x.name === COPY_REVIEW_NAME)!.role = "facts_pack"));
+    expect(await refusal(() => readPackage(badRole))).toEqual(["COPY_INVALID", "COPY_ROLE_MISMATCH", COPY_REVIEW_NAME]);
+    // the file on disk is larger than its entry (or not a file): refused by its size, never read
+    const grown = variant(() => {}, (dir) => writeFileSync(join(dir, COPY_REVIEW_NAME), Buffer.alloc(3 * 1024 * 1024, 0x20)));
+    expect(await refusal(() => readPackage(grown))).toEqual(["COPY_INVALID", "COPY_FILE_HASH_MISMATCH", COPY_REVIEW_NAME]);
+    const dirInstead = variant(() => {}, (dir) => {
+      rmSync(join(dir, COPY_RECORD_NAME));
+      mkdirSync(join(dir, COPY_RECORD_NAME));
+    });
+    expect(await refusal(() => readPackage(dirInstead))).toEqual(["COPY_INVALID", "COPY_FILE_HASH_MISMATCH", COPY_RECORD_NAME]);
+  });
+
+  it("L6: writePackage refuses a copy file name outside the copy manifest's shapes before writing anything", async () => {
+    const f = fx.bakeryGood();
+    const pkg = await pkgOf(f, reviewCopyQuality(f));
+    for (const name of ["../outside.json", "copy/notes.json", "page/extra.html", "copy/rounds/2/copy.json"]) {
+      const dir = join(outDir(), "pkg");
+      expect(await refusal(() => writePackage(dir, { ...pkg, copyFiles: { ...pkg.copyFiles!, [name]: new Uint8Array([123, 125]) } })), name).toEqual(["COPY_INVALID", "COPY_NAME_NOT_ALLOWED", name]);
+      expect(() => readdirSync(dir), name).toThrow();
+    }
+  });
+});
+
 describe("importPackage: the copy is checked before the database, and the computed result is returned", () => {
   const store = (): PackageStore & { objects: Map<string, Uint8Array> } => {
     const objects = new Map<string, Uint8Array>();
@@ -342,7 +397,7 @@ describe("importPackage: the copy is checked before the database, and the comput
     const res = await importPackage(pkg, { client: client(pkg, calls), store: s, demoId: DEMO, trustedFactsPack: f.factsPack });
     expect(calls).toEqual(["sales_ingest_demo_version"]);
     expect([...s.objects.keys()].some((k) => k.includes("copy/"))).toBe(false);
-    expect(res.copy).toMatchObject({ status: "reviewed", sendable: false, verdict: "hold", copy_verdict: "approve_candidate", send_blockers: ["OWNER_APPROVAL_MISSING"] });
+    expect(res.copy).toMatchObject({ status: "checked", sendable: false, verdict: "hold", copy_verdict: "approve_candidate", send_blockers: ["OWNER_APPROVAL_MISSING"] });
   });
 
   it("a v1 package is imported as copy_unreviewed; a tampered copy is refused before the ingest is called", async () => {
@@ -376,14 +431,23 @@ describe("isolation", () => {
     ]);
     expect(src("lib/demo-version-package/copy.ts")).not.toMatch(/\bfetch\(|import\s*\(|require\s*\(|child_process|node:fs|anthropic|openai|codex|\/worker\//i);
   });
-  it("the app, components and the sales library do not read the package or its copy result (the send path is not wired: DEV-199e)", () => {
+  // Fresh Review L7: every importer in app, components, lib and scripts, by the module it resolves to (relative "./copy"
+  // and alias "@/lib/..." alike). Only the package's own modules and the two existing local CLIs (build, import) may
+  // read the package or its copy result; nothing on the send path does (DEV-199e).
+  it("only package.ts, import.ts and the local package / import CLIs import the package modules (the send path is not wired)", () => {
     const walk = (d: string): string[] =>
       readdirSync(join(fx.REPO, d), { withFileTypes: true }).flatMap((e) => {
         const p = `${d}/${e.name}`;
         if (e.isDirectory()) return e.name === "node_modules" ? [] : walk(p);
         return /\.(ts|tsx|mts|mjs|js)$/.test(e.name) ? [p] : [];
       });
-    const importers = ["app", "components", "lib/sales"].flatMap(walk).filter((p) => /from\s*["'][^"']*demo-version-package\/(copy|import|package)["']/.test(src(p)));
-    expect(importers).toEqual([]);
+    const targets = new Set(["lib/demo-version-package/copy", "lib/demo-version-package/import", "lib/demo-version-package/package"]);
+    const resolveSpec = (file: string, spec: string) => (spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? posix.normalize(posix.join(posix.dirname(file), spec)) : spec).replace(/\.(ts|tsx)$/, "");
+    const importers = ["app", "components", "lib", "scripts"]
+      .flatMap(walk)
+      .filter((p) => [...src(p).matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].some((m) => targets.has(resolveSpec(p, m[1]!))))
+      .sort();
+    // package-local.ts is the existing build CLI (DEV-196r): it builds packages and never reads a copy result
+    expect(importers).toEqual(["lib/demo-version-package/import.ts", "lib/demo-version-package/package.ts", "scripts/sales/demo-version/import-local.ts", "scripts/sales/demo-version/package-local.ts"]);
   });
 });

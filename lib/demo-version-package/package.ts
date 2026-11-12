@@ -24,7 +24,7 @@
  * Node only (sharp, the file system). Not part of the pure library.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import sharp from "sharp";
 import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
@@ -40,7 +40,7 @@ import {
   type RenderViewport,
 } from "@/lib/sales/demo-version/manifest";
 import type { RightsSummary } from "@/lib/sales/demo-version/rights";
-import { CopyPackageError, copyRoleOfName, LEGACY_COPY_RESULT, makeCopyFiles, verifyPackageCopy, type CopyInput, type CopyManifest, type PackageCopyResult } from "./copy";
+import { COPY_LIMITS, CopyManifest, CopyPackageError, copyRoleOfName, LEGACY_COPY_RESULT, makeCopyFiles, verifyPackageCopy, type CopyInput, type PackageCopyResult } from "./copy";
 import { packageImageProblems, type PackageImage } from "./swap-rights";
 
 export const PACKAGE_FORMAT = "sales_demo_version_package_v1";
@@ -276,8 +276,9 @@ type PackageMeta = Omit<DemoVersionPackage, "files" | "copyFiles">;
 export function writePackage(dir: string, pkg: DemoVersionPackage, repo?: string): void {
   if (insideRepo(dir, repo)) throw new PackageError("OUT_INSIDE_REPOSITORY");
   const meta: PackageMeta = { format: pkg.format, manifest: pkg.manifest, bundleSha256: pkg.bundleSha256, workerChecks: pkg.workerChecks, validatorResult: pkg.validatorResult, rightsSummary: pkg.rightsSummary, images: pkg.images, ...(pkg.local ? { local: pkg.local } : {}), source: pkg.source, ...(pkg.copy ? { copy: pkg.copy } : {}) };
+  // DEV-199d (Fresh Review L6): only the copy manifest's fixed names are written; anything else is refused before writing
+  for (const name of Object.keys(pkg.copyFiles ?? {})) if (!copyRoleOfName(name)) throw new PackageError("COPY_INVALID", ["COPY_NAME_NOT_ALLOWED", name]);
   mkdirSync(dir, { recursive: true });
-  // DEV-199d: the copy files (names are the copy manifest's fixed shapes, checked by copyRoleOfName)
   for (const [name, bytes] of [...Object.entries(pkg.files), ...Object.entries(pkg.copyFiles ?? {})]) {
     const path = join(dir, name);
     mkdirSync(dirname(path), { recursive: true });
@@ -315,14 +316,25 @@ export function readPackage(dir: string): DemoVersionPackage {
   let copyFiles: Record<string, Uint8Array> | undefined;
   if (meta.format === PACKAGE_FORMAT_COPY) {
     copyFiles = {};
-    const entries = (meta.copy as { files?: unknown } | undefined)?.files;
-    if (!Array.isArray(entries)) throw new PackageError("COPY_INVALID", ["COPY_MANIFEST_INVALID"]);
-    for (const e of entries as Array<{ name?: unknown }>) {
-      if (typeof e?.name !== "string" || !copyRoleOfName(e.name)) throw new PackageError("COPY_INVALID", ["COPY_NAME_NOT_ALLOWED"]);
-      const path = join(dir, e.name);
-      if (!existsSync(path)) throw new PackageError("COPY_INVALID", ["COPY_FILE_MISSING", e.name]);
-      copyFiles[e.name] = new Uint8Array(readFileSync(path));
+    // the schema first (it caps the number of files and each size), then every name, role and the total, then each
+    // file's size on disk against its entry — nothing is read before all of that holds (Fresh Review L5)
+    const cm = CopyManifest.safeParse(meta.copy);
+    if (!cm.success) throw new PackageError("COPY_INVALID", ["COPY_MANIFEST_INVALID"]);
+    let total = 0;
+    for (const f of cm.data.files) {
+      const role = copyRoleOfName(f.name);
+      if (!role) throw new PackageError("COPY_INVALID", ["COPY_NAME_NOT_ALLOWED", f.name]);
+      if (role.role !== f.role) throw new PackageError("COPY_INVALID", ["COPY_ROLE_MISMATCH", f.name]);
+      total += f.bytes;
     }
+    if (total > COPY_LIMITS.totalBytes) throw new PackageError("COPY_INVALID", ["COPY_TOTAL_TOO_LARGE"]);
+    for (const f of cm.data.files) {
+      const path = join(dir, f.name);
+      if (!existsSync(path)) throw new PackageError("COPY_INVALID", ["COPY_FILE_MISSING", f.name]);
+      const st = statSync(path);
+      if (!st.isFile() || st.size !== f.bytes) throw new PackageError("COPY_INVALID", ["COPY_FILE_HASH_MISMATCH", f.name]);
+    }
+    for (const f of cm.data.files) copyFiles[f.name] = new Uint8Array(readFileSync(join(dir, f.name)));
   }
   const pkg: DemoVersionPackage = { ...meta, manifest, images, rightsSummary: summary, files, ...(copyFiles ? { copyFiles } : {}) };
   checkPackageCopy(pkg);
