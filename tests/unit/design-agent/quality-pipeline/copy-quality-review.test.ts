@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkCopyRecord } from "@/lib/design-agent/quality-pipeline/copy-record";
-import { pageText } from "@/lib/design-agent/quality-pipeline/copy-quality-page";
+import { pageSkeleton, pageText } from "@/lib/design-agent/quality-pipeline/copy-quality-page";
 import {
   ALLOWED_SEVERITIES,
   checkCopyQualityReview,
@@ -36,6 +36,7 @@ const sha = (b: string | Uint8Array) => createHash("sha256").update(b).digest("h
 const codes = (r: CopyQualityReview) => [...new Set(r.findings.map((f) => f.code))].sort();
 const rules = (r: CopyQualityReview) => r.findings.map((f) => f.rule);
 /** the earlier rounds a revision round's audit takes (round 6 M1) */
+const pageSkeletonOf = (h: string | Uint8Array) => pageSkeleton(String(h));
 const er = (...fs: CopyQualityFiles[]) => fs.map((f) => ({ copyRecord: f.copyRecord, pageHtml: f.pageHtml, pageCss: f.pageCss }));
 
 const RIN_COPY = `${fx.RIN_DIR}/fidelity/d1-v9/copy.json`;
@@ -401,9 +402,9 @@ describe("M1: a revised review can pass the send gate only with its verified cha
     const f0 = fx.realShop({ prose: ["朝の棚に、焼きたてを。"] });
     const r0 = reviewCopyQuality(f0);
     expect(nextCopyStep(r0)).toBe("revise");
-    // round 7 M1: a copy revision changes words only; the prose heading now shows the croissant fact's words
     const rec1 = { ...f0.record, items: (f0.record.items as fx.Item[]).filter((i) => i.id !== "p1") };
-    const f1 = { ...f0, copyRecord: `${JSON.stringify(rec1, null, 2)}\n`, pageHtml: String(f0.pageHtml).replace("朝の棚に、焼きたてを。", "クロワッサン"), record: rec1 };
+    // round 7 M1 / round 8 M1: a copy revision rewords in place; the prose heading now shows a label (営業時間), no fact moves
+    const f1 = { ...f0, copyRecord: `${JSON.stringify(rec1, null, 2)}\n`, pageHtml: String(f0.pageHtml).replace("朝の棚に、焼きたてを。", "営業時間"), record: rec1 };
     const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
     const approval: OwnerCopyApproval = { shop_id: r1.shop_id, facts_sha256: r1.facts_sha256, copy_sha256: r1.copy_sha256, page_html_sha256: r1.page_html_sha256, page_css_sha256: r1.page_css_sha256, decision: "approve" };
     const previous = [{ review: r0, copyRecord: f0.copyRecord, pageHtml: f0.pageHtml, pageCss: f0.pageCss }];
@@ -1119,6 +1120,79 @@ describe("PR #259 round 7: hidden facts (M1), duplicate labels dropped (M2), not
       // notes do not block, and nothing replaces the owner: fictional research is never sendable, and without an approval the gate blocks
       expect(copyGateSendBlockers(r1, f1, null, { previous })).toEqual(["FICTIONAL_RESEARCH_NOT_SENDABLE", "OWNER_APPROVAL_MISSING"]);
     });
+  });
+});
+
+describe("PR #259 round 8 M1: a fact moved into another element (hidden by the page's CSS) is REVISION_FACT_MOVED", () => {
+  const F5 = "食パンは前日の夜に生地を仕込みます。";
+  const PROBE = "ひと晩ねかせてから焼きあげる食パン";
+  // bread section: heading, 食パン, F5, and a second paragraph the stylesheet hides (class `cls`)
+  const build = (o: { headings: [string, string, string]; visible: { id: string; text: string }; hidden: { id: string; text: string }; cls: string; css: string }) => {
+    const g = fx.bakeryGood();
+    const base = (g.record.items as fx.Item[]).filter((i) => i.id !== "bread-how");
+    const extra = [o.visible, o.hidden].filter((x) => x.id !== "bread-how").map((x) => fx.creative(x.id, x.text));
+    const items = [...base, ...(o.visible.id === "bread-how" || o.hidden.id === "bread-how" ? [(g.record.items as fx.Item[]).find((i) => i.id === "bread-how")!] : []), fx.creative("h1x", o.headings[0]), fx.creative("h2x", o.headings[1]), fx.creative("h3x", o.headings[2]), ...extra];
+    const files = fx.shopFiles({
+      facts: fx.bakeryFacts(),
+      items,
+      css: `${fx.CSS}${o.css}`,
+      sections: [
+        { id: "hero", blocks: [["h1", "name"], ["p", "name-full"]] },
+        { id: "croissant", blocks: [["h2", "h1x"], ["p", "croissant"], ["p", "croissant-how"]] },
+        { id: "bread", blocks: [["h2", "h2x"], ["p", "bread"], ["p", o.visible.id], ["p", o.hidden.id]] },
+        { id: "info", blocks: [["h2", "h3x"], ["dt", "hours", "label"], ["dd", "hours"], ["dt", "address", "label"], ["dd", "address"]] },
+      ],
+    });
+    const html = String(files.pageHtml).replace(`<p>${o.hidden.text}</p>`, `<p class="${o.cls}">${o.hidden.text}</p>`);
+    return { ...files, pageHtml: html };
+  };
+  const variants: Array<[string, string]> = [
+    ["sr-only", ".sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}\n"],
+    ["sp-only", ".sp-only{display:none}\n@media (max-width:600px){.sp-only{display:block}}\n"],
+    ["pc-only", ".pc-only{display:block}\n@media (max-width:600px){.pc-only{display:none}}\n"],
+  ];
+
+  describe.each(variants)("hidden by .%s", (cls, css) => {
+    const POETIC: [string, string, string] = ["朝の光", "棚の記憶", "通りの角"];
+    const PLAIN: [string, string, string] = ["パンのご案内", "棚の記憶", "店舗情報"];
+    const f0 = build({ headings: POETIC, visible: { id: "bread-how", text: F5 }, hidden: { id: "aside", text: "焼き上がりの目安" }, cls, css });
+    const r0 = reviewCopyQuality(f0);
+    const previous = [{ review: r0, copyRecord: f0.copyRecord, pageHtml: f0.pageHtml, pageCss: f0.pageCss }];
+
+    it("probe: F5 moved into the hidden paragraph, new prose where F5 stood (words only, same skeleton): never approve_candidate", () => {
+      expect(r0.verdict).not.toBe("approve_candidate");
+      const f1 = build({ headings: PLAIN, visible: { id: "probe", text: PROBE }, hidden: { id: "bread-how", text: F5 }, cls, css });
+      expect(pageSkeletonOf(f1.pageHtml)).toBe(pageSkeletonOf(f0.pageHtml));
+      expect(f1.pageCss).toBe(f0.pageCss);
+      const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
+      expect(r1.verdict).not.toBe("approve_candidate");
+      expect(r1.revision_findings).toContainEqual({ code: "REVISION_FACT_MOVED", severity: "revise", item: null, detail: "F5" });
+      expect(CAPPING_REVISION_CODES.has("REVISION_FACT_MOVED")).toBe(true);
+      expect(r0.base_checks).toEqual({ ok: true, codes: [] });
+      {
+        expect(checkCopyQualityReview(r1, f1, { previous }).ok).toBe(true);
+        expect(r1.findings.map((f) => f.code)).toContain("COPY_REVISION_NEEDS_REVIEW");
+      }
+    });
+
+    it("control: F5 stays in its element, only the headings and the hidden paragraph's words change: no REVISION_FACT_MOVED", () => {
+      const f1 = build({ headings: PLAIN, visible: { id: "bread-how", text: F5 }, hidden: { id: "aside", text: "焼き上がりのご案内" }, cls, css });
+      const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
+      expect(r1.revision_findings.map((x) => x.code)).not.toContain("REVISION_FACT_MOVED");
+      expect(r1.revision_findings.filter((x) => CAPPING_REVISION_CODES.has(x.code))).toEqual([]);
+    });
+  });
+
+  it("from round 2 the move is also compared with round 0", () => {
+    const [cls, css] = variants[0]!;
+    const f0 = build({ headings: ["朝の光", "棚の記憶", "通りの角"], visible: { id: "bread-how", text: F5 }, hidden: { id: "aside", text: "焼き上がりの目安" }, cls, css });
+    const f1 = build({ headings: ["パンのご案内", "棚の記憶", "店舗情報"], visible: { id: "probe", text: PROBE }, hidden: { id: "bread-how", text: F5 }, cls, css });
+    const f2 = build({ headings: ["パンのご案内", "棚の記憶", "お店の情報"], visible: { id: "probe", text: PROBE }, hidden: { id: "bread-how", text: F5 }, cls, css });
+    const r0 = reviewCopyQuality(f0);
+    const r1 = reviewCopyQuality(f1, { round: 1, previousCopySha256: r0.copy_sha256, earlierRounds: er(f0) });
+    const r2 = reviewCopyQuality(f2, { round: 2, previousCopySha256: r1.copy_sha256, earlierRounds: er(f0, f1) });
+    expect(r2.revision_findings).toContainEqual({ code: "REVISION_FACT_MOVED", severity: "revise", item: null, detail: "F5" });
+    expect(r2.verdict).not.toBe("approve_candidate");
   });
 });
 

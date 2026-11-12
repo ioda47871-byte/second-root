@@ -31,7 +31,12 @@ type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
 
 export type EntryRole = "heading" | "body" | "label" | "decoration";
-export type PageEntry = { role: EntryRole; text: string; position: { section: number; entry: number } };
+/**
+ * `path`: the element the entry's text sits in, as element-child indices from the document root ("0/1/0/3"); a loose
+ * text node adds "/t" to its parent's path. Text is not counted, so two pages with the same skeleton (pageSkeleton)
+ * give the same path to the same element (PR #259 round 8 M1: a fact must stay in its element).
+ */
+export type PageEntry = { role: EntryRole; text: string; position: { section: number; entry: number }; path: string };
 export type PageSection = { section_id: string; index: number; entries: PageEntry[] };
 export type PageText = { sections: PageSection[]; otherTexts: string[] };
 
@@ -76,12 +81,12 @@ export function pageText(html: string): PageText {
     return s;
   };
   type Ctx = { section: string; heading: boolean; label: boolean; hidden: boolean };
-  const push = (ctx: Ctx, text: string) => {
+  const push = (ctx: Ctx, text: string, path: string) => {
     const t = text.replace(/\s+/g, " ").trim();
     if (!t) return;
     const s = sectionFor(ctx.section);
     const role: EntryRole = ctx.hidden ? "decoration" : ctx.heading ? "heading" : ctx.label ? "label" : "body";
-    s.entries.push({ role, text: t, position: { section: s.index, entry: s.entries.length } });
+    s.entries.push({ role, text: t, position: { section: s.index, entry: s.entries.length }, path });
   };
   // text of a block: every descendant text node, joined as drawn (inline elements add nothing)
   const textOf = (n: Node): string => {
@@ -90,9 +95,9 @@ export function pageText(html: string): PageText {
     return kids(n).map(textOf).join("");
   };
   const hasBlock = (n: Node): boolean => isElement(n) && kids(n).some((c) => isElement(c) && (BLOCKS.has(c.tagName) || hasBlock(c)));
-  const walk = (n: Node, ctx: Ctx) => {
+  const walk = (n: Node, ctx: Ctx, path: string) => {
     if (!isElement(n)) {
-      if (n.nodeName === "#text") push(ctx, (n as DefaultTreeAdapterTypes.TextNode).value);
+      if (n.nodeName === "#text") push(ctx, (n as DefaultTreeAdapterTypes.TextNode).value, `${path}/t`);
       return;
     }
     if (n.tagName === "title") return;
@@ -104,12 +109,20 @@ export function pageText(html: string): PageText {
       hidden: ctx.hidden || attr(n, "aria-hidden") === "true" || attr(n, "hidden") !== undefined,
     };
     if (BLOCKS.has(n.tagName) && !hasBlock(n)) {
-      push(next, textOf(n));
+      push(next, textOf(n), path);
       return;
     }
-    for (const c of kids(n)) walk(c, next);
+    walkChildren(kids(n), next, path);
   };
-  for (const c of doc.childNodes) walk(c, { section: OUTSIDE_SECTIONS, heading: false, label: false, hidden: false });
+  // element children are numbered among elements only, so text never shifts a path
+  const walkChildren = (nodes: readonly Node[], ctx: Ctx, parent: string) => {
+    let k = 0;
+    for (const c of nodes) {
+      if (isElement(c)) walk(c, ctx, parent ? `${parent}/${k++}` : String(k++));
+      else walk(c, ctx, parent);
+    }
+  };
+  walkChildren(doc.childNodes, { section: OUTSIDE_SECTIONS, heading: false, label: false, hidden: false }, "");
   return { sections, otherTexts };
 }
 

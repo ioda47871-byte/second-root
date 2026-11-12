@@ -695,7 +695,7 @@ export type ReviewOptions = {
  * page changed beyond its words. The others (REVISION_PROSE_ECHOES_FACT, _ABOUT_FACTS, _NEW_PROSE_STATEMENT) stay in
  * revision_findings as notes for the owner (recorded, bound and re-derived) without capping.
  */
-export const CAPPING_REVISION_CODES: ReadonlySet<string> = new Set(["REVISION_FACT_DROPPED_WITH_NEW_PROSE", "REVISION_PAGE_CHANGED_BEYOND_COPY"]);
+export const CAPPING_REVISION_CODES: ReadonlySet<string> = new Set(["REVISION_FACT_DROPPED_WITH_NEW_PROSE", "REVISION_PAGE_CHANGED_BEYOND_COPY", "REVISION_FACT_MOVED"]);
 
 function revisionFindingsOf(copyRaw: unknown, html: string, css: string, facts: readonly Fact[], earlier: NonNullable<ReviewOptions["earlierRounds"]>): CopyQualityReview["revision_findings"] {
   if (!earlier.length) return [];
@@ -1164,14 +1164,36 @@ export function validateCopyRevision(
   // out (elements, attributes, classes, structure), can hide a fact without touching its words: REVISE, recorded, capping
   const changedBeyondCopy: string[] = [];
   if (o.oldPageCss !== undefined && o.newPageCss !== undefined && o.oldPageCss !== o.newPageCss) changedBeyondCopy.push("css");
+  let sameSkeleton = false;
   if (pagesRead) {
     try {
-      if (pageSkeleton(o.oldPageHtml!) !== pageSkeleton(o.newPageHtml!)) changedBeyondCopy.push("html");
+      sameSkeleton = pageSkeleton(o.oldPageHtml!) === pageSkeleton(o.newPageHtml!);
+      if (!sameSkeleton) changedBeyondCopy.push("html");
     } catch {
       changedBeyondCopy.push("html");
     }
   }
   if (changedBeyondCopy.length) f.push({ code: "REVISION_PAGE_CHANGED_BEYOND_COPY", severity: "revise", detail: changedBeyondCopy.join(",") });
+  // round 8 M1: a revision rewords in place. With the same skeleton (else the change above already caps), every fact
+  // text must stay in the element it occupied, and no element that held a fact may now hold other text: a fact moved
+  // into an element the stylesheet hides (.sr-only, .sp-only) while prose takes its visible place is REVISION_FACT_MOVED
+  if (sameSkeleton) {
+    const factTexts = new Set(a.data.items.filter((i) => i.claim_type === "fact").map((i) => norm(i.text)));
+    const at = (sections: readonly PageSection[]) => {
+      const m = new Map<string, string>();
+      for (const sec of sections) for (const e of sec.entries) m.set(e.path, norm(e.text));
+      return m;
+    };
+    const oldAt = at(oldSections);
+    const newAt = at(newSections);
+    const moved = new Set<string>();
+    for (const [path, text] of oldAt) if (factTexts.has(text) && newAt.get(path) !== text && newAt.has(path)) moved.add(text);
+    for (const [path, text] of newAt) if (factTexts.has(text) && oldAt.get(path) !== text) moved.add(text);
+    if (moved.size) {
+      const ids = [...new Set(a.data.items.filter((i) => i.claim_type === "fact" && moved.has(norm(i.text))).flatMap((i) => i.source_fact_ids))].sort();
+      f.push({ code: "REVISION_FACT_MOVED", severity: "revise", detail: ids.join(",").slice(0, 120) || "fact" });
+    }
+  }
   const verdict = f.some((x) => x.severity === "fail") ? "fail" : f.length ? "revise" : "ok";
   return { ok: verdict !== "fail", verdict, findings: f };
 }
