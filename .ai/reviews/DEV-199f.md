@@ -1,6 +1,6 @@
 # DEV-199f コピー規則の新版 (prompt v3・文章審査 v2、提案・未有効)
 
-対象: `feature/dev-199f-copy-prompt-v3` (base `origin/develop` c07de8f)。オーナー Issue #258 (新しい版の設計・開発・テストだけ承認)、仕様案 PR #257。
+対象: PR #260、`feature/dev-199f-copy-prompt-v3` (base `origin/develop` c07de8f)。オーナー Issue #258 (新しい版の設計・開発・テストだけ承認)、仕様案 PR #257。
 
 ## 状態
 
@@ -31,7 +31,8 @@
 - 既存の pin のテストは変更なしで通る: `prompt-v11.test.ts` (v1 `a2fdd003…`/5706、v1.1 `c5973afb…`/6010・`a0dbb48c…`/7741)、`open-direction.test.ts` (v2 4本)、`prompt-tm0.test.ts`、三方式の pin。`tests/unit/design-agent/phase2f/` 10 files / 225 tests pass (`PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`)。
 - `phase2f-design.ts --print-pin --prompt-version v3`: brief つきで `PROMPT_VERSION_NOT_ACTIVATED`、方向つきで `USAGE` (CLI の brief なしの判定は v2 / tm0 だけ)。どちらも何も書かない。
 - 回答の schema (`codex_design_v1`)・`copy-record.ts`・`facts-pack.ts`・SKILL.md と references・CLI・SR-001「輪」・DB・workflow・package/lockfile は無変更。repo のファイルにモデル名を足していない。
-- `npm run typecheck` 0 エラー、eslint 0、`check:secrets` 問題なし、unit の全体は下の結果。
+- `npm run typecheck` 0 エラー、eslint 0、`check:secrets` 問題なし。
+- unit の全体 (この container): 218 files pass / 18 files fail。失敗はすべて Chromium の crash (`Target crashed`・`Page crashed`・`Unable to capture screenshot`) による comp-impl / shop-css / renderer の描画テストで、`phase2f/prompt.ts` を import しない。一部は `--maxWorkers=2` の再実行で通り、残りも同じ crash。CI (PR #260) で確かめる。
 
 ## 設計上の判断 (レビューで見てほしい点)
 
