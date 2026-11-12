@@ -9817,6 +9817,130 @@
         "PR のレビューと merge (coordinator)"
       ],
       "note": "記録は .ai/reviews/DEV-196d.md (DEV-196s の節)。DB の変更はオーナーの決定 2026-11-12 によりローカルだけ (migration にしない)。PR #256 の履歴はそのまま。"
+    },
+    {
+      "id": "DEV-199a",
+      "title": "文章品質監査 copy_quality_review_v1 の schema・評価ロジック・テスト (Issue #258 の 1/3、未接続)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [],
+      "purpose": "オーナー Issue #258 (GO 2026-11-13)・仕様 PR #257 docs/design/copy-authenticity-quality-gate.md と、その独立レビュー (C0/H0/M5/L6) の規則。今後の店舗デモのコピーについて、自然な日本語・店舗固有性・情報の有用性・表現の抑制と一貫性・事実の5軸で全区画を監査する sidecar copy_quality_review_v1 を、既存の facts pack・copy record の検査を包む形で作る。生成・レビューの経路にはまだ接続しない (DEV-199b)",
+      "acceptance_criteria": [
+        "lib/design-agent/quality-pipeline/copy-quality-review.ts: strict zod の copy_quality_review_v1 (shop_id・facts/copy/HTML/CSS の sha256・auditor_version・lane・round・区画ごとの見出し/本文と位置・5軸 0–5 と根拠・findings[] の code/重さ/位置/規則/理由/根拠・verdict fail|revise|hold|approve_candidate)",
+        "copy-record・facts の失敗は COPY_FACT_UNSUPPORTED (fail、終端)。文体は REVISE、事実の欠けは HOLD (copy の省略は REVISE)、使える材料が無い汎用は HOLD。実店舗レーンは事実とラベルの選び方・並べ方だけを見て、常に COPY_APPROVAL_MISSING (HOLD)",
+        "単語のブラックリストで合否を決めない。見出しの形・区画をまたぐ型の反復・区画ごとの事実の有無・店名を外した店固有語の有無・汎用句の補助信号。逐語の事実・ラベルは文体の軸から外す。Hero の1行と普通のラベルは罰しない",
+        "checkCopyQualityReview は facts/copy/HTML/CSS の実ファイルから hash を計算し直し、監査を再実行して記録と照合する。古い PASS は再利用できない。approve_candidate だけでは送信できない (別のオーナー承認が要る)",
+        "validateCopyRevision: claim_type の変更・事実の逐語でない書き換え・事実を言い換えた新しい創作行は FAIL。改稿は最大2回 (MAX_COPY_REVISION_ROUNDS)",
+        "lib/design-agent/quality-pipeline/copy-quality-page.ts: parse5 で頁の DOM (data-comp-section / data-section・見出し要素) から区画と役割を取り出す",
+        "SR-001「輪」の copy.json・index.html を不変の fixture として読み、頁全体の決め台詞の累積で REVISE (一行ごとの指摘はしない)。Hero の1行と平易な区画だけなら過剰規制しない。4業種 (パン屋・美容室・カフェ・自転車修理) の良い版・AI 定型版・事実欠け版"
+      ],
+      "required_tests": [
+        "unit tests/unit/design-agent/quality-pipeline/copy-quality-review.test.ts (合成と commit 済みの fixture、ネットワーク・LLM なし)",
+        "unit の全体・tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/copy-quality-review.ts",
+        "lib/design-agent/quality-pipeline/copy-quality-page.ts",
+        "tests/unit/design-agent/quality-pipeline/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-199.md"
+      ],
+      "forbidden_scope": [
+        "lib/design-agent/quality-pipeline/copy-record.ts・facts-pack.ts・comp-review.ts・権利と出典の検査の変更・緩和",
+        "prompt (owner-approved / pinned を含む) とその SHA の変更",
+        "SR-001「輪」の研究原本・v1・ローカルの包みの変更 (copy.json / index.html は不変の fixture として読むだけ)",
+        "DB・migration・worker・WSL の service / runner・Vercel・Staging・Production・実際の送信・画像生成",
+        "コードやテストからの LLM / AI API の呼び出し",
+        "package.json・lockfile・workflow",
+        "progress.md",
+        "comp-lane・管理画面・営業の経路への接続 (DEV-199b)",
+        "copy.json を営業の包みに入れる"
+      ],
+      "human_approval_triggers": [
+        "PR の Fresh Review と merge (coordinator)",
+        "判定コードや閾値の仕様からの変更はオーナーの確認"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-199a-copy-quality-review",
+      "note": "記録は .ai/reviews/DEV-199.md。ゲートはまだ有効ではない (どの経路からも呼ばれない)。Issue #258"
+    },
+    {
+      "id": "DEV-199b",
+      "title": "文章品質監査を生成・レビュー経路に接続する (Issue #258 の 2/3)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-199a"
+      ],
+      "purpose": "Issue #258 の 2。copy_quality_review_v1 を実際にコピーが作られる経路 (今は comp-lane の手書き copy.json) に接続し、REVISE/HOLD なら次の提出・営業候補の完了に進まない。局所改稿 (最大2回) の後に再監査。既存の copy-record・facts SHA・権利・出典の検査は変更・緩和しない。prompt は変えない (新版が要るならオーナー承認)",
+      "acceptance_criteria": [
+        "監査の verdict が approve_candidate でない頁は次の段へ進まない",
+        "根拠が足りなければ再生成せず HOLD",
+        "入力の hash が変わると審査をやり直す",
+        "オーナー承認なしに送信・実店舗向け完成にならない"
+      ],
+      "required_tests": [
+        "unit (経路の分岐)",
+        "unit の全体・tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "(着手時に決める)"
+      ],
+      "forbidden_scope": [
+        "lib/design-agent/quality-pipeline/copy-record.ts・facts-pack.ts・comp-review.ts・権利と出典の検査の変更・緩和",
+        "prompt (owner-approved / pinned を含む) とその SHA の変更",
+        "SR-001「輪」の研究原本・v1・ローカルの包みの変更 (copy.json / index.html は不変の fixture として読むだけ)",
+        "DB・migration・worker・WSL の service / runner・Vercel・Staging・Production・実際の送信・画像生成",
+        "コードやテストからの LLM / AI API の呼び出し",
+        "package.json・lockfile・workflow",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "新しい prompt の版はオーナー承認",
+        "DB の変更はオーナー承認",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "note": "Issue #258"
+    },
+    {
+      "id": "DEV-199c",
+      "title": "4業種以上の PC/SP 全頁で文章品質監査の過検出・見逃しを検証する (Issue #258 の 3/3)",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-199b"
+      ],
+      "purpose": "Issue #258 の 3。実際の生成フローでパン屋・美容室・飲食店・自転車修理の4業種以上を PC/SP 全頁で比較し、過検出と見逃しを検証する。SR-001 の現行コピーは「詩的見出しの累積」検出用の不変 fixture としてだけ使う",
+      "acceptance_criteria": [
+        "4業種以上の PC/SP 全頁の比較記録",
+        "過検出・見逃しの両方の検証",
+        "オーナーが実画像と文章を確認"
+      ],
+      "required_tests": [
+        "unit の全体・tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "(着手時に決める)"
+      ],
+      "forbidden_scope": [
+        "lib/design-agent/quality-pipeline/copy-record.ts・facts-pack.ts・comp-review.ts・権利と出典の検査の変更・緩和",
+        "prompt (owner-approved / pinned を含む) とその SHA の変更",
+        "SR-001「輪」の研究原本・v1・ローカルの包みの変更 (copy.json / index.html は不変の fixture として読むだけ)",
+        "DB・migration・worker・WSL の service / runner・Vercel・Staging・Production・実際の送信・画像生成",
+        "コードやテストからの LLM / AI API の呼び出し",
+        "package.json・lockfile・workflow",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "オーナーによる実画像と文章の確認",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "note": "Issue #258"
     }
   ]
 }
