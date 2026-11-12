@@ -9944,6 +9944,53 @@
       "note": "Issue #258"
     },
     {
+      "id": "DEV-199d",
+      "title": "デモ版パッケージに copy.json と文章品質監査を入れ、取り込みで検め直す (Issue #258 オーナー判断②)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-199a"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー Issue #258 の判断②: AI デモのコピーを構造化 (copy.json = comp_copy_v1) してデモ版パッケージに入れ、facts pack と照合する。取り込み (読み込み・import) で出典・整合・監査結果・改ざん・古い承認の再利用をサーバー側で検める。既存の事実・権利の検査は緩めない。送信経路・DB には接続しない (DB は DEV-199e)",
+      "acceptance_criteria": [
+        "パッケージ形式 sales_demo_version_package_v2: copy/facts-pack.json・copy/copy.json・copy/review.json と改稿の前の round (copy/rounds/<i>/{copy.json,index.html,style.css,review.json}) を、別の copy manifest (名前・役割・sha256・サイズ・頁の bundle_sha256) で束縛する。頁の manifest (ArtifactManifest version 1、DB の manifest) と bundle の hash は変えない。copy のファイルは upload しない",
+        "v1 (copy なし) は読めるが copy_unreviewed (COPY_UNREVIEWED_LEGACY_PACKAGE) で、型として sendable: false。copy を持つ v1・copy の無い v2 は拒否",
+        "読み込み (readPackage)・作成 (buildPackage)・取り込み (importPackage、DB に触る前) のすべてで、実際のバイトから hash を計算し直し、既存の checkArtifactCopy (checkArtifactHtml の文言) と record ↔ 頁の両方向の整合、copyReviewAppendBlockers の順序、checkCopyQualityReview (監査の再実行・鎖の再監査) を通す。fail は拒否。宣言された verdict は使わず、再計算した verdict と送信の阻害要因 (オーナー承認なしの copyGateSendBlockers) を ImportResult.copy に返す",
+        "facts の経路の facts pack (trustedFactsPack) が渡されればバイトが同じであること。渡されなければ FACTS_NOT_FROM_FACTS_PATH を阻害要因に残す",
+        "テスト: 正しいパッケージ (架空・実店舗・改稿の鎖) は計算した verdict で通る。copy.json の欠落・copy / facts / HTML / CSS の改ざん・偽の verdict・古い review・別の auditor_version・壊れた鎖・事実の洗浄 (fail)・実店舗レーン + AI 画像は拒否、架空レーンは送信不可。既存の package / import / rights のテストは変更なしで通る"
+      ],
+      "required_tests": [
+        "unit tests/unit/demo-version-package/copy-package.test.ts",
+        "unit tests/unit/demo-version-package/** tests/unit/sales/demo-version/** tests/unit/design-agent/quality-pipeline/** tests/unit/ai-tasks.test.ts",
+        "unit の全体・tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/demo-version-package/copy.ts (新規)",
+        "lib/demo-version-package/package.ts (v2 の形式・copy の読み書きと検査の追加だけ)",
+        "lib/demo-version-package/import.ts (DB の前の copy の検査と結果の返却の追加だけ)",
+        "tests/unit/demo-version-package/copy-package.test.ts",
+        "tests/unit/design-agent/quality-pipeline/copy-quality-review.test.ts (isolation の呼び出し元の一覧に copy.ts を加えるだけ)",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-199d.md"
+      ],
+      "forbidden_scope": [
+        "既存の事実・権利・HTML・manifest の検査 (copy-record.ts・facts-pack.ts・copy-check.ts・html-safety.ts・manifest.ts・rights・swap-rights) の変更・緩和",
+        "DB・supabase/migrations・送信経路・worker・WSL・Staging・Production",
+        "SR-001「輪」の研究原本・fixture の変更 (読むだけ)",
+        "画像生成・LLM の呼び出し・repo のファイルへのモデル名",
+        "prompt・skill・.github/workflows・package.json・lockfile",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "監査結果の DB への保存・送信経路への接続 (DEV-199e)",
+        "PR の Fresh Review と merge (coordinator)"
+      ],
+      "branch": "feature/dev-199d-copy-json-package",
+      "note": "記録は .ai/reviews/DEV-199d.md。送信経路・DB には接続していない。Issue #258"
+    },
+    {
       "id": "DEV-199f",
       "title": "コピー規則の新版: phase2f prompt v3 とデザインディレクターの文章審査 v2 (提案・未有効、Issue #258)",
       "status": "review",

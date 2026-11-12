@@ -14,11 +14,18 @@
  * (RIN_PROSPECT_ID, checked on the demo's row before anything is written); the images go through the existing ingest
  * as its p_images, where the database derives each image's rights status.
  *
+ * DEV-199d: before anything is read from or written to the database, the package's copy is checked again on its bytes
+ * (checkPackageCopy: re-hash, the existing copy check, the review re-audited with its chain) — a package whose copy is
+ * tampered, stale, forged or failed is refused. The computed result (never the package's declared one) is returned
+ * as `copy`; a v1 package returns `copy_unreviewed`. Nothing of it is written to the database yet (DEV-199e), and no
+ * result here is sendable.
+ *
  * Prints nothing itself; returns ids and hashes only (never a key).
  */
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { DemoVersionPackage } from "./package";
+import type { PackageCopyResult } from "./copy";
+import { checkPackageCopy, type DemoVersionPackage } from "./package";
 import { RIN_PROSPECT_ID } from "./seed-rin";
 
 export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";
@@ -82,10 +89,24 @@ export type ImportResult = {
   /** created now, or replayed / found existing */
   created: boolean;
   files: { name: string; sha256: string; bytes: number; uploaded: boolean }[];
+  /** DEV-199d: the copy check as computed by this import (not persisted yet: DEV-199e) */
+  copy: PackageCopyResult;
 };
 
-export async function importPackage(pkg: DemoVersionPackage, o: { client: SupabaseClient; store: PackageStore; demoId: string; workerCommit?: string | null }): Promise<ImportResult> {
+export async function importPackage(
+  pkg: DemoVersionPackage,
+  o: {
+    client: SupabaseClient;
+    store: PackageStore;
+    demoId: string;
+    workerCommit?: string | null;
+    /** DEV-199d: the shop's facts pack from the facts path (never from the package); the package's must be the same bytes */
+    trustedFactsPack?: string | Uint8Array | null;
+  },
+): Promise<ImportResult> {
   const jobId = manualImportJobId(pkg.bundleSha256);
+  // DEV-199d: the copy, recomputed from the package's bytes, before the database is touched (throws PackageError)
+  const copy = checkPackageCopy(pkg, { trustedFactsPack: o.trustedFactsPack ?? null });
   if (pkg.images.length > 0) {
     // AI demo pictures belong to the fictional 輪 only: the demo must be that prospect's
     const d = await o.client.from("sales_demos").select("prospect_id").eq("id", o.demoId).maybeSingle();
@@ -140,5 +161,5 @@ export async function importPackage(pkg: DemoVersionPackage, o: { client: Supaba
     if (!after || after.byteLength !== entry.bytes || sha256(after) !== entry.sha256) throw new ImportError("UPLOAD_NOT_VERIFIED", entry.name);
     files.push({ name: entry.name, sha256: entry.sha256, bytes: entry.bytes, uploaded });
   }
-  return { versionId: v.id, versionNo: v.version_no, demoId: o.demoId, bundleSha256: pkg.bundleSha256, created, files };
+  return { versionId: v.id, versionNo: v.version_no, demoId: o.demoId, bundleSha256: pkg.bundleSha256, created, files, copy };
 }

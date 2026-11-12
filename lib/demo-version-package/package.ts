@@ -14,6 +14,13 @@
  * image records (`images`, the p_images of the ingest: AI demo pictures of the fictional 輪 only). The records are
  * checked against the manifest's photos (one each, same sha256 / size / pixel size) on build and on every read.
  *
+ * DEV-199d (owner Issue #258, decision ②): format `sales_demo_version_package_v2` (PACKAGE_FORMAT_COPY) also holds the
+ * page's copy in structured form — the facts pack, the copy record (copy.json), the copy quality review and its earlier
+ * rounds — bound by sha256 in a separate copy manifest (`copy`, ./copy.ts) and checked again on build, on every read
+ * and on import (verifyPackageCopy: re-hash, the existing copy check, the review re-audited). The page manifest
+ * (ArtifactManifest version 1, the database's) and the bundle hash do not change: the copy files are never uploaded.
+ * A v1 package (no copy) is still read, but only as `copy_unreviewed`, which can never become sendable.
+ *
  * Node only (sharp, the file system). Not part of the pure library.
  */
 import { createHash } from "node:crypto";
@@ -33,9 +40,12 @@ import {
   type RenderViewport,
 } from "@/lib/sales/demo-version/manifest";
 import type { RightsSummary } from "@/lib/sales/demo-version/rights";
+import { CopyPackageError, copyRoleOfName, LEGACY_COPY_RESULT, makeCopyFiles, verifyPackageCopy, type CopyInput, type CopyManifest, type PackageCopyResult } from "./copy";
 import { packageImageProblems, type PackageImage } from "./swap-rights";
 
 export const PACKAGE_FORMAT = "sales_demo_version_package_v1";
+/** DEV-199d: v1 + the copy files and their copy manifest (`copy`). */
+export const PACKAGE_FORMAT_COPY = "sales_demo_version_package_v2";
 /** Fixed WebP settings (deterministic output for the same input). */
 export const RENDER_WEBP = { quality: 85, effort: 6, smartSubsample: false } as const;
 export const RENDER_SIDE_LIMIT = ARTIFACT_LIMITS.imageSidePx;
@@ -73,7 +83,7 @@ export async function downscaleRender(png: Uint8Array): Promise<DownscaledRender
 }
 
 export type DemoVersionPackage = {
-  format: typeof PACKAGE_FORMAT;
+  format: typeof PACKAGE_FORMAT | typeof PACKAGE_FORMAT_COPY;
   manifest: ArtifactManifest;
   bundleSha256: string;
   /** manifest name → bytes */
@@ -87,7 +97,29 @@ export type DemoVersionPackage = {
   local?: Record<string, unknown>;
   /** where the page came from (a repository path, or "swap-copy" for a photo-swapped page), for the record only */
   source: string;
+  /** DEV-199d (v2 only): the copy manifest — names, roles, sha256 and sizes of the copy files, and the page bundle */
+  copy?: CopyManifest;
+  /** DEV-199d (v2 only): copy file name → bytes (never in the page manifest, never uploaded) */
+  copyFiles?: Record<string, Uint8Array>;
 };
+
+/**
+ * DEV-199d: the package's copy, checked on its bytes. v1 (no copy) → `copy_unreviewed` (never sendable); a v1 package
+ * carrying copy files, or a v2 package without them, is refused. Throws PackageError("COPY_INVALID", [code, ...]).
+ */
+export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manifest" | "bundleSha256" | "files" | "images" | "copy" | "copyFiles">, o: { trustedFactsPack?: string | Uint8Array | null } = {}): PackageCopyResult {
+  if (pkg.format === PACKAGE_FORMAT) {
+    if (pkg.copy !== undefined || pkg.copyFiles !== undefined) throw new PackageError("COPY_INVALID", ["COPY_IN_V1_PACKAGE"]);
+    return LEGACY_COPY_RESULT;
+  }
+  if (pkg.format !== PACKAGE_FORMAT_COPY) throw new PackageError("PACKAGE_FORMAT");
+  try {
+    return verifyPackageCopy(pkg, o);
+  } catch (e) {
+    if (e instanceof CopyPackageError) throw new PackageError("COPY_INVALID", [e.code, ...e.details]);
+    throw e;
+  }
+}
 
 /**
  * DEV-196s: the image records against the manifest: exactly one record per photo (same sha256, size and pixel size),
@@ -155,6 +187,8 @@ export async function buildPackage(o: {
   source: string;
   validatorCommit?: string | null;
   now?: Date;
+  /** DEV-199d: the page's copy (facts pack, copy record, review and earlier rounds) → a v2 package */
+  copy?: CopyInput;
 }): Promise<DemoVersionPackage> {
   if (!o.renders.desktop_1440 || !o.renders.mobile_390) throw new PackageError("RENDER_MISSING");
   const files: Record<string, Uint8Array> = {
@@ -194,10 +228,22 @@ export async function buildPackage(o: {
     ...(o.photoChecks ? { photos: o.photoChecks } : {}),
   };
   if (Buffer.byteLength(JSON.stringify(workerChecks)) > 2000) throw new PackageError("WORKER_CHECKS_TOO_LARGE");
+  const bundle = bundleSha256(manifest);
+  let copy: { copy: CopyManifest; copyFiles: Record<string, Uint8Array> } | null = null;
+  if (o.copy) {
+    try {
+      copy = makeCopyFiles(o.copy, bundle);
+    } catch (e) {
+      if (e instanceof CopyPackageError) throw new PackageError("COPY_INVALID", [e.code, ...e.details]);
+      throw e;
+    }
+    // the same check as on read and import: a package whose copy would be refused is never built
+    checkPackageCopy({ format: PACKAGE_FORMAT_COPY, manifest, bundleSha256: bundle, files, images, ...copy });
+  }
   return {
-    format: PACKAGE_FORMAT,
+    format: copy ? PACKAGE_FORMAT_COPY : PACKAGE_FORMAT,
     manifest,
-    bundleSha256: bundleSha256(manifest),
+    bundleSha256: bundle,
     files,
     workerChecks,
     validatorResult: { version: 1, ok: true, codes: [], validator_commit: o.validatorCommit ?? null, checked_at: (o.now ?? new Date()).toISOString() },
@@ -205,6 +251,7 @@ export async function buildPackage(o: {
     images,
     ...(o.local ? { local: o.local } : {}),
     source: o.source,
+    ...(copy ?? {}),
   };
 }
 
@@ -223,14 +270,15 @@ export function insideRepo(p: string, repo: string = REPO): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-type PackageMeta = Omit<DemoVersionPackage, "files">;
+type PackageMeta = Omit<DemoVersionPackage, "files" | "copyFiles">;
 
 /** Writes the package directory (outside the repository only): package.json (meta + manifest) and the files. */
 export function writePackage(dir: string, pkg: DemoVersionPackage, repo?: string): void {
   if (insideRepo(dir, repo)) throw new PackageError("OUT_INSIDE_REPOSITORY");
-  const meta: PackageMeta = { format: pkg.format, manifest: pkg.manifest, bundleSha256: pkg.bundleSha256, workerChecks: pkg.workerChecks, validatorResult: pkg.validatorResult, rightsSummary: pkg.rightsSummary, images: pkg.images, ...(pkg.local ? { local: pkg.local } : {}), source: pkg.source };
+  const meta: PackageMeta = { format: pkg.format, manifest: pkg.manifest, bundleSha256: pkg.bundleSha256, workerChecks: pkg.workerChecks, validatorResult: pkg.validatorResult, rightsSummary: pkg.rightsSummary, images: pkg.images, ...(pkg.local ? { local: pkg.local } : {}), source: pkg.source, ...(pkg.copy ? { copy: pkg.copy } : {}) };
   mkdirSync(dir, { recursive: true });
-  for (const [name, bytes] of Object.entries(pkg.files)) {
+  // DEV-199d: the copy files (names are the copy manifest's fixed shapes, checked by copyRoleOfName)
+  for (const [name, bytes] of [...Object.entries(pkg.files), ...Object.entries(pkg.copyFiles ?? {})]) {
     const path = join(dir, name);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, bytes);
@@ -246,7 +294,7 @@ export function readPackage(dir: string): DemoVersionPackage {
   } catch {
     throw new PackageError("PACKAGE_UNREADABLE");
   }
-  if (meta.format !== PACKAGE_FORMAT) throw new PackageError("PACKAGE_FORMAT");
+  if (meta.format !== PACKAGE_FORMAT && meta.format !== PACKAGE_FORMAT_COPY) throw new PackageError("PACKAGE_FORMAT");
   const m = validateManifest(meta.manifest);
   if (!m.ok) throw new PackageError("MANIFEST_INVALID", m.codes);
   const files: Record<string, Uint8Array> = {};
@@ -263,5 +311,20 @@ export function readPackage(dir: string): DemoVersionPackage {
   const images = checkPackageImages(manifest, meta.images ?? []);
   const summary = packageRightsSummary(images);
   if (JSON.stringify(meta.rightsSummary) !== JSON.stringify(summary)) throw new PackageError("RIGHTS_SUMMARY_MISMATCH");
-  return { ...meta, manifest, images, rightsSummary: summary, files };
+  // DEV-199d: the copy files, read only by the names the copy manifest's schema allows, then checked on their bytes
+  let copyFiles: Record<string, Uint8Array> | undefined;
+  if (meta.format === PACKAGE_FORMAT_COPY) {
+    copyFiles = {};
+    const entries = (meta.copy as { files?: unknown } | undefined)?.files;
+    if (!Array.isArray(entries)) throw new PackageError("COPY_INVALID", ["COPY_MANIFEST_INVALID"]);
+    for (const e of entries as Array<{ name?: unknown }>) {
+      if (typeof e?.name !== "string" || !copyRoleOfName(e.name)) throw new PackageError("COPY_INVALID", ["COPY_NAME_NOT_ALLOWED"]);
+      const path = join(dir, e.name);
+      if (!existsSync(path)) throw new PackageError("COPY_INVALID", ["COPY_FILE_MISSING", e.name]);
+      copyFiles[e.name] = new Uint8Array(readFileSync(path));
+    }
+  }
+  const pkg: DemoVersionPackage = { ...meta, manifest, images, rightsSummary: summary, files, ...(copyFiles ? { copyFiles } : {}) };
+  checkPackageCopy(pkg);
+  return pkg;
 }
