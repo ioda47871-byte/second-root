@@ -5,16 +5,23 @@
  * NOT WIRED IN. Nothing calls this yet (DEV-199b connects it). It decides nothing about a real page today.
  *
  * What it does
- *   1. Runs the existing checks unchanged and wraps their result: the facts pack schema (facts-pack.ts) and the
- *      artifact copy check (lib/sales/demo-version/copy-check.ts: checkCopyRecord + every visible text in the record
- *      + no joined text looking like a fact). Any failure there is `COPY_FACT_UNSUPPORTED` with severity `fail`, and
- *      the verdict is `fail`: nothing in this audit can rate a page better than those checks do.
+ *   1. Runs the existing checks unchanged and wraps their result: the facts pack schema (facts-pack.ts), the server's
+ *      own HTML / CSS check (lib/sales/demo-version/html-safety.ts checkArtifactHtml: everything it refuses is refused
+ *      here, CSS-generated text included) and the artifact copy check (lib/sales/demo-version/copy-check.ts:
+ *      checkCopyRecord + every visible text in the record + no joined text looking like a fact). Every text the
+ *      server's extractor finds must be covered by a text this audit reads (PAGE_TEXT_NOT_COVERED otherwise), so SVG,
+ *      MathML, <noscript> or template text cannot slip past (PR #259 review H1). Any failure there is
+ *      `COPY_FACT_UNSUPPORTED` with severity `fail`, and the verdict is `fail`: nothing in this audit can rate a page
+ *      better than those checks do.
  *   2. Reads the page's sections and roles from its DOM (./copy-quality-page.ts, rule L5) and ties each text to its
  *      copy-record item: a verbatim `fact`, a fact's `label`, or prose (`creative_expression` /
  *      `proposal_pending_review`).
  *   3. Judges only the prose with structural, deterministic signals (never a word blacklist):
  *        - slogan-shaped lines: a short prose line that ends in 。/！ or is cut at a comma into a fragment
  *          (…、…へ / …に / …ずつ). Polite explanatory sentences (…ます。) are not slogans.
+ *        - poetic headings: a short noun-phrase heading with no 。 that names nothing from the shop's facts (fails the
+ *          name-swap test) and is not a plain label (…のご案内, …について, メニュー, アクセス …) counts as a slogan
+ *          too (review M5: 「朝の光」「棚の記憶」).
  *        - accumulation: COPY_RHETORICAL_OVERUSE when three or more non-hero sections lead with a slogan line and they
  *          are at least half of the non-hero headline lines. The hero may keep its one strong line.
  *        - cadence: COPY_REPETITIVE_CADENCE when one shape (ends in 。, 「…、…」 split, 体言止め + 。, particle
@@ -27,10 +34,12 @@
  *        - voice: plain-form prose sentences on a polite page, a short line cut by three or more commas, repeated
  *          exclamation marks.
  *      Verbatim facts, labels and decoration are never judged for style (rules M3, L3, L6).
- *   4. Checks what information the page carries: offering, hours and location. Missing from the facts pack → HOLD
- *      (nothing is invented). In the facts but not on the page → REVISE. A non-hero section with prose but no fact → REVISE.
- *   5. A prose statement (…ます。/ …る。) that names a term found nowhere in the facts is COPY_FACT_UNSUPPORTED with
- *      severity `hold`: the audit's own, stricter suspicion on top of the copy-record tripwire.
+ *   4. Checks what information the page carries: offering (any fact beyond who / where / when, whatever its key),
+ *      hours and location. Missing from the facts pack → HOLD (nothing is invented). In the facts but not on the page
+ *      → REVISE. A non-hero section with prose but no fact → REVISE.
+ *   5. A prose line with a claim-like sign (CLAIM_SIGNS: the copy-record categories plus routine / frequency and
+ *      making method, e.g. 毎朝, 自家製) whose wording the facts do not hold is COPY_FACT_UNSUPPORTED with severity
+ *      `hold`. Hospitality lines (ご来店をお待ちしております。) raise nothing (review M4).
  *   6. Lanes (rule M5): `quality_research_fictional` gets the full style audit. `real_shop_proposal` is judged only on
  *      which facts and labels are shown and how; its prose is never judged as the shop's own words, and the lane
  *      always carries COPY_APPROVAL_MISSING (HOLD).
@@ -40,18 +49,22 @@
  * verdict. `approve_candidate` never means sendable (copyGateSendBlockers): the owner's approval is a separate record.
  *
  * Binding (rule L1): a review holds the sha256 of the facts pack, the copy record, the page HTML and its CSS, and the
- * auditor version. checkCopyQualityReview recomputes all of them from the files at check time and re-runs the audit;
- * any difference makes the review invalid, so an old PASS is never reused for a changed page.
+ * auditor version, and from round 1 the previous round's copy sha256. checkCopyQualityReview recomputes the hashes
+ * from the files at check time, re-runs the audit and compares the WHOLE record (axes, base checks, sections, findings
+ * with their evidence); any difference makes the review invalid, so an old PASS is never reused for a changed page.
  *
- * Revisions (rules M2, L6): validateCopyRevision refuses fact laundering (a changed claim_type, a fact not verbatim,
- * new prose restating a fact) as FAIL; at most MAX_COPY_REVISION_ROUNDS rounds.
+ * Revisions (rules M2, L6): each round after the first must come with the earlier rounds (review, copy record, page),
+ * linked by hash; every step must pass validateCopyRevision, which refuses fact laundering as FAIL (a changed
+ * claim_type, a fact not verbatim, new prose making a claim, a deleted fact replaced by prose in its section) and
+ * grades a prose heading that only echoes a fact term as REVISE. At most MAX_COPY_REVISION_ROUNDS rounds.
  *
  * Pure apart from sha256 (node:crypto). No network, no model call.
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
-import { CopyRecord, factParts, type CopyItem } from "./copy-record";
+import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
+import { CopyRecord, factParts, INVENTED_FACT_SIGNS, type CopyItem } from "./copy-record";
 import { FactsPack } from "./facts-pack";
 import { OUTSIDE_SECTIONS, pageText, type EntryRole, type PageSection } from "./copy-quality-page";
 
@@ -110,14 +123,30 @@ export const GENERIC_PHRASE_SIGNALS: readonly string[] = [
   "笑顔",
 ];
 
-/** The information a visitor looks for, by the facts-pack keys that hold it. */
-export const INFORMATION_FAMILIES: ReadonlyArray<readonly [family: string, key: RegExp]> = [
-  ["offering", /^(service|menu|product|item|course|treatment|dish|drink)(_\d{1,3})?$/],
-  ["hours", /^hours$/],
-  ["location", /^(address|access)$/],
+/** Facts that say only who, where and when: a pack with nothing else has no material for shop-specific copy. */
+export const NON_MATERIAL_KEYS = /^(name|category|ward|address|hours|closed_days|access|phone)$/;
+/**
+ * The information a visitor looks for, by the facts that hold it. The offering is any fact beyond who / where / when
+ * (services, products, menus, statements, a workshop …), whatever its key is called (review L2): a pack is not read as
+ * offering nothing just because its keys are named differently.
+ */
+export const INFORMATION_FAMILIES: ReadonlyArray<readonly [family: string, holds: (key: string) => boolean, describe: string]> = [
+  ["offering", (k) => !NON_MATERIAL_KEYS.test(k), `any key but ${NON_MATERIAL_KEYS.source}`],
+  ["hours", (k) => k === "hours", "hours"],
+  ["location", (k) => k === "address" || k === "access", "address | access"],
 ];
-/** Facts that say only who and where: a pack with nothing else has no material for shop-specific copy. */
-const NON_MATERIAL_KEYS = /^(name|category|ward|address|hours|closed_days|access|phone)$/;
+/**
+ * Claim-like signs in prose (review M4): the copy-record categories, reused unchanged, plus a routine or frequency and
+ * a making method — claims about what the shop does that copy-record's tripwire does not cover. A prose line with one
+ * of these whose wording the facts do not hold is HOLD; any other prose raises nothing on the fact path.
+ */
+export const CLAIM_SIGNS: ReadonlyArray<readonly [string, RegExp]> = [
+  ...INVENTED_FACT_SIGNS,
+  ["routine_or_frequency", /毎(朝|晩|夜|週|月|年|回)|[週月日年]に[一二三四五六七八九十何数0-9]/],
+  ["making_method", /自家製|手作り|手づくり|手焼き|手ごね|石窯|直火|焙煎|仕込/],
+];
+/** Headings that say plainly what a section holds; never counted as poetic (review M5). */
+export const PLAIN_HEADING = /(案内|について|紹介|一覧|メニュー|アクセス|営業時間|定休日|店舗情報|お知らせ|料金|地図|所在地|住所|連絡先|問い合わせ|よくある質問|サービス|商品|ギャラリー|写真|概要|内容|流れ)$/;
 /** Words every fictional research shop carries (架空市…): never evidence that a line is about this shop. */
 const FICTIONAL_MARKERS = ["架空"];
 
@@ -156,6 +185,8 @@ export const CopyQualityReview = z
     page_css_sha256: Sha,
     /** 0 = the first audit; each local revision adds one, at most MAX_COPY_REVISION_ROUNDS */
     round: z.number().int().min(0).max(MAX_COPY_REVISION_ROUNDS),
+    /** the copy record the previous round reviewed (null in round 0): the link of the revision chain */
+    previous_copy_sha256: Sha.nullable(),
     /** the existing checks this audit wraps (facts pack schema, artifact copy check), their codes as found */
     base_checks: z.strictObject({ ok: z.boolean(), codes: z.array(z.string().regex(/^[A-Z][A-Z0-9_]{1,60}$/)).max(80) }),
     sections: z
@@ -192,6 +223,8 @@ export const CopyQualityReview = z
     if (r.base_checks.ok && hasFail) bad("fail_without_base_failure");
     if (r.lane === "real_shop_proposal" && !r.findings.some((f) => f.code === "COPY_APPROVAL_MISSING")) bad("real_shop_without_approval_missing");
     if (hasFail && r.axes.fact_correctness.score !== 0) bad("fact_axis_on_fail");
+    if ((r.round === 0) !== (r.previous_copy_sha256 === null)) bad("previous_copy_sha_and_round_disagree");
+    if (r.previous_copy_sha256 !== null && r.previous_copy_sha256 === r.copy_sha256) bad("revision_without_change");
     const codes = [...new Set(r.findings.map((f) => f.code))].sort();
     if (JSON.stringify(codes) !== JSON.stringify(r.unresolved)) bad("unresolved_not_finding_codes");
   });
@@ -262,14 +295,15 @@ export type AuditEntry = { role: EntryRole; text: string; position: { section: n
 type Fact = FactsPack["facts"][number];
 
 /** What the style rules know about the shop: its facts as text, the strings that name it, whether it has material. */
-export type ShopContext = { facts: readonly Fact[]; corpus: string; nameStrings: string[]; hasMaterial: boolean };
+export type ShopContext = { facts: readonly Fact[]; corpus: string; allFacts: string; nameStrings: string[]; hasMaterial: boolean };
 
 export function shopContext(facts: readonly Fact[]): ShopContext {
   const name = facts.find((f) => f.key === "name")?.value ?? "";
   // the full name and its space-separated parts of two or more characters (one character, e.g. 輪, also sits inside 車輪)
   const nameStrings = [norm(name), ...name.split(/ +/).map(norm).filter((p) => p.length >= 2)].filter(Boolean).sort((a, b) => b.length - a.length);
   const corpus = facts.filter((f) => f.key !== "name" && f.key !== "category").map((f) => norm(f.value)).join("\u0000");
-  return { facts, corpus, nameStrings, hasMaterial: facts.some((f) => !NON_MATERIAL_KEYS.test(f.key)) };
+  const allFacts = facts.map((f) => norm(f.value)).join("\u0000");
+  return { facts, corpus, allFacts, nameStrings, hasMaterial: facts.some((f) => !NON_MATERIAL_KEYS.test(f.key)) };
 }
 
 /** The line's terms that the shop's facts do not hold (name and fictional marker taken out first). */
@@ -291,6 +325,30 @@ export const isSwappable = (text: string, c: ShopContext) => {
   return all.length === outside.length;
 };
 export const genericSignals = (text: string) => GENERIC_PHRASE_SIGNALS.filter((p) => norm(text).includes(norm(p)));
+
+/** A short noun-phrase heading with no 。 that names nothing from the shop's facts and is no plain label (review M5). */
+export function isPoeticHeading(text: string, c: ShopContext): boolean {
+  const n = norm(text);
+  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || PLAIN_HEADING.test(n)) return false;
+  return isSwappable(text, c);
+}
+
+/** Words of routine that are rhetoric in a slogan (素敵な毎日へ) and a claim only in a sentence (毎日焼きます。). */
+const ROUTINE_IN_STATEMENT = /毎日|いつも|必ず/;
+
+/** The claim-like signs (CLAIM_SIGNS) in a line whose matched wording no fact of the shop holds. */
+export function unsourcedClaimSigns(text: string, c: ShopContext): string[] {
+  const n = norm(text);
+  // a plain section label (メニュー, 営業時間) names a kind of information; it claims nothing
+  if (n.length <= 10 && PLAIN_HEADING.test(n) && !/[0-9]/.test(n)) return [];
+  const unsourced = (re: RegExp) => {
+    const m = n.match(re);
+    return m !== null && !c.allFacts.includes(norm(m[0]));
+  };
+  const out = CLAIM_SIGNS.filter(([, re]) => unsourced(re)).map(([name]) => name);
+  if (isStatement(text) && unsourced(ROUTINE_IN_STATEMENT)) out.push("routine_in_statement");
+  return out;
+}
 
 function classify(sections: readonly PageSection[], record: CopyRecord | null): AuditEntry[] {
   const facts = new Map<string, CopyItem>();
@@ -331,29 +389,28 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
   const prose = entries.filter((e) => e.kind === "prose" && (e.role === "heading" || e.role === "body"));
   const fictional = lane === "quality_research_fictional";
 
-  // -- facts named by prose statements but held nowhere in the facts (both lanes)
+  // -- claim-like prose the facts do not hold (both lanes; review M4: only claim-like signs, never hospitality lines)
   let unsourcedStatements = 0;
   for (const e of prose) {
-    if (!isStatement(e.text)) continue;
-    const { outside } = termsOutsideFacts(e.text, c);
-    if (!outside.length) continue;
+    const signs = unsourcedClaimSigns(e.text, c);
+    if (!signs.length) continue;
     unsourcedStatements++;
     findings.push({
       code: "COPY_FACT_UNSUPPORTED",
       severity: "hold",
-      rule: "statement_terms_outside_facts",
+      rule: "claim_sign_outside_facts",
       location: e.position,
       texts: [e.text.slice(0, 400)],
-      reason: "A prose statement names something the shop's facts do not hold; it is not invented, it waits for a sourced fact.",
-      evidence: [quote(e), `terms not in the facts pack: ${outside.slice(0, 8).join(", ")}`],
+      reason: "A prose line makes a claim-like statement (routine, method, price, years, reservation …) that the shop's facts do not hold; it is not invented, it waits for a sourced fact.",
+      evidence: [quote(e), `claim signs without a fact: ${signs.join(", ")}`],
     });
   }
 
   // -- information: what the facts hold and what the page shows
   const shownFactIds = new Set(entries.filter((e) => e.kind === "fact" && e.item?.claim_type === "fact").flatMap((e) => e.item!.source_fact_ids));
   const familyGaps: string[] = [];
-  for (const [family, key] of INFORMATION_FAMILIES) {
-    const inPack = c.facts.filter((f) => key.test(f.key));
+  for (const [family, holds, describe] of INFORMATION_FAMILIES) {
+    const inPack = c.facts.filter((f) => holds(f.key));
     if (!inPack.length) {
       familyGaps.push(family);
       findings.push({
@@ -363,7 +420,7 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
         location: null,
         texts: [],
         reason: `The facts pack holds no ${family} information; the copy must not invent it, so the page waits for a sourced fact.`,
-        evidence: [`no fact key matches ${key.source}`],
+        evidence: [`no fact key matches ${describe}`],
       });
     } else if (!inPack.some((f) => shownFactIds.has(f.id))) {
       familyGaps.push(family);
@@ -404,10 +461,11 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
   }
 
   // -- accumulation of slogan lines (the hero may keep one strong line)
+  const sloganLike = (e: AuditEntry) => isSloganShaped(e.text) || (e.role === "heading" && isPoeticHeading(e.text, c));
   const headline = prose.filter((e) => e.section_id !== heroId && e.section_id !== OUTSIDE_SECTIONS && (e.role === "heading" || isSloganShaped(e.text)));
-  const slogans = headline.filter((e) => isSloganShaped(e.text));
+  const slogans = headline.filter(sloganLike);
   const sloganSections = new Set(slogans.map((e) => e.section_id));
-  const heroSlogans = prose.filter((e) => e.section_id === heroId && isSloganShaped(e.text));
+  const heroSlogans = prose.filter((e) => e.section_id === heroId && sloganLike(e));
   const share = headline.length ? slogans.length / headline.length : 0;
   if (sloganSections.size >= 3 && share >= 0.5)
     findings.push({
@@ -490,31 +548,46 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
   return { findings, unsourcedStatements, axes: { natural_japanese: natural, shop_specificity: shopSpecificity, usefulness, restraint_consistency: restraint } };
 }
 
+/** Options that change what the audit sees; the same ones must be passed when a review is checked. */
+export type ReviewOptions = {
+  /** 0 for the first audit; a revision round also names the copy record it revises */
+  round?: number;
+  previousCopySha256?: string | null;
+  /** the photo URLs the page may reference (as the server's check takes them); none by default */
+  photoUrls?: ReadonlySet<string>;
+};
+
+/** Codes from checkArtifactHtml that mean the page was not parsed to the end (no section reading after them). */
+const PARSE_LIMIT = /^(HTML_TOO_|VALIDATION_BUDGET_EXCEEDED)/;
+
 /** The audit of one page: the existing checks wrapped, then style and information (see the file comment). */
-export function reviewCopyQuality(files: CopyQualityFiles, o: { round?: number } = {}): CopyQualityReview {
+export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}): CopyQualityReview {
   const factsRaw = parseJson(utf8(files.factsPack));
   const copyRaw = parseJson(utf8(files.copyRecord));
   const facts = FactsPack.safeParse(factsRaw);
   const record = CopyRecord.safeParse(copyRaw);
   const hashes = { facts_sha256: sha256(files.factsPack), copy_sha256: sha256(files.copyRecord), page_html_sha256: sha256(files.pageHtml), page_css_sha256: sha256(files.pageCss) };
+  const html = utf8(files.pageHtml);
 
   const baseCodes: string[] = [];
+  // the server's own HTML / CSS check: whatever it refuses is refused here, and its texts are the ones that count
+  const safety = checkArtifactHtml(html, utf8(files.pageCss), o.photoUrls ?? new Set());
+  baseCodes.push(...safety.findings.map((f) => f.code));
   let sections: PageSection[] = [];
   let otherTexts: string[] = [];
-  try {
-    ({ sections, otherTexts } = pageText(utf8(files.pageHtml)));
-  } catch {
-    baseCodes.push("PAGE_UNREADABLE");
-  }
+  if (!safety.findings.some((f) => PARSE_LIMIT.test(f.code)))
+    try {
+      ({ sections, otherTexts } = pageText(html));
+    } catch {
+      baseCodes.push("PAGE_UNREADABLE");
+    }
+  const read = [...sections.flatMap((s) => s.entries.map((e) => e.text)), ...otherTexts];
+  // every text node the server finds must sit inside a text this audit reads (blocks join what <wbr> splits)
+  const readNorm = read.map(norm);
+  if (safety.texts.some((t) => !readNorm.some((r) => r.includes(norm(t))))) baseCodes.push("PAGE_TEXT_NOT_COVERED");
   if (!facts.success) baseCodes.push("FACTS_PACK_INVALID");
   const factList = facts.success ? facts.data.facts : [];
-  const base = checkArtifactCopy({
-    texts: [...sections.flatMap((s) => s.entries.map((e) => e.text)), ...otherTexts],
-    copyRecord: copyRaw,
-    shopId: facts.success ? facts.data.shop_id : "",
-    factsSha256: hashes.facts_sha256,
-    facts: factList,
-  });
+  const base = checkArtifactCopy({ texts: read, copyRecord: copyRaw, shopId: facts.success ? facts.data.shop_id : "", factsSha256: hashes.facts_sha256, facts: factList });
   baseCodes.push(...base.findings.map((f) => f.code));
   const baseCodesUnique = [...new Set(baseCodes)].sort().slice(0, 80);
   const baseOk = baseCodesUnique.length === 0;
@@ -533,7 +606,7 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: { round?: number }
       rule: "base_check",
       location: null,
       texts: [],
-      reason: "The existing facts pack / copy record checks fail; the audit reports that failure as it is and rates nothing above it.",
+      reason: "The existing facts pack / HTML / copy record checks fail; the audit reports that failure as it is and rates nothing above it.",
       evidence: baseCodesUnique.slice(0, 40),
     });
   const style = styleAndInformationFindings(entries, c, lane);
@@ -553,7 +626,7 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: { round?: number }
   const verdict = worstVerdict(findings.map((f) => f.severity));
   const factAxis = {
     score: !baseOk ? 0 : style.unsourcedStatements ? 2 : 5,
-    evidence: [!baseOk ? `base checks fail: ${baseCodesUnique.slice(0, 10).join(", ")}` : "facts pack and copy record checks pass", `prose statements naming terms outside the facts: ${style.unsourcedStatements}`],
+    evidence: [!baseOk ? `base checks fail: ${baseCodesUnique.slice(0, 10).join(", ")}` : "facts pack, HTML and copy record checks pass", `prose lines with a claim sign the facts do not hold: ${style.unsourcedStatements}`],
   };
   return CopyQualityReview.parse({
     schema: "copy_quality_review_v1",
@@ -562,6 +635,7 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: { round?: number }
     lane,
     ...hashes,
     round: o.round ?? 0,
+    previous_copy_sha256: o.previousCopySha256 ?? null,
     base_checks: { ok: baseOk, codes: baseCodesUnique },
     sections: sections.map((s) => ({
       section_id: s.section_id.slice(0, 80),
@@ -577,15 +651,24 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: { round?: number }
 
 // ---- binding, rounds and sending ---------------------------------------------------------------------------------
 
-const signature = (r: Pick<CopyQualityReview, "findings">) => r.findings.map((f) => `${f.code}|${f.severity}|${f.rule}|${f.location ? `${f.location.section}.${f.location.entry}` : "-"}`).sort();
+/** JSON with object keys sorted, so two records compare by content, not by key order. */
+const canonical = (v: unknown) => JSON.stringify(v, (_k, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
+
+/** An earlier round of the revision chain: its review, and the copy record and page it reviewed (matched by hash). */
+export type PriorRound = { review: unknown; copyRecord: string | Uint8Array; pageHtml: string | Uint8Array };
+export type CheckOptions = { previous?: readonly PriorRound[]; photoUrls?: ReadonlySet<string> };
 
 /**
- * Is this stored review valid for these exact files? Recomputes every hash from the files and re-runs the audit
- * (rule L1): a changed facts pack, copy record, HTML or CSS, another shop, or findings / a verdict the audit does not
- * reproduce, all make it invalid. With `previous`, also checks the revision round (rules L2, L6): only a `revise`
- * review may be followed, by the next round, of a changed copy record, for the same shop and facts.
+ * Is this stored review valid for these exact files? Recomputes every hash from the files, re-runs the audit and
+ * compares the whole record (rule L1, review L1): a changed facts pack, copy record, HTML or CSS, another shop, or any
+ * field the audit does not reproduce (axes, base checks, sections, findings with their evidence) makes it invalid.
+ *
+ * A review of round n must come with rounds 0 … n-1 (`previous`, in order). Each earlier review must be a `revise`
+ * (COPY_APPROVAL_MISSING aside, see copyVerdict) of the same shop and facts, its copy record and page must match its hashes, each round must name the copy record of
+ * the one before (`previous_copy_sha256`), and each step must pass validateCopyRevision (review M1, M2). A `fail` is
+ * terminal: nothing follows it.
  */
-export function checkCopyQualityReview(raw: unknown, files: CopyQualityFiles, o: { previous?: unknown } = {}): { ok: boolean; codes: string[] } {
+export function checkCopyQualityReview(raw: unknown, files: CopyQualityFiles, o: CheckOptions = {}): { ok: boolean; codes: string[] } {
   const p = CopyQualityReview.safeParse(raw);
   if (!p.success) return { ok: false, codes: ["REVIEW_SCHEMA"] };
   const r = p.data;
@@ -594,29 +677,59 @@ export function checkCopyQualityReview(raw: unknown, files: CopyQualityFiles, o:
   if (r.copy_sha256 !== sha256(files.copyRecord)) codes.push("REVIEW_STALE_COPY");
   if (r.page_html_sha256 !== sha256(files.pageHtml)) codes.push("REVIEW_STALE_PAGE_HTML");
   if (r.page_css_sha256 !== sha256(files.pageCss)) codes.push("REVIEW_STALE_PAGE_CSS");
-  const again = reviewCopyQuality(files, { round: r.round });
+  const again = reviewCopyQuality(files, { round: r.round, previousCopySha256: r.previous_copy_sha256, photoUrls: o.photoUrls });
   if (r.shop_id !== again.shop_id) codes.push("REVIEW_OF_ANOTHER_SHOP");
   if (r.lane !== again.lane) codes.push("REVIEW_LANE_MISMATCH");
-  if (r.verdict !== again.verdict || JSON.stringify(signature(r)) !== JSON.stringify(signature(again))) codes.push("REVIEW_DOES_NOT_MATCH_AUDIT");
-  if (o.previous !== undefined) {
-    const q = CopyQualityReview.safeParse(o.previous);
-    if (!q.success) codes.push("PREVIOUS_REVIEW_SCHEMA");
-    else {
-      if (q.data.verdict === "fail") codes.push("REVISION_AFTER_FAIL");
-      else if (q.data.verdict !== "revise") codes.push("REVISION_AFTER_NON_REVISE");
-      if (r.round !== q.data.round + 1) codes.push("REVISION_ROUND_OUT_OF_ORDER");
-      if (q.data.shop_id !== r.shop_id || q.data.facts_sha256 !== r.facts_sha256) codes.push("REVISION_OF_ANOTHER_SHOP_OR_FACTS");
-      if (q.data.copy_sha256 === r.copy_sha256) codes.push("REVISION_COPY_UNCHANGED");
-    }
-  } else if (r.round !== 0) codes.push("REVISION_WITHOUT_PREVIOUS");
-  return { ok: codes.length === 0, codes };
+  if (canonical(r) !== canonical(again)) codes.push("REVIEW_DOES_NOT_MATCH_AUDIT");
+  codes.push(...chainCodes(r, files, o.previous ?? []));
+  return { ok: codes.length === 0, codes: [...new Set(codes)] };
 }
 
-/** What happens after a review: fail is terminal, hold waits for facts or the owner, revise only within the round cap. */
-export function nextCopyStep(r: Pick<CopyQualityReview, "verdict" | "round">): "stop_fail" | "stop_hold" | "revise" | "owner_review" {
-  if (r.verdict === "fail") return "stop_fail";
-  if (r.verdict === "hold") return "stop_hold";
-  if (r.verdict === "revise") return r.round < MAX_COPY_REVISION_ROUNDS ? "revise" : "stop_hold";
+function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: readonly PriorRound[]): string[] {
+  if (r.round === 0) return previous.length ? ["REVISION_CHAIN_FOR_ROUND_0"] : [];
+  if (!previous.length) return ["REVISION_WITHOUT_PREVIOUS"];
+  if (previous.length !== r.round) return ["REVISION_CHAIN_LENGTH"];
+  const codes: string[] = [];
+  const facts = FactsPack.safeParse(parseJson(utf8(files.factsPack)));
+  const factList = facts.success ? facts.data.facts : [];
+  const steps = [...previous.map((x) => ({ review: CopyQualityReview.safeParse(x.review), copyRecord: x.copyRecord, pageHtml: x.pageHtml })), { review: { success: true as const, data: r }, copyRecord: files.copyRecord, pageHtml: files.pageHtml }];
+  for (let i = 0; i < previous.length; i++) {
+    const cur = steps[i]!;
+    const next = steps[i + 1]!;
+    if (!cur.review.success) {
+      codes.push("PREVIOUS_REVIEW_SCHEMA");
+      continue;
+    }
+    const q = cur.review.data;
+    if (q.round !== i) codes.push("REVISION_ROUND_OUT_OF_ORDER");
+    const v = copyVerdict(q);
+    if (v === "fail") codes.push("REVISION_AFTER_FAIL");
+    else if (v !== "revise") codes.push("REVISION_AFTER_NON_REVISE");
+    if (q.shop_id !== r.shop_id || q.facts_sha256 !== r.facts_sha256 || q.lane !== r.lane) codes.push("REVISION_OF_ANOTHER_SHOP_OR_FACTS");
+    if (sha256(cur.copyRecord) !== q.copy_sha256) codes.push("PREVIOUS_COPY_DOES_NOT_MATCH_REVIEW");
+    if (sha256(cur.pageHtml) !== q.page_html_sha256) codes.push("PREVIOUS_PAGE_DOES_NOT_MATCH_REVIEW");
+    if (next.review.success && next.review.data.previous_copy_sha256 !== q.copy_sha256) codes.push("REVISION_CHAIN_BROKEN");
+    const step = validateCopyRevision(parseJson(utf8(cur.copyRecord)), parseJson(utf8(next.copyRecord)), { facts: factList, oldPageHtml: utf8(cur.pageHtml), newPageHtml: utf8(next.pageHtml) });
+    if (step.verdict === "fail") codes.push("REVISION_INVALID", ...step.findings.filter((f) => f.severity === "fail").map((f) => f.code));
+  }
+  return codes;
+}
+
+/**
+ * The verdict with COPY_APPROVAL_MISSING set aside: what the copy itself earns. Only the owner's approval answers that
+ * one hold, so a real-shop page whose copy is otherwise clean goes to the owner, and one with a style problem may be
+ * revised like any other.
+ */
+export function copyVerdict(r: Pick<CopyQualityReview, "findings">): Verdict {
+  return worstVerdict(r.findings.filter((f) => f.code !== "COPY_APPROVAL_MISSING").map((f) => f.severity));
+}
+
+/** What happens after a review: fail is terminal, hold waits for facts, revise only within the round cap, then the owner. */
+export function nextCopyStep(r: Pick<CopyQualityReview, "verdict" | "round"> & Partial<Pick<CopyQualityReview, "findings">>): "stop_fail" | "stop_hold" | "revise" | "owner_review" {
+  const v = r.findings ? copyVerdict({ findings: r.findings }) : r.verdict;
+  if (v === "fail") return "stop_fail";
+  if (v === "hold") return "stop_hold";
+  if (v === "revise") return r.round < MAX_COPY_REVISION_ROUNDS ? "revise" : "stop_hold";
   return "owner_review";
 }
 
@@ -625,19 +738,20 @@ export type OwnerCopyApproval = { shop_id: string; facts_sha256: string; copy_sh
 
 /**
  * Why the copy of this page may NOT be sent. `approve_candidate` alone is never enough: the review must be valid for
- * the exact files, pass (COPY_APPROVAL_MISSING aside, which only the owner's approval answers), be for a real shop,
- * and the owner's approval must exist for the same five inputs. An empty list means only that THIS gate does not
- * block; the design review, the sales send path and its own approvals still apply.
+ * the exact files (with its whole revision chain from round 1 on), pass (COPY_APPROVAL_MISSING aside, which only the
+ * owner's approval answers), be for a real shop, and the owner's approval must exist for the same five inputs. An
+ * empty list means only that THIS gate does not block; the design review, the sales send path and its own approvals
+ * still apply.
  */
-export function copyGateSendBlockers(raw: unknown, files: CopyQualityFiles, ownerApproval: OwnerCopyApproval | null): string[] {
+export function copyGateSendBlockers(raw: unknown, files: CopyQualityFiles, ownerApproval: OwnerCopyApproval | null, o: CheckOptions = {}): string[] {
   const blockers: string[] = [];
-  const check = checkCopyQualityReview(raw, files);
+  const check = checkCopyQualityReview(raw, files, o);
   if (!check.ok) blockers.push("REVIEW_INVALID", ...check.codes);
   const p = CopyQualityReview.safeParse(raw);
   if (p.success) {
     const r = p.data;
     if (r.lane === "quality_research_fictional") blockers.push("FICTIONAL_RESEARCH_NOT_SENDABLE");
-    if (worstVerdict(r.findings.filter((f) => f.code !== "COPY_APPROVAL_MISSING").map((f) => f.severity)) !== "approve_candidate") blockers.push("REVIEW_NOT_PASSED");
+    if (copyVerdict(r) !== "approve_candidate") blockers.push("REVIEW_NOT_PASSED");
     if (!ownerApproval) blockers.push("OWNER_APPROVAL_MISSING");
     else {
       const same = ownerApproval.shop_id === r.shop_id && ownerApproval.facts_sha256 === r.facts_sha256 && ownerApproval.copy_sha256 === r.copy_sha256 && ownerApproval.page_html_sha256 === r.page_html_sha256 && ownerApproval.page_css_sha256 === r.page_css_sha256;
@@ -650,7 +764,7 @@ export function copyGateSendBlockers(raw: unknown, files: CopyQualityFiles, owne
 
 // ---- revisions (rule M2: no fact laundering) ---------------------------------------------------------------------
 
-/** New prose that says what a fact says: holds a whole fact value, or most of its letter pairs come from one fact. */
+/** Prose that says what a fact says: holds a whole fact value, or most of its letter pairs come from one fact. */
 export function restatesFact(text: string, facts: readonly Fact[]): string | null {
   const t = norm(text);
   const grams = bigrams(text);
@@ -666,30 +780,61 @@ export function restatesFact(text: string, facts: readonly Fact[]): string | nul
   return null;
 }
 
+export type RevisionFinding = { code: string; severity: "fail" | "revise"; item?: string; detail?: string };
+
 /**
- * A local revision of a copy record, against the record it revises: the same shop, lane and facts; no item changes
- * its claim_type; every fact item stays a verbatim whole-sentence selection of its source fact (re-selecting or
- * removing is allowed); no new or rewritten prose item restates a fact. Every finding is a FAIL.
+ * A local revision of a copy record, against the record it revises (review M2, M3). FAIL (terminal):
+ *  - another shop, lane or facts SHA; an item whose claim_type changed;
+ *  - a fact item that is not a verbatim whole-sentence selection of its source fact (re-selecting or removing is fine);
+ *  - new or rewritten prose that makes a claim: a sentence (…ます。/ …る。, synonyms of a fact included — a
+ *    paraphrase is caught by its form, not by its words) or a claim-like sign (CLAIM_SIGNS);
+ *  - with both pages: a fact item removed and new prose put in the section where it stood (a fact re-added as prose
+ *    under a new id).
+ * REVISE (not terminal; the audit then judges the line): a new prose heading that only echoes a fact's words with no
+ * claim (「パンク修理の相談」「振れ取りで車輪をまっすぐに」).
  */
-export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { facts: readonly Fact[] }): { ok: boolean; findings: Array<{ code: string; item?: string; detail?: string }> } {
+export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { facts: readonly Fact[]; oldPageHtml?: string; newPageHtml?: string }): { ok: boolean; verdict: "ok" | "revise" | "fail"; findings: RevisionFinding[] } {
   const a = CopyRecord.safeParse(oldRaw);
   const b = CopyRecord.safeParse(newRaw);
-  if (!a.success || !b.success) return { ok: false, findings: [{ code: "REVISION_SCHEMA" }] };
-  const f: Array<{ code: string; item?: string; detail?: string }> = [];
-  if (a.data.shop_id !== b.data.shop_id) f.push({ code: "REVISION_SHOP_CHANGED" });
-  if (a.data.lane !== b.data.lane) f.push({ code: "REVISION_LANE_CHANGED" });
-  if (a.data.facts_sha256 !== b.data.facts_sha256) f.push({ code: "REVISION_FACTS_CHANGED" });
+  if (!a.success || !b.success) return { ok: false, verdict: "fail", findings: [{ code: "REVISION_SCHEMA", severity: "fail" }] };
+  const f: RevisionFinding[] = [];
+  if (a.data.shop_id !== b.data.shop_id) f.push({ code: "REVISION_SHOP_CHANGED", severity: "fail" });
+  if (a.data.lane !== b.data.lane) f.push({ code: "REVISION_LANE_CHANGED", severity: "fail" });
+  if (a.data.facts_sha256 !== b.data.facts_sha256) f.push({ code: "REVISION_FACTS_CHANGED", severity: "fail" });
   const before = new Map(a.data.items.map((i) => [i.id, i]));
   const byId = new Map(o.facts.map((x) => [x.id, x.value]));
+  const c = shopContext(o.facts);
+  const changedProse = new Set<string>();
   for (const i of b.data.items) {
     const old = before.get(i.id);
-    if (old && old.claim_type !== i.claim_type) f.push({ code: "REVISION_CLAIM_TYPE_CHANGED", item: i.id, detail: `${old.claim_type}->${i.claim_type}` });
+    if (old && old.claim_type !== i.claim_type) f.push({ code: "REVISION_CLAIM_TYPE_CHANGED", severity: "fail", item: i.id, detail: `${old.claim_type}->${i.claim_type}` });
     if (i.claim_type === "fact") {
-      if (!i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)))) f.push({ code: "REVISION_FACT_NOT_VERBATIM", item: i.id });
-    } else if (!old || norm(old.text) !== norm(i.text)) {
-      const fact = restatesFact(i.text, o.facts);
-      if (fact) f.push({ code: "REVISION_PROSE_RESTATES_FACT", item: i.id, detail: fact });
+      if (!i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)))) f.push({ code: "REVISION_FACT_NOT_VERBATIM", severity: "fail", item: i.id });
+      continue;
+    }
+    if (old && norm(old.text) === norm(i.text) && old.claim_type === i.claim_type) continue;
+    changedProse.add(norm(i.text));
+    const fact = restatesFact(i.text, o.facts);
+    const signs = unsourcedClaimSigns(i.text, c);
+    if (isStatement(i.text) || signs.length) f.push({ code: fact ? "REVISION_PROSE_RESTATES_FACT" : "REVISION_NEW_PROSE_CLAIM", severity: "fail", item: i.id, ...(fact ? { detail: fact } : signs.length ? { detail: signs.join(",") } : {}) });
+    else if (fact) f.push({ code: "REVISION_PROSE_ECHOES_FACT", severity: "revise", item: i.id, detail: fact });
+  }
+  // a fact removed and prose put where it stood
+  if (o.oldPageHtml !== undefined && o.newPageHtml !== undefined) {
+    const kept = new Set(b.data.items.filter((i) => i.claim_type === "fact").map((i) => norm(i.text)));
+    const removed = new Set(a.data.items.filter((i) => i.claim_type === "fact" && !kept.has(norm(i.text))).map((i) => norm(i.text)));
+    if (removed.size && changedProse.size) {
+      try {
+        const oldSections = pageText(o.oldPageHtml).sections;
+        const newSections = pageText(o.newPageHtml).sections;
+        const where = new Set(oldSections.filter((s) => s.entries.some((e) => removed.has(norm(e.text)))).map((s) => s.section_id));
+        for (const s of newSections)
+          if (where.has(s.section_id)) for (const e of s.entries) if (changedProse.has(norm(e.text))) f.push({ code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: s.section_id.slice(0, 40) });
+      } catch {
+        f.push({ code: "REVISION_PAGE_UNREADABLE", severity: "fail" });
+      }
     }
   }
-  return { ok: f.length === 0, findings: f };
+  const verdict = f.some((x) => x.severity === "fail") ? "fail" : f.length ? "revise" : "ok";
+  return { ok: verdict !== "fail", verdict, findings: f };
 }

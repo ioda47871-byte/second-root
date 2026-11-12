@@ -405,6 +405,13 @@ export function bicycleGood(): ReturnType<typeof shopFiles> {
   });
 }
 
+export const bicycleClicheSections: Section[] = [
+  { id: "hero", blocks: [["h1", "name"], ["p", "tagline"]] },
+  { id: "services", blocks: [["h2", "h-services"], ["p", "s1"], ["p", "s2"]] },
+  { id: "care", blocks: [["h2", "h-care"], ["p", "check"]] },
+  { ...rinInfoSection, blocks: [["h2", "h-visit"], ...rinInfoSection.blocks.slice(1)] },
+];
+
 export function bicycleCliche(): ReturnType<typeof shopFiles> {
   const items = [
     fact("name", "輪", ["F1"]),
@@ -418,16 +425,7 @@ export function bicycleCliche(): ReturnType<typeof shopFiles> {
     fact("fictional", "比較研究用の架空の自転車修理店です。実在の店ではありません。", ["F9"]),
     ...rinInfoItems(),
   ];
-  return shopFiles({
-    facts: rinFile("facts-pack.json").toString("utf8"),
-    items,
-    sections: [
-      { id: "hero", blocks: [["h1", "name"], ["p", "tagline"]] },
-      { id: "services", blocks: [["h2", "h-services"], ["p", "s1"], ["p", "s2"]] },
-      { id: "care", blocks: [["h2", "h-care"], ["p", "check"]] },
-      { ...rinInfoSection, blocks: [["h2", "h-visit"], ...rinInfoSection.blocks.slice(1)] },
-    ],
-  });
+  return shopFiles({ facts: rinFile("facts-pack.json").toString("utf8"), items, sections: bicycleClicheSections });
 }
 
 /** 輪's facts without address, hours, closed days and access (a synthetic copy; the committed pack is not touched). */
