@@ -84,6 +84,8 @@ export const COPY_FINDING_CODES = [
   "COPY_INFORMATION_MISSING",
   "COPY_VOICE_UNNATURAL",
   "COPY_APPROVAL_MISSING",
+  "COPY_REVISION_INVALID",
+  "COPY_REVISION_NEEDS_REVIEW",
 ] as const;
 export type CopyFindingCode = (typeof COPY_FINDING_CODES)[number];
 export type Severity = "fail" | "hold" | "revise";
@@ -98,6 +100,10 @@ export const ALLOWED_SEVERITIES: Readonly<Record<CopyFindingCode, readonly Sever
   COPY_INFORMATION_MISSING: ["revise", "hold"],
   COPY_VOICE_UNNATURAL: ["revise"],
   COPY_APPROVAL_MISSING: ["hold"],
+  /** a revision round whose step from the earlier rounds fails validateCopyRevision (round 6 M1) */
+  COPY_REVISION_INVALID: ["fail"],
+  /** a revision round with a revise-level revision finding: never approve_candidate (round 6 M1) */
+  COPY_REVISION_NEEDS_REVIEW: ["revise"],
 };
 
 /**
@@ -186,7 +192,9 @@ export function isPlainHeading(text: string, c: ShopContext): boolean {
     if (before === "" || PLAIN_BEFORE_WEAK.test(before)) return true;
     const guide = before.match(PLAIN_HEADING_PREFIX);
     if (guide && guide[0] === before) return true;
-    return isPlainHeading(before, c) || (lineTerms(before, c).length > 0 && !isSwappable(before, c));
+    // round 6 L3: a facts term in front counts only when the front is exactly a phrase of the facts (食パンのおすすめ),
+    // not a facts term plus other words (パンの夢の情報)
+    return isPlainHeading(before, c) || (before.length >= 2 && c.corpus.split("\u0000").some((v) => v.includes(before)));
   }
   if (PLAIN_HEADING.test(n) || ADDRESSEE_HEADING.test(n)) return true;
   const m = n.match(PLAIN_HEADING_PREFIX);
@@ -240,6 +248,22 @@ export const CopyQualityReview = z
     round: z.number().int().min(0).max(MAX_COPY_REVISION_ROUNDS),
     /** the copy record the previous round reviewed (null in round 0): the link of the revision chain */
     previous_copy_sha256: Sha.nullable(),
+    /**
+     * What validateCopyRevision found for this round against the earlier rounds (round 6 M1): the step from the
+     * previous round, plus, from round 2, the fail-level findings and the dropped-fact backstop against round 0 (so a
+     * fact dropped in round 1 is still named in round 2). Empty in round 0. Derived by the audit from the earlier
+     * rounds' files and re-derived by checkCopyQualityReview, never declared.
+     */
+    revision_findings: z
+      .array(
+        z.strictObject({
+          code: z.string().regex(/^REVISION_[A-Z0-9_]{1,60}$/),
+          severity: z.enum(["fail", "revise"]),
+          item: z.string().max(41).nullable(),
+          detail: z.string().max(120).nullable(),
+        }),
+      )
+      .max(80),
     /** the existing checks this audit wraps (facts pack schema, artifact copy check), their codes as found */
     base_checks: z.strictObject({ ok: z.boolean(), codes: z.array(z.string().regex(/^[A-Z][A-Z0-9_]{1,60}$/)).max(80) }),
     sections: z
@@ -273,7 +297,12 @@ export const CopyQualityReview = z
     for (const f of r.findings) if (!ALLOWED_SEVERITIES[f.code].includes(f.severity)) bad(`severity_not_allowed:${f.code}:${f.severity}`);
     const hasFail = r.findings.some((f) => f.severity === "fail");
     if (!r.base_checks.ok && !hasFail) bad("base_failure_not_fail");
-    if (r.base_checks.ok && hasFail) bad("fail_without_base_failure");
+    if (r.base_checks.ok && hasFail && !r.findings.some((f) => f.code === "COPY_REVISION_INVALID")) bad("fail_without_base_or_revision_failure");
+    if (r.round === 0 && r.revision_findings.length) bad("revision_findings_in_round_0");
+    const revFail = r.revision_findings.some((x) => x.severity === "fail");
+    const revRevise = !revFail && r.revision_findings.length > 0;
+    if (revFail !== r.findings.some((f) => f.code === "COPY_REVISION_INVALID")) bad("revision_invalid_finding_disagrees");
+    if (revRevise !== r.findings.some((f) => f.code === "COPY_REVISION_NEEDS_REVIEW")) bad("revision_needs_review_finding_disagrees");
     if (r.lane === "real_shop_proposal" && !r.findings.some((f) => f.code === "COPY_APPROVAL_MISSING")) bad("real_shop_without_approval_missing");
     if (hasFail && r.axes.fact_correctness.score !== 0) bad("fact_axis_on_fail");
     if ((r.round === 0) !== (r.previous_copy_sha256 === null)) bad("previous_copy_sha_and_round_disagree");
@@ -653,7 +682,25 @@ export type ReviewOptions = {
   previousCopySha256?: string | null;
   /** the photo URLs the page may reference (as the server's check takes them); none by default */
   photoUrls?: ReadonlySet<string>;
+  /**
+   * Round n ≥ 1: the copy record and page HTML of rounds 0 … n-1, in order (round 6 M1). The audit derives this round's
+   * revision_findings from them; a revision round without them is refused (an Error), never audited as if it were new.
+   */
+  earlierRounds?: ReadonlyArray<{ copyRecord: string | Uint8Array; pageHtml: string | Uint8Array }>;
 };
+
+/** This round's revision findings against the earlier rounds (see `revision_findings`). */
+function revisionFindingsOf(copyRaw: unknown, html: string, facts: readonly Fact[], earlier: NonNullable<ReviewOptions["earlierRounds"]>): CopyQualityReview["revision_findings"] {
+  if (!earlier.length) return [];
+  const against = (r: (typeof earlier)[number]) => validateCopyRevision(parseJson(utf8(r.copyRecord)), copyRaw, { facts, oldPageHtml: utf8(r.pageHtml), newPageHtml: html }).findings;
+  const all = [...against(earlier.at(-1)!), ...(earlier.length > 1 ? against(earlier[0]!).filter((x) => x.severity === "fail" || x.code === "REVISION_FACT_DROPPED_WITH_NEW_PROSE") : [])];
+  const out = new Map<string, CopyQualityReview["revision_findings"][number]>();
+  for (const x of all) {
+    const v = { code: x.code.slice(0, 70), severity: x.severity, item: x.item?.slice(0, 41) ?? null, detail: x.detail?.slice(0, 120) ?? null };
+    out.set(JSON.stringify(v), v);
+  }
+  return [...out.values()].slice(0, 80);
+}
 
 /** Codes from checkArtifactHtml that mean the page was not parsed to the end (no section reading after them). */
 const PARSE_LIMIT = /^(HTML_TOO_|VALIDATION_BUDGET_EXCEEDED)/;
@@ -698,6 +745,11 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
   baseCodes.push(...base.findings.map((f) => f.code));
   const baseCodesUnique = [...new Set(baseCodes)].sort().slice(0, 80);
   const baseOk = baseCodesUnique.length === 0;
+  const round = o.round ?? 0;
+  const earlier = o.earlierRounds ?? [];
+  if (earlier.length !== round) throw new Error(`REVISION_EARLIER_ROUNDS_REQUIRED: round ${round} needs ${round} earlier rounds, got ${earlier.length}`);
+  const revisionFindings = revisionFindingsOf(copyRaw, html, factList, earlier);
+  const revisionFail = revisionFindings.some((x) => x.severity === "fail");
 
   // a record that does not parse is judged on the stricter lane
   const lane = record.success ? record.data.lane : "real_shop_proposal";
@@ -730,9 +782,22 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
       evidence: [`lane real_shop_proposal; ${prose.length} proposal_pending_review lines on the page`],
     });
   }
+  // round 6 M1: what the revision step found reaches the record and caps the verdict (fail, or at least revise)
+  if (revisionFindings.length)
+    findings.push({
+      code: revisionFail ? "COPY_REVISION_INVALID" : "COPY_REVISION_NEEDS_REVIEW",
+      severity: revisionFail ? "fail" : "revise",
+      rule: revisionFail ? "revision_step_invalid" : "revision_step_needs_review",
+      location: null,
+      texts: [],
+      reason: revisionFail
+        ? "The revision from the earlier rounds launders facts (validateCopyRevision fails); a failed revision is terminal."
+        : "The revision from the earlier rounds changed facts or added prose the re-audit alone cannot clear (e.g. a fact dropped while prose was added); this round cannot be a send candidate.",
+      evidence: revisionFindings.map((x) => [x.code, x.item, x.detail].filter(Boolean).join(" ").slice(0, 400)).slice(0, 40),
+    });
   const verdict = worstVerdict(findings.map((f) => f.severity));
   const factAxis = {
-    score: !baseOk ? 0 : style.unsourcedStatements ? 2 : 5,
+    score: !baseOk || revisionFail ? 0 : style.unsourcedStatements ? 2 : 5,
     evidence: [!baseOk ? `base checks fail: ${baseCodesUnique.slice(0, 10).join(", ")}` : "facts pack, HTML and copy record checks pass", `prose lines with a claim sign the facts do not hold: ${style.unsourcedStatements}`],
   };
   return CopyQualityReview.parse({
@@ -742,8 +807,9 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
     lane,
     ...hashes,
     facts_content_sha256: factsContent,
-    round: o.round ?? 0,
+    round,
     previous_copy_sha256: o.previousCopySha256 ?? null,
+    revision_findings: revisionFindings,
     base_checks: { ok: baseOk, codes: baseCodesUnique },
     sections: sections.map((s) => ({
       section_id: s.section_id.slice(0, 80),
@@ -796,10 +862,14 @@ export function checkCopyQualityReview(raw: unknown, files: CopyQualityFiles, o:
   if (r.copy_sha256 !== sha256(files.copyRecord)) codes.push("REVIEW_STALE_COPY");
   if (r.page_html_sha256 !== sha256(files.pageHtml)) codes.push("REVIEW_STALE_PAGE_HTML");
   if (r.page_css_sha256 !== sha256(files.pageCss)) codes.push("REVIEW_STALE_PAGE_CSS");
-  const again = reviewCopyQuality(files, { round: r.round, previousCopySha256: r.previous_copy_sha256, photoUrls: o.photoUrls });
-  if (r.shop_id !== again.shop_id) codes.push("REVIEW_OF_ANOTHER_SHOP");
-  if (r.lane !== again.lane) codes.push("REVIEW_LANE_MISMATCH");
-  if (canonical(r) !== canonical(again)) codes.push("REVIEW_DOES_NOT_MATCH_AUDIT");
+  const previous = o.previous ?? [];
+  // the audit of a revision round needs its earlier rounds; without the whole chain chainCodes refuses the review
+  if (previous.length === r.round) {
+    const again = reviewCopyQuality(files, { round: r.round, previousCopySha256: r.previous_copy_sha256, photoUrls: o.photoUrls, earlierRounds: previous });
+    if (r.shop_id !== again.shop_id) codes.push("REVIEW_OF_ANOTHER_SHOP");
+    if (r.lane !== again.lane) codes.push("REVIEW_LANE_MISMATCH");
+    if (canonical(r) !== canonical(again)) codes.push("REVIEW_DOES_NOT_MATCH_AUDIT");
+  }
   codes.push(...chainCodes(r, files, o.previous ?? [], o.photoUrls));
   return { ok: codes.length === 0, codes: [...new Set(codes)] };
 }
@@ -839,8 +909,10 @@ function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: rea
     if (sha256(cur.pageHtml) !== q.page_html_sha256) codes.push("PREVIOUS_PAGE_DOES_NOT_MATCH_REVIEW");
     if (sha256(cur.pageCss) !== q.page_css_sha256) codes.push("PREVIOUS_PAGE_CSS_DOES_NOT_MATCH_REVIEW");
     // the earlier review must be the audit of its own files, not a record written to open a revision (round 2 M1)
-    const redone = reviewCopyQuality({ factsPack: files.factsPack, copyRecord: cur.copyRecord, pageHtml: cur.pageHtml, pageCss: cur.pageCss }, { round: q.round, previousCopySha256: q.previous_copy_sha256, photoUrls });
-    if (canonical(q) !== canonical(redone)) codes.push("PREVIOUS_REVIEW_DOES_NOT_MATCH_AUDIT");
+    if (q.round === i) {
+      const redone = reviewCopyQuality({ factsPack: files.factsPack, copyRecord: cur.copyRecord, pageHtml: cur.pageHtml, pageCss: cur.pageCss }, { round: q.round, previousCopySha256: q.previous_copy_sha256, photoUrls, earlierRounds: previous.slice(0, i) });
+      if (canonical(q) !== canonical(redone)) codes.push("PREVIOUS_REVIEW_DOES_NOT_MATCH_AUDIT");
+    }
     if (next.review.success && next.review.data.previous_copy_sha256 !== q.copy_sha256) codes.push("REVISION_CHAIN_BROKEN");
     const step = validateCopyRevision(parseJson(utf8(cur.copyRecord)), parseJson(utf8(next.copyRecord)), { facts: factList, oldPageHtml: utf8(cur.pageHtml), newPageHtml: utf8(next.pageHtml) });
     if (step.verdict === "fail") codes.push("REVISION_INVALID", ...step.findings.filter((f) => f.severity === "fail").map((f) => f.code));
@@ -996,15 +1068,34 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
   // round 3 M2 / round 5 M1: the fact items of the old record whose text no verbatim fact item of the new record keeps
   // (dropped or reworded), the facts they came from (name and category aside), and the facts still shown verbatim.
   // A word held only by the dropped facts may not reappear in new prose; a word a kept fact also holds may (REVISE).
+  // round 6 M2: with the pages, a fact item counts as shown only when its page shows it (a record may keep an item
+  // its page dropped); without the pages, the records decide
+  const withPages = o.oldPageHtml !== undefined && o.newPageHtml !== undefined;
+  let oldSections: PageSection[] = [];
+  let newSections: PageSection[] = [];
+  let pagesRead = withPages;
+  if (withPages)
+    try {
+      oldSections = pageText(o.oldPageHtml!).sections;
+      newSections = pageText(o.newPageHtml!).sections;
+    } catch {
+      pagesRead = false;
+      f.push({ code: "REVISION_PAGE_UNREADABLE", severity: "fail" });
+    }
+  const shownOn = (sections: readonly PageSection[]) => new Set(sections.flatMap((x) => x.entries.map((e) => norm(e.text))));
+  const shownOld = pagesRead ? shownOn(oldSections) : null;
+  const shownNew = pagesRead ? shownOn(newSections) : null;
   const verbatim = (i: CopyItem) => i.claim_type === "fact" && i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)));
-  const keptItems = b.data.items.filter(verbatim);
+  const keptItems = b.data.items.filter((i) => verbatim(i) && (!shownNew || shownNew.has(norm(i.text))));
   const keptVerbatim = new Set(keptItems.map((i) => norm(i.text)));
-  const droppedItems = a.data.items.filter((i) => i.claim_type === "fact" && !keptVerbatim.has(norm(i.text)));
+  const droppedItems = a.data.items.filter((i) => i.claim_type === "fact" && (!shownOld || shownOld.has(norm(i.text))) && !keptVerbatim.has(norm(i.text)));
   const keyOf = new Map(o.facts.map((x) => [x.id, x.key]));
   const droppedFactIds = [...new Set(droppedItems.flatMap((i) => i.source_fact_ids.filter((s) => byId.has(s))))].sort();
-  const valuesOf = (ids: readonly string[]) => ids.filter((s) => byId.has(s) && !/^(name|category)$/.test(keyOf.get(s) ?? "")).map((s) => foldKana(byId.get(s)!)).join("\u0000");
-  const droppedCorpus = valuesOf(droppedFactIds);
-  const keptCorpus = valuesOf([...new Set(keptItems.flatMap((i) => i.source_fact_ids))]);
+  const isNameOrCategory = (s: string) => /^(name|category)$/.test(keyOf.get(s) ?? "");
+  const valuesOf = (ids: readonly string[]) => ids.filter((s) => byId.has(s)).map((s) => foldKana(byId.get(s)!)).join("\u0000");
+  const droppedCorpus = valuesOf(droppedFactIds.filter((s) => !isNameOrCategory(s)));
+  // round 6 L1: the shop's name and category are always kept, so their words are never dropped-only
+  const keptCorpus = valuesOf([...new Set([...keptItems.flatMap((i) => i.source_fact_ids), ...o.facts.filter((x) => isNameOrCategory(x.id)).map((x) => x.id)])]);
   for (const i of b.data.items) {
     const old = before.get(i.id);
     if (old && old.claim_type !== i.claim_type) f.push({ code: "REVISION_CLAIM_TYPE_CHANGED", severity: "fail", item: i.id, detail: `${old.claim_type}->${i.claim_type}` });
@@ -1035,20 +1126,13 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
   // round 5 M1, structural backstop: a revision that drops or rewords a fact item and adds or changes prose is never a
   // clean step; the re-audit and the owner compare it with the dropped facts (named here)
   if (droppedItems.length && changedProse.size) f.push({ code: "REVISION_FACT_DROPPED_WITH_NEW_PROSE", severity: "revise", detail: (droppedFactIds.join(",") || droppedItems.map((i) => i.id).join(",")).slice(0, 120) });
-  // a fact removed and prose put where it stood
-  if (o.oldPageHtml !== undefined && o.newPageHtml !== undefined) {
-    const kept = new Set(b.data.items.filter((i) => i.claim_type === "fact").map((i) => norm(i.text)));
-    const removed = new Set(a.data.items.filter((i) => i.claim_type === "fact" && !kept.has(norm(i.text))).map((i) => norm(i.text)));
+  // a fact removed (from the page, round 6 M2) and prose put where it stood
+  if (pagesRead) {
+    const removed = new Set(droppedItems.map((i) => norm(i.text)));
     if (removed.size && changedProse.size) {
-      try {
-        const oldSections = pageText(o.oldPageHtml).sections;
-        const newSections = pageText(o.newPageHtml).sections;
-        const where = new Set(oldSections.filter((s) => s.entries.some((e) => removed.has(norm(e.text)))).map((s) => s.section_id));
-        for (const s of newSections)
-          if (where.has(s.section_id)) for (const e of s.entries) if (changedProse.has(norm(e.text))) f.push({ code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: s.section_id.slice(0, 40) });
-      } catch {
-        f.push({ code: "REVISION_PAGE_UNREADABLE", severity: "fail" });
-      }
+      const where = new Set(oldSections.filter((s) => s.entries.some((e) => removed.has(norm(e.text)))).map((s) => s.section_id));
+      for (const s of newSections)
+        if (where.has(s.section_id)) for (const e of s.entries) if (changedProse.has(norm(e.text))) f.push({ code: "REVISION_FACT_REPLACED_BY_PROSE", severity: "fail", detail: s.section_id.slice(0, 40) });
     }
   }
   const verdict = f.some((x) => x.severity === "fail") ? "fail" : f.length ? "revise" : "ok";
