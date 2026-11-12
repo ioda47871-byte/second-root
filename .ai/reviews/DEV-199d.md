@@ -58,6 +58,10 @@ DB の変更はしないので、計算した結果は `ImportResult.copy` に�
 
 それ以外の既存のテスト (`package.test.tsx`・`swap-photos.test.ts`・`local-rin-patch.test.ts`・`tests/unit/sales/demo-version/**`・phase2f の isolation) は変更なしで通る。
 
+## `.ai/tasks.json` の DEV-199a
+
+DEV-199a は PR #259 で develop に merge 済み (b9305e17) だが `status` が `review` のままだった。DEV-199d (`review`) がそれに依存するので、`ai-tasks.test.ts`「依存が done でない Task を in progress 以降にしない」が落ちる。merge 済みの事実に合わせて DEV-199a を `done` にした (他の欄は変えていない)。
+
 ## 既知の限界 (DEV-199e 以降)
 
 - **包みをまたぐ再提出**: 前の包みで既に round 0 を出した店の、同じ facts 内容の新しい round 0 (改稿を初回の監査として出し直す) は、1つの包みの中からは見えない。`copyReviewAppendBlockers` を店ごとの保存済み review 全部に対して通すのは、DB の保存先 (DEV-199e) の仕事。
