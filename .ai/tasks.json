@@ -9817,6 +9817,56 @@
         "PR のレビューと merge (coordinator)"
       ],
       "note": "記録は .ai/reviews/DEV-196d.md (DEV-196s の節)。DB の変更はオーナーの決定 2026-11-12 によりローカルだけ (migration にしない)。PR #256 の履歴はそのまま。"
+    },
+    {
+      "id": "DEV-199f",
+      "title": "コピー規則の新版: phase2f prompt v3 とデザインディレクターの文章審査 v2 (提案・未有効、Issue #258)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー Issue #258 (新しい版の設計・開発・テストだけ承認)・仕様案 PR #257。コピー生成の prompt とデザインディレクターの文章審査に、区画の役割・五軸・発明しない一覧・事実の逐語・HOLD・改稿の規則を、既存の承認済み・固定済みの版を変えずに新しい版として加える。有効化・実際の生成は別の承認",
+      "acceptance_criteria": [
+        "lib/design-agent/phase2f/prompt.ts に v3 (= v2 + COPY_V3_RULES を末尾に追加)。v1・v1.1・v2・tm0・三方式の pin はバイト単位で不変、既存のテストは変更なしで通る",
+        "promptVariantOf は v3 を PROMPT_VERSION_NOT_ACTIVATED で拒否 (どの CLI からも選べない)。既定は v1 のまま",
+        "v3 の SHA-256 と文字数を新しいテストで固定 (B/C × 方向 A/B)",
+        "v3 は区画の役割・五軸 (手引き、禁止一覧ではない)・発明しない一覧・事実は逐語か中立なラベルを含み、発明・言い換え・創作の許可を含まない (テスト)",
+        "docs/design/design-director-copy-review-v2.md: 五軸、決め台詞の累積と1つの強い Hero の行、道ごとの規則、事実不足は HOLD、改稿で claim_type を変えない・事実は逐語。SKILL.md からは読まれない (テスト)、有効化はオーナーの承認",
+        "docs/design/copy-prompt-v3-comparison.md: 現行 v2/v1.1 と v3、現行 SKILL.md と審査 v2 の差・理由・危険・評価の方法 (DEV-199c)"
+      ],
+      "required_tests": [
+        "unit tests/unit/design-agent/phase2f/prompt-v3.test.ts",
+        "unit tests/unit/design-agent/phase2f/** (既存の pin のテストを変更なしで)",
+        "unit の全体・tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/prompt.ts (新しい版の追加だけ)",
+        "tests/unit/design-agent/phase2f/prompt-v3.test.ts",
+        "docs/design/design-director-copy-review-v2.md",
+        "docs/design/copy-prompt-v3-comparison.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-199f.md"
+      ],
+      "forbidden_scope": [
+        "既存の承認済み・固定済みの prompt (v1・v1.1・v2・tm0・三方式) とその SHA、既存のテストの変更",
+        ".claude/skills/second-root-design-director/** (SKILL.md と references) の変更",
+        "codex_design_v1 の schema・copy-record.ts・facts-pack.ts の変更",
+        "CLI (scripts/design-artifact/**) から v3 を選べるようにすること・実際の生成・Codex の実行・画像生成",
+        "SR-001「輪」の変更",
+        "DB・migration・worker・workflow",
+        "package.json・lockfile",
+        "repo のファイルへのモデル名",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "prompt v3 の有効化 (CLI への接続) と最初の実行",
+        "文章審査 v2 の有効化 (SKILL.md の編集)",
+        "B/C 経路で creative_expression を許すための schema の変更",
+        "PR のレビューと merge (coordinator)"
+      ],
+      "branch": "feature/dev-199f-copy-prompt-v3",
+      "note": "記録は .ai/reviews/DEV-199f.md。何も有効にしていない。生成は実行していない。"
     }
   ]
 }
