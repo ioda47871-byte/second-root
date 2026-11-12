@@ -9821,7 +9821,7 @@
     {
       "id": "DEV-199a",
       "title": "文章品質監査 copy_quality_review_v1 の schema・評価ロジック・テスト (Issue #258 の 1/3、未接続)",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [],
       "purpose": "オーナー Issue #258 (GO 2026-11-13)・仕様 PR #257 docs/design/copy-authenticity-quality-gate.md と、その独立レビュー (C0/H0/M5/L6) の規則。今後の店舗デモのコピーについて、自然な日本語・店舗固有性・情報の有用性・表現の抑制と一貫性・事実の5軸で全区画を監査する sidecar copy_quality_review_v1 を、既存の facts pack・copy record の検査を包む形で作る。生成・レビューの経路にはまだ接続しない (DEV-199b)",
@@ -9863,6 +9863,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-199a-copy-quality-review",
+      "pr": 259,
       "note": "記録は .ai/reviews/DEV-199.md。ゲートはまだ有効ではない (どの経路からも呼ばれない)。Issue #258"
     },
     {
