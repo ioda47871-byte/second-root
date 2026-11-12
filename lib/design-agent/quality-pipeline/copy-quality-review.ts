@@ -53,10 +53,13 @@
  * from the files at check time, re-runs the audit and compares the WHOLE record (axes, base checks, sections, findings
  * with their evidence); any difference makes the review invalid, so an old PASS is never reused for a changed page.
  *
- * Revisions (rules M2, L6): each round after the first must come with the earlier rounds (review, copy record, page),
- * linked by hash; every step must pass validateCopyRevision, which refuses fact laundering as FAIL (a changed
- * claim_type, a fact not verbatim, new prose making a claim, a deleted fact replaced by prose in its section) and
- * grades a prose heading that only echoes a fact term as REVISE. At most MAX_COPY_REVISION_ROUNDS rounds.
+ * Revisions (rules M2, L6): each round after the first must come with the earlier rounds (review, copy record, page
+ * HTML and CSS), linked by hash, and every earlier review is re-audited from its own files (PR #259 round 2 M1); every
+ * step must pass validateCopyRevision, which refuses fact laundering as FAIL (a changed claim_type, a fact not
+ * verbatim, new prose making a claim, a deleted fact replaced by prose in its section) and grades a prose heading that
+ * only echoes a fact term, or a new sentence that names nothing of the facts, as REVISE. At most
+ * MAX_COPY_REVISION_ROUNDS rounds. The store (DEV-199b) keeps reviews append-only per shop + facts and refuses a fresh
+ * round 0 once one exists (copyReviewAppendBlockers), so a revision cannot be replayed as a first audit.
  *
  * Pure apart from sha256 (node:crypto). No network, no model call.
  */
@@ -145,8 +148,17 @@ export const CLAIM_SIGNS: ReadonlyArray<readonly [string, RegExp]> = [
   ["routine_or_frequency", /毎(朝|晩|夜|週|月|年|回)|[週月日年]に[一二三四五六七八九十何数0-9]/],
   ["making_method", /自家製|手作り|手づくり|手焼き|手ごね|石窯|直火|焙煎|仕込/],
 ];
-/** Headings that say plainly what a section holds; never counted as poetic (review M5). */
-export const PLAIN_HEADING = /(案内|について|紹介|一覧|メニュー|アクセス|営業時間|定休日|店舗情報|お知らせ|料金|地図|所在地|住所|連絡先|問い合わせ|よくある質問|サービス|商品|ギャラリー|写真|概要|内容|流れ)$/;
+/**
+ * Headings that say plainly what a section holds; never counted as poetic (review M5; PR #259 round 2 M4 added the
+ * greeting / guide words: はじめに, ごあいさつ, おすすめ, 手順, ご相談, 情報 …). A claim sign in front of the plain word
+ * still counts (round 2 M2: 「自家製パンのご案内」 is a claim, 「営業時間のご案内」 is not), see unsourcedClaimSigns.
+ */
+export const PLAIN_HEADING =
+  /(案内|について|紹介|一覧|メニュー|アクセス|営業時間|定休日|店舗情報|情報|お知らせ|料金|地図|所在地|住所|連絡先|問い合わせ|よくある質問|サービス|商品|ギャラリー|写真|概要|内容|流れ|はじめに|ごあいさつ|ご挨拶|あいさつ|挨拶|おすすめ|オススメ|手順|相談)$/;
+/** A heading that opens with an honorific prefix of a guide word (ご利用…, ご案内…, お店の…, お問い合わせ…): plain, not poetic (round 2 M4). */
+const PLAIN_HEADING_PREFIX = /^(ご|お(店|客|問|申|支払|持ち帰|手入|すすめ|知らせ))/;
+/** A heading addressed to the visitor (こんな方へ, お客様へ): plain, not poetic. 「特別な朝へ」 stays a slogan. */
+const ADDRESSEE_HEADING = /(方|皆さま|皆様|みなさま|お客様|お客さま)へ$/;
 /** Words every fictional research shop carries (架空市…): never evidence that a line is about this shop. */
 const FICTIONAL_MARKERS = ["架空"];
 
@@ -329,22 +341,36 @@ export const genericSignals = (text: string) => GENERIC_PHRASE_SIGNALS.filter((p
 /** A short noun-phrase heading with no 。 that names nothing from the shop's facts and is no plain label (review M5). */
 export function isPoeticHeading(text: string, c: ShopContext): boolean {
   const n = norm(text);
-  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || PLAIN_HEADING.test(n)) return false;
+  if (!n || n.length > 12 || /[、。!?]/.test(n) || isPolite(n) || PLAIN_HEADING.test(n) || PLAIN_HEADING_PREFIX.test(n) || ADDRESSEE_HEADING.test(n)) return false;
   return isSwappable(text, c);
 }
 
 /** Words of routine that are rhetoric in a slogan (素敵な毎日へ) and a claim only in a sentence (毎日焼きます。). */
 const ROUTINE_IN_STATEMENT = /毎日|いつも|必ず/;
 
-/** The claim-like signs (CLAIM_SIGNS) in a line whose matched wording no fact of the shop holds. */
+/**
+ * A short plain section label with its plain words taken off the end (…のご案内, …一覧, …紹介), repeatedly: what is
+ * left is the part that could still claim something. 「営業時間のご案内」「メニュー一覧」「料金のご案内」 leave nothing;
+ * 「自家製パンのご案内」 leaves 「自家製パン」 (PR #259 round 2 M2).
+ */
+function withoutPlainLabel(n: string): string {
+  if (n.length > 10 || /[0-9]/.test(n)) return n;
+  let t = n;
+  for (let prev = ""; prev !== t; ) {
+    prev = t;
+    t = t.replace(PLAIN_HEADING, "").replace(/[のご・と]+$/, "");
+  }
+  return t;
+}
+
+/** The claim-like signs (CLAIM_SIGNS) in a line where some matched wording is held by no fact of the shop. */
 export function unsourcedClaimSigns(text: string, c: ShopContext): string[] {
-  const n = norm(text);
-  // a plain section label (メニュー, 営業時間) names a kind of information; it claims nothing
-  if (n.length <= 10 && PLAIN_HEADING.test(n) && !/[0-9]/.test(n)) return [];
-  const unsourced = (re: RegExp) => {
-    const m = n.match(re);
-    return m !== null && !c.allFacts.includes(norm(m[0]));
-  };
+  // a plain section label (メニュー, 営業時間) names a kind of information and claims nothing; what stands in front of
+  // the plain word is still read (round 2 M2)
+  const n = withoutPlainLabel(norm(text));
+  if (!n) return [];
+  // every match must be sourced, not only the first (round 2 L1: 「毎朝焼いて毎晩仕込みます。」 with only 毎朝 sourced)
+  const unsourced = (re: RegExp) => [...n.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`))].some((m) => !c.allFacts.includes(norm(m[0])));
   const out = CLAIM_SIGNS.filter(([, re]) => unsourced(re)).map(([name]) => name);
   if (isStatement(text) && unsourced(ROUTINE_IN_STATEMENT)) out.push("routine_in_statement");
   return out;
@@ -654,8 +680,11 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
 /** JSON with object keys sorted, so two records compare by content, not by key order. */
 const canonical = (v: unknown) => JSON.stringify(v, (_k, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
 
-/** An earlier round of the revision chain: its review, and the copy record and page it reviewed (matched by hash). */
-export type PriorRound = { review: unknown; copyRecord: string | Uint8Array; pageHtml: string | Uint8Array };
+/**
+ * An earlier round of the revision chain: its review, and the copy record and page (HTML and CSS) it reviewed, matched
+ * by hash and re-audited (PR #259 round 2 M1). The facts pack is the current one (every round shares its hash).
+ */
+export type PriorRound = { review: unknown; copyRecord: string | Uint8Array; pageHtml: string | Uint8Array; pageCss: string | Uint8Array };
 export type CheckOptions = { previous?: readonly PriorRound[]; photoUrls?: ReadonlySet<string> };
 
 /**
@@ -681,18 +710,27 @@ export function checkCopyQualityReview(raw: unknown, files: CopyQualityFiles, o:
   if (r.shop_id !== again.shop_id) codes.push("REVIEW_OF_ANOTHER_SHOP");
   if (r.lane !== again.lane) codes.push("REVIEW_LANE_MISMATCH");
   if (canonical(r) !== canonical(again)) codes.push("REVIEW_DOES_NOT_MATCH_AUDIT");
-  codes.push(...chainCodes(r, files, o.previous ?? []));
+  codes.push(...chainCodes(r, files, o.previous ?? [], o.photoUrls));
   return { ok: codes.length === 0, codes: [...new Set(codes)] };
 }
 
-function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: readonly PriorRound[]): string[] {
+/**
+ * The revision chain of a review of round n ≥ 1 (review M1, M2; PR #259 round 2 M1). Every earlier round is
+ * re-audited from its own copy record, page HTML and CSS and the shared facts pack, and must equal the stored review
+ * exactly, as the current round must: a hand-written round-0 `revise` with matching hashes does not open a revision.
+ *
+ * What this cannot see (DEV-199b, the store, must close it before wiring): the same copy submitted again as a fresh
+ * round 0 instead of as round n + 1 would skip validateCopyRevision. The store must keep reviews append-only per
+ * shop + facts sha256 and refuse a new round 0 once any review exists for them (copyReviewAppendBlockers).
+ */
+function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: readonly PriorRound[], photoUrls?: ReadonlySet<string>): string[] {
   if (r.round === 0) return previous.length ? ["REVISION_CHAIN_FOR_ROUND_0"] : [];
   if (!previous.length) return ["REVISION_WITHOUT_PREVIOUS"];
   if (previous.length !== r.round) return ["REVISION_CHAIN_LENGTH"];
   const codes: string[] = [];
   const facts = FactsPack.safeParse(parseJson(utf8(files.factsPack)));
   const factList = facts.success ? facts.data.facts : [];
-  const steps = [...previous.map((x) => ({ review: CopyQualityReview.safeParse(x.review), copyRecord: x.copyRecord, pageHtml: x.pageHtml })), { review: { success: true as const, data: r }, copyRecord: files.copyRecord, pageHtml: files.pageHtml }];
+  const steps = [...previous.map((x) => ({ review: CopyQualityReview.safeParse(x.review), copyRecord: x.copyRecord, pageHtml: x.pageHtml, pageCss: x.pageCss })), { review: { success: true as const, data: r }, copyRecord: files.copyRecord, pageHtml: files.pageHtml, pageCss: files.pageCss }];
   for (let i = 0; i < previous.length; i++) {
     const cur = steps[i]!;
     const next = steps[i + 1]!;
@@ -708,6 +746,10 @@ function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: rea
     if (q.shop_id !== r.shop_id || q.facts_sha256 !== r.facts_sha256 || q.lane !== r.lane) codes.push("REVISION_OF_ANOTHER_SHOP_OR_FACTS");
     if (sha256(cur.copyRecord) !== q.copy_sha256) codes.push("PREVIOUS_COPY_DOES_NOT_MATCH_REVIEW");
     if (sha256(cur.pageHtml) !== q.page_html_sha256) codes.push("PREVIOUS_PAGE_DOES_NOT_MATCH_REVIEW");
+    if (sha256(cur.pageCss) !== q.page_css_sha256) codes.push("PREVIOUS_PAGE_CSS_DOES_NOT_MATCH_REVIEW");
+    // the earlier review must be the audit of its own files, not a record written to open a revision (round 2 M1)
+    const redone = reviewCopyQuality({ factsPack: files.factsPack, copyRecord: cur.copyRecord, pageHtml: cur.pageHtml, pageCss: cur.pageCss }, { round: q.round, previousCopySha256: q.previous_copy_sha256, photoUrls });
+    if (canonical(q) !== canonical(redone)) codes.push("PREVIOUS_REVIEW_DOES_NOT_MATCH_AUDIT");
     if (next.review.success && next.review.data.previous_copy_sha256 !== q.copy_sha256) codes.push("REVISION_CHAIN_BROKEN");
     const step = validateCopyRevision(parseJson(utf8(cur.copyRecord)), parseJson(utf8(next.copyRecord)), { facts: factList, oldPageHtml: utf8(cur.pageHtml), newPageHtml: utf8(next.pageHtml) });
     if (step.verdict === "fail") codes.push("REVISION_INVALID", ...step.findings.filter((f) => f.severity === "fail").map((f) => f.code));
@@ -731,6 +773,38 @@ export function nextCopyStep(r: Pick<CopyQualityReview, "verdict" | "round"> & P
   if (v === "hold") return "stop_hold";
   if (v === "revise") return r.round < MAX_COPY_REVISION_ROUNDS ? "revise" : "stop_hold";
   return "owner_review";
+}
+
+/**
+ * For the review store (DEV-199b; PR #259 round 2 M1): may `submitted` be appended to the reviews already stored for
+ * its shop and facts pack (`existing`, in the order they were stored)? The store keeps reviews append-only per shop +
+ * facts sha256, so the same copy cannot be re-audited as a fresh round 0 to skip validateCopyRevision:
+ *   - nothing stored: only a round 0;
+ *   - something stored: never another round 0; only round = existing.length, linked to the last stored copy record,
+ *     and only when the last stored round allows a revision (nextCopyStep = revise: not fail, not hold, within the cap).
+ * A new facts pack (a new sha256) starts its own chain. Empty = may be appended as far as order goes; the store must
+ * still run checkCopyQualityReview on the files with the stored chain as `previous`.
+ */
+export function copyReviewAppendBlockers(existing: readonly unknown[], submitted: unknown): string[] {
+  const s = CopyQualityReview.safeParse(submitted);
+  if (!s.success) return ["SUBMITTED_REVIEW_SCHEMA"];
+  const r = s.data;
+  const stored = existing.map((x) => CopyQualityReview.safeParse(x));
+  if (stored.some((x) => !x.success)) return ["STORED_REVIEW_SCHEMA"];
+  const chain = stored.map((x) => x.data!);
+  const blockers: string[] = [];
+  if (chain.some((q) => q.shop_id !== r.shop_id || q.facts_sha256 !== r.facts_sha256 || q.lane !== r.lane)) blockers.push("STORED_REVIEW_OF_ANOTHER_SHOP_OR_FACTS");
+  if (chain.some((q, i) => q.round !== i)) blockers.push("STORED_CHAIN_OUT_OF_ORDER");
+  const last = chain.at(-1);
+  if (!last) {
+    if (r.round !== 0) blockers.push("FIRST_REVIEW_NOT_ROUND_0");
+    return blockers;
+  }
+  if (r.round === 0) blockers.push("ROUND_0_ALREADY_STORED");
+  else if (r.round !== chain.length) blockers.push("ROUND_NOT_NEXT");
+  if (r.previous_copy_sha256 !== last.copy_sha256) blockers.push("NOT_LINKED_TO_LAST_ROUND");
+  if (nextCopyStep(last) !== "revise") blockers.push("LAST_ROUND_DOES_NOT_ALLOW_REVISION");
+  return [...new Set(blockers)];
 }
 
 /** The owner's approval of a page's copy: a separate record, never part of the review (its shape is the caller's). */
@@ -786,12 +860,14 @@ export type RevisionFinding = { code: string; severity: "fail" | "revise"; item?
  * A local revision of a copy record, against the record it revises (review M2, M3). FAIL (terminal):
  *  - another shop, lane or facts SHA; an item whose claim_type changed;
  *  - a fact item that is not a verbatim whole-sentence selection of its source fact (re-selecting or removing is fine);
- *  - new or rewritten prose that makes a claim: a sentence (…ます。/ …る。, synonyms of a fact included — a
- *    paraphrase is caught by its form, not by its words) or a claim-like sign (CLAIM_SIGNS);
+ *  - new or rewritten prose that makes a claim: a claim-like sign (CLAIM_SIGNS), or a sentence (…ます。/ …る。) that
+ *    restates a fact or names a term of the shop's facts (a synonym paraphrase about the offering, 「車輪のゆがみを
+ *    整えます」, is caught by its form plus its subject, not by matching the fact's wording);
  *  - with both pages: a fact item removed and new prose put in the section where it stood (a fact re-added as prose
  *    under a new id).
  * REVISE (not terminal; the audit then judges the line): a new prose heading that only echoes a fact's words with no
- * claim (「パンク修理の相談」「振れ取りで車輪をまっすぐに」).
+ * claim (「パンク修理の相談」「振れ取りで車輪をまっすぐに」), and a new sentence that names nothing of the facts and
+ * carries no claim sign (「ご来店をお待ちしております。」, round 2 M3).
  */
 export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { facts: readonly Fact[]; oldPageHtml?: string; newPageHtml?: string }): { ok: boolean; verdict: "ok" | "revise" | "fail"; findings: RevisionFinding[] } {
   const a = CopyRecord.safeParse(oldRaw);
@@ -816,8 +892,15 @@ export function validateCopyRevision(oldRaw: unknown, newRaw: unknown, o: { fact
     changedProse.add(norm(i.text));
     const fact = restatesFact(i.text, o.facts);
     const signs = unsourcedClaimSigns(i.text, c);
-    if (isStatement(i.text) || signs.length) f.push({ code: fact ? "REVISION_PROSE_RESTATES_FACT" : "REVISION_NEW_PROSE_CLAIM", severity: "fail", item: i.id, ...(fact ? { detail: fact } : signs.length ? { detail: signs.join(",") } : {}) });
+    const statement = isStatement(i.text);
+    // round 2 M3: a new sentence is a claim only when it restates a fact, carries a claim sign, or says something about
+    // the shop's own facts in new words (names a term of the facts: 「車輪のゆがみを整えます」). A sentence that names
+    // nothing of the facts (「ご来店をお待ちしております。」) is allowed in round 0 and is not a terminal FAIL here either;
+    // it is noted as REVISE and the re-audit judges it like any other prose.
+    if (signs.length || (statement && (fact || !isSwappable(i.text, c))))
+      f.push({ code: fact ? "REVISION_PROSE_RESTATES_FACT" : "REVISION_NEW_PROSE_CLAIM", severity: "fail", item: i.id, ...(fact ? { detail: fact } : signs.length ? { detail: signs.join(",") } : {}) });
     else if (fact) f.push({ code: "REVISION_PROSE_ECHOES_FACT", severity: "revise", item: i.id, detail: fact });
+    else if (statement) f.push({ code: "REVISION_NEW_PROSE_STATEMENT", severity: "revise", item: i.id });
   }
   // a fact removed and prose put where it stood
   if (o.oldPageHtml !== undefined && o.newPageHtml !== undefined) {
