@@ -3,9 +3,9 @@
 オーナーが **自分の WSL のユーザー**で、自分で実行する手順。Claude は WSL で何も実行しない。
 この手順は WSL の service・isolation・runner・`.wslconfig` を **変えない**。変えないと進めない所に来たら、そこで止まって報告する。
 
-> **今は最後まで通らない。** DB の部分 (架空の輪だけ AI のデモ画像を受ける規則) はオーナーの判断待ちで、まだ入っていない。
-> その前に §7 の取り込みを実行すると `{"status":"FAIL","code":"INGEST_REFUSED"}` (今の DB は `ai_generated_demo` をすべて拒否する) で止まり、何も書かれない。
-> §1〜§6 (読むだけのコピー・描写の確認・包み) は今でも実行できる。
+> **DB の変更はこのローカルの stack だけ** (オーナーの決定 2026-11-12)。共有の schema (`supabase/migrations`) は変えない。
+> §8 で `scripts/sales/demo-version/local-rin-ai-photos.sql` をこの stack にだけ当てる (架空の輪の固定の id にだけ AI のデモ画像を許す)。
+> 元に戻すのは `npx supabase db reset` (この stack の DB を migration から作り直す)。Staging・Production には当てない。
 
 ## 0. 前提と影響の一覧
 
@@ -18,7 +18,8 @@
 | ディスク | clone 約 30 MB (pack) / 25 MB (作業木)・`node_modules` 約 0.9 GB・Playwright の Chromium 約 0.6 GB (`~/.cache/ms-playwright`、無ければ)・Docker の image 約 3.3 GB (postgres 1.7 GB・storage-api 1.3 GB・kong 0.2 GB・gotrue 0.1 GB・postgrest 30 MB、無ければ)・DB の volume 約 0.2 GB・一時のコピーと包み 数十 MB |
 | メモリ | Supabase (db・auth・rest・storage・kong) 待機で約 0.5 GB・`next dev` 約 1 GB・包みの Chromium 一時に約 0.5 GB。§1 の判定が `SERIAL` なら一つずつ (Supabase を起動したまま、包み → 取り込み → app の順に、重なりなく) |
 | port | 54321 (API)・54322 (DB)・3140 (app)。どれも 127.0.0.1 |
-| 残るもの | §10 で消すまで: Docker の image と volume、clone と `node_modules`、`~/.cache/ms-playwright`、一時のコピー (`$T`)。§10 の後に残るのは、消さないと決めた image と cache だけ |
+| DB | この stack の DB にだけ §8 の patch (check 1 つと関数 1 つ)。`supabase/migrations` は変えない。§13 の `supabase db reset` で元に戻る |
+| 残るもの | §13 で消すまで: Docker の image と volume、clone と `node_modules`、`~/.cache/ms-playwright`、一時のコピー (`$T`)。§13 の後に残るのは、消さないと決めた image と cache だけ |
 | Git・PR・Issue | 画像・権利の記録・包み・screenshot・鍵を **上げない**。`.env*` も作らない (鍵は shell の変数だけ) |
 
 ## 1. resource preflight と checkout
@@ -47,7 +48,7 @@ npx supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,supa
 
 ## 3. 入力を読むだけでコピーする (sudo)
 
-job の出力は worker の利用者の 0700 の下にあるので、読むには sudo が要る。**これはコピーである**: 自分のユーザーの 0700 の一時ディレクトリへの、一時の、private なコピー。§10 で消す。
+job の出力は worker の利用者の 0700 の下にあるので、読むには sudo が要る。**これはコピーである**: 自分のユーザーの 0700 の一時ディレクトリへの、一時の、private なコピー。§13 で消す。
 元は `cp` が読むだけで、書き換えない (atime が更新されることはある)。前後で sha256 を取り、変わっていないことを確かめる。
 
 ```bash
@@ -116,16 +117,35 @@ npx tsx scripts/sales/demo-version/package-local.ts --out "$T/pkg" \
 期待: `"status": "OK"`、`photos` に 15 件 (5 枠 × desktop / tablet / mobile。`mode` は `lossless`、元が 16 bit か ICC 付きなら `lossless_after_srgb8_conversion`、収まらなければ `lossy` と `quality`)、`rewrite_proof.html.refs` が 15、`rights_summary.by_status.ai_demo_internal` が 15、`compare` に desktop_1440 / mobile_390 の画素の差 (`ours` と `research` の大きさ、`differing_pixels`)。
 `FAIL` ならその `code` だけを Claude に渡す (例: `RIGHTS_REFUSED`・`AI_DEMO_PROMPT_NOT_APPROVED`・`PAGE_NOT_THE_SWAP_COPY`・`DEPICTS_REAL`・`PHOTO_REF_POSITION`)。出力に owner・同意の記録・private path・出所は出ない。
 
-## 7. seed と取り込み (DB の部分が入った後)
+## 7. seed (架空の輪の店)
+
+```bash
+npx tsx scripts/sales/demo-version/import-local.ts --seed-rin --seed-only
+```
+
+期待: `{"status":"OK","seeded":true,"prospect_id":"c4d31f24-8c91-4495-8ba1-db4706f438f8",…}` (架空の輪の固定の id。連絡先なし・outreach なし)。
+
+## 8. ローカルだけの patch を当てる
+
+```bash
+npx tsx scripts/sales/demo-version/apply-local-rin-patch.ts
+```
+
+- 期待: `{"status":"OK","patch":"local-rin-ai-photos","scope":"local only","revert":"npx supabase db reset"}`。何度実行しても同じ (冪等)
+- 変えるのは 2 つだけ: table の check `sales_demo_images_real_shop_no_ai_demo` を輪の id のときだけ AI のデモ画像を許す形に、関数 `sales_check_demo_image_write()` を「輪の id で、輪の行に架空の印 (名前・仮の住所・連絡先なし) があるときだけ `ai_generated_demo`、depicts_* がすべて false・出所が正しい・public_web が false のときだけ `ai_demo_internal`、それ以外は `unknown`」に。共有の禁止・変えられないこと・取り消しはそのまま
+- `DB_URL_*` (ローカルでない DB)・`RIN_SEED_MISSING` / `RIN_SEED_MARKERS` (§7 の seed がない・印が違う) なら止まり、何も変えない
+- 元に戻す: `npx supabase db reset` (この stack の DB と Storage の行が消え、migration どおりに戻る)
+
+## 9. 取り込み
 
 ```bash
 npx tsx scripts/sales/demo-version/import-local.ts --package "$T/pkg" --seed-rin
 ```
 
-期待: `"status": "OK"`、`prospect_id` が `c4d31f24-8c91-4495-8ba1-db4706f438f8` (架空の輪の固定の id)、files がすべて upload して照合済み。もう一度実行しても同じ版 (upload なし)。
-DB の部分が入る前は `INGEST_REFUSED` で止まり、版・画像・upload は何も残らない。
+期待: `"status": "OK"`、`prospect_id` が `c4d31f24-8c91-4495-8ba1-db4706f438f8`、`created: true`、files 19 件 (HTML・CSS・写真 15・描画 2) がすべて upload して照合済み。もう一度実行しても同じ版 (upload なし)。
+§8 の patch を当てていなければ `INGEST_REFUSED` で止まり、版・画像・upload は何も残らない。
 
-## 8. 管理者の利用者 (ローカルだけ)
+## 10. 管理者の利用者 (ローカルだけ)
 
 ```bash
 ADMIN_EMAIL=rin-preview@test.example.com; ADMIN_PW="$(openssl rand -base64 18)"
@@ -136,7 +156,7 @@ docker exec -i supabase_db_second-root psql -U postgres -c "insert into public.s
 echo "$ADMIN_PW"                                  # この端末に出るだけ。どこにも書かない
 ```
 
-## 9. app (preview の旗だけ) と screenshot
+## 11. app (preview の旗だけ)
 
 ```bash
 SALES_DEMO_VERSIONS_ENABLED=true SALES_DEMO_VIEW_SIGNING_KEY="$(openssl rand -base64 32)" npx next dev --webpack -p 3140 -H 127.0.0.1
@@ -144,14 +164,21 @@ SALES_DEMO_VERSIONS_ENABLED=true SALES_DEMO_VIEW_SIGNING_KEY="$(openssl rand -ba
 
 - `SALES_DEMO_QUALITY_REVIEW_ENABLED` は **設定しない** (書き込みの欄が出ない。「今は無効です（表示だけ）」が出る)
 - Windows のブラウザで `http://localhost:3140/admin/login` (WSL2 の localhost 転送)。届かなければ止める (WSL のネットワークの設定は変えない)
-- §8 の利用者でログインし、`/admin/sales/demos/c4d31f24-8c91-4495-8ba1-db4706f438f8` を開く
-- screenshot: 幅 1440 (描画のタブ、PC と SP、「生の頁」のタブ) と幅 390 (DevTools の端末の表示、SP の描画と「生の頁」)。写真が 6 枚とも出ていること、「AI 生成のデモ画像を含む (デモ専用・共有不可)」の表示、共有の欄が無いことを見る
-- screenshot は自分の PC にだけ置く。Git・PR・Issue に上げない
+- §10 の利用者でログインし、`/admin/sales/demos/c4d31f24-8c91-4495-8ba1-db4706f438f8` を開く
 
-## 10. 後片付け
+## 12. 研究の描画と比べる・screenshot
+
+1. **研究の描画との比較**: §6 の出力の `compare` を見る (`--compare-renders "$T/renders"` で、保存する写しを描いた全頁と研究の描画 `desktop_1440.png` / `mobile_390.png` を画素で比べたもの)。`same_size` と `differing_pixels` / `ratio` を Claude に渡す (数字だけ)。大きさや画素が違えば、`$T/full/desktop_1440.full.png`・`mobile_390.full.png` と `$T/renders/` の同じ名前の画像を並べて目で見る
+2. **管理画面の screenshot** (自分の PC にだけ置く。Git・PR・Issue に上げない):
+   - 幅 1440: 描画のタブ (PC と SP の全頁を最後まで scroll して「最後まで表示しました」)、縮小の注記「縮小表示（実寸の約N%）…」、「生の頁」のタブ (1:1。frame の中を scroll して全頁)
+   - 幅 390 (DevTools の端末の表示): SP の描画 (全頁、縮小の注記) と「生の頁」のタブ (1:1)
+   - 見ること: 写真が 6 枚とも出ている (SP の作業台は SP 用の写真)、研究の描画と同じ構図・色・文字、「AI 生成のデモ画像を含む (デモ専用・共有不可)」の表示、共有の欄が無い、390 で頁が横にはみ出さない
+
+## 13. 後片付け
 
 ```bash
 # app を Ctrl-C で止めてから
+npx supabase db reset                # §8 の patch を外し、migration どおりの schema に戻す (この stack だけ)
 npx supabase stop --no-backup        # この stack の container と volume (DB・Storage の中身) を消す
 rm -rf "$T"                          # 一時のコピーと包み (元の job の出力はそのまま)
 # 描写の確認のファイル (§5) はオーナーの確認の記録として手元に残してよい (Git・PR・Issue には上げない)
