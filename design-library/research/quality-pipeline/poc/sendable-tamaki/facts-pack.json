@@ -1,0 +1,102 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-bicycle-repair-tamaki",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "架空自転車修理 環",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "bicycle_repair",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "架空区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "架空市架空区架空町二丁目3-5",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "10:00〜19:00",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "水曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "access",
+      "value": "架空線架空駅 北口から徒歩5分",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "phone",
+      "value": "000-0000-0263",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "description",
+      "value": "動作確認用の架空の自転車修理店です。実在の店ではありません。パンク修理から車輪の振れ取りまで、店先の作業台で直します。",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "statement_1",
+      "value": "振れ取りでは、スポークを一本ずつ締めて車輪をまっすぐにします",
+      "source_id": "S1"
+    },
+    {
+      "id": "F11",
+      "key": "statement_2",
+      "value": "修理の前に、どこを直すかを一緒に確かめます",
+      "source_id": "S1"
+    },
+    {
+      "id": "F12",
+      "key": "service_1",
+      "value": "パンク修理",
+      "source_id": "S1"
+    },
+    {
+      "id": "F13",
+      "key": "service_2",
+      "value": "ブレーキ調整",
+      "source_id": "S1"
+    },
+    {
+      "id": "F14",
+      "key": "service_3",
+      "value": "チェーン交換",
+      "source_id": "S1"
+    },
+    {
+      "id": "F15",
+      "key": "service_4",
+      "value": "車輪の振れ取り",
+      "source_id": "S1"
+    },
+    {
+      "id": "F16",
+      "key": "workshop",
+      "value": "月に一回、空気の入れ方の講座を開いています",
+      "source_id": "S1"
+    }
+  ]
+}

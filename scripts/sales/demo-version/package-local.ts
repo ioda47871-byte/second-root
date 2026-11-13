@@ -20,6 +20,16 @@
  * rin-ai-photos-local.md §5), never assumed. Nothing in the inputs
  * is changed; the package is written outside the repository only.
  *
+ * DEV-263a (Issue #263): or package a committed photo-less comp WITH its copy, as a v2 package (sales_demo_version_package_v2):
+ *
+ *   npx tsx scripts/sales/demo-version/package-local.ts --out <dir outside the repository> \
+ *     --copy <comp dir with index.html, style.css, copy.json, copy-review.json [, copy-rounds/<i>/]> --facts <facts-pack.json> [--png-out <dir>]
+ *
+ * The page is the comp's own index.html / style.css; the copy is its facts pack, copy record, copy review
+ * (scripts/design-artifact/comp-copy.ts --audit) and the earlier rounds of the revision chain, handed to buildPackage's
+ * `copy` as bytes (lib/demo-version-package/local-inputs.ts compCopyInput). buildPackage checks the copy again and
+ * refuses what fails. Without --copy, nothing changes (a v1 package as before).
+ *
  * Renders PC 1440 and SP 390 full pages with the comp-lane renderer (renderPrototype: JavaScript off, network blocked,
  * deviceScaleFactor 1, this machine's fonts as in the research renders), downscales any render whose side exceeds
  * 4096 px (the server's limit; see lib/demo-version-package/package.ts), builds the manifest and runs the same checks
@@ -30,9 +40,10 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
+import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib/demo-version-package/local-inputs";
 import { buildPackage, insideRepo, PackageError, writePackage } from "../../../lib/demo-version-package/package";
 import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
 
@@ -53,9 +64,12 @@ async function main(): Promise<number> {
   const compareDir = arg("--compare-renders");
   const source = arg("--source") ?? DEFAULT_SOURCE;
   const pngOut = arg("--png-out");
-  if (!out || (page && arg("--source")) || (page && (!rightsPath || !originalsDir || !depictionPath)) || (!page && (rightsPath || originalsDir || depictionPath || arg("--summary") || compareDir))) {
+  const copyDir = arg("--copy");
+  const factsArg = arg("--facts");
+  if (!out || (copyDir ? !factsArg || page || arg("--source") : factsArg) || (page && arg("--source")) || (page && (!rightsPath || !originalsDir || !depictionPath)) || (!page && (rightsPath || originalsDir || depictionPath || arg("--summary") || compareDir))) {
     process.stderr.write(
       "usage: package-local.ts --out <dir outside the repository> [--source <comp dir>] [--png-out <dir>]\n" +
+        "       package-local.ts --out <dir> --copy <comp dir> --facts <facts-pack.json> [--png-out <dir>]\n" +
         "       package-local.ts --out <dir> --page <swap>/page --rights <rights.private.json> --originals <photo dir> --depiction-confirmation <file> [--summary <swap-summary.json>] [--compare-renders <dir>] [--png-out <dir>]\n",
     );
     return 2;
@@ -68,7 +82,12 @@ async function main(): Promise<number> {
     let html: string;
     let css: string;
     let swap: PreparedSwap | null = null;
-    if (page) {
+    let compCopy: CompCopyInput | null = null;
+    if (copyDir) {
+      compCopy = compCopyInput(resolve(copyDir), resolve(factsArg!));
+      html = compCopy.html;
+      css = compCopy.css;
+    } else if (page) {
       if (!summaryPath || !existsSync(summaryPath)) throw new SwapInputError("SUMMARY_MISSING");
       const read = (p: string, code: string) => {
         try {
@@ -144,7 +163,8 @@ async function main(): Promise<number> {
             local: { conversions, sources: swap.sources, rewrite_proof: swap.proof, compare },
           }
         : {}),
-      source: swap ? "swap-copy" : source,
+      ...(compCopy ? { copy: compCopy.copy } : {}),
+      source: swap ? "swap-copy" : compCopy ? (insideRepo(copyDir!) ? relative(REPO, resolve(copyDir!)).split(sep).join("/") : "comp-copy") : source,
       validatorCommit: commit,
     });
     writePackage(out, pkg);
@@ -154,6 +174,7 @@ async function main(): Promise<number> {
           status: "OK",
           source: pkg.source,
           bundle_sha256: pkg.bundleSha256,
+          ...(pkg.copy ? { format: pkg.format, copy_files: pkg.copy.files.map((f) => ({ name: f.name, role: f.role, sha256: f.sha256, bytes: f.bytes })) } : {}),
           files: pkg.manifest.files.map((f) => ({ name: f.name, sha256: f.sha256, bytes: f.bytes, ...(f.width ? { width: f.width, height: f.height } : {}) })),
           originals: (pkg.workerChecks as { originals: unknown }).originals,
           ...(swap
@@ -171,6 +192,10 @@ async function main(): Promise<number> {
     );
     return 0;
   } catch (e) {
+    if (e instanceof LocalInputError) {
+      process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
+      return 1;
+    }
     if (e instanceof PackageError || e instanceof SwapInputError || e instanceof PhotoError || e instanceof SwapRightsError) {
       process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code, details: e.details })}\n`);
       return 1;

@@ -178,3 +178,37 @@ describe("the comp review's show_owner needs the copy at owner review (comp-lane
     expect(checkReviewFile(join(POC, "comps/d1-seam-across"))).toEqual({ ok: true, codes: [] });
   });
 });
+
+// DEV-263a: PR #264's review Lows
+describe("PR #264 review Lows", () => {
+  it("checkReviewFile: malformed earlier rounds are a refusal code (COPY_ROUNDS_MALFORMED), not an input error", () => {
+    const POC = join(fx.REPO, "design-library/research/quality-pipeline/poc/tsugute");
+    const dir = join(mkdtempSync(join(tmpdir(), "comp-show-")), "d1-seam-across-v9");
+    cpSync(join(POC, "comps/d1-seam-across-v9"), dir, { recursive: true });
+    mkdirSync(join(dir, "copy-rounds", "1"), { recursive: true });
+    const r = checkReviewFile(dir, null, join(POC, "facts-pack.json"));
+    expect(r.ok).toBe(false);
+    expect(r.codes).toEqual(expect.arrayContaining(["SHOW_WITHOUT_COPY_APPROVE_CANDIDATE", "COPY_REVIEW_REFUSED", "COPY_ROUNDS_MALFORMED"]));
+  });
+
+  it("an honest fail is excused only when it is appendable and every earlier round re-checks cleanly", () => {
+    const { dir, facts } = compDir(fx.bakeryCliche());
+    auditCompCopy(dir, facts);
+    startCompCopyRevision(dir, facts);
+    const rec = JSON.parse(readFileSync(join(dir, "copy.json"), "utf8")) as { items: Array<{ id: string; text: string; claim_type: string; source_fact_ids: string[] }> };
+    Object.assign(rec.items.find((i) => i.id === "croissant-how")!, { text: "毎朝クロワッサンを焼いています。", claim_type: "creative_expression", source_fact_ids: [] });
+    writeFileSync(join(dir, "copy.json"), `${JSON.stringify(rec, null, 2)}\n`);
+    writeFileSync(join(dir, "index.html"), readFileSync(join(dir, "index.html"), "utf8").replace("クロワッサンは毎朝焼きます。", "毎朝クロワッサンを焼いています。"));
+    expect(auditCompCopy(dir, facts).step).toBe("stop_fail");
+    const files = { factsPack: readFileSync(facts), copyRecord: readFileSync(join(dir, "copy.json")), pageHtml: readFileSync(join(dir, "index.html")), pageCss: readFileSync(join(dir, "style.css")) };
+    const head = JSON.parse(readFileSync(join(dir, COPY_REVIEW_FILE), "utf8"));
+    // appended at the wrong place (no earlier round): refused, never stop_fail
+    expect(compCopyGate({ files, review: head, previous: [] }).step).toBe("refused");
+    // the earlier round's review no longer matches its own files: the fail is not excused
+    const prior = join(dir, "copy-rounds", "0", COPY_REVIEW_FILE);
+    const r0 = JSON.parse(readFileSync(prior, "utf8"));
+    r0.findings = [];
+    writeFileSync(prior, `${JSON.stringify(r0, null, 2)}\n`);
+    expect(checkCompCopy(dir, facts).step).toBe("refused");
+  });
+});

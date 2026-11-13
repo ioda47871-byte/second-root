@@ -30,7 +30,8 @@ export default defineConfig({
   webServer: {
     command: `npm run start -- --port ${port}`,
     // Demo links in admin messages point at this local server during tests.
-    env: { SALES_DEMO_BASE_URL: `http://127.0.0.1:${port}` },
+    // DEV-263a: the local E2E run may approve its example.com / fictional test recipients (never set on a deployment)
+    env: { SALES_DEMO_BASE_URL: `http://127.0.0.1:${port}`, SALES_LOCAL_E2E_TEST_RECIPIENTS: "true" },
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

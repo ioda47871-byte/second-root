@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { decideCopyReview } from "@/app/admin/sales/_actions/demo-versions";
 import { COPY_DECISION_REFUSAL_LABEL } from "@/lib/sales/copy-review/labels";
+import { NOTE_MAX_CHARS } from "@/lib/sales/demo-version/review-client";
 import styles from "./demo.module.css";
 
 type Decision = "approve" | "revise" | "reject";
@@ -70,8 +71,8 @@ export default function CopyDecisionForm({ target }: { target: CopyDecisionTarge
         ))}
       </ul>
       <label className={styles.note}>
-        メモ（任意、500 文字まで。URL・メールアドレスは書けません）
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} disabled={pending} style={{ display: "block", width: "100%" }} />
+        メモ（任意、{NOTE_MAX_CHARS} 文字まで。URL・メールアドレスは書けません）
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={NOTE_MAX_CHARS} rows={2} disabled={pending} style={{ display: "block", width: "100%" }} />
       </label>
       <button type="button" className={styles.primary} disabled={!decision || pending} onClick={submit}>
         {decision ? `「${DECISION_LABEL[decision]}」を記録する` : "判断を選んでください"}

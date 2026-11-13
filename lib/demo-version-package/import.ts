@@ -25,8 +25,10 @@
  * reviews of the shop (a round 0 replayed from another package is refused) and checkCopyQualityReview against the
  * stored chain with the page's photo URLs. After the version is ingested and its files verified, the rounds are
  * recorded with sales_record_copy_review and the last one is linked to the version. The facts pack counts as from the
- * facts path only when the caller passes `trustedFactsPack` (import-local.ts does not: no facts path exists yet, so
- * what it stores is never sendable). Nothing here writes an owner decision.
+ * facts path only when the caller passes `trustedFactsPack`: import-local.ts passes it only with --trusted-facts (DEV-263a,
+ * the LOCAL facts path: a facts pack committed and on origin/develop, whose sha256 and derived content the demo row
+ * holds); without it what is stored is never sendable. The hosted facts store and the send-time re-compare are not
+ * here. Nothing here writes an owner decision.
  *
  * Prints nothing itself; returns ids and hashes only (never a key).
  */

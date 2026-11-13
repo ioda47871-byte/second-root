@@ -270,3 +270,22 @@ describe("the copy review panel", () => {
     expect(renderToStaticMarkup(<CopyReviewPanel data={{ kind: "error" }} prospectId={PROSPECT} versionId={VERSION} versionNo={3} decisionEnabled />)).toContain('data-copy-review="error"');
   });
 });
+
+// DEV-263a (PR #264 review Low): one note limit — the database's (sales_demo_note_valid / normaliseNote) — for the
+// input schema and the form
+describe("the copy decision note limit", () => {
+  it("the input schema and the form take the database's limit", async () => {
+    const { CopyDecisionInput } = await import("@/lib/admin/demo-copy-review");
+    const { NOTE_MAX_CHARS, normaliseNote } = await import("@/lib/sales/demo-version/review-client");
+    expect(NOTE_MAX_CHARS).toBe(500);
+    const base = { prospectId: PROSPECT, versionId: VERSION, reviewId: VERSION, decision: "approve", reviewSha256: "a".repeat(64), factsSha256: "a".repeat(64), copySha256: "a".repeat(64), pageHtmlSha256: "a".repeat(64), pageCssSha256: "a".repeat(64) };
+    expect(CopyDecisionInput.safeParse({ ...base, note: "あ".repeat(500) }).success).toBe(true);
+    expect(normaliseNote("あ".repeat(500)).ok).toBe(true);
+    expect(CopyDecisionInput.safeParse({ ...base, note: "あ".repeat(501) }).success).toBe(false);
+    expect(normaliseNote("あ".repeat(501)).ok).toBe(false);
+    const { readFileSync } = await import("node:fs");
+    const form = readFileSync("components/admin/demo/CopyDecisionForm.tsx", "utf8");
+    expect(form).toContain("maxLength={NOTE_MAX_CHARS}");
+    expect(form).not.toMatch(/maxLength=\{\d+\}/);
+  });
+});

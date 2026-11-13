@@ -10120,6 +10120,59 @@
       ],
       "branch": "feature/dev-199f-copy-prompt-v3",
       "note": "記録は .ai/reviews/DEV-199f.md。何も有効にしていない。生成は実行していない。"
+    },
+    {
+      "id": "DEV-263a",
+      "title": "架空・写真なしの送信用デモを v2 の包み + ローカルの facts の経路で送信可能にする (Issue #263 の 1)",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-199d",
+        "DEV-199e"
+      ],
+      "purpose": "Issue #263 (営業 MVP 最優先)。架空・写真なし・版のあるデモ 1 件を、既存のローカルの経路 (package-local → import-local) で、文章の送信の門がオーナーの判断だけを待つ状態まで通す。公開の共有と全体の E2E は後の PR",
+      "acceptance_criteria": [
+        "package-local.ts --copy <カンプ> --facts <facts pack> が v2 の包み (facts pack・copy.json・文章の監査と前の round) を既存の buildPackage で作る。--copy なしは従来どおり v1",
+        "import-local.ts --trusted-facts <コミット済みの facts pack> がそのバイトを trustedFactsPack として渡す。リポジトリの外・未追跡・HEAD と違う・シンボリックリンクは拒否。対象のデモの sales_demos.content が同じバイトから導いた内容 (demoContentFromFacts) と違えば拒否",
+        "新しい架空の写真なしの fixture (輪 の d1-v9 の写し、輪 のファイルは不変) が、架空の研究レーンで approve_candidate、real_shop_proposal で文章の判定 approve_candidate (COPY_APPROVAL_MISSING だけ)。PC 1440・SP 390 の全頁で既存の頁の検査を通る",
+        "架空の送信可能な prospect + デモの seed (example.com、送らない)",
+        "取り込みの結果は facts_from_facts_path = true、文章の送信の止まりは demo_copy_owner_confirmation_missing だけ",
+        "PR #264 の Low (comp-lane.md の 1 文、COPY_ROUNDS_MALFORMED、正直な fail の免除の条件、メモの上限の一致)"
+      ],
+      "required_tests": [
+        "unit (2 つの CLI の flag と拒否、fixture の両レーンの監査と v2 の包み、取り込みの代役)",
+        "integration (ローカルの Supabase: seed・facts の経路での取り込み・送信の止まり)",
+        "tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "scripts/sales/demo-version/package-local.ts (--copy)・import-local.ts (--trusted-facts・--seed-sendable)",
+        "lib/demo-version-package/local-inputs.ts・seed-sendable.ts (新規)・seed-rin.ts (demoContentFromFacts の切り出し、輪 の出力は不変)",
+        "design-library/research/quality-pipeline/poc/sendable-tamaki/ (新規の fixture)",
+        "PR #264 の Low: docs/design/comp-lane.md・scripts/design-artifact/comp-lane.ts・lib/design-agent/quality-pipeline/comp-copy-gate.ts・lib/admin/demo-copy-review.ts・lib/sales/demo-version/review-client.ts・components/admin/demo/CopyDecisionForm.tsx",
+        "Fresh Review (PR #266) の対応: lib/sales/test-recipient.ts (新規、送信の門)・app/admin/sales/_actions/send.ts・lib/admin/initial-send.ts (select に facts_pack)・playwright.config.ts (ローカルの E2E の env)・lib/demo-version-package/import.ts (注記)",
+        "tests (新規。既存の固定した一覧への追加は .ai/reviews/DEV-263a.md に記録)",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-263a.md"
+      ],
+      "forbidden_scope": [
+        "SR-001「輪」の研究原本・成功例のファイルの変更",
+        "lib/sales/demo-version/html-safety.ts・copy-check.ts・copy-record.ts・facts-pack.ts・copy-quality-review.ts の変更・緩和",
+        "DB・migration・Staging・Production・フラグの有効化・実際の送信",
+        "Codex・画像生成・LLM の呼び出し",
+        "prompt・skill・workflow・package.json・lockfile",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "hosted の facts の保存先 (登録の時に書く追記のみの表) の新設はオーナー承認 (未着手)",
+        "送信の時点での保存済みの facts pack と facts の経路の比べ直し (DEV-199b の必須の前提) はオーナー承認 (未着手)",
+        "架空の店・予約済みドメインの送信拒否の DB 側の guard (migration) は承認が要る (今はサーバーの門だけ)",
+        "フラグの有効化・Staging / Production への適用は別の承認",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-263a-v2-package-facts",
+      "note": "記録は .ai/reviews/DEV-263a.md。facts の経路はローカルのもの (コミット済みの facts pack のバイト) だけ。DEV-199b (PR #264) の上に作った。migration なし。Issue #263"
     }
   ]
 }

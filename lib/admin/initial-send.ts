@@ -56,7 +56,8 @@ export function approvedSendLink(snapshot: { channel: Channel; recipient: string
   }
 }
 
-type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown };
+/** facts_pack: sales_demos.content->>facts_pack (DEV-263a, the test-recipient gate) */
+type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown; facts_pack?: string | null };
 export type InitialRow = {
   id: string;
   kind: string;
@@ -80,7 +81,7 @@ export async function loadInitial(supabase: SupabaseClient, outreachId: string):
     .from("sales_outreaches")
     .select(
       `id, kind, status, channel, subject, body, draft_version,
-       prospect:sales_prospects!inner(name, public_email, instagram_url, instagram_handle, demo:sales_demos(public_token, disabled_at${aiDesignEnabled() ? ", design_status" : ""}))`,
+       prospect:sales_prospects!inner(name, public_email, instagram_url, instagram_handle, demo:sales_demos(public_token, disabled_at, facts_pack:content->>facts_pack${aiDesignEnabled() ? ", design_status" : ""}))`,
     )
     .eq("id", outreachId)
     .maybeSingle();
