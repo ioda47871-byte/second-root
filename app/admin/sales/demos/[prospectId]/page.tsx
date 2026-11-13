@@ -9,6 +9,7 @@ import ReviewWorkspace from "@/components/admin/demo/ReviewWorkspace";
 import VersionLifecycle from "@/components/admin/demo/VersionLifecycle";
 import RightsPanel from "@/components/admin/demo/RightsPanel";
 import TokenExpiry from "@/components/admin/demo/TokenExpiry";
+import VersionImport from "@/components/admin/demo/VersionImport";
 import VersionList from "@/components/admin/demo/VersionList";
 import VersionNotices from "@/components/admin/demo/VersionNotices";
 import styles from "@/components/admin/demo/demo.module.css";
@@ -190,6 +191,8 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
       {selected && <ReviewHistory reviews={selected.reviews} />}
       <FactsPanel content={data.content} facts={selected?.facts ?? null} />
       <FactsPackRegistration prospectId={data.prospectId} current={factsPack} enabled={reviewEnabled && !data.demoDisabled} />
+      {/* DEV-263i: the owner imports a reviewed package (both flags; the route checks everything again) */}
+      <VersionImport prospectId={data.prospectId} enabled={reviewEnabled && !data.demoDisabled && factsPack.kind === "ok"} />
       {selected && <RightsPanel images={selected.images} photoBase={base} />}
     </div>
   );

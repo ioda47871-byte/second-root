@@ -9649,7 +9649,7 @@
         "各 PR のレビューと merge (coordinator)",
         "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)"
       ],
-      "note": ""
+      "note": "DEV-263i (Issue #263) が、オーナーの管理画面からの取り込み (begin / put / finalize、admin の session と同じ origin、service role は server だけ、server が全ファイルを検め直し、finalize まで版にしない、replay) を、migration なしの別の形 (staging/<sha256> の content-addressed な一時置き場。finalize の要求が package.json と文章のファイルを持つので upload token と 'uploading' の行は不要) で実装した。この Task に残るのは worker (WSL) の経路: bridge token の認証、生成時の事実と取り込み時の事実の比べ直し (DEV-196c Low b)、staging の後始末。"
     },
     {
       "id": "DEV-196p",
@@ -10409,6 +10409,52 @@
       "last_failure": null,
       "branch": "feature/dev-263g-test-recipient-guard",
       "note": "記録は .ai/reviews/DEV-263g.md。migration はローカルのスタックだけ。develop 404ab4e1 (PR #269 の merge) の上。Issue #263"
+    },
+    {
+      "id": "DEV-263i",
+      "title": "hosted の取り込み: 管理画面の「版を取り込む」(begin / put / finalize、migration なし) で、レビュー済みの v2 の包みを hosted の DB と private bucket へ (Issue #263)",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-263f"
+      ],
+      "purpose": "import-local.ts はローカルの DB だけ。オーナーが本番で使うには、レビュー済みの包みを hosted の DB と private bucket へ安全に入れる経路が要る",
+      "acceptance_criteria": [
+        "管理画面 /admin/sales/demos/[prospectId] の「版を取り込む」: 包みのフォルダを選び、route POST …/import?step=begin|put|finalize へ送る。圧縮ファイルは受けない (展開しない)",
+        "旗 2 つ (SALES_DEMO_VERSIONS_ENABLED + SALES_DEMO_QUALITY_REVIEW_ENABLED) → 同じ origin (Origin と Host / X-Forwarded-Host、Sec-Fetch-Site) → sales_admins の管理者、の順。満たさなければ何も読まない・書かない",
+        "本文は段ごとに上限 (package.json 512KiB、put 4MiB、finalize 4MiB) を読みながら守る。put は種類 (html/css/webp/jpeg) と中身の頭・UTF-8、宣言した sha256 = 再計算、staging/<sha256> に上書きせず置く (同じバイトは replay)",
+        "finalize が唯一版を作る: 頁のファイルを staging から manifest の sha256 で読み直し、readPackage と同じ packageFromSource (同じ検査・同じ順) → importPackage (facts は facts の保存先だけ、デモの content がその pack から作られていること。import-local --facts-from-store と同じ)。文章・facts・権利・HTML の検査はすべて書き込みの前。client の判定は受けない",
+        "v2 の包みだけ。copy manifest に無い part は拒否 (path traversal)。sharp を server に持ち込まないよう、純粋な検査を lib/demo-version-package/verify.ts へ移した (package.ts は再 export)",
+        "runbook B-5a と記録"
+      ],
+      "required_tests": [
+        "unit (tests/unit/admin/demo-version-upload.test.ts: 上限・CSRF・旗 off・管理者でない・v1・manifest/bundle/copy manifest・path traversal・圧縮ファイル・hash の違い・未送信・改ざん・文章の欠け・保存先でない facts)",
+        "統合 (tests/integration/demo-version-upload.test.ts、ローカルの Storage あり: 全体 → 管理者に見える下書き → 文章の門はオーナー待ち、replay、未完了は版にならない、bucket は admin から直接読めない)",
+        "e2e (tests/e2e/demo-version-upload.spec.ts: 画面で facts を登録 → フォルダを選んで取り込み、改ざんは何も書かない、replay)",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "lib/admin/demo-version-upload.ts (新規)・app/admin/sales/demos/[prospectId]/import/route.ts (新規)・components/admin/demo/VersionImport.tsx (新規)・app/admin/sales/demos/[prospectId]/page.tsx",
+        "lib/demo-version-package/verify.ts (新規、package.ts から移動)・package.ts・import.ts",
+        "関係するテスト・docs/operations/sales-mvp-runbook.md・.ai/tasks.json・.ai/reviews/DEV-263i.md"
+      ],
+      "forbidden_scope": [
+        "Staging・Production への適用・upload、環境変数・DNS・Vercel の変更、bucket の作成",
+        "migration",
+        "実店舗のデータ、実送信、Codex・画像生成・LLM の呼び出し",
+        "SR-001「輪」の変更",
+        "workflow・package.json・lockfile・prompt・skill",
+        "guard の緩和",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "hosted で使う前: B-1 の migration、private bucket sales-demo-versions の作成、B-4 の旗 (runbook B-5a)",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-263i-hosted-import",
+      "note": "記録は .ai/reviews/DEV-263i.md。develop 558f9cb1 の上 (PR #271 DEV-263h は未 merge。real-shop-demo-workflow.md §6 の hosted の注記は #271 の merge 後に B-5a を指すよう直す)。DEV-196e-1 の worker の経路は残る。Issue #263"
     }
   ]
 }

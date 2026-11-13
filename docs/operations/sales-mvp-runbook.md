@@ -195,9 +195,33 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 
 同時に `scripts/staging/lib.mjs` の照合 `demo_version_sharing_disabled` を変える (今は off を要求する)。
 
+### B-5a. 🛑 承認: hosted で版を取り込む (DEV-263i、管理画面の「版を取り込む」)
+
+`import-local.ts` はローカルの DB にしか入れない。hosted (Staging / Production) の DB と private bucket へは、管理画面の
+「版を取り込む」から入れる。CLI から hosted へ入れる経路は無い (service role の鍵を手元に置かない)。
+
+前提 (どれも承認が要る。まだ実施していない):
+
+- B-1 の migration が当たっている (新しい migration は要らない)。
+- private の Storage bucket `sales-demo-versions` がある: public でない、1 ファイル 4MiB、MIME は `text/html`・`text/css`・`image/webp`・`image/jpeg` だけ (ローカルの `supabase/config.toml` と同じ)。anon / authenticated の storage policy を作らない (`scripts/staging/` の照合が見る)。
+- B-4 の `SALES_DEMO_VERSIONS_ENABLED` と `SALES_DEMO_QUALITY_REVIEW_ENABLED` が `true`。server の `SUPABASE_SERVICE_ROLE_KEY` (既存) がある。
+- その店の facts pack が「店舗の事実の登録」で登録済み (B-2)。未登録の店には「版を取り込む」の欄が出ない。
+
+手順:
+
+1. オーナーの PC で包みを作る (repo の外へ): `npx tsx scripts/sales/demo-version/package-local.ts --out <置き場>/pkg --copy <頁のフォルダ> --facts <facts-pack.json>`。v2 (文章の監査つき) だけを取り込める。
+2. 管理画面の `/admin/sales/demos/<prospect id>` →「版を取り込む」→ 包みのフォルダ (`package.json` のある `pkg`) を選ぶ →「版を取り込む」。
+3. ブラウザは 3 段で送る: begin (`package.json` を server が検める。何も書かない) → put (頁のファイルを 1 つずつ、sha256 つき。bucket の `staging/<sha256>` に置く。版ではなく、配られない) → finalize (`package.json` と文章のファイル。server が頁のファイルを staging から読み直し、`import-local.ts --facts-from-store` と同じ検査を同じ順で行い、通れば版にする)。
+4. 出来た版は下書き。A-5 と同じく、PC 1440 / SP 390 を見て品質承認・文章の承認をオーナーが行う。取り込みは何も承認しない。
+
+- 途中で止まったら、同じフォルダでもう一度「版を取り込む」。送り済みのファイルは飛ばし、同じ包みは同じ版になる (replay)。
+- 送れないもの: zip / tar などの圧縮ファイル (展開しない)、manifest に無いファイル、文章のファイルの合計が約 4MiB を超える包み (`COPY_TOO_LARGE_FOR_UPLOAD`。1 回の要求の上限)。
+- `staging/` の一時ファイルは版にならないまま残る (配られない)。片付けは別 Task。消すのは版のファイルと照らしてから。
+
 ### B-6. 🛑 承認: 最初の実店舗
 
 - 店の事実は**確認済みのものだけ** (facts pack)。未確認の事実を足さない。
+- 版は B-5a の「版を取り込む」で入れる (facts の登録の後)。手順の全体は `docs/operations/real-shop-demo-workflow.md` (DEV-263h)。
 - 写真は**共有できる権利が確認できたものだけ**。今の共有は写真なしの版だけ (写真のある版は 404、MVP_SPEC §7)。写真なしの高品質版を先に作る。
 - AI 生成画像 (`ai_demo_internal` など共有不可) を公開しない。輪 (SR-001) の版は共有不可。
 - 管理画面で PC 1440・SP 390 の全頁を見て、品質 7 項目・文章をオーナーが承認してから送信承認。
@@ -209,7 +233,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 
 1. `SALES_DEMO_SHARE_ENABLED` を off にして deploy し直す。版を固定していない (legacy の) token は React のデモに戻る。版を固定して送った token は 404 (React にも別の版にも切り替わらない)。旗 off の間、版を使う新しい送信承認・送信画面を開く操作は止まる。
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
-3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
+3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off (「版を取り込む」も止まる)。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
    - `20261115000100`: 戻す SQL は `.ai/reviews/DEV-263g.md` (送信の門を 20261111000000 の定義に戻し、判定の関数とスイッチの表を drop)。
    - `20261115000000`: 戻す SQL は `.ai/reviews/DEV-263f.md` (送信の門と照合の証拠の trigger を 20261113000000 の定義に戻し、列・関数・表を drop。登録した facts は消える。消す前に人が判断する)。
