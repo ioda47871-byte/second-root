@@ -12,11 +12,13 @@ import "server-only";
  *
  * DEV-196g: with versioned sharing on (SALES_DEMO_SHARE_ENABLED), a shop whose approved version passes every other
  * check reaches the copy step (DEV-199e); only for such a shop is its copy gate read (admin's session, one more request
- * per such shop), so the badge names the real copy stop instead of "unreadable". Flag off: nothing more is read.
+ * per such shop), so the badge names the real copy stop instead of "unreadable". With the flag on, the database switch is
+ * read once (service role, PR #267 L4); sharing counts as on only when both are on. Flag off: nothing more is read.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CopySendCode } from "@/lib/sales/copy-review/labels";
 import { loadVersionCopyGate } from "@/lib/sales/copy-review/store";
+import { dbVersionedSharingEnabled } from "@/lib/admin/demo-versions";
 import { demoVersionBadge, type DemoVersionBadge } from "@/lib/sales/demo-version/badge";
 import { demoShareEnabled, demoVersionsEnabled, type Env } from "@/lib/sales/demo-version/flags";
 import { buildDemoVersionsView, type DemoImageDb, type QualityReviewDb, type VersionFileDb, type VersionRowDb } from "@/lib/sales/demo-version/view-model";
@@ -63,8 +65,10 @@ type DemoRow = {
   approved: VersionRow | null;
 };
 
-export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectIds: readonly string[], o: { env: Env; now: Date }): Promise<Map<string, TodayDemoVersion> | null> {
+export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectIds: readonly string[], o: { env: Env; now: Date; dbSharing?: () => Promise<boolean> }): Promise<Map<string, TodayDemoVersion> | null> {
   if (!demoVersionsEnabled(o.env)) return null;
+  // PR #267 L4: sharing counts as on only with the server flag AND the database switch (read once, service role)
+  const sharingNow = demoShareEnabled(o.env) && (await (o.dbSharing ?? dbVersionedSharingEnabled)());
   const ids = [...new Set(prospectIds.filter((id) => UUID.test(id)))];
   const out = new Map<string, TodayDemoVersion>();
   if (ids.length === 0) return out;
@@ -95,7 +99,7 @@ export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectId
       const files = versions.flatMap((v) => v.sales_demo_version_files ?? []);
       const images = files.flatMap((f) => (f.sales_demo_images ? [f.sales_demo_images] : []));
       const reviews = versions.flatMap((v) => v.sales_demo_quality_reviews ?? []);
-      const sharing = demoShareEnabled(o.env);
+      const sharing = sharingNow;
       const build = (copySendBlock?: CopySendCode | null) =>
         buildDemoVersionsView({
           versions,

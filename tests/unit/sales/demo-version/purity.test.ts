@@ -24,6 +24,8 @@ describe("demo-version library purity", () => {
     const importers = [...walk("app"), ...walk("components"), "proxy.ts"].filter((f) => readFileSync(f, "utf8").includes("demo-version")).sort();
     expect(importers).toEqual([
       "app/admin/sales/_actions/demo-versions.ts",
+      // DEV-196g (PR #267 M1): the send actions refuse a versioned send while the share flag is off
+      "app/admin/sales/_actions/send.ts",
       "app/admin/sales/demos/[prospectId]/compare/page.tsx",
       "app/admin/sales/demos/[prospectId]/layout.tsx",
       "app/admin/sales/demos/[prospectId]/page.tsx",

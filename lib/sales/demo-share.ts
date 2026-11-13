@@ -27,6 +27,23 @@ export type ShareOuter =
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * PR #267 M1: the share flag is off — may the page draw the React demo? Only when the database answers `legacy` (no
+ * sent approval pinned a version). A pinned demo (`version`, or `none`) is not found, never the React demo in its place.
+ * A database without the DEV-196c resolver (the function is missing: no version can exist there) is `legacy`, so a
+ * project the version migrations were not applied to keeps its React demos; any other error is not found.
+ */
+export async function resolveLegacyOnly(db: SupabaseClient, token: string): Promise<boolean> {
+  if (!isWellFormedDemoToken(token)) return false;
+  try {
+    const { data, error } = await db.rpc("sales_resolve_demo_share", { p_public_token: token });
+    if (error) return error.code === "PGRST202" || error.code === "42883";
+    return (data as { mode?: unknown } | null)?.mode === "legacy";
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveShareOuter(db: SupabaseClient, token: string, o: { env: Env; now: Date }): Promise<ShareOuter> {
   const config = demoShareConfig(o.env);
   // the caller checks the flag first; this answer only keeps a stray call harmless

@@ -109,22 +109,42 @@ test.afterAll(async () => {
   await db?.end();
 });
 
-test("flags off (the suite's server): the share URL is the React demo, exactly as before, and /demo-frame/p is 404", async ({ browser, request }) => {
+test("flag off (the suite's server): a legacy demo is the React demo exactly as before; a pinned version is 404, never React", async ({ browser, request }) => {
   test.skip(!storageUp, "needs the local storage API");
+  const legacy = await seedDemoVersion(db, svc, { noPhoto: true, upload: false });
+  await pinSentApproval(db, { prospectId: legacy.prospectId, versionId: null, userId });
   const v = await seedDemoVersion(db, svc, { noPhoto: true, html: PINNED_HTML, css: CSS });
   seeded.push(v);
   await pinSentApproval(db, { prospectId: v.prospectId, versionId: v.versionId, userId });
-  await setShareSwitch(db, true);
-  const token = await tokenOf(v.demoId);
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
-  const res = await page.goto(`/demo/${token}`);
+  const res = await page.goto(`/demo/${await tokenOf(legacy.demoId)}`);
   expect(res?.status()).toBe(200);
   await expect(page.getByRole("note")).toContainText("ご提案用のデモページ");
   await expect(page.locator("iframe")).toHaveCount(0);
   expect(res?.headers()["content-security-policy"]).toBe("frame-ancestors 'none'");
+  // PR #267 M1: the pinned demo with the server flag off is 404 — with the database switch off and on
+  for (const on of [false, true]) {
+    await setShareSwitch(db, on);
+    expect((await page.goto(`/demo/${await tokenOf(v.demoId)}`))?.status(), `switch ${on}`).toBe(404);
+    await expect(page.locator("iframe")).toHaveCount(0);
+  }
   await ctx.close();
   expect((await request.get(`/demo-frame/p/x/index.html`, { headers: { "Sec-Fetch-Dest": "iframe" } })).status()).toBe(404);
+});
+
+test("PR #267 L2: on the artifact host only /demo-frame/p/… is served — the admin, the share page and the site are 404", async ({ request }) => {
+  const legacy = await seedDemoVersion(db, svc, { noPhoto: true, upload: false });
+  await pinSentApproval(db, { prospectId: legacy.prospectId, versionId: null, userId });
+  const token = await tokenOf(legacy.demoId);
+  for (const path of ["/", "/admin/login", "/admin/sales", `/demo/${token}`, "/api/internal/x"]) {
+    const res = await request.get(`${ART}${path}`, { maxRedirects: 0 });
+    expect(res.status(), path).toBe(404);
+    expect(res.headers()["set-cookie"], path).toBeUndefined();
+  }
+  // the same server on the app host is unchanged
+  expect((await request.get(`${APP}/demo/${token}`)).status()).toBe(200);
+  expect((await request.get(`${APP}/admin/login`)).status()).toBe(200);
 });
 
 test("sharing on: a recipient (no cookie) sees exactly the pinned version in a sandboxed frame from the artifact origin", async ({ browser, request }) => {

@@ -24,6 +24,13 @@ export function errorCodeOf(message: string | null | undefined): string {
 const RELOAD = "画面を再読み込みしてください。";
 
 /** §9.5: the shop has a send screen open (the owner may already have sent from their own app). */
+/**
+ * DEV-196g (PR #267 M1): a send that would pin a demo version while the server's share flag is off. The share URL
+ * could not show that version (it would be 404), so the app refuses the approval and the opening of the send screen.
+ */
+export const VERSIONED_SEND_SHARE_OFF =
+  "デモの版の共有がこのサーバーで有効になっていないため（SALES_DEMO_SHARE_ENABLED）、版のデモでは送信できません。共有 URL が版を表示できないためです。";
+
 export const APPROVAL_OPEN_MESSAGE =
   "この店舗には「送信画面を開いた」送信承認があります。版を変える操作は、その送信を先に決着させてからにしてください。実際に送った場合は今日の画面で「手動で送信済みにする」、送らなかった場合は「送らなかった」を押してください。ここからは決着させません。";
 

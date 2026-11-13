@@ -99,6 +99,11 @@ export function demoVersionsConfig(env: Env): DemoVersionsConfig {
  * the preview flag too. Off → `/demo/[publicToken]` is exactly what it was before DEV-196g (the React demo; the share
  * resolver is not even called) and `/demo-frame/p/…` is the same 404 as every refusal. It is one half of the switch:
  * the database's sales_demo_share_settings (owner-only) must be on as well, or the resolver never answers "version".
+ * With this flag off, a demo whose sent approval pinned a version is 404 (never the React demo instead; PR #267 M1), and
+ * the app refuses versioned send approvals.
+ *
+ * Changing this flag, SALES_DEMO_ARTIFACT_ORIGIN or SALES_DEMO_APP_ORIGIN needs a REDEPLOY (PR #267 L5): the share
+ * page's `frame-src` is a build-time header (next.config.ts). Until the redeploy the old header stays.
  */
 export const SHARE_ENABLED_ENV = "SALES_DEMO_SHARE_ENABLED";
 /**

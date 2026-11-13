@@ -292,6 +292,18 @@ export const SECURITY_CHECKS = [
                      then (xpath('/row/v/text()', query_to_xml('select public.sales_demo_versioned_sharing_enabled() as v', false, true, '')))[1]::text is distinct from 'false'
                      else false end
           union all
+          -- PR #267 L3: the function body is one of the two known ones (DEV-196c's constant, DEV-196g's switch read)
+          select 'body sales_demo_versioned_sharing_enabled' as item from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'sales_demo_versioned_sharing_enabled'
+            and regexp_replace(lower(p.prosrc), '\\s', '', 'g') not in
+                ('selectfalse', 'selectcoalesce((selects.versioned_sharing_enabledfrompublic.sales_demo_share_settingsswheres.id),false)')
+          union all
+          -- PR #267 L3: the settings row itself: exactly one row, and it is off (evaluated only when the table exists)
+          select 'setting sales_demo_share_settings' as item
+          where case when to_regclass('public.sales_demo_share_settings') is not null
+                     then (xpath('/row/v/text()', query_to_xml('select (count(*) = 1 and not bool_or(versioned_sharing_enabled)) as v from public.sales_demo_share_settings', false, true, '')))[1]::text is distinct from 'true'
+                     else false end
+          union all
           select 'check sales_demo_versions.share_eligible' as item
           where exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                         where n.nspname = 'public' and c.relname = 'sales_demo_versions')
