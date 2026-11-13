@@ -9977,7 +9977,7 @@
     {
       "id": "DEV-199b",
       "title": "文章品質監査を生成・レビュー経路に接続する (Issue #258 の 2/3)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-199a",
@@ -10025,7 +10025,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-199b-copy-gate-integration",
-      "note": "記録は .ai/reviews/DEV-199b.md。comp-lane の show_owner は文章の監査がオーナーの確認の段のときだけ通る。管理画面に文章の監査の区画とオーナーの文章の確認 (フラグの後ろ、既定 OFF)。facts の経路はコードベースに無いので作っていない: facts_from_facts_path は常に false で送信不可・オーナーの確認も拒否、送信の時の比べ直し (旧・必須の前提) は DEV-263f で入れた (hosted の facts の保存先 sales_demo_facts_packs と sales_copy_send_block / gate.ts の demo_copy_facts_changed)。migration なし。Issue #258"
+      "note": "記録は .ai/reviews/DEV-199b.md。comp-lane の show_owner は文章の監査がオーナーの確認の段のときだけ通る。管理画面に文章の監査の区画とオーナーの文章の確認 (フラグの後ろ、既定 OFF)。facts の経路はコードベースに無いので作っていない: facts_from_facts_path は常に false で送信不可・オーナーの確認も拒否、送信の時の比べ直し (旧・必須の前提) は DEV-263f で入れた (hosted の facts の保存先 sales_demo_facts_packs と sales_copy_send_block / gate.ts の demo_copy_facts_changed)。migration なし。Issue #258。記録復元: PR #264 develop merged。詳細は Issue #263 引き継ぎ。"
     },
     {
       "id": "DEV-199c",
@@ -10164,7 +10164,7 @@
     {
       "id": "DEV-199f",
       "title": "コピー規則の新版: phase2f prompt v3 とデザインディレクターの文章審査 v2 (提案・未有効、Issue #258)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -10210,7 +10210,7 @@
         "PR のレビューと merge (coordinator)"
       ],
       "branch": "feature/dev-199f-copy-prompt-v3",
-      "note": "記録は .ai/reviews/DEV-199f.md。何も有効にしていない。生成は実行していない。"
+      "note": "記録は .ai/reviews/DEV-199f.md。何も有効にしていない。生成は実行していない。。記録復元: PR #260（新版は未有効） develop merged。詳細は Issue #263 引き継ぎ。"
     },
     {
       "id": "DEV-263a",
@@ -10368,7 +10368,7 @@
     {
       "id": "DEV-263g",
       "title": "DB 側のテスト宛先の guard (sales_send_guards で架空の店・予約済みドメインを拒否、DB の所有者のローカルのスイッチ) と DEV-263e の review の Low (Issue #263、runbook B-2 の 3)",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-263f"
@@ -10408,12 +10408,12 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-263g-test-recipient-guard",
-      "note": "記録は .ai/reviews/DEV-263g.md。migration はローカルのスタックだけ。develop 404ab4e1 (PR #269 の merge) の上。Issue #263"
+      "note": "記録は .ai/reviews/DEV-263g.md。migration はローカルのスタックだけ。develop 404ab4e1 (PR #269 の merge) の上。Issue #263。記録復元: PR #270 develop merged。詳細は Issue #263 引き継ぎ。"
     },
     {
       "id": "DEV-263h",
       "title": "実店舗のデモの事実を facts pack から作る経路 (管理画面 + ローカルの CLI) と、店のデータを repo に入れない実店舗のデモの作業手順 (Issue #263、runbook B-2)",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-263f"
@@ -10457,12 +10457,12 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-263h-real-shop-onboarding",
-      "note": "記録は .ai/reviews/DEV-263h.md。migration はローカルのスタックだけ。Issue #263"
+      "note": "記録は .ai/reviews/DEV-263h.md。migration はローカルのスタックだけ。Issue #263。記録復元: PR #271 develop merged。詳細は Issue #263 引き継ぎ。"
     },
     {
       "id": "DEV-263i",
       "title": "hosted の取り込み: 管理画面の「版を取り込む」(begin / put / finalize、migration なし) で、レビュー済みの v2 の包みを hosted の DB と private bucket へ (Issue #263)",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-263f"
@@ -10503,7 +10503,48 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-263i-hosted-import",
-      "note": "記録は .ai/reviews/DEV-263i.md。develop 558f9cb1 から作り、PR #271 (DEV-263h) の merge (aadcc6cd) を merge した。PR #271 の delta Low (lib/sales/facts-onboarding.ts の near(): 短い値の包含を一致にしない) もここで直した。DEV-196e-1 の worker の経路は残る。Issue #263"
+      "note": "記録は .ai/reviews/DEV-263i.md。develop 558f9cb1 から作り、PR #271 (DEV-263h) の merge (aadcc6cd) を merge した。PR #271 の delta Low (lib/sales/facts-onboarding.ts の near(): 短い値の包含を一致にしない) もここで直した。DEV-196e-1 の worker の経路は残る。Issue #263。記録復元: PR #272 develop merged。詳細は Issue #263 引き継ぎ。"
+    },
+    {
+      "id": "DEV-263j",
+      "title": "住所照合で都道府県が違う別店舗を同一と誤認しない (#272 review Low、Issue #263)",
+      "status": "done",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-263i"
+      ],
+      "purpose": "登録候補とfacts packの住所で都道府県が異なるときは同一店舗として自動一致にしない。オーナーの店舗同一性確認を求め、誤った実店舗デモを防ぐ",
+      "acceptance_criteria": [
+        "両方の住所に都道府県が明示され、異なる場合は near() で不一致とする",
+        "片方だけ都道府県を含む場合にのみ、その先頭都道府県を比較用に除く",
+        "都道府県は日本の47都道府県の固定リストから判定し、単なる「県」で終わる文字列を誤認しない",
+        "既存の同一店舗の照合挙動を保ち、差異はオーナーの確認に回す"
+      ],
+      "required_tests": [
+        "tests/unit/sales/facts-onboarding.test.ts",
+        "tsc --noEmit",
+        "eslint",
+        "CI 11/11、独立Fresh Review C/H/M=0（Issue #263引き継ぎ記録）"
+      ],
+      "allowed_scope": [
+        "lib/sales/facts-onboarding.ts",
+        "tests/unit/sales/facts-onboarding.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-263j.md"
+      ],
+      "forbidden_scope": [
+        "Staging / Production migration・DNS・Vercel/env・実送信",
+        "実店舗の事実・画像のrepoへの保存",
+        "既存ガードの緩和",
+        "workflow・prompt・skill・package.json・lockfile・progress.md"
+      ],
+      "human_approval_triggers": [
+        "本番環境への変更・実店舗のデモ送信は別途オーナー承認"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-263j-prefecture-near",
+      "note": "PR #273 merged into develop at 360a04d97c7c1d2d09e1177c2e2f9be50a64324c。引き継ぎ時点のCI 11/11、独立Review C/H/M=0（Issue #263に記録）。実店舗個別の情報は含まない。"
     }
   ]
 }
