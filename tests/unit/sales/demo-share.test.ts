@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import nextConfig from "@/next.config";
-import { resolveShareOuter } from "@/lib/sales/demo-share";
+import { artifactHostRefused } from "@/lib/sales/artifact-host";
+import { resolveLegacyOnly, resolveShareOuter } from "@/lib/sales/demo-share";
 import { shareOuterPageCsp } from "@/lib/sales/demo-version/csp";
 import { APP_ORIGIN_ENV, ARTIFACT_ORIGIN_ENV, demoShareConfig, demoShareEnabled, DEMO_VERSIONS_ENABLED_ENV, SHARE_ENABLED_ENV, VIEW_SIGNING_KEY_ENV } from "@/lib/sales/demo-version/flags";
 import { verifyViewToken } from "@/lib/sales/demo-version/view-token";
@@ -114,5 +115,38 @@ describe("resolveShareOuter (the database decides; never a fallback)", () => {
     const c = client({});
     expect(await resolveShareOuter(c.db, TOKEN, { env: {}, now: NOW })).toEqual({ kind: "legacy" });
     expect(c.calls).toEqual([]);
+  });
+});
+
+describe("PR #267 M1: resolveLegacyOnly (the share flag off — React only for legacy)", () => {
+  const db = (r: { data?: unknown; error?: { code?: string; message: string } | null } | (() => never)) =>
+    ({ rpc: async () => (typeof r === "function" ? r() : { data: r.data ?? null, error: r.error ?? null }) }) as never;
+  it("legacy → true; version / none / errors / a malformed token → false", async () => {
+    expect(await resolveLegacyOnly(db({ data: { mode: "legacy" } }), TOKEN)).toBe(true);
+    for (const data of [{ mode: "version", version_id: VID }, { mode: "none" }, null, { mode: "other" }]) expect(await resolveLegacyOnly(db({ data }), TOKEN), JSON.stringify(data)).toBe(false);
+    expect(await resolveLegacyOnly(db({ error: { code: "XX000", message: "boom" } }), TOKEN)).toBe(false);
+    expect(await resolveLegacyOnly(db(() => { throw new Error("boom"); }), TOKEN)).toBe(false);
+    expect(await resolveLegacyOnly(db({ data: { mode: "legacy" } }), "short")).toBe(false);
+  });
+  it("a database without the resolver (version migrations not applied: no version can exist) keeps the React demo", async () => {
+    for (const code of ["PGRST202", "42883"]) expect(await resolveLegacyOnly(db({ error: { code, message: "function not found" } }), TOKEN)).toBe(true);
+  });
+});
+
+describe("PR #267 L2: artifactHostRefused (the proxy's host gate)", () => {
+  it("on the artifact host only /demo-frame/p/… passes", () => {
+    for (const p of ["/", "/admin", "/admin/sales", `/demo/${TOKEN}`, "/api/internal/x", "/demo-frame/a/t/index.html"]) {
+      expect(artifactHostRefused({ host: "artifacts.example.com", pathname: p, artifactOrigin: ART }), p).toBe(true);
+    }
+    expect(artifactHostRefused({ host: "ARTIFACTS.example.com", pathname: "/admin", artifactOrigin: ART })).toBe(true);
+    expect(artifactHostRefused({ host: "artifacts.example.com", pathname: "/demo-frame/p/t/index.html", artifactOrigin: ART })).toBe(false);
+  });
+  it("no-op on the app host, without a host header, and with the artifact origin unset or malformed", () => {
+    expect(artifactHostRefused({ host: "app.example.com", pathname: "/admin", artifactOrigin: ART })).toBe(false);
+    expect(artifactHostRefused({ host: null, pathname: "/admin", artifactOrigin: ART })).toBe(false);
+    expect(artifactHostRefused({ host: "artifacts.example.com", pathname: "/admin", artifactOrigin: undefined })).toBe(false);
+    expect(artifactHostRefused({ host: "artifacts.example.com", pathname: "/admin", artifactOrigin: "artifacts.example.com" })).toBe(false);
+    expect(artifactHostRefused({ host: "localhost:3121", pathname: "/", artifactOrigin: "http://localhost:3121" })).toBe(true);
+    expect(artifactHostRefused({ host: "127.0.0.1:3121", pathname: "/", artifactOrigin: "http://localhost:3121" })).toBe(false);
   });
 });

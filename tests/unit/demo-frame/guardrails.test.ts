@@ -49,8 +49,14 @@ describe("demo-frame guardrails", () => {
     expect(readFileSync("app/demo-frame/[[...rest]]/route.ts", "utf8")).not.toMatch(/serveDemoFrame|store/);
   });
 
-  it("the session proxy never runs on /demo-frame", () => {
-    expect(proxyConfig.matcher).toEqual(["/admin/:path*"]);
+  it("the proxy never runs on /demo-frame (DEV-196g: it now runs elsewhere for the artifact-host gate; sessions only on /admin)", () => {
+    expect(proxyConfig.matcher).toEqual(["/((?!demo-frame(?:/|$)|_next/static|_next/image).*)"]);
+    const re = new RegExp(`^${proxyConfig.matcher[0]}$`);
+    for (const p of ["/demo-frame", "/demo-frame/a/t/index.html", "/demo-frame/p/t/index.html", "/_next/static/x.js"]) expect(re.test(p), p).toBe(false);
+    for (const p of ["/", "/admin", "/admin/sales", "/demo/abc", "/api/internal/x", "/demo-framex"]) expect(re.test(p), p).toBe(true);
+    // the session code still runs only for /admin (exactly, not /administrator)
+    const src = readFileSync("proxy.ts", "utf8");
+    expect(src).toMatch(/if \(path !== "\/admin" && !path\.startsWith\("\/admin\/"\)\) return NextResponse\.next\(\);/);
   });
 
   it("no next.config.ts header rule applies to /demo-frame (in particular no X-Frame-Options DENY)", async () => {

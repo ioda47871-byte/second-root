@@ -47,6 +47,33 @@ beforeEach(() => {
   state.gate = { legacy: true };
   state.gateCalls = 0;
   state.realGate = false;
+  // DEV-196g: a versioned send needs the share flag on (the flag-off refusal has its own describe below)
+  vi.unstubAllEnvs();
+  vi.stubEnv("SALES_DEMO_VERSIONS_ENABLED", "true");
+  vi.stubEnv("SALES_DEMO_SHARE_ENABLED", "true");
+});
+
+describe("DEV-196g (PR #267 M1): with the share flag off, a versioned send is refused; the React demo is unchanged", () => {
+  it.each([undefined, "false", "TRUE"])("SALES_DEMO_SHARE_ENABLED=%s: approve and open refuse a versioned send before the database", async (flag) => {
+    const { VERSIONED_SEND_SHARE_OFF } = await import("@/lib/sales/demo-version/admin-messages");
+    const { approveSend, markSendOpened } = await import("@/app/admin/sales/_actions/send");
+    if (flag === undefined) vi.stubEnv("SALES_DEMO_SHARE_ENABLED", undefined as never);
+    else vi.stubEnv("SALES_DEMO_SHARE_ENABLED", flag);
+    state.gate = { legacy: false, ok: true };
+    const body = composedFor(state.row as never)!.body;
+    expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: false, error: VERSIONED_SEND_SHARE_OFF });
+    state.row = { demo_version_id: "cccccccc-0000-4000-8000-000000000001" };
+    expect(await markSendOpened("dddddddd-0000-4000-8000-000000000001", "copy")).toEqual({ ok: false, error: VERSIONED_SEND_SHARE_OFF });
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+  it("flag off: the React demo (legacy) is approved and opened as before", async () => {
+    const { approveSend, markSendOpened } = await import("@/app/admin/sales/_actions/send");
+    vi.stubEnv("SALES_DEMO_SHARE_ENABLED", "false");
+    const body = composedFor(state.row as never)!.body;
+    expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: true });
+    state.row = { demo_version_id: null };
+    expect(await markSendOpened("dddddddd-0000-4000-8000-000000000001", "copy")).toEqual({ ok: true });
+  });
 });
 
 describe("approveSend: the copy guard of a quality-approved version", () => {

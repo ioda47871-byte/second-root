@@ -90,3 +90,19 @@ drop function public.sales_check_demo_share_settings_write();
 3. 写真は共有しない (MVP_SPEC §7)。写真のある版は 404。写真なしの版が先 (Issue #263 の方針)。
 4. 管理者プレビューを artifact origin に移すのは後の段 (spec §6.8 の「使えるようになったら移す」)。今はアプリの origin の暫定のまま。
 5. 共有の頁の `frame-src` は build 時の header なので、e2e の共有 build では確かめていない (unit で next.config の規則を固定した)。
+
+## PR #267 Fresh Review (eb90631: C0 H0 M1 L5) の修正
+
+- **M1** 旗 off のときに版を固定した送信が React のデモに落ちる問題:
+  - `/demo/[publicToken]` は、旗 off でも `sales_resolve_demo_share` で決める (`resolveLegacyOnly`)。`legacy` だけ React のデモで、版を固定した demo (DB のスイッチが on でも off でも) と未送信・不一致は 404。
+  - resolver の関数が無い DB (版の migration が当たっていない project。版は存在し得ない) は `legacy` 扱いで、今の React のデモを壊さない。それ以外のエラーは 404。
+  - アプリは、旗が off の間、版を使う送信の承認 (`approveSend`) と送信画面を開く操作 (`markSendOpened`) を断る (`VERSIONED_SEND_SHARE_OFF`)。「手動で送信済み」は断らない (実際の送信の事実を失わない、DEV-195)。
+  - 送信と共有は「DB のスイッチ AND server の旗」の両方で開く。旗が off なら、固定された版は 404。
+  - テスト: unit `send-guard` (旗 off の承認・開く・legacy はそのまま)、`demo-share` (`resolveLegacyOnly`)、統合 `demo-share` (旗 off: legacy → React、固定した版 → スイッチ on / off とも 404、未送信 → 404)、e2e `demo-share` (suite の server、旗 off: legacy は React、固定した版はスイッチ on / off とも 404)。
+- **L1** 管理者プレビューを artifact origin に移す作業を `.ai/tasks.json` の DEV-196t (backlog) に記録した。**オーナーへ**: 今は spec §6.8 の暫定どおり、artifact origin を設定しても管理者プレビューはアプリの origin に残す (cookie を読まない route・CSP の sandbox・iframe の sandbox は同じ)。spec の「移す」からの一時的な逸脱で、DEV-196t で解消する。
+- **L2** host の gate: `proxy.ts` の matcher を「`/demo-frame` と Next の static (`_next/static`・`_next/image`) を除く全部」に広げた。artifact origin の host では 404 (`lib/sales/artifact-host.ts`、`/demo-frame/p/…` 以外。`/demo-frame/*` は matcher の外で、route 自身が拒否する)。session の処理は今までどおり `/admin` (ちょうど) だけ。`SALES_DEMO_ARTIFACT_ORIGIN` が未設定なら何もしない。テスト: unit `guardrails` (matcher の固定と、一致する path / しない path) と `demo-share` (`artifactHostRefused`)、e2e (artifact host の `/`・`/admin/login`・`/admin/sales`・`/demo/<token>`・`/api/internal/x` は 404、cookie なし。app host は変わらない)。
+- **L3** Staging の照合 `demo_version_sharing_disabled` を強くした: 関数の本文 (正規化した後) が既知の 2 つ (DEV-196c の `select false`、DEV-196g のスイッチの読み出し) のどちらかであること、設定の行がちょうど 1 行で off であることを直接見る (表があるときだけ評価する)。統合テスト: 未知の本文と 2 行目は落ちる。スイッチを on にすると function と setting の両方が落ちる。
+- **L4** 管理画面と Today は、server の旗 AND DB の `sales_demo_versioned_sharing_enabled()` (service role、旗が on のときだけ読む、失敗は false) で「共有が on」を決める。画面の表示が DB の判断と一致する。
+- **L5** 旗・`SALES_DEMO_ARTIFACT_ORIGIN`・`SALES_DEMO_APP_ORIGIN` を変えたら **deploy し直す必要がある** (共有の頁の `frame-src` は build 時の header)。`flags.ts` と `next.config.ts` に書いた。hosted に当てるときの手順にも含める。
+
+再実行: unit (対象 1489 件)、統合の全体 (33 ファイル・517 件)、e2e (`demo-share`・`demo`・`demo-frame`・`admin`・`existing-site`・`demo-today-badge`・`demo-versions-page`・`instagram-send`・`email-send`: 82 passed)、`tsc`・eslint・`npm run build`・`check:secrets`。

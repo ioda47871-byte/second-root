@@ -65,6 +65,20 @@ async function currentFactsSha256(demoId: string): Promise<string | null> {
 }
 
 /**
+ * DEV-196g (PR #267 L4): the database half of the share switch (sales_demo_versioned_sharing_enabled(), executable by
+ * the service role only), read after the page checked the admin and only when the server flag is on. Any failure is
+ * false (the screen then never claims sharing is on).
+ */
+export async function dbVersionedSharingEnabled(): Promise<boolean> {
+  try {
+    const { data, error } = await createServiceClient().rpc("sales_demo_versioned_sharing_enabled");
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The cheap gate the segment's layout runs BEFORE the page streams (a notFound() inside the loading boundary would
  * answer 200; Next "loading.js › Status Codes"): the flag, the id's shape, and that the shop has a demo — through
  * the admin's own session. true: render the page.
@@ -96,7 +110,7 @@ async function readFactsSafely(read: (demoId: string) => Promise<string | null>,
 
 export async function loadDemoVersionsPage(
   prospectId: string,
-  o: { env: Env; now: Date; client?: Client; factsSha256?: (demoId: string) => Promise<string | null> },
+  o: { env: Env; now: Date; client?: Client; factsSha256?: (demoId: string) => Promise<string | null>; dbSharing?: () => Promise<boolean> },
 ): Promise<DemoVersionsPage> {
   if (!UUID.test(prospectId)) return { kind: "not_found" };
   const config = demoVersionsConfig(o.env);
@@ -151,6 +165,8 @@ export async function loadDemoVersionsPage(
   const approvals = (a.data ?? []) as SendApprovalDb[];
 
   const factsNow = await readFactsSafely(o.factsSha256 ?? currentFactsSha256, d.id);
+  // PR #267 L4: the screen says sharing is on only when the server flag AND the database switch are on
+  const sharing = demoShareEnabled(o.env) && (await (o.dbSharing ?? dbVersionedSharingEnabled)());
   const build = (copySendBlock?: CopySendCode | null) =>
     buildDemoVersionsView({
       versions: listed,
@@ -162,7 +178,7 @@ export async function loadDemoVersionsPage(
       demoDisabled: d.disabled_at !== null,
       currentFactsSha256: factsNow,
       copySendBlock,
-      versionedSharingEnabled: demoShareEnabled(o.env),
+      versionedSharingEnabled: sharing,
       now: o.now,
     });
   let view = build();

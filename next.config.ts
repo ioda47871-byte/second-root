@@ -34,7 +34,8 @@ const nextConfig: NextConfig = {
       // DEV-196g (spec §6.7・§6.8): only while versioned sharing is on (SALES_DEMO_VERSIONS_ENABLED and
       // SALES_DEMO_SHARE_ENABLED, read at build time), the share page may frame the dedicated artifact origin — and
       // nothing else. Off: no rule, the share page's headers are exactly as above. Stays AFTER "/demo/:path*" (the
-      // last matching rule wins for the same key), so only the CSP changes; X-Frame-Options DENY stays.
+      // last matching rule wins for the same key), so only the CSP changes; X-Frame-Options DENY stays. Changing the
+      // flags or the origins needs a redeploy (headers are fixed at build time; PR #267 L5).
       ...shareRules(),
       { source: "/design-preview/:path*", headers: privateRouteHeaders },
       { source: "/admin/:path*", headers: privateRouteHeaders },

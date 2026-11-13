@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { serveDemoFrame, type FrameRequest } from "@/lib/demo-frame/serve";
 import { supabaseFrameStore } from "@/lib/demo-frame/store";
-import { resolveShareOuter } from "@/lib/sales/demo-share";
+import { resolveLegacyOnly, resolveShareOuter } from "@/lib/sales/demo-share";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
 import { seedDemoVersion, storageStatus } from "../support/seed-demo-version";
 import { pinSentApproval, setShareSwitch } from "../support/share-fixture";
@@ -108,6 +108,21 @@ describe("sales_resolve_demo_share with the switch", () => {
 });
 
 describe("the share page decision and the share route with the real store", () => {
+  it("PR #267 M1: share flag off — the React demo only for legacy; a pinned demo is 404 whatever the database switch", async () => {
+    const legacy = await seedDemoVersion(db, serviceClient(), { noPhoto: true, upload: false });
+    await pinSentApproval(db, { prospectId: legacy.prospectId, versionId: null, userId: adminId });
+    expect(await resolveLegacyOnly(serviceClient(), await tokenOf(legacy.demoId))).toBe(true);
+    const v = await seedDemoVersion(db, serviceClient(), { noPhoto: true, upload: false });
+    await pinSentApproval(db, { prospectId: v.prospectId, versionId: v.versionId, userId: adminId });
+    for (const on of [false, true]) {
+      await setShareSwitch(db, on);
+      expect(await resolveLegacyOnly(serviceClient(), await tokenOf(v.demoId)), `switch ${on}`).toBe(false);
+    }
+    // unsent (not public) is not React either
+    const unsent = await seedDemoVersion(db, serviceClient(), { noPhoto: true, upload: false });
+    expect(await resolveLegacyOnly(serviceClient(), await tokenOf(unsent.demoId))).toBe(false);
+  });
+
   it("resolveShareOuter: version → the frame URL on the artifact origin; switch off → not found (never the React demo)", async () => {
     const v = await seedDemoVersion(db, serviceClient(), { noPhoto: true, upload: false });
     await pinSentApproval(db, { prospectId: v.prospectId, versionId: v.versionId, userId: adminId });

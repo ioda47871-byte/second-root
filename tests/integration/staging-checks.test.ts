@@ -31,7 +31,20 @@ describe("staging verification", () => {
       const { results } = await runChecks(query, local);
       return results.filter((r: { ok: boolean }) => !r.ok).map((r: { id: string; items: string[] }) => [r.id, r.items]);
     });
-    expect(failed).toEqual([["demo_version_sharing_disabled", ["function sales_demo_versioned_sharing_enabled"]]]);
+    expect(failed).toEqual([["demo_version_sharing_disabled", ["function sales_demo_versioned_sharing_enabled", "setting sales_demo_share_settings"]]]);
+  });
+
+  it("PR #267 L3 [fail-closed]: an unknown body of the sharing function, or a second settings row, fails the check", async () => {
+    const failed = await withRollback(async (query) => {
+      await query("create or replace function public.sales_demo_versioned_sharing_enabled() returns boolean language sql stable set search_path = '' as $$ select false or false $$");
+      await query("alter table public.sales_demo_share_settings disable trigger user");
+      await query("alter table public.sales_demo_share_settings drop constraint sales_demo_share_settings_pkey");
+      await query("alter table public.sales_demo_share_settings drop constraint sales_demo_share_settings_id_check");
+      await query("insert into public.sales_demo_share_settings (id, versioned_sharing_enabled) values (true, false)");
+      const { results } = await runChecks(query, local);
+      return results.filter((r: { ok: boolean }) => !r.ok).map((r: { id: string; items: string[] }) => [r.id, r.items]);
+    });
+    expect(failed).toEqual([["demo_version_sharing_disabled", ["body sales_demo_versioned_sharing_enabled", "setting sales_demo_share_settings"]]]);
   });
 
   it("passes on a database built from supabase/migrations/", async () => {
@@ -70,7 +83,8 @@ describe("staging verification", () => {
     const failed = Object.fromEntries(results.filter((r: { ok: boolean }) => !r.ok).map((r: { id: string; items: string[] }) => [r.id, r.items]));
     expect(failed).toEqual({
       storage_no_client_policies: ["objects:demo_leak"],
-      demo_version_sharing_disabled: ["function sales_demo_versioned_sharing_enabled", "check sales_demo_versions.share_eligible"],
+      // PR #267 L3: the unknown function body is caught on its own too
+      demo_version_sharing_disabled: ["function sales_demo_versioned_sharing_enabled", "body sales_demo_versioned_sharing_enabled", "check sales_demo_versions.share_eligible"],
     });
   });
 
