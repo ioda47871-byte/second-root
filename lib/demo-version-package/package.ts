@@ -52,6 +52,8 @@ export const RENDER_SIDE_LIMIT = ARTIFACT_LIMITS.imageSidePx;
 export const VIEWPORT_WIDTH: Readonly<Record<RenderViewport, number>> = { desktop_1440: 1440, tablet_768: 768, mobile_390: 390 };
 
 export class PackageError extends Error {
+  /** DEV-199e: the round of an honest failed copy review (COPY_INVALID only), which the importer records before refusing */
+  failedCopyRound?: number;
   constructor(
     public readonly code: string,
     public readonly details: readonly string[] = [],
@@ -107,7 +109,7 @@ export type DemoVersionPackage = {
  * DEV-199d: the package's copy, checked on its bytes. v1 (no copy) → `copy_unreviewed` (never sendable); a v1 package
  * carrying copy files, or a v2 package without them, is refused. Throws PackageError("COPY_INVALID", [code, ...]).
  */
-export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manifest" | "bundleSha256" | "files" | "images" | "copy" | "copyFiles">, o: { trustedFactsPack?: string | Uint8Array | null } = {}): PackageCopyResult {
+export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manifest" | "bundleSha256" | "files" | "images" | "copy" | "copyFiles">, o: Parameters<typeof verifyPackageCopy>[1] = {}): PackageCopyResult {
   if (pkg.format === PACKAGE_FORMAT) {
     if (pkg.copy !== undefined || pkg.copyFiles !== undefined) throw new PackageError("COPY_INVALID", ["COPY_IN_V1_PACKAGE"]);
     return LEGACY_COPY_RESULT;
@@ -116,7 +118,8 @@ export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manif
   try {
     return verifyPackageCopy(pkg, o);
   } catch (e) {
-    if (e instanceof CopyPackageError) throw new PackageError("COPY_INVALID", [e.code, ...e.details]);
+    // DEV-199e: an honest failed review keeps its round, so the importer can record it before refusing
+    if (e instanceof CopyPackageError) throw Object.assign(new PackageError("COPY_INVALID", [e.code, ...e.details]), { failedCopyRound: e.failedRound });
     throw e;
   }
 }

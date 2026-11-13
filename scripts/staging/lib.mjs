@@ -173,7 +173,11 @@ export function redact(text, ...secrets) {
  * DEV-196c: tables whose rows are never deleted (the demo version history).
  * No API role has DELETE or TRUNCATE on them.
  */
-export const NO_DELETE_TABLES = ["sales_demo_images", "sales_demo_quality_reviews", "sales_demo_version_files", "sales_demo_versions"];
+export const NO_DELETE_TABLES = [
+  "sales_demo_images", "sales_demo_quality_reviews", "sales_demo_version_files", "sales_demo_versions",
+  // DEV-199e: the copy review store, its facts-path checks, the version links and the owner's copy decisions
+  "sales_demo_copy_reviews", "sales_demo_copy_facts_checks", "sales_demo_version_copy_links", "sales_demo_copy_owner_decisions",
+];
 
 /**
  * Security checks (docs/SECURITY.md §2, same rules as

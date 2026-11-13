@@ -5,6 +5,8 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { composeFollowUp } from "@/lib/admin/followup";
 import { composedFor, designWaiting, loadInitial } from "@/lib/admin/initial-send";
 import { errorCode, OPENED_VIA, recordedSend, sendErrorMessage, type OpenedVia, type RecordedSend } from "@/lib/sales/approval";
+import { COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels";
+import { outreachCopyGate } from "@/lib/sales/copy-review/store";
 import { aiDesignEnabled } from "@/lib/sales/design";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -44,6 +46,11 @@ export async function approveSend(outreachId: string, draftVersion: number, show
   if (composed.subject !== (shown.subject ?? null) || composed.body !== shown.body) {
     return { ok: false, error: "表示している文面がほかの画面で変わりました。画面を再読み込みして内容を確認してください。" };
   }
+  // DEV-199e (Issue #258 decision ①): a quality-approved demo version is sent only when its copy passed the copy
+  // quality audit (re-run here on the stored bytes) and the owner confirmed exactly that copy. The database refuses on
+  // its own (sales_copy_send_block); a demo without an approved version (the React demo) is unchanged.
+  const copyGate = await outreachCopyGate(supabase, outreachId);
+  if (!copyGate.legacy && !copyGate.ok) return { ok: false, error: COPY_SEND_LABEL[copyGate.code] };
   const { error } = await supabase.rpc("sales_approve_outreach", {
     p_outreach_id: outreachId,
     p_draft_version: draftVersion,

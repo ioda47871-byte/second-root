@@ -42,7 +42,11 @@ describe("migration plan", () => {
       expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual(expected);
     }
     // The exemption list is pinned: widening it (silently skipping the DELETE check for another table) must fail here.
-    expect([...NO_DELETE_TABLES].sort()).toEqual(["sales_demo_images", "sales_demo_quality_reviews", "sales_demo_version_files", "sales_demo_versions"]);
+    // DEV-199e adds the copy review store, its facts-path checks, the version links and the owner's copy decisions.
+    expect([...NO_DELETE_TABLES].sort()).toEqual([
+      "sales_demo_copy_facts_checks", "sales_demo_copy_owner_decisions", "sales_demo_copy_reviews", "sales_demo_images",
+      "sales_demo_quality_reviews", "sales_demo_version_copy_links", "sales_demo_version_files", "sales_demo_versions",
+    ]);
     // Before 20260928000000 the core tables relied on the defaults.
     const before = local.filter((m: { version: string }) => m.version < "20260928000000");
     expect(explicitGrantGaps(before, "authenticated", "select")).toEqual(["sales_admins", "sales_agent_runs", "sales_demos", "sales_outreaches", "sales_prospects", "sales_sources"]);

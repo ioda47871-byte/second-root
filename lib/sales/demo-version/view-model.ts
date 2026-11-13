@@ -18,6 +18,7 @@
  *
  * Pure: rows in, view out.
  */
+import type { CopySendCode } from "@/lib/sales/copy-review/labels";
 import { jstDate } from "@/lib/sales/dates";
 import { RIGHTS_BLOCKED_LABEL, AI_CONCEPT_BADGE, REVOKE_REASONS, RIGHTS_STATUS_LABEL, VERSION_STATUS_LABEL, type RevokeReason } from "./admin-messages";
 import { validatorCodes } from "./compare";
@@ -149,7 +150,8 @@ export type UnshareableReason = "versioned_sharing_disabled" | "ai_images" | "ph
  * not be read, so the screen cannot rule out demo_facts_changed (the database decides; the screen does not claim the
  * facts are unchanged).
  */
-export type SendBlockCode = "demo_version_unavailable" | "demo_quality_not_approved" | "demo_facts_changed" | "demo_not_shareable";
+// DEV-199e (PR #262 L2): after demo_not_shareable, the copy send guard (sales_copy_send_block) in the same order.
+export type SendBlockCode = "demo_version_unavailable" | "demo_quality_not_approved" | "demo_facts_changed" | "demo_not_shareable" | CopySendCode;
 export type SendStop = { code: SendBlockCode; reasons: UnshareableReason[]; factsUnknown: boolean };
 
 /** At most this many lineage rows are listed; the rest are counted in lineageHidden. */
@@ -287,6 +289,12 @@ export function buildDemoVersionsView(o: {
   demoDisabled: boolean;
   /** sales_demo_facts_sha256 of the demo now; null when it could not be read */
   currentFactsSha256: string | null;
+  /**
+   * DEV-199e: the copy send guard of the approved version (sales_copy_send_block / evaluateVersionCopyGate; null = it
+   * does not block). Left out: not read, so a version past every other check shows demo_copy_review_unverifiable (the
+   * screen does not claim the copy is confirmed; the database decides).
+   */
+  copySendBlock?: CopySendCode | null;
   now: Date;
 }): DemoVersionsView {
   const byId = new Map(o.versions.map((v) => [v.id, v]));
@@ -402,7 +410,7 @@ export function buildDemoVersionsView(o: {
 
 /** sales_demo_version_send_block, re-derived from the rows the screen read (same order of checks). */
 function sendStop(
-  o: { versions: readonly VersionRowDb[]; reviews: readonly QualityReviewDb[]; approvedVersionId: string | null; currentFactsSha256: string | null; now: Date },
+  o: { versions: readonly VersionRowDb[]; reviews: readonly QualityReviewDb[]; approvedVersionId: string | null; currentFactsSha256: string | null; copySendBlock?: CopySendCode | null; now: Date },
   views: readonly VersionView[],
   factsKnown: boolean,
 ): SendStop | null {
@@ -419,7 +427,19 @@ function sendStop(
   if (factsKnown && o.currentFactsSha256 !== v.facts_sha256) return stop("demo_facts_changed");
   // versioned sharing is off (DEV-196g), so a version that got this far is never shareable today
   const reasons = view.unshareableReasons;
-  return reasons.length ? stop("demo_not_shareable", reasons) : null;
+  const last = lastSendStops(reasons, o.copySendBlock);
+  return last ? stop(last.code, last.reasons) : null;
+}
+
+/**
+ * The last two checks of sales_demo_version_send_block, in its order: demo_not_shareable, then (DEV-199e) the copy send
+ * guard. `copySendBlock` undefined = not read → demo_copy_review_unverifiable. While versioned sharing is off the
+ * first always stops (the copy step is reached only once DEV-196g turns sharing on).
+ */
+export function lastSendStops(reasons: UnshareableReason[], copySendBlock: CopySendCode | null | undefined): { code: SendBlockCode; reasons: UnshareableReason[] } | null {
+  if (reasons.length) return { code: "demo_not_shareable", reasons };
+  if (copySendBlock === undefined) return { code: "demo_copy_review_unverifiable", reasons: [] };
+  return copySendBlock === null ? null : { code: copySendBlock, reasons: [] };
 }
 
 /**

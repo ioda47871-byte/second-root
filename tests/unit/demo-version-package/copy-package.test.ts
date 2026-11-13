@@ -378,10 +378,19 @@ describe("importPackage: the copy is checked before the database, and the comput
   };
   const DEMO = "11111111-1111-4111-8111-111111111111";
   const VERSION = "22222222-2222-4222-8222-222222222222";
+  // DEV-199e: the importer also reads the copy review store (empty here) and records the review after the ingest
   const client = (pkg: DemoVersionPackage, calls: string[]) =>
     ({
-      from: () => ({
-        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: VERSION, demo_id: DEMO, version_no: 1, storage_prefix: `v1/${DEMO}/${VERSION}/`, bundle_sha256: pkg.bundleSha256 }, error: null }) }) }),
+      from: (table: string) => ({
+        select: () => {
+          const q = {
+            eq: () => q,
+            in: () => q,
+            order: async () => ({ data: [], error: null }),
+            maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: "33333333-3333-4333-8333-333333333333" } : { id: VERSION, demo_id: DEMO, version_no: 1, storage_prefix: `v1/${DEMO}/${VERSION}/`, bundle_sha256: pkg.bundleSha256 }, error: null }),
+          };
+          return q;
+        },
       }),
       rpc: async (name: string) => {
         calls.push(name);
@@ -395,7 +404,8 @@ describe("importPackage: the copy is checked before the database, and the comput
     const calls: string[] = [];
     const s = store();
     const res = await importPackage(pkg, { client: client(pkg, calls), store: s, demoId: DEMO, trustedFactsPack: f.factsPack });
-    expect(calls).toEqual(["sales_ingest_demo_version"]);
+    // DEV-199e: the review is recorded (and linked to the version) only after the ingest and the upload check
+    expect(calls).toEqual(["sales_ingest_demo_version", "sales_record_copy_review"]);
     expect([...s.objects.keys()].some((k) => k.includes("copy/"))).toBe(false);
     expect(res.copy).toMatchObject({ status: "checked", sendable: false, verdict: "hold", copy_verdict: "approve_candidate", send_blockers: ["OWNER_APPROVAL_MISSING"] });
   });
