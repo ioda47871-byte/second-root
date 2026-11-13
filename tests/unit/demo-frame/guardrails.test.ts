@@ -6,7 +6,7 @@ import { config as proxyConfig } from "@/proxy";
 
 // DEV-196d-2 (spec §6.3・§6.8, SECURITY §12): the artifact route reads no cookie, logs nothing, never goes through
 // the admin session proxy, gets no header rule from next.config.ts (no X-Frame-Options: it must load in an iframe),
-// and the share scope `p` has no route of its own.
+// and (DEV-196g) the share scope `p` has exactly one route, which runs the same library decision with scope "p".
 
 function filesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -18,10 +18,11 @@ function filesUnder(dir: string): string[] {
 const ROUTE_FILES = [...filesUnder("app/demo-frame"), ...filesUnder("lib/demo-frame")];
 
 describe("demo-frame guardrails", () => {
-  it("has exactly the admin route, the catch-all 404 and the two library files", () => {
+  it("has exactly the admin route, the share route (DEV-196g), the catch-all 404 and the two library files", () => {
     expect(ROUTE_FILES.sort()).toEqual([
       "app/demo-frame/[[...rest]]/route.ts",
       "app/demo-frame/a/[token]/[...path]/route.ts",
+      "app/demo-frame/p/[token]/[...path]/route.ts",
       "lib/demo-frame/serve.ts",
       "lib/demo-frame/store.ts",
     ]);
@@ -35,12 +36,16 @@ describe("demo-frame guardrails", () => {
     expect(src).not.toMatch(/dangerouslySetInnerHTML|srcdoc/);
   });
 
-  it("only the library reads the store; the environment is read only by the admin route, as an argument", () => {
-    for (const f of ROUTE_FILES.filter((x) => x !== "app/demo-frame/a/[token]/[...path]/route.ts")) expect(readFileSync(f, "utf8"), f).not.toMatch(/process\.env/);
+  it("only the library reads the store; the environment is read only by the two artifact routes, as an argument", () => {
+    const routes = ["app/demo-frame/a/[token]/[...path]/route.ts", "app/demo-frame/p/[token]/[...path]/route.ts"];
+    for (const f of ROUTE_FILES.filter((x) => !routes.includes(x))) expect(readFileSync(f, "utf8"), f).not.toMatch(/process\.env/);
   });
 
-  it("there is no share (scope p) route: the catch-all answers it with the same 404", () => {
-    expect(ROUTE_FILES.some((f) => f.includes("/p/"))).toBe(false);
+  it("DEV-196g: the share route runs the library's decision with scope \"p\" (and the admin route with the default \"a\"); the catch-all serves nothing", () => {
+    const p = readFileSync("app/demo-frame/p/[token]/[...path]/route.ts", "utf8");
+    expect(p).toMatch(/serveDemoFrame\(/);
+    expect(p).toMatch(/\n\s*"p",\n\s*\);/);
+    expect(readFileSync("app/demo-frame/a/[token]/[...path]/route.ts", "utf8")).not.toMatch(/"p"/);
     expect(readFileSync("app/demo-frame/[[...rest]]/route.ts", "utf8")).not.toMatch(/serveDemoFrame|store/);
   });
 

@@ -128,7 +128,7 @@ test("flag off (the suite's server): a valid admin token is the plain 404, ident
   for (const url of [`/demo-frame/p/${token("p")}/index.html`, "/demo-frame", `/demo-frame/a/${tok}`]) expect(await notFoundShape(request, url), url).toEqual(off);
 });
 
-test("share scope p is never served: p tokens, a tokens under /p, every file, flag on → 404", async ({ request }) => {
+test("share scope p without SALES_DEMO_SHARE_ENABLED (DEV-196g) is never served: p tokens, a tokens under /p, every file, preview flag on → 404", async ({ request }) => {
   for (const tok of [token("p"), token("a")]) {
     for (const [p, dest] of [["index.html", "iframe"], ["style.css", "style"], ["photos/hero-desktop.webp", "image"], ["renders/desktop_1440.webp", "image"]]) {
       const res = await request.get(`${ON}/demo-frame/p/${tok}/${p}`, { headers: { "Sec-Fetch-Dest": dest! } });

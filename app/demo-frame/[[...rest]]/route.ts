@@ -1,8 +1,8 @@
 import { demoFrameNotFound } from "@/lib/demo-frame/serve";
 
-// DEV-196d-2: everything else under /demo-frame — the share scope `p` (never built in DEV-196d; DEV-196g needs its own
-// approval and the dedicated artifact origin), a missing path, any other scope — is the same 404 as the admin route's
-// refusals, flag on or off.
+// DEV-196d-2: everything else under /demo-frame — a missing path, any other scope, `p/` or `a/` without a token and a
+// file — is the same 404 as the artifact routes' refusals, flags on or off. (The share scope `p` has its own route
+// since DEV-196g: app/demo-frame/p/[token]/[...path].)
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {

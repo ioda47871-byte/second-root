@@ -29,7 +29,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UNAVAILABLE_TEXT: Record<PreviewUnavailable, string> = {
   signing_key_missing: DEMO_VERSION_ERROR_LABEL.signing_key_missing!,
   signing_key_invalid: "閲覧の署名鍵の形が正しくないため、描画画像と頁を表示できません。",
-  artifact_origin_configured: "成果物の専用の配信元が設定されていますが、そこからの表示はまだ有効ではありません。描画画像と頁を表示できません。",
+  artifact_origin_invalid: "成果物の専用の配信元の設定の形が正しくないため、描画画像と頁を表示できません。",
 };
 
 export default async function DemoVersionsPage({ params, searchParams }: PageProps<"/admin/sales/demos/[prospectId]">) {

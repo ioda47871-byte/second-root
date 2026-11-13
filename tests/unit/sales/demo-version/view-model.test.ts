@@ -8,7 +8,7 @@ import {
   LINEAGE_DISPLAY_LIMIT,
   provenanceSummary,
   unshareableReasons,
-  VERSIONED_SHARING_ENABLED,
+
   type DemoImageDb,
   type QualityReviewDb,
   type VersionFileDb,
@@ -220,7 +220,11 @@ describe("buildDemoVersionsView: images and rights (fail closed)", () => {
   });
 
   it("a version with zero photos is still unshareable while versioned sharing is off", () => {
-    expect(VERSIONED_SHARING_ENABLED).toBe(false);
+    expect(unshareableReasons([], false)).toEqual(["versioned_sharing_disabled"]);
+    // DEV-196g: with the share flag on, a version with no photo has no reason left; AI images and photos still do
+    expect(unshareableReasons([], true)).toEqual([]);
+    expect(unshareableReasons([{ rightsStatus: "ai_concept_internal" }], true)).toEqual(["ai_images", "photos_not_shareable"]);
+    expect(unshareableReasons([{ rightsStatus: "share_cleared" }], true)).toEqual(["photos_not_shareable"]);
     expect(unshareableReasons([])).toEqual(["versioned_sharing_disabled"]);
   });
 });

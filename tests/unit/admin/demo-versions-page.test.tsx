@@ -318,11 +318,18 @@ describe("loadDemoVersionsPage", () => {
     expect(r.view.versions.map((v) => v.versionNo)).toEqual([2, 1]);
   });
 
-  it("no token at all without a usable key, with a configured artifact origin, or for a disabled demo", async () => {
+  it("DEV-196g: a valid artifact origin (configured for sharing) keeps the admin preview on the app origin", async () => {
+    const r = await load({ ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "https://artifacts.example.com" }, tables());
+    if (r.kind !== "ok") throw new Error("expected ok");
+    expect(r.previewUnavailable).toBeNull();
+    expect(Object.keys(r.tokens)).toEqual([id(1)]);
+  });
+
+  it("no token at all without a usable key, with a malformed artifact origin, or for a disabled demo", async () => {
     const cases: Array<[Record<string, string | undefined>, Tables, string | null]> = [
       [{ SALES_DEMO_VERSIONS_ENABLED: "true" }, tables(), "signing_key_missing"],
       [{ ...ENV, SALES_DEMO_VIEW_SIGNING_KEY: "short" }, tables(), "signing_key_invalid"],
-      [{ ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "https://artifacts.example.com" }, tables(), "artifact_origin_configured"],
+      [{ ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "artifacts.example.com" }, tables(), "artifact_origin_invalid"],
       [ENV, tables({ sales_demos: { data: { id: DEMO, template: "bakery_v1", content: {}, disabled_at: "2026-11-10T00:00:00Z", approved_version_id: null } } }), null],
     ];
     for (const [env, t, why] of cases) {

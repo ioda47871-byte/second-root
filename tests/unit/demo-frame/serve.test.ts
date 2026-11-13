@@ -180,12 +180,12 @@ describe("serveDemoFrame: every refusal is the same 404", () => {
     }
   });
 
-  it("no or malformed signing key, or a configured artifact origin (not served until DEV-196g): 404, nothing read", async () => {
+  it("no or malformed signing key, a malformed artifact origin, or a request on the artifact origin (DEV-196g: it serves only scope p): 404, nothing read", async () => {
     for (const env of [
       { SALES_DEMO_VERSIONS_ENABLED: "true" },
       { ...ENV, SALES_DEMO_VIEW_SIGNING_KEY: "short" },
       { ...ENV, SALES_DEMO_VIEW_SIGNING_KEY: `${KEY_TEXT}\n` },
-      { ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "https://artifacts.example.com" },
+      { ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: ORIGIN },
       { ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "" },
       { ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "not an origin" },
     ]) {
@@ -355,5 +355,16 @@ describe("requestOrigin", () => {
       ["host", "javascript"],
       ["host", "ftp"],
     ] as const) expect(requestOrigin({ host, forwardedProto, urlProtocol: "https:" }), `${host} ${forwardedProto}`).toBe("");
+  });
+});
+
+describe("DEV-196g: the admin preview while an artifact origin is configured for sharing", () => {
+  it("scope a stays on the app origin (the admin-only interim), with frame-ancestors naming the app origin", async () => {
+    const { res } = await serve(request("index.html"), { env: { ...ENV, SALES_DEMO_ARTIFACT_ORIGIN: "https://artifacts.example.com" } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toContain(`frame-ancestors ${ORIGIN}`);
+  });
+  it("a scope p path through the admin decision (scope a) is the same 404", async () => {
+    await expectUniform404((await serve(request("index.html", { pathname: `/demo-frame/p/${token({ scope: "p" })}/index.html` }))).res);
   });
 });

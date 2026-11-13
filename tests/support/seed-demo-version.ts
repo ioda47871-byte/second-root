@@ -15,6 +15,10 @@ export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";
 export const DEFAULT_HTML =
   '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>架空の店</title><link rel="stylesheet" href="style.css"></head>' +
   '<body><main><h1 id="shop">架空の焼き菓子店</h1><p>テスト用の版です。</p><img id="hero" src="photos/hero-desktop.webp" alt="店の写真" width="40" height="30"></main></body></html>';
+/** DEV-196g: a page with no photo (a shareable version) */
+export const NO_PHOTO_HTML =
+  '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>架空の店</title><link rel="stylesheet" href="style.css"></head>' +
+  '<body><main><h1 id="shop">架空の焼き菓子店</h1><p>共有用の版です。</p></main></body></html>';
 export const DEFAULT_CSS = "body{margin:0;font-family:sans-serif;background:#faf7f2}h1{color:#5a3e2b}";
 
 export type StorageStatus = { available: true } | { available: false; reason: string };
@@ -87,6 +91,8 @@ export async function seedDemoVersion(
     aiConceptConfirmedBy?: string;
     /** add the version to this shop's demo (with this parent) instead of seeding a new shop */
     into?: { prospectId: string; demoId: string; parentVersionId?: string };
+    /** DEV-196g: a version with no photo at all (the only kind that can be shared today, MVP_SPEC §7) */
+    noPhoto?: boolean;
   } = {},
 ): Promise<SeededVersion> {
   let prospectId: string;
@@ -107,9 +113,9 @@ export async function seedDemoVersion(
   const desktop = solidWebp(1440, opts.renderHeights?.desktop ?? 900 + randomInt(100), rgb());
   const mobile = solidWebp(390, opts.renderHeights?.mobile ?? 1600 + randomInt(100), rgb());
   const objects: Record<string, Uint8Array> = {
-    "page/index.html": new TextEncoder().encode(opts.html ?? DEFAULT_HTML),
+    "page/index.html": new TextEncoder().encode(opts.html ?? (opts.noPhoto ? NO_PHOTO_HTML : DEFAULT_HTML)),
     "page/style.css": new TextEncoder().encode(opts.css ?? DEFAULT_CSS),
-    "page/photos/hero-desktop.webp": photo,
+    ...(opts.noPhoto ? {} : { "page/photos/hero-desktop.webp": photo }),
     "renders/desktop_1440.webp": desktop,
     "renders/mobile_390.webp": mobile,
   };
@@ -123,7 +129,7 @@ export async function seedDemoVersion(
     files: [
       { name: "page/index.html", role: "html", sha256: sha256Hex(objects["page/index.html"]!), bytes: objects["page/index.html"]!.byteLength, content_type: "text/html" },
       { name: "page/style.css", role: "css", sha256: sha256Hex(objects["page/style.css"]!), bytes: objects["page/style.css"]!.byteLength, content_type: "text/css" },
-      { name: "page/photos/hero-desktop.webp", role: "photo", sha256: sha256Hex(photo), bytes: photo.byteLength, content_type: "image/webp", ...dims(photo) },
+      ...(opts.noPhoto ? [] : [{ name: "page/photos/hero-desktop.webp", role: "photo", sha256: sha256Hex(photo), bytes: photo.byteLength, content_type: "image/webp", ...dims(photo) }]),
       { name: "renders/desktop_1440.webp", role: "render", sha256: sha256Hex(desktop), bytes: desktop.byteLength, content_type: "image/webp", ...dims(desktop) },
       { name: "renders/mobile_390.webp", role: "render", sha256: sha256Hex(mobile), bytes: mobile.byteLength, content_type: "image/webp", ...dims(mobile) },
     ],
@@ -153,11 +159,13 @@ export async function seedDemoVersion(
     p_direction_sha256: sha256Hex("direction"),
     p_bundle_sha256: bundleSha256(m.manifest),
     p_manifest: m.manifest,
-    p_images: [image],
+    p_images: opts.noPhoto ? [] : [image],
     p_validator_result: { version: 1, ok: true, codes: [], validator_commit: "abcdef1", checked_at: new Date().toISOString() },
     p_worker_checks: { checkPrototype: "ok" },
     p_structure_descriptor: null,
-    p_rights_summary: { version: 1, photos: 1, by_status: { [image.rights_status]: 1 }, earliest_expiry: null, label_required: !!opts.aiConceptConfirmedBy },
+    p_rights_summary: opts.noPhoto
+      ? { version: 1, photos: 0, by_status: {}, earliest_expiry: null, label_required: false }
+      : { version: 1, photos: 1, by_status: { [image.rights_status]: 1 }, earliest_expiry: null, label_required: !!opts.aiConceptConfirmedBy },
   });
   if (res.error) throw new Error(`ingest failed: ${res.error.message}`);
   const versionId = (res.data as { version_id: string }).version_id;
@@ -174,5 +182,5 @@ export async function seedDemoVersion(
     }
     uploaded = true;
   }
-  return { prospectId, demoId, versionId, prefix, imageId: img.rows[0].id as string, objects, uploaded };
+  return { prospectId, demoId, versionId, prefix, imageId: opts.noPhoto ? "" : (img.rows[0].id as string), objects, uploaded };
 }

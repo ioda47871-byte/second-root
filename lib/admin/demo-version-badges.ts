@@ -9,10 +9,16 @@ import "server-only";
  *
  * The current facts hash is NOT read here (it needs the service role): the explanation says the facts check is left
  * to the version page, and never claims the facts are unchanged.
+ *
+ * DEV-196g: with versioned sharing on (SALES_DEMO_SHARE_ENABLED), a shop whose approved version passes every other
+ * check reaches the copy step (DEV-199e); only for such a shop is its copy gate read (admin's session, one more request
+ * per such shop), so the badge names the real copy stop instead of "unreadable". Flag off: nothing more is read.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CopySendCode } from "@/lib/sales/copy-review/labels";
+import { loadVersionCopyGate } from "@/lib/sales/copy-review/store";
 import { demoVersionBadge, type DemoVersionBadge } from "@/lib/sales/demo-version/badge";
-import { demoVersionsEnabled, type Env } from "@/lib/sales/demo-version/flags";
+import { demoShareEnabled, demoVersionsEnabled, type Env } from "@/lib/sales/demo-version/flags";
 import { buildDemoVersionsView, type DemoImageDb, type QualityReviewDb, type VersionFileDb, type VersionRowDb } from "@/lib/sales/demo-version/view-model";
 
 /**
@@ -89,17 +95,26 @@ export async function loadTodayDemoVersions(supabase: SupabaseClient, prospectId
       const files = versions.flatMap((v) => v.sales_demo_version_files ?? []);
       const images = files.flatMap((f) => (f.sales_demo_images ? [f.sales_demo_images] : []));
       const reviews = versions.flatMap((v) => v.sales_demo_quality_reviews ?? []);
-      const view = buildDemoVersionsView({
-        versions,
-        files,
-        images,
-        reviews,
-        approvals: [],
-        approvedVersionId: d.approved_version_id,
-        demoDisabled: d.disabled_at !== null,
-        currentFactsSha256: null,
-        now: o.now,
-      });
+      const sharing = demoShareEnabled(o.env);
+      const build = (copySendBlock?: CopySendCode | null) =>
+        buildDemoVersionsView({
+          versions,
+          files,
+          images,
+          reviews,
+          approvals: [],
+          approvedVersionId: d.approved_version_id,
+          demoDisabled: d.disabled_at !== null,
+          currentFactsSha256: null,
+          copySendBlock,
+          versionedSharingEnabled: sharing,
+          now: o.now,
+        });
+      let view = build();
+      if (sharing && view.sendStop?.code === "demo_copy_review_unverifiable" && d.approved_version_id !== null) {
+        const gate = await loadVersionCopyGate(supabase, d.approved_version_id);
+        view = build(gate.ok ? null : gate.code);
+      }
       const badge = demoVersionBadge(view, o.now);
       out.set(id, badge.state === "unknown" ? { kind: "unknown", approvedUnknown: d.approved_version_id !== null } : { kind: "ok", ...badge });
     }
