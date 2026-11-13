@@ -9654,7 +9654,7 @@
     {
       "id": "DEV-196p",
       "title": "copy.json の事実の行と創作の見出しの照合 (共有の前に必須)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196d",
@@ -9690,13 +9690,13 @@
         "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)",
         "DB / manifest の変更 (copy record の保存)"
       ],
-      "note": "Issue #263 (営業 MVP) の一部。copy record の保存と取り込みでの照合 (頁の見える文 = copy record の行、事実の行 = 事実パック) は DEV-199d / DEV-199e (#261 / #262) で既に入っている (sales_demo_copy_reviews.copy_record_text・facts_pack_text、sales_demo_version_copy_links、import の checkArtifactCopy)。この PR は残り: 管理画面の版の比較が、両方の版に保存された copy record から行を「事実 / 創作 / 印なし」に分け、保存された記録・事実パック・頁の文で server の照合 (checkArtifactCopy) を版ごとに再実行して符号を出す (DEV-196d-4 の『copy record が無いので創作を区別しない』の解消)。片方に記録が無い・読めないときは今までの事実だけの印 (創作とは言わない)。DB の変更なし。記録は .ai/reviews/DEV-196pq.md。PR A (draft)。 depends_on (PR #265 CI): DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した。copy record も findings も既存の import の経路 (lib/demo-version-package/import.ts) で保存し、アップロード API は使わないため。",
+      "note": "Issue #263 (営業 MVP) の一部。copy record の保存と取り込みでの照合 (頁の見える文 = copy record の行、事実の行 = 事実パック) は DEV-199d / DEV-199e (#261 / #262) で既に入っている (sales_demo_copy_reviews.copy_record_text・facts_pack_text、sales_demo_version_copy_links、import の checkArtifactCopy)。この PR は残り: 管理画面の版の比較が、両方の版に保存された copy record から行を「事実 / 創作 / 印なし」に分け、保存された記録・事実パック・頁の文で server の照合 (checkArtifactCopy) を版ごとに再実行して符号を出す (DEV-196d-4 の『copy record が無いので創作を区別しない』の解消)。片方に記録が無い・読めないときは今までの事実だけの印 (創作とは言わない)。DB の変更なし。記録は .ai/reviews/DEV-196pq.md。PR A (draft)。 depends_on (PR #265 CI): DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した。copy record も findings も既存の import の経路 (lib/demo-version-package/import.ts) で保存し、アップロード API は使わないため。 PR #265 merged (1232c480)。台帳の保守: DEV-196g の PR で done にした。PR #265 の delta review L1・L2 (precheck の既存の版の照合を unique index と同じ status <> rejected に、replay 先の版が live であること) は DEV-196g の PR で直した。",
       "branch": "feature/dev-196pq-share-prereqs"
     },
     {
       "id": "DEV-196q",
       "title": "構造の比較の結果 (structure findings) を保存する (共有の前に必須)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196d",
@@ -9734,8 +9734,59 @@
         "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)",
         "DB の変更 (findings の保存)"
       ],
-      "note": "Issue #263 (営業 MVP) の一部。sales_demo_structure_findings (版ごとに 1 行、insert のみ、形は quality.ts の StructureFindingInput と同じで server と DB の両方が検める、sibling は他店の版だけ、管理者は RLS で読む、どの guard も読まない) と、品質の判定の項目 3・4 の横の参考の表示 (止めない。保存されていない・読めないときはそう書き、『警告なし』とは言わない)。findings の計算 (構造記述子と成功例・他店の承認版との類似) はこの PR では行わない: 構造記述子の module は隔離 (tests/unit/design-agent/structure/structure.test.ts の importer の固定リスト) で、server からの計算は新しい importer = 別の承認。今は import の任意の入力 structureFindings (source = observation_report) で保存できるだけで、それを作る CLI / worker の配線は未。ローカル DB だけ。PR A (draft)。 depends_on (PR #265 CI): DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した。copy record も findings も既存の import の経路 (lib/demo-version-package/import.ts) で保存し、アップロード API は使わないため。",
+      "note": "Issue #263 (営業 MVP) の一部。sales_demo_structure_findings (版ごとに 1 行、insert のみ、形は quality.ts の StructureFindingInput と同じで server と DB の両方が検める、sibling は他店の版だけ、管理者は RLS で読む、どの guard も読まない) と、品質の判定の項目 3・4 の横の参考の表示 (止めない。保存されていない・読めないときはそう書き、『警告なし』とは言わない)。findings の計算 (構造記述子と成功例・他店の承認版との類似) はこの PR では行わない: 構造記述子の module は隔離 (tests/unit/design-agent/structure/structure.test.ts の importer の固定リスト) で、server からの計算は新しい importer = 別の承認。今は import の任意の入力 structureFindings (source = observation_report) で保存できるだけで、それを作る CLI / worker の配線は未。ローカル DB だけ。PR A (draft)。 depends_on (PR #265 CI): DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した。copy record も findings も既存の import の経路 (lib/demo-version-package/import.ts) で保存し、アップロード API は使わないため。 PR #265 merged (1232c480)。台帳の保守: DEV-196g の PR で done にした。PR #265 の delta review L1・L2 (precheck の既存の版の照合を unique index と同じ status <> rejected に、replay 先の版が live であること) は DEV-196g の PR で直した。",
       "branch": "feature/dev-196pq-share-prereqs"
+    },
+    {
+      "id": "DEV-196g",
+      "title": "店舗デモの版の共有 URL (/demo/[publicToken] の外枠 + 別 origin の /demo-frame/p、旗 SALES_DEMO_SHARE_ENABLED と DB のスイッチ、どちらも既定で無効)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-196p",
+        "DEV-196q",
+        "DEV-196k"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-196g-versioned-sharing",
+      "purpose": "Issue #263 (営業 MVP) の 2: 受信者が認証なしで開ける期限つきの /demo/[publicToken] で、送信承認の時に固定した版を、別 origin の sandbox の iframe で出す。古い版・別の版・React のデモへすり替わらない。権利・期限・取り消し・共有可否・noindex / CSP / sandbox・別 origin の既存の規定を守る。旗が無効の間は今と全く同じ。",
+      "acceptance_criteria": [
+        "DB: sales_demo_versioned_sharing_enabled() の定数 false を、所有者だけが変えられる 1 行のスイッチ (sales_demo_share_settings、既定 false) を読む関数に置き換える。API の role は読めず変えられない。写真の共有 (sales_demo_share_photos_enabled) は定数 false のまま",
+        "server: 旗 SALES_DEMO_SHARE_ENABLED (厳密な \"true\"、既定 off、SALES_DEMO_VERSIONS_ENABLED も要る)、SALES_DEMO_APP_ORIGIN (frame-ancestors に名指しするアプリの origin)。鍵・artifact origin・app origin のどれかが無い・不正なら版を出さない (React にも落ちない)",
+        "/demo/[publicToken]: 旗 off は今と同じ (resolver を呼ばない)。旗 on は sales_resolve_demo_share: version → 信頼できる外枠 (MVP_SPEC §7 の注記) + sandbox=\"\" の iframe (artifact origin の /demo-frame/p/<30 分の token>/index.html)、legacy → 既存の React のデモ、none → 404",
+        "/demo-frame/p/[token]/[...path]: 両方の旗・完全な設定・artifact origin への要求・scope p の token・Sec-Fetch-Dest (HTML は iframe だけ)・版が取り消しなし・demo が無効でない・DB の resolver がちょうどこの版を答える・写真の権利が共有可 (今は写真なし)・render なし・bytes の hash を検めて配る。拒否はすべて同じ 404",
+        "旗 on の間だけ next.config.ts が /demo/* に frame-src <artifact origin> の CSP を足す (build 時)",
+        "管理者プレビュー (scope a) は artifact origin が設定されてもアプリの origin のまま (暫定、§6.8)。artifact origin への scope a の要求は 404",
+        "テスト: 旗 off は今と同じ、送信承認で固定した版が出る、取り消し・期限切れ・共有不可は拒否、別の版・legacy への fallback なし、ヘッダ (noindex・CSP・sandbox・frame-ancestors)、legacy の React のデモは影響なし"
+      ],
+      "required_tests": [
+        "unit",
+        "統合 (ローカル Supabase、Storage あり)",
+        "e2e (受信者と同じ cookie なしの独立した browser context、2 つの origin)",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261114000100_sales_demo_share_switch.sql (新、ローカルだけ。rollback は .ai/reviews/DEV-196g.md)",
+        "app/demo/[publicToken]/page.tsx・app/demo-frame/p/[token]/[...path]/route.ts (新)・app/demo-frame/[[...rest]]/route.ts (説明だけ)・components/demo/VersionShareFrame.tsx (新)",
+        "lib/demo-frame/**・lib/sales/demo-share.ts (新)・lib/sales/demo-version/{flags,csp,view-model}.ts・lib/admin/{demo-versions,demo-version-badges}.ts・lib/sales/structure-findings/store.ts (PR #265 の delta review)",
+        "next.config.ts (旗 on の時だけの CSP の規則)",
+        "scripts/staging/lib.mjs (demo_version_sharing_disabled の照合を新しいスイッチに合わせる。意味は同じ「DB で共有が off」)",
+        "app/admin/sales/demos/[prospectId]/page.tsx (配信元の設定の文言)",
+        "tests/**・.ai/tasks.json・.ai/reviews/DEV-196g.md"
+      ],
+      "forbidden_scope": [
+        "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での旗・スイッチの有効化、WSL、画像生成、公開、実店舗への送信",
+        ".github/workflows・package.json・lockfile・prompt・skill",
+        "progress.md (feature branch で編集しない)",
+        "scripts/sales/demo-version/* と架空の fixture (DEV-263a の並行 builder)",
+        "写真の共有の解禁 (SHARE_PHOTOS_ENABLED / sales_demo_share_photos_enabled は false のまま)"
+      ],
+      "human_approval_triggers": [
+        "PR のレビューと merge (coordinator)",
+        "hosted への migration の適用、DB のスイッチを on にすること、Vercel の環境変数 (SALES_DEMO_SHARE_ENABLED・SALES_DEMO_ARTIFACT_ORIGIN・SALES_DEMO_APP_ORIGIN・SALES_DEMO_VIEW_SIGNING_KEY)、artifact origin の DNS / Vercel の domain (オーナーの別の承認)"
+      ],
+      "note": "記録は .ai/reviews/DEV-196g.md。実際の送信で版を固定するには、版の文章確認 (DEV-199e の copy gate) が通る必要があり、それには facts の経路 (DEV-263a) が要る。テストの『送信済みの承認』は fixture が DB の所有者として書く。"
     },
     {
       "id": "DEV-196r",
