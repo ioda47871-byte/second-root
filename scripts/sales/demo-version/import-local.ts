@@ -23,7 +23,16 @@
  * it refuses unless the target demo's sales_demos.content names the sha256 of the same bytes and equals the content
  * derived from them (assertDemoContentFromFacts; a 輪 demo is refused), so the demo row and the facts evidence share
  * one origin. --seed-sendable creates (or finds) 環 from its committed facts pack
- * (lib/demo-version-package/seed-sendable.ts). The hosted facts store and the send-time re-compare are not here.
+ * (lib/demo-version-package/seed-sendable.ts).
+ *
+ * DEV-263f: the importer's trusted facts come from the facts store (sales_demo_facts_packs).
+ *
+ *   npx tsx scripts/sales/demo-version/import-local.ts --package <dir> (--prospect <uuid> | --seed-sendable) --facts-from-store
+ *   npx tsx scripts/sales/demo-version/import-local.ts --package <dir> (--prospect <uuid> | --seed-sendable) --trusted-facts <committed facts-pack.json> --admin <admin user id>
+ *
+ * --facts-from-store imports with the shop's current stored facts pack (registered by the owner on the admin screen).
+ * --trusted-facts is the dev-only source: the committed pack (checked as above) is first REGISTERED in the facts store
+ * as the named admin (sales_register_facts_pack_as: the admin must be in sales_admins), then imported from the store.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -34,6 +43,7 @@ import { PackageError, readPackage } from "../../../lib/demo-version-package/pac
 import { assertDemoContentFromFacts, LocalInputError, readCommittedFacts } from "../../../lib/demo-version-package/local-inputs";
 import { assertLocalDbUrl, seedRinShop, type FactsPack } from "../../../lib/demo-version-package/seed-rin";
 import { SENDABLE_FACTS_PATH, seedSendableShop } from "../../../lib/demo-version-package/seed-sendable";
+import { factsPackBytes, FactsStoreError, loadCurrentFactsPack, registerFactsPackAsOperator, type RegisteredFactsPack } from "../../../lib/sales/facts-store";
 
 const arg = (k: string) => {
   const i = process.argv.indexOf(k);
@@ -50,17 +60,23 @@ async function main(): Promise<number> {
   const seedSendable = process.argv.includes("--seed-sendable");
   const seedOnly = process.argv.includes("--seed-only");
   const trustedPath = arg("--trusted-facts");
+  const adminArg = arg("--admin");
+  const fromStore = process.argv.includes("--facts-from-store");
   const seeds = Number(seedRin) + Number(seedSendable);
   const usage =
     seeds > 1 ||
-    (seedOnly ? seeds !== 1 || dir || prospectArg || trustedPath : !dir || (!prospectArg && !seeds) || (prospectArg && (seeds || !UUID.test(prospectArg)))) ||
+    (seedOnly ? seeds !== 1 || dir || prospectArg || trustedPath || fromStore : !dir || (!prospectArg && !seeds) || (prospectArg && (seeds || !UUID.test(prospectArg)))) ||
     (process.argv.includes("--trusted-facts") && !trustedPath) ||
+    // DEV-263f: the committed pack is registered in the facts store as a named admin; never both sources
+    (trustedPath && (!adminArg || !UUID.test(adminArg))) ||
+    (!trustedPath && process.argv.includes("--admin")) ||
+    (trustedPath && fromStore) ||
     // the sendable shop is imported only with its facts from the facts path; 輪's photo packages never are (ai_demo_internal)
-    (seedSendable && !seedOnly && !trustedPath) ||
-    (seedRin && trustedPath);
+    (seedSendable && !seedOnly && !trustedPath && !fromStore) ||
+    (seedRin && (trustedPath || fromStore));
   if (usage) {
     process.stderr.write(
-      "usage: import-local.ts --package <dir> (--prospect <uuid> | --seed-rin | --seed-sendable) [--trusted-facts <committed facts-pack.json>]\n" +
+      "usage: import-local.ts --package <dir> (--prospect <uuid> | --seed-rin | --seed-sendable) [--facts-from-store | --trusted-facts <committed facts-pack.json> --admin <admin user id>]\n" +
         "       import-local.ts (--seed-rin | --seed-sendable) --seed-only\n",
     );
     return 2;
@@ -110,21 +126,32 @@ async function main(): Promise<number> {
     process.stdout.write(`${JSON.stringify({ status: "OK", seeded: true, prospect_id: prospectId, demo_id: demoId })}\n`);
     return 0;
   }
-  if (trustedFacts) {
-    // DEV-263a: the demo row and the facts evidence share one origin
-    const d = await client.from("sales_demos").select("content").eq("id", demoId).maybeSingle();
+  let registered: RegisteredFactsPack | null = null;
+  if (trustedFacts || fromStore) {
+    const d = await client.from("sales_demos").select("prospect_id, content").eq("id", demoId).maybeSingle();
     if (d.error || !d.data) throw new ImportError("DEMO_NOT_FOUND");
-    assertDemoContentFromFacts((d.data as { content: unknown }).content, trustedFacts);
+    const demo = d.data as { prospect_id: string; content: unknown };
+    if (trustedFacts) {
+      // DEV-263a: the demo row and the facts evidence share one origin
+      assertDemoContentFromFacts(demo.content, trustedFacts);
+      // DEV-263f: the dev-only source is registered in the facts store as the named admin (the database checks the admin)
+      registered = await registerFactsPackAsOperator(client, { demoId, factsPack: new TextDecoder("utf-8", { fatal: true }).decode(trustedFacts), adminId: adminArg! });
+    } else {
+      // the stored pack must still be what the demo's content was derived from
+      const cur = await loadCurrentFactsPack(client, demo.prospect_id);
+      if (!cur) throw new ImportError("FACTS_STORE_EMPTY");
+      assertDemoContentFromFacts(demo.content, factsPackBytes(cur.facts_pack_text));
+    }
   }
-  const result = await importPackage(pkg, { client, store: supabasePackageStore(client), demoId, trustedFactsPack: trustedFacts, workerCommit: (pkg.validatorResult.validator_commit ?? "").match(/^[0-9a-f]{7,40}$/) ? pkg.validatorResult.validator_commit : null });
-  process.stdout.write(`${JSON.stringify({ status: "OK", prospect_id: prospectId, ...result }, null, 2)}\n`);
+  const result = await importPackage(pkg, { client, store: supabasePackageStore(client), demoId, factsFromStore: trustedFacts !== null || fromStore, workerCommit: (pkg.validatorResult.validator_commit ?? "").match(/^[0-9a-f]{7,40}$/) ? pkg.validatorResult.validator_commit : null });
+  process.stdout.write(`${JSON.stringify({ status: "OK", prospect_id: prospectId, ...(registered ? { facts_registered: registered } : {}), ...result }, null, 2)}\n`);
   return 0;
 }
 
 main()
   .then((code) => process.exit(code))
   .catch((e) => {
-    if (e instanceof ImportError || e instanceof PackageError || e instanceof LocalInputError) {
+    if (e instanceof ImportError || e instanceof PackageError || e instanceof LocalInputError || e instanceof FactsStoreError) {
       process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
       process.exit(1);
     }

@@ -9,7 +9,7 @@
  * per decision why it would be refused. No facts path exists yet: facts_from_facts_path is false for every stored
  * review, so the decision is always refused (COPY_FACTS_NOT_FROM_FACTS_PATH) and the copy is never sendable.
  */
-import { COPY_DECISIONS, copyDecisionRefusals, evaluateVersionCopyGate, type CopyDecision, type VersionCopyGateInput } from "./gate";
+import { COPY_DECISIONS, copyDecisionRefusals, evaluateVersionCopyGate, storeFactsChecks, type CopyDecision, type VersionCopyGateInput } from "./gate";
 import { COPY_SEND_LABEL, type CopySendCode } from "./labels";
 
 export type CopyFindingView = { code: string; severity: string; reason: string; texts: string[] };
@@ -75,7 +75,7 @@ export function buildCopyReviewView(i: VersionCopyGateInput): CopyReviewView {
       lane: q.lane,
       copyVerdict: q.copy_verdict,
       nextStep: q.next_step,
-      factsFromFactsPath: i.state.factsChecks.some((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256),
+      factsFromFactsPath: storeFactsChecks(i.state, q).length > 0,
       ...parsed(q.review_text),
       gateBlockers: q.gate_blockers,
       hashes: { review: q.review_sha256, facts: q.facts_sha256, copy: q.copy_sha256, pageHtml: q.page_html_sha256, pageCss: q.page_css_sha256 },

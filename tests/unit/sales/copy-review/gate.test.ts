@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   chainOf,
+  copyDecisionRefusals,
   evaluateVersionCopyGate,
   ownerRevisionsOf,
   planCopyAppend,
@@ -22,7 +23,8 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const NO_PHOTOS: ReadonlySet<string> = new Set();
 const VERSION = "aaaaaaaa-0000-4000-8000-000000000001";
 const VFACTS = "9".repeat(64);
-const empty = (): ShopCopyState => ({ reviews: [], decisions: [], factsChecks: [] });
+const empty = (): ShopCopyState => ({ reviews: [], decisions: [], factsChecks: [], factsStore: { current: null, demoFactsPackSha256: null } });
+const FACTS_ROW = "facts-row-1";
 
 /** Stores the rounds in order through planCopyAppend (as the importer does), with stable ids. */
 function store(rounds: Round[], o: { state?: ShopCopyState; factsChecked?: boolean } = {}): ShopCopyState {
@@ -33,7 +35,9 @@ function store(rounds: Round[], o: { state?: ShopCopyState; factsChecked?: boole
     if (plan.replay) continue;
     const row: StoredCopyReview = { ...plan.row, id: `review-${s.reviews.length}`, demo_id: "demo-1" };
     s.reviews.push(row);
-    if (o.factsChecked !== false) s.factsChecks.push({ review_id: row.id, facts_sha256: row.facts_sha256, demo_facts_sha256: VFACTS });
+    // DEV-263f: the facts-path check is made from the facts store (the shop's current stored facts pack)
+    s.factsStore = { current: { id: FACTS_ROW, facts_sha256: row.facts_sha256, demo_id: "demo-1" }, demoFactsPackSha256: row.facts_sha256 };
+    if (o.factsChecked !== false) s.factsChecks.push({ review_id: row.id, facts_sha256: row.facts_sha256, demo_facts_sha256: VFACTS, facts_pack_id: FACTS_ROW });
   }
   return s;
 }
@@ -238,8 +242,54 @@ describe("evaluateVersionCopyGate: every refusal, then the happy path", () => {
     s.decisions.push(decide(q, "approve"));
     expect(evaluateVersionCopyGate(gateInput(s, q))).toEqual({ ok: true });
     // without round 0 in the store the re-audit refuses round 1
-    const alone: ShopCopyState = { reviews: [q], decisions: s.decisions, factsChecks: s.factsChecks };
+    const alone: ShopCopyState = { reviews: [q], decisions: s.decisions, factsChecks: s.factsChecks, factsStore: s.factsStore };
     expect(evaluateVersionCopyGate(gateInput(alone, q))).toMatchObject({ ok: false, code: "demo_copy_send_blocked", details: expect.arrayContaining(["REVISION_WITHOUT_PREVIOUS"]) });
+  });
+});
+
+describe("DEV-263f: the facts store and the send-time re-compare", () => {
+  const approved = () => {
+    const s = store([cleanRound0()]);
+    const q = s.reviews[0]!;
+    s.decisions.push(decide(q, "approve"));
+    return { s, q };
+  };
+
+  it("passes while the review's facts pack is the shop's current stored one, of the demo, named by the demo's content", () => {
+    const { s, q } = approved();
+    expect(evaluateVersionCopyGate(gateInput(s, q))).toEqual({ ok: true });
+  });
+
+  it("a facts-path check made before the store (no store row) does not count", () => {
+    const { s, q } = approved();
+    s.factsChecks = s.factsChecks.map((c) => ({ ...c, facts_pack_id: null }));
+    expect(evaluateVersionCopyGate(gateInput(s, q))).toMatchObject({ ok: false, code: "demo_copy_facts_not_from_facts_path" });
+    expect(copyDecisionRefusals(gateInput(s, q), "approve")).toContain("COPY_FACTS_NOT_FROM_FACTS_PATH");
+  });
+
+  it("a newer stored facts pack, a row of another demo, the demo naming other facts or no store row → demo_copy_facts_changed", () => {
+    for (const change of [
+      (s: ShopCopyState) => (s.factsStore = { ...s.factsStore, current: { id: "facts-row-2", facts_sha256: "7".repeat(64), demo_id: "demo-1" } }),
+      (s: ShopCopyState) => (s.factsStore = { ...s.factsStore, current: { ...s.factsStore.current!, demo_id: "demo-2" } }),
+      (s: ShopCopyState) => (s.factsStore = { ...s.factsStore, demoFactsPackSha256: "7".repeat(64) }),
+      (s: ShopCopyState) => (s.factsStore = { ...s.factsStore, demoFactsPackSha256: null }),
+      (s: ShopCopyState) => (s.factsStore = { ...s.factsStore, current: null }),
+    ]) {
+      const { s, q } = approved();
+      change(s);
+      expect(evaluateVersionCopyGate(gateInput(s, q))).toMatchObject({ ok: false, code: "demo_copy_facts_changed" });
+      // the owner cannot approve on changed facts either (a revise / reject stays possible)
+      const fresh = store([cleanRound0()]);
+      change(fresh);
+      expect(copyDecisionRefusals(gateInput(fresh, fresh.reviews[0]!), "approve")).toContain("COPY_FACTS_CHANGED");
+      expect(copyDecisionRefusals(gateInput(fresh, fresh.reviews[0]!), "reject")).not.toContain("COPY_FACTS_CHANGED");
+    }
+  });
+
+  it("the stale check still comes first (the check on other demo facts)", () => {
+    const { s, q } = approved();
+    s.factsStore = { ...s.factsStore, current: null };
+    expect(evaluateVersionCopyGate(gateInput(s, q, { versionFactsSha256: "8".repeat(64) }))).toMatchObject({ ok: false, code: "demo_copy_facts_stale" });
   });
 });
 
@@ -253,8 +303,10 @@ describe("labels and wiring", () => {
   });
 
   it("the database's sales_copy_send_block uses exactly these codes (besides the server-only unverifiable)", () => {
-    const sql = readFileSync("supabase/migrations/20261113000000_sales_demo_copy_send_guard.sql", "utf8");
-    const fn = sql.slice(sql.indexOf("create function public.sales_copy_send_block"), sql.indexOf("create or replace function public.sales_demo_version_send_block"));
+    // DEV-263f: the newest definition (20261115000000 adds demo_copy_facts_changed)
+    const sql = readFileSync("supabase/migrations/20261115000000_sales_demo_facts_store.sql", "utf8");
+    const start = sql.indexOf("create or replace function public.sales_copy_send_block(");
+    const fn = sql.slice(start, sql.indexOf("\n$$;", start));
     const codes = [...new Set([...fn.matchAll(/return '([a-z_]+)'/g)].map((m) => m[1]))].sort();
     expect(codes).toEqual(COPY_SEND_CODES.filter((c) => c !== "demo_copy_review_unverifiable").slice().sort());
   });

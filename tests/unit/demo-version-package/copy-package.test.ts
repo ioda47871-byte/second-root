@@ -386,7 +386,8 @@ describe("importPackage: the copy is checked before the database, and the comput
           const q = {
             eq: () => q,
             in: () => q,
-            order: async () => ({ data: [], error: null }),
+            // DEV-263f: the facts store read (order + limit) answers with no row
+            order: () => Object.assign(Promise.resolve({ data: [], error: null }), { limit: async () => ({ data: [], error: null }) }),
             maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: "33333333-3333-4333-8333-333333333333" } : { id: VERSION, demo_id: DEMO, version_no: 1, storage_prefix: `v1/${DEMO}/${VERSION}/`, bundle_sha256: pkg.bundleSha256 }, error: null }),
           };
           return q;

@@ -5,7 +5,7 @@ import { importPackage, type PackageStore } from "@/lib/demo-version-package/imp
 import { assertDemoContentFromFacts, compCopyInput, LocalInputError, readCommittedFacts } from "@/lib/demo-version-package/local-inputs";
 import { buildPackage } from "@/lib/demo-version-package/package";
 import { SENDABLE_EMAIL, SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_PROSPECT_ID, seedSendableShop } from "@/lib/demo-version-package/seed-sendable";
-import { db, resetSalesData, serviceClient } from "./helpers";
+import { createUser, db, makeAdmin, resetSalesData, serviceClient } from "./helpers";
 
 // DEV-263a (Issue #263): the fictional sendable shop 環 on the LOCAL stack — the seed, the local facts path
 // (import-local.ts --trusted-facts) and the copy send block afterwards. Fictional shop, example.com only; nothing is
@@ -51,7 +51,13 @@ describe("the fictional sendable shop 環", () => {
     const s = await seed();
     const trusted = factsBytes();
     assertDemoContentFromFacts(await demoContent(s.demoId), trusted);
-    const res = await importPackage(await fixturePackage(), { client: serviceClient(), store: memoryStore(), demoId: s.demoId, trustedFactsPack: trusted });
+    // DEV-263f: the dev-only source is registered in the facts store as an admin, then the import reads the store
+    const adminId = await createUser("sendable-seed-admin@test.example.com");
+    await makeAdmin(adminId);
+    const reg = await serviceClient().rpc("sales_register_facts_pack_as", { p_demo_id: s.demoId, p_facts_pack: new TextDecoder().decode(trusted), p_admin_id: adminId });
+    expect(reg.error, reg.error?.message).toBeNull();
+    expect(reg.data).toMatchObject({ shop_id: "fictional-bicycle-repair-tamaki", replayed: false });
+    const res = await importPackage(await fixturePackage(), { client: serviceClient(), store: memoryStore(), demoId: s.demoId, factsFromStore: true });
     expect(res.copy).toMatchObject({ status: "checked", facts_from_facts_path: true, copy_verdict: "approve_candidate", send_blockers: ["OWNER_APPROVAL_MISSING"] });
     expect(res.storedCopy).toMatchObject({ round: 0, copy_verdict: "approve_candidate", next_step: "owner_review", facts_from_facts_path: true, linked_version_id: res.versionId });
     const q = (await db.query("select gate_blockers, lane from public.sales_demo_copy_reviews where id = $1", [res.storedCopy!.review_id])).rows[0];

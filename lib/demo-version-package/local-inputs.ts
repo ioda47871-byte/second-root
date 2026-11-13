@@ -15,22 +15,16 @@
  *     used, here with every fact key mapped: an unmapped key is refused), compared as canonical JSON (jsonb does not keep
  *     key order). A 輪 demo (content.facts_pack = RIN_SHOP_ID) is refused: its photo packages are ai_demo_internal.
  *
- * This is the local facts path only. The hosted facts store (an append-only table written at registration) and the
- * send-time re-compare of the stored facts pack with the facts path are NOT here: both stay open owner-approval items
- * (.ai/reviews/DEV-263a.md).
+ * DEV-263f: this is the dev-only source of the facts. The importer's trusted facts come from the facts store
+ * (sales_demo_facts_packs, lib/sales/facts-store.ts): import-local.ts --trusted-facts registers the committed pack there
+ * (with an explicit admin identity) and imports from the store.
  */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
-import { demoContentFromFacts, RIN_SHOP_ID } from "./seed-rin";
 
-export class LocalInputError extends Error {
-  constructor(public readonly code: string) {
-    super(code);
-  }
-}
+export { LocalInputError } from "./local-input-error";
+import { LocalInputError } from "./local-input-error";
 
 /** The comp files of the copy (the names scripts/design-artifact/comp-copy.ts uses). */
 export const COMP_COPY_REVIEW = "copy-review.json";
@@ -124,59 +118,6 @@ export function readCommittedFacts(repo: string, path: string, o: { git?: GitRun
   return new Uint8Array(committed);
 }
 
-/** The fact keys the demo content maps (demoContentFromFacts): one of each, and numbered services / statements. */
-const SINGLE_KEYS = new Set(["name", "category", "ward", "address", "hours", "closed_days", "access", "phone", "description", "workshop"]);
-const MANY_KEY = /^(service|statement)_[1-9][0-9]{0,2}$/;
-
-export const factsPackSha256 = (b: Bytes) => createHash("sha256").update(b).digest("hex");
-
-/**
- * The demo content derived from facts pack bytes (FactsPack schema — strict, no extra field —, every key mapped, no
- * key twice, then demoContentFromFacts). An unmapped key (a fact the demo would not carry) is refused.
- */
-export function demoContentFromFactsBytes(b: Bytes): Record<string, unknown> {
-  let pack: FactsPack;
-  try {
-    pack = FactsPack.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(b)));
-  } catch {
-    throw new LocalInputError("TRUSTED_FACTS_INVALID");
-  }
-  const seen = new Set<string>();
-  for (const f of pack.facts) {
-    if (!SINGLE_KEYS.has(f.key) && !MANY_KEY.test(f.key)) throw new LocalInputError("TRUSTED_FACTS_UNMAPPED_KEY");
-    if (seen.has(f.key)) throw new LocalInputError("TRUSTED_FACTS_DUPLICATE_KEY");
-    seen.add(f.key);
-  }
-  try {
-    return demoContentFromFacts(pack);
-  } catch {
-    throw new LocalInputError("TRUSTED_FACTS_INCOMPLETE");
-  }
-}
-
-/** The content a demo seeded from these facts pack bytes holds: the derived content and the bytes' sha256. */
-export function demoContentWithFactsSha(b: Bytes): Record<string, unknown> {
-  return { ...demoContentFromFactsBytes(b), facts_pack_sha256: factsPackSha256(b) };
-}
-
-/** JSON with object keys sorted at every level (jsonb's key order is not the writer's). */
-export function canonicalJson(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(",")}]`;
-  if (v && typeof v === "object")
-    return `{${Object.keys(v as Record<string, unknown>)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonicalJson((v as Record<string, unknown>)[k])}`)
-      .join(",")}}`;
-  return JSON.stringify(v);
-}
-
-/**
- * Refuses unless the demo's content is exactly demoContentWithFactsSha of these facts pack bytes (it names their
- * sha256 and holds what they derive to). A 輪 demo is refused first.
- */
-export function assertDemoContentFromFacts(content: unknown, factsPack: Bytes): void {
-  const c = content && typeof content === "object" && !Array.isArray(content) ? (content as Record<string, unknown>) : null;
-  if (c?.facts_pack === RIN_SHOP_ID) throw new LocalInputError("TRUSTED_FACTS_RIN_DEMO");
-  if (!c || c.facts_pack_sha256 !== factsPackSha256(factsPack)) throw new LocalInputError("TRUSTED_FACTS_SHA_MISMATCH");
-  if (canonicalJson(c) !== canonicalJson(demoContentWithFactsSha(factsPack))) throw new LocalInputError("TRUSTED_FACTS_CONTENT_MISMATCH");
-}
+// DEV-263f: the derivation and the content check moved to ./facts-content (pure, also used by the admin's facts
+// registration); re-exported here for the local CLIs.
+export { assertDemoContentFromFacts, canonicalJson, demoContentFromFactsBytes, demoContentWithFactsSha, factsPackSha256 } from "./facts-content";

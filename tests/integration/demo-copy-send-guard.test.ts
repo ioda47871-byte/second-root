@@ -11,7 +11,7 @@ import { loadVersionCopyGate, OUTREACH_DEMO_SELECT, outreachCopyGate } from "@/l
 import { bundleSha256, sha256Hex, validateManifest, type ArtifactManifest } from "@/lib/sales/demo-version/manifest";
 import { QUALITY_CHECKLIST_ITEMS } from "@/lib/sales/demo-version/quality";
 import { auditReviseChain, candidateOf, cleanRound0, failingRound0, failingRound1, json, otherRound0, ownerReviseChain, sameFactsOtherLane, type Round } from "../support/copy-review-fixture";
-import { anonClient, approve, candidate, createUser, db, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
+import { anonClient, approve, candidate, createUser, db, makeAdmin, nameFactsInContent, registerFacts, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-199e (Issue #258 decision ①): the copy review store, the owner's copy confirmation and the copy send guard of a
 // demo version, on the LOCAL stack. Fictional / made-up shops and example.com only; no network, no model, no real send.
@@ -70,9 +70,16 @@ async function rawPkgOf(r: Round, earlier: Round[] = []): Promise<DemoVersionPac
 
 const versionCount = async (s: Shop) => (await db.query("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [s.demoId])).rows[0].n as number;
 
-/** importPackage as the local operator; `trusted`: the facts pack from the facts path (a test stand-in for it). */
-const importRound = (s: Shop, pkg: DemoVersionPackage, r: Round, trusted = true) =>
-  importPackage(pkg, { client: serviceClient(), store: memoryStore(), demoId: s.demoId, trustedFactsPack: trusted ? r.files.factsPack : null });
+/**
+ * importPackage as the local operator; `trusted`: the facts pack from the facts path — DEV-263f: registered in the facts
+ * store first (as the admin), then read from the store.
+ */
+const importRound = async (s: Shop, pkg: DemoVersionPackage, r: Round, trusted = true) => {
+  // the demo was derived from this pack (its content names it) whether or not the import reads the facts store
+  await nameFactsInContent(s.demoId, r.files.factsPack);
+  if (trusted) await registerFacts(s.demoId, r.files.factsPack, adminId);
+  return importPackage(pkg, { client: serviceClient(), store: memoryStore(), demoId: s.demoId, factsFromStore: trusted });
+};
 
 async function approveQuality(versionId: string) {
   const v = (await db.query("select bundle_sha256 from public.sales_demo_versions where id = $1", [versionId])).rows[0];
@@ -108,8 +115,11 @@ async function withSharingOn<T>(f: (c: PoolClient) => Promise<T>): Promise<T> {
   }
 }
 
-const recordDirect = (s: Shop, r: Round, o: { versionId?: string | null; gate?: string[]; facts?: boolean } = {}) => {
+const recordDirect = async (s: Shop, r: Round, o: { versionId?: string | null; gate?: string[]; facts?: boolean } = {}) => {
   const c = candidateOf(r);
+  // DEV-263f: a facts-path check needs the review's facts pack to be the shop's current stored one
+  await nameFactsInContent(s.demoId, c.factsPack);
+  if (o.facts ?? true) await registerFacts(s.demoId, c.factsPack, adminId);
   return serviceClient().rpc("sales_record_copy_review", {
     p_demo_id: s.demoId, p_version_id: o.versionId ?? null, p_review: c.review, p_copy_record: c.copyRecord, p_facts_pack: c.factsPack,
     p_page_html: c.pageHtml, p_page_css: c.pageCss, p_gate_blockers: o.gate ?? ["OWNER_APPROVAL_MISSING"], p_facts_from_facts_path: o.facts ?? true,
@@ -228,6 +238,8 @@ describe("each refusal of the copy send guard (database and server agree)", () =
     const s = await shop();
     const r0 = cleanRound0();
     const plain = await buildPackage({ html: String(r0.files.pageHtml), css: String(r0.files.pageCss), renders: { desktop_1440: new Uint8Array(await png(1440, 900)), mobile_390: new Uint8Array(await png(390, 900)) }, source: "test" });
+    // DEV-263f: the demo names the pack before the version is made (the version's facts are the demo's)
+    await nameFactsInContent(s.demoId, r0.files.factsPack);
     const v = await importPackage(plain, { client: serviceClient(), store: memoryStore(), demoId: s.demoId });
     const rec = await recordDirect(s, r0, { versionId: v.versionId, gate: ["OWNER_APPROVAL_MISSING", "REVIEW_INVALID"] });
     expect(rec.error, rec.error?.message).toBeNull();
@@ -439,6 +451,8 @@ describe("PR #262 M2: the facts-path check must be made on the version's facts",
   it("a check recorded after the demo's facts changed does not count for the version (demo_copy_facts_stale)", async () => {
     const s = await shop();
     const r0 = cleanRound0();
+    // DEV-263f: the facts are in the store (a check needs it), the import itself without the facts path
+    await registerFacts(s.demoId, r0.files.factsPack, adminId);
     const v = await importRound(s, await pkgOf(r0), r0, false);
     expect(await copyBlock(v.versionId)).toBe("demo_copy_facts_not_from_facts_path");
     await db.query("update public.sales_demos set content = content || '{\"note\": \"changed\"}'::jsonb where id = $1", [s.demoId]);

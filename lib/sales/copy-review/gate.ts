@@ -78,13 +78,41 @@ export type StoredOwnerDecision = {
   page_css_sha256: string;
 };
 
+/**
+ * DEV-263f: the shop's facts store — its CURRENT facts pack (the newest row of sales_demo_facts_packs for the prospect,
+ * or null) and the facts pack the demo's content names now (sales_demos.content.facts_pack_sha256, or null).
+ */
+export type FactsStoreState = {
+  current: { id: string; facts_sha256: string; demo_id: string } | null;
+  demoFactsPackSha256: string | null;
+};
+
 /** Everything stored for one shop: reviews in stored order, the owner's decisions, the facts-path checks. */
 export type ShopCopyState = {
   reviews: StoredCopyReview[];
   decisions: StoredOwnerDecision[];
-  /** the facts-path checks: the review's facts pack, and the demo's facts when the check was made (PR #262 M2) */
-  factsChecks: { review_id: string; facts_sha256: string; demo_facts_sha256: string }[];
+  /**
+   * the facts-path checks: the review's facts pack, the demo's facts when the check was made (PR #262 M2) and the store
+   * row it was made from (DEV-263f; null for a check made before the store: it does not count)
+   */
+  factsChecks: { review_id: string; facts_sha256: string; demo_facts_sha256: string; facts_pack_id: string | null }[];
+  /** DEV-263f */
+  factsStore: FactsStoreState;
 };
+
+/** The facts-path checks of a review that count: made from the facts store, on the review's facts pack. */
+export function storeFactsChecks(state: ShopCopyState, q: Pick<StoredCopyReview, "id" | "facts_sha256">): ShopCopyState["factsChecks"] {
+  return state.factsChecks.filter((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256 && typeof c.facts_pack_id === "string");
+}
+
+/**
+ * DEV-263f, the send-time re-compare (same rule as sales_copy_send_block): the review's facts pack must still be the
+ * shop's current stored facts pack, that row of the review's demo, and named by the demo's content now.
+ */
+export function factsStoreMatches(state: ShopCopyState, q: Pick<StoredCopyReview, "facts_sha256" | "demo_id">): boolean {
+  const cur = state.factsStore.current;
+  return !!cur && cur.facts_sha256 === q.facts_sha256 && cur.demo_id === q.demo_id && state.factsStore.demoFactsPackSha256 === cur.facts_sha256;
+}
 
 /** One round to store, as text (UTF-8, exactly the bytes reviewed). */
 export type CopyCandidate = { review: string; copyRecord: string; factsPack: string; pageHtml: string; pageCss: string };
@@ -219,9 +247,10 @@ export function evaluateVersionCopyGate(i: VersionCopyGateInput): VersionCopyGat
   const no = (code: CopySendCode, details: string[] = []): VersionCopyGate => ({ ok: false, code, details });
   const q = i.linkedReviewId ? i.state.reviews.find((r) => r.id === i.linkedReviewId) : undefined;
   if (!q) return no("demo_copy_review_missing");
-  const checks = i.state.factsChecks.filter((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256);
+  const checks = storeFactsChecks(i.state, q);
   if (!checks.length) return no("demo_copy_facts_not_from_facts_path");
   if (!checks.some((c) => c.demo_facts_sha256 === i.versionFactsSha256)) return no("demo_copy_facts_stale");
+  if (!factsStoreMatches(i.state, q)) return no("demo_copy_facts_changed");
   const chain = chainOf(i.state, q.lane, q.facts_content_sha256);
   if (q.page_html_sha256 !== i.pageHtmlSha256 || q.page_css_sha256 !== i.pageCssSha256 || chain.some((r) => r.round > q.round)) return no("demo_copy_review_stale");
   if (q.lane !== "real_shop_proposal" || q.copy_verdict !== "approve_candidate") return no("demo_copy_review_not_passed");
@@ -257,7 +286,8 @@ export function recheckStoredReview(i: Pick<VersionCopyGateInput, "photoUrls" | 
  * Why the owner may NOT record this decision on the version's linked review now (empty: the server may call
  * the database's decision function, which checks again). The database's rules (sales_check_copy_decision_write) and, for an
  * approval, what the send gate would still refuse: the facts-path check on the version's facts and the re-run audit.
- * Without a facts path (none exists yet) every decision is refused: COPY_FACTS_NOT_FROM_FACTS_PATH.
+ * Without a facts-path check made from the facts store every decision is refused: COPY_FACTS_NOT_FROM_FACTS_PATH; an
+ * approval also needs the review's facts pack to still be the shop's current stored one (DEV-263f: COPY_FACTS_CHANGED).
  */
 export function copyDecisionRefusals(i: VersionCopyGateInput, decision: CopyDecision): string[] {
   const q = i.linkedReviewId ? i.state.reviews.find((r) => r.id === i.linkedReviewId) : undefined;
@@ -265,9 +295,10 @@ export function copyDecisionRefusals(i: VersionCopyGateInput, decision: CopyDeci
   const out: string[] = [];
   if (q.page_html_sha256 !== i.pageHtmlSha256 || q.page_css_sha256 !== i.pageCssSha256) out.push("COPY_REVIEW_NOT_THIS_PAGE");
   if (q.lane !== "real_shop_proposal") out.push("COPY_FICTIONAL_LANE");
-  const checks = i.state.factsChecks.filter((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256);
+  const checks = storeFactsChecks(i.state, q);
   if (!checks.length) out.push("COPY_FACTS_NOT_FROM_FACTS_PATH");
   else if (decision === "approve" && !checks.some((c) => c.demo_facts_sha256 === i.versionFactsSha256)) out.push("COPY_FACTS_STALE");
+  else if (decision === "approve" && !factsStoreMatches(i.state, q)) out.push("COPY_FACTS_CHANGED");
   if (q.next_step !== "owner_review") out.push("COPY_NOT_AT_OWNER_REVIEW");
   if (decision === "revise" && q.round >= MAX_COPY_REVISION_ROUNDS) out.push("COPY_REVISION_CAP");
   if (chainOf(i.state, q.lane, q.facts_content_sha256).some((r) => r.round > q.round)) out.push("COPY_REVIEW_SUPERSEDED");

@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, test, type BrowserContext, type Page, type Request } from "@playwright/test";
 import pg from "pg";
@@ -17,14 +17,16 @@ import { setShareSwitch } from "../support/share-fixture";
 // DEV-263e (Issue #263 completion check 4): the whole sales MVP flow on the fictional, photo-less shop 環, end to end on
 // the real admin screens, against the LOCAL Supabase stack only:
 //
-//   candidate (import-local.ts --seed-sendable) → v2 package (package-local.ts --copy) imported with the facts from the
-//   local facts path (--trusted-facts: the copy result is facts_from_facts_path) → the admin preview of the version
+//   candidate (import-local.ts --seed-sendable) → DEV-263f: the owner registers 環's facts pack on the admin screen (the
+//   facts store) → v2 package (package-local.ts --copy) imported with the facts from the store (--facts-from-store: the
+//   copy result is facts_from_facts_path) → the admin preview of the version
 //   (PC 1440 / SP 390 renders) → the 7-item quality approval → the owner's copy decision 「文章を承認」 → send approval
 //   on the today card (pins the version) → the message carries the share URL → before 送信済み the URL is private →
 //   mail app handoff (mailto, captured; nothing leaves the machine) → 手動で送信済みにする → the share URL opened in a
 //   fresh, cookie-less browser context renders exactly the approved version from the artifact origin (sandboxed frame,
 //   noindex), never a newer unapproved version and never the React demo → reply → meeting.
-//   And the Instagram path: 環 again from a clean slate, reached by a fictional Instagram handle → the same approvals →
+//   And the Instagram path: 環 again from a clean slate, reached by a fictional Instagram handle, its facts registered by
+//   the dev-only CLI source (--trusted-facts --admin) → the same approvals →
 //   DMを送る (copies the text and opens Instagram, stubbed; no API send) → 手動で送信済みにする → the share URL.
 //
 // A second `next start` from the same build runs with every demo flag ON (versions, quality review, share), a signing
@@ -98,6 +100,7 @@ async function purge(ids: string[]) {
       "delete from public.sales_outreach_approvals where prospect_id = any($1::uuid[])",
       "delete from public.sales_outreaches where prospect_id = any($1::uuid[])",
       "delete from public.sales_demo_copy_facts_checks where review_id in (select id from public.sales_demo_copy_reviews where prospect_id = any($1::uuid[]))",
+      "delete from public.sales_demo_facts_packs where prospect_id = any($1::uuid[])",
       `delete from public.sales_demo_copy_owner_decisions where demo_id in ${D}`,
       `delete from public.sales_demo_version_copy_links where demo_id in ${D}`,
       `delete from public.sales_demo_structure_findings where demo_id in ${D}`,
@@ -153,14 +156,39 @@ function watchOrigins(ctx: BrowserContext): Set<string> {
   return origins;
 }
 
-/** import-local.ts with the facts from the local facts path; the copy came from that path. */
-function importTrusted(target: string[]): { versionId: string; bundleSha256: string } {
-  const r = tsx("scripts/sales/demo-version/import-local.ts", ["--package", pkgDir, ...target, "--trusted-facts", SENDABLE_FACTS_PATH]);
+/**
+ * import-local.ts with the facts from the facts store; the copy came from that path. `fromStore`: the facts the owner
+ * registered on the admin screen; otherwise the dev-only source (the committed pack registered as the admin first).
+ */
+function importTrusted(target: string[], fromStore = false): { versionId: string; bundleSha256: string } {
+  const facts = fromStore ? ["--facts-from-store"] : ["--trusted-facts", SENDABLE_FACTS_PATH, "--admin", adminId];
+  const r = tsx("scripts/sales/demo-version/import-local.ts", ["--package", pkgDir, ...target, ...facts]);
   expect(r.status, r.out).toBe(0);
   expect(r.json?.status).toBe("OK");
   const copy = r.json!.copy as Record<string, unknown>;
   expect(copy.facts_from_facts_path).toBe(true);
   return { versionId: r.json!.versionId as string, bundleSha256: r.json!.bundleSha256 as string };
+}
+
+/** DEV-263f: 店舗の事実の登録 on the admin version page — paste the committed pack, 内容を確認, この事実を登録する. */
+async function registerFactsOnAdmin(page: Page, prospectId: string) {
+  await page.goto(`${APP}/admin/sales/demos/${prospectId}`);
+  const panel = page.locator("[data-facts-registration]");
+  await expect(panel.locator("[data-facts-current]")).toHaveAttribute("data-facts-current", "none");
+  // a pack the demo was not derived from is refused (nothing registered)
+  await panel.locator("[data-facts-input]").fill(`${readFileSync(resolve(REPO, SENDABLE_FACTS_PATH), "utf8")} `);
+  await panel.getByRole("button", { name: "内容を確認" }).click();
+  await expect(panel.locator("[data-facts-preview]")).toHaveAttribute("data-facts-preview", "refused");
+  await expect(panel.getByRole("button", { name: "この事実を登録する" })).toBeDisabled();
+  await panel.locator("[data-facts-input]").fill(readFileSync(resolve(REPO, SENDABLE_FACTS_PATH), "utf8"));
+  await panel.getByRole("button", { name: "内容を確認" }).click();
+  await expect(panel.locator("[data-facts-preview]")).toHaveAttribute("data-facts-preview", "ok");
+  await expect(panel.locator("[data-facts-preview]")).toContainText("fictional-bicycle-repair-tamaki");
+  await panel.getByRole("button", { name: "この事実を登録する" }).click();
+  await expect(panel.locator("[data-facts-result]")).toHaveAttribute("data-facts-result", "done");
+  await expect(panel.locator("[data-facts-current]")).toHaveAttribute("data-facts-current", "ok");
+  const rows = (await db.query("select recorded_by, recorded_via from public.sales_demo_facts_packs where prospect_id = $1", [prospectId])).rows;
+  expect(rows).toEqual([{ recorded_by: adminId, recorded_via: "admin_session" }]);
 }
 
 /** The admin version page: preview PC 1440 / SP 390, then the 7-item quality approval and the owner's copy approval. */
@@ -312,13 +340,15 @@ test("email: candidate → trusted import → preview → quality + copy approva
   expect(seed.json).toMatchObject({ status: "OK", prospect_id: SENDABLE_PROSPECT_ID });
   expect((await db.query("select count(*)::int as n from public.sales_outreaches where prospect_id = $1", [SENDABLE_PROSPECT_ID])).rows[0].n).toBe(0);
 
-  // 2. the v2 package imported with the facts from the local facts path (copy: facts_from_facts_path)
-  const v = importTrusted(["--seed-sendable"]);
+  // 2. DEV-263f: the owner registers 環's facts pack on the admin screen (the facts store): check, then register
+  await login(page);
+  await registerFactsOnAdmin(page, SENDABLE_PROSPECT_ID);
+  // the v2 package imported with the facts from the store (copy: facts_from_facts_path)
+  const v = importTrusted(["--seed-sendable"], true);
   const demo = await demoOf(SENDABLE_PROSPECT_ID);
   expect(demo.approved_version_id).toBeNull();
 
   // 3-5. admin preview PC / SP, 7-item quality approval, the owner's copy approval
-  await login(page);
   await approveOnAdmin(page, SENDABLE_PROSPECT_ID, v.versionId);
 
   // 6. the today card: the exact recipient and text, with the share URL; send approval pins the approved version

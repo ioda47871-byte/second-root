@@ -9,11 +9,11 @@ import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
 import { importPackage, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, type DemoVersionPackage } from "@/lib/demo-version-package/package";
 import { auditReviseChain, cleanRound0, json, type Round } from "../support/copy-review-fixture";
-import { candidate, createUser, db, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
+import { candidate, createUser, db, makeAdmin, nameFactsInContent, registerFacts, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-199b (Issue #258, 2/3): the owner's copy decision through the server's core (lib/admin/demo-copy-review.ts) on the
 // LOCAL stack, as a signed-in admin (RLS reads, sales_decide_copy_review as auth.uid()). The made-up real-shop sample
-// only; no network, no model, no real send. The facts path is a test stand-in (trustedFactsPack): none exists in the app.
+// only; no network, no model, no real send. DEV-263f: the facts come from the facts store (registered as the admin).
 
 const COPY_TABLES = ["sales_demo_copy_reviews", "sales_demo_copy_facts_checks", "sales_demo_version_copy_links", "sales_demo_copy_owner_decisions"];
 const ENV = { SALES_DEMO_VERSIONS_ENABLED: "true", SALES_DEMO_QUALITY_REVIEW_ENABLED: "true" };
@@ -50,7 +50,9 @@ async function pkgOf(r: Round): Promise<DemoVersionPackage> {
 }
 
 async function imported(s: Shop, r: Round, trusted: boolean) {
-  const res = await importPackage(await pkgOf(r), { client: serviceClient(), store: memoryStore(), demoId: s.demoId, trustedFactsPack: trusted ? r.files.factsPack : null });
+  await nameFactsInContent(s.demoId, r.files.factsPack);
+  if (trusted) await registerFacts(s.demoId, r.files.factsPack, adminId);
+  const res = await importPackage(await pkgOf(r), { client: serviceClient(), store: memoryStore(), demoId: s.demoId, factsFromStore: trusted });
   return { versionId: res.versionId, reviewId: res.storedCopy!.review_id };
 }
 

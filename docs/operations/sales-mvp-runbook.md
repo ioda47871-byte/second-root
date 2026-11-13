@@ -63,12 +63,15 @@ npx tsx scripts/sales/demo-version/import-local.ts --seed-sendable --seed-only
 npx tsx scripts/sales/demo-version/package-local.ts --out /tmp/tamaki-pkg \
   --copy design-library/research/quality-pipeline/poc/sendable-tamaki/page \
   --facts design-library/research/quality-pipeline/poc/sendable-tamaki/facts-pack.json
-# 4. 取り込み。facts はローカルの facts の経路から (コミット済み・origin/develop と同じ blob)
+# 4. 取り込み。facts は facts の保存先 (sales_demo_facts_packs) から (DEV-263f)。どちらか 1 つ:
+#  (a) 管理画面で facts を登録してから (A-5 の 2 の「店舗の事実の登録」)、保存先で取り込む
+npx tsx scripts/sales/demo-version/import-local.ts --package /tmp/tamaki-pkg --seed-sendable --facts-from-store
+#  (b) 開発用: コミット済みの facts pack (origin/develop と同じ blob) を管理者として登録してから取り込む
 npx tsx scripts/sales/demo-version/import-local.ts --package /tmp/tamaki-pkg --seed-sendable \
-  --trusted-facts design-library/research/quality-pipeline/poc/sendable-tamaki/facts-pack.json
+  --trusted-facts design-library/research/quality-pipeline/poc/sendable-tamaki/facts-pack.json --admin "$ADMIN_ID"
 ```
 
-4 の出力の `copy.facts_from_facts_path` が `true` であること。
+4 の出力の `copy.facts_from_facts_path` が `true` であること ((b) は `facts_registered` も出る)。facts が未登録のまま (a) を流すと `FACTS_STORE_EMPTY` で止まる (何も書かない)。
 
 ### A-3. DB の共有スイッチ (ローカル)
 
@@ -95,6 +98,7 @@ npm run build && npm run start            # http://127.0.0.1:3000
 
 1. `http://127.0.0.1:3000/admin/login` でログイン。
 2. `http://127.0.0.1:3000/admin/sales/demos/5e2d0a63-7c1b-4f0e-9a6d-263a00000001` を開く。
+   - (A-2 の 4 (a) のとき、取り込みの前に) 「店舗の事実の登録」に `facts-pack.json` の中身を貼り、**内容を確認** → 事実の一覧を見て **この事実を登録する**。デモの事実がその pack から作られていなければ登録できない。登録は追記のみ。
    - PC 1440 と SP 390 の描画を**最後までスクロール**して見る (タブで切り替え)。
    - 「文章の監査」で facts の経路から (`はい`)・監査は承認候補、であることを確かめる。
 3. 品質の 7 項目に「問題なし」を付け、確認のチェックを入れて **品質承認**。
@@ -130,6 +134,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 2. `20261113000000_sales_demo_copy_send_guard.sql` (DEV-199e: 文章の監査と送信の門)
 3. `20261114000000_sales_demo_structure_findings.sql` (DEV-196q: 構造の所見)
 4. `20261114000100_sales_demo_share_switch.sql` (DEV-196g: DB の共有スイッチ、既定 false)
+5. `20261115000000_sales_demo_facts_store.sql` (DEV-263f: facts の保存先と送信時の比べ直し。B-2)
 
 - Staging で先に当て、`scripts/staging/` の照合を通してから Production。
 - 当てた直後の挙動は前と同じ (旗が off、スイッチが false なので、版は出ず React のデモのまま)。
@@ -139,10 +144,12 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 
 ### B-2. 🛑 承認: 未完了の安全装置 (実店舗に送る前に必須)
 
-実在の店に送る前に、次の 3 つを入れる。どれも migration か hosted の保存先が要るので、別 Task・別承認:
+実在の店に送る前に、次の 3 つを入れる。どれも migration が要る:
 
-- **hosted の facts の保存先**: 登録時に書く追記のみの表。今の facts の経路はローカル (コミット済みの facts pack) だけ。
-- **送信時の facts の比べ直し**: 送信承認の時点で、保存済みの文章の監査の facts pack を facts の経路のものと比べ直す (`sales_copy_send_block` と `lib/sales/copy-review/gate.ts` の両方)。
+- **hosted の facts の保存先** (DEV-263f、ローカルで実装済み・hosted は未適用): `sales_demo_facts_packs` (追記のみ)。書けるのはオーナーだけ (管理画面の「店舗の事実の登録」= `sales_register_facts_pack`、または CLI の `--trusted-facts … --admin <管理者>` = `sales_register_facts_pack_as`)。デモの `content.facts_pack_sha256` / `content.facts_pack` がその pack を名指すときだけ登録できる。取り込みは保存先から (`--facts-from-store`)。
+- **送信時の facts の比べ直し** (DEV-263f、同上): `sales_copy_send_block` と `lib/sales/copy-review/gate.ts` の両方で、文章の監査の facts pack が prospect の今の facts pack (最新の行、この demo のもの、demo の content が名指す) と同じでなければ `demo_copy_facts_changed` で止める。保存先より前の照合の証拠は数えない。
+  - hosted に当てるとき: 上の B-1 の 5。当てると**既存の照合の証拠は数えなくなる**ので、版の送信は `demo_copy_facts_not_from_facts_path` で止まる。店ごとに facts を登録し、同じ包みを取り込み直す (replay で証拠だけ足す)。サーバーのコードと同時に出す (片方だけなら fail closed)。rollback は `.ai/reviews/DEV-263f.md`。
+  - まだ無いもの: 実店舗の demo の content を facts pack から作る経路 (今は 環 の seed だけ)。最初の実店舗の前に別 Task。
 - **DB 側のテスト宛先の guard**: 架空の店・予約済みのドメインへの承認を `sales_approve_outreach` でも拒否する (今はサーバーの門 `lib/sales/test-recipient.ts` だけ)。
 
 ### B-3. 🛑 承認: 成果物の origin (DNS / Vercel)
@@ -191,6 +198,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
+   - `20261115000000`: 戻す SQL は `.ai/reviews/DEV-263f.md` (送信の門と照合の証拠の trigger を 20261113000000 の定義に戻し、列・関数・表を drop。登録した facts は消える。消す前に人が判断する)。
    - `20261114000100`: 本文の先頭の Rollback の注記 (DEV-196c の定数に戻す SQL)。`.ai/reviews/DEV-196g.md` にも同じもの。
    - `20261114000000`: 本文の先頭の Rollback の注記 (表と関数を drop)。
    - `20261113000000`: forward-only。戻す SQL は `.ai/reviews/DEV-199e.md`。

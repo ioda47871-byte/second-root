@@ -9988,8 +9988,7 @@
         "監査の verdict が approve_candidate でない頁は次の段へ進まない",
         "根拠が足りなければ再生成せず HOLD",
         "入力の hash が変わると審査をやり直す",
-        "オーナー承認なしに送信・実店舗向け完成にならない",
-        "DEV-199e PR #262 M2 の必須の前提: facts の経路 (生成・改稿の側が書けない店舗の facts pack の保存先) を接続するときは、送信の時点で保存済みの review の facts pack (sales_demo_copy_reviews.facts_pack_text / facts_sha256) を今の facts の経路の facts pack と比べ直し、違えば送信を止める (送信の門 sales_copy_send_block と lib/sales/copy-review/gate.ts の両方)。取り込みの時の照合 (sales_demo_copy_facts_checks) だけでは足りない"
+        "オーナー承認なしに送信・実店舗向け完成にならない"
       ],
       "required_tests": [
         "unit (経路の分岐)",
@@ -10019,14 +10018,14 @@
       "human_approval_triggers": [
         "新しい prompt の版はオーナー承認",
         "DB の変更はオーナー承認",
-        "facts の経路 (店舗の facts pack の保存先) の新設と、その送信時の比べ直し (上の必須の前提) はオーナー承認 (未着手)",
+        "facts の経路 (店舗の facts pack の保存先) と送信時の比べ直しは DEV-263f (ローカルの migration まで。hosted への適用は別のオーナー承認)",
         "フラグの有効化 (SALES_DEMO_VERSIONS_ENABLED / SALES_DEMO_QUALITY_REVIEW_ENABLED) は別の承認",
         "PR の Fresh Review と merge"
       ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-199b-copy-gate-integration",
-      "note": "記録は .ai/reviews/DEV-199b.md。comp-lane の show_owner は文章の監査がオーナーの確認の段のときだけ通る。管理画面に文章の監査の区画とオーナーの文章の確認 (フラグの後ろ、既定 OFF)。facts の経路はコードベースに無いので作っていない: facts_from_facts_path は常に false で送信不可・オーナーの確認も拒否、上の必須の前提 (送信の時の比べ直し) は未着手のまま開いている。migration なし。Issue #258"
+      "note": "記録は .ai/reviews/DEV-199b.md。comp-lane の show_owner は文章の監査がオーナーの確認の段のときだけ通る。管理画面に文章の監査の区画とオーナーの文章の確認 (フラグの後ろ、既定 OFF)。facts の経路はコードベースに無いので作っていない: facts_from_facts_path は常に false で送信不可・オーナーの確認も拒否、送信の時の比べ直し (旧・必須の前提) は DEV-263f で入れた (hosted の facts の保存先 sales_demo_facts_packs と sales_copy_send_block / gate.ts の demo_copy_facts_changed)。migration なし。Issue #258"
     },
     {
       "id": "DEV-199c",
@@ -10255,8 +10254,7 @@
         "progress.md"
       ],
       "human_approval_triggers": [
-        "hosted の facts の保存先 (登録の時に書く追記のみの表) の新設はオーナー承認 (未着手)",
-        "送信の時点での保存済みの facts pack と facts の経路の比べ直し (DEV-199b の必須の前提) はオーナー承認 (未着手)",
+        "hosted の facts の保存先と送信時の比べ直しは DEV-263f (hosted への適用は別のオーナー承認)",
         "架空の店・予約済みドメインの送信拒否の DB 側の guard (migration) は承認が要る (今はサーバーの門だけ)",
         "フラグの有効化・Staging / Production への適用は別の承認",
         "PR の Fresh Review と merge"
@@ -10269,7 +10267,7 @@
     {
       "id": "DEV-263e",
       "title": "営業 MVP の全体のローカル E2E (架空の店 環: 取り込み → 承認 → 送信承認 → 共有 URL → 送信済み → 返信・商談) と運用手順 (Issue #263 の 4・5)",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-263a",
@@ -10309,13 +10307,63 @@
       ],
       "human_approval_triggers": [
         "runbook の B-1〜B-6 (migration・未完了の安全装置・成果物の origin・環境変数・DB の共有スイッチ・最初の実店舗) はどれもオーナーの承認",
-        "hosted の facts の保存先・送信時の facts の比べ直し・DB 側のテスト宛先の guard (DEV-263a から開いたまま)",
+        "hosted の facts の保存先・送信時の facts の比べ直しは DEV-263f、DEV-263a からの DB 側のテスト宛先の guard は DEV-263g",
         "PR の Fresh Review と merge (PR #267 の後)"
       ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-263e-sales-e2e",
-      "note": "記録は .ai/reviews/DEV-263e.md。PR #267 (DEV-196g) の branch を merge commit で取り込んだ上。migration なし。Issue #263"
+      "note": "記録は .ai/reviews/DEV-263e.md。PR #267 (DEV-196g) の branch を merge commit で取り込んだ上。migration なし。Issue #263。PR #268 merged (develop d3e31891)"
+    },
+    {
+      "id": "DEV-263f",
+      "title": "hosted の facts の保存先 (sales_demo_facts_packs、追記のみ・オーナーだけが書く) と送信時の facts の比べ直し (Issue #263、runbook B-2 の 1・2)",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-263e"
+      ],
+      "purpose": "実店舗に送る前に必須の安全装置 (runbook B-2): 店の信頼できる facts pack を DB に保存し、取り込みの照合と送信の門がそれを使う",
+      "acceptance_criteria": [
+        "追記のみの表 sales_demo_facts_packs (バイト・sha256・jsonb の正規形の hash・shop_id、prospect / demo に結び付き、demo の content.facts_pack_sha256 / facts_pack が一致)。update / delete 不可、RLS は admin の読み出しだけ",
+        "書けるのはオーナーだけ: sales_register_facts_pack (署名済みの sales admin、SECURITY DEFINER) と sales_register_facts_pack_as (service role だけ、sales_admins にある admin の id を明示)。API role の直接の書き込みは trigger が拒否。生成・包みの取り込みは書かない",
+        "取り込みの trustedFactsPack は保存先から (importPackage factsFromStore、import-local --facts-from-store)。コミット済みの facts pack は開発用の出どころとして残す (--trusted-facts --admin: 登録してから保存先で取り込む)。照合の証拠 (sales_demo_copy_facts_checks.facts_pack_id) は保存先の行を名指す",
+        "送信時の比べ直し: sales_copy_send_block と gate.ts (approveSend の前の outreachCopyGate) の両方で、review の facts pack = prospect の今の facts pack (この demo の行) = demo の content が名指すもの、でなければ demo_copy_facts_changed。保存先以前の証拠は数えない",
+        "管理画面: 版の頁で facts pack (JSON) を貼る → 内容を確認 (FactsPack と demo の content の一致) → 登録 (旗の後ろ)",
+        "DEV-199b の必須の前提を tasks.json から外す",
+        "rollback SQL を review の記録に置き、統合テストで確かめる"
+      ],
+      "required_tests": [
+        "統合 (ローカルの Supabase): 新しい demo-facts-store と既存の demo-copy-send-guard・demo-copy-decision・demo-sendable-seed、全体",
+        "unit (gate・admin の facts pack・staging の一覧・既存の sales / admin / demo-version-package)",
+        "e2e: sales-mvp-flow (管理画面で facts を登録、--facts-from-store / --trusted-facts --admin)",
+        "tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261115000000_sales_demo_facts_store.sql (新規、ローカルだけ)",
+        "lib/sales/facts-store.ts・lib/admin/demo-facts-pack.ts・components/admin/demo/FactsPackRegistration.tsx (新規)",
+        "lib/sales/copy-review/{gate,store,labels,view}.ts・lib/demo-version-package/{import,local-inputs,facts-content,local-input-error}.ts・scripts/sales/demo-version/import-local.ts",
+        "app/admin/sales/_actions/demo-versions.ts・app/admin/sales/demos/[prospectId]/page.tsx",
+        "scripts/staging/lib.mjs (NO_DELETE_TABLES)",
+        "関係するテスト・docs/operations/sales-mvp-runbook.md・.ai/tasks.json・.ai/reviews/DEV-263f.md"
+      ],
+      "forbidden_scope": [
+        "Staging・Production への migration の適用、環境変数・DNS・Vercel の変更",
+        "実送信、Codex・画像生成・LLM の呼び出し",
+        "SR-001「輪」のデータの変更",
+        "workflow・package.json・lockfile・prompt・skill",
+        "guard の緩和",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "migration 20261115000000 の Staging / Production への適用 (runbook B-1・B-2)",
+        "実店舗の demo の content を facts pack から作る経路 (候補の登録 / 取り込み) は別の Task",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-263f-facts-store",
+      "note": "記録は .ai/reviews/DEV-263f.md。migration はローカルのスタックだけ。Issue #263"
     }
   ]
 }

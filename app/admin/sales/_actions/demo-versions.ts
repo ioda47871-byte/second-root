@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { submitCopyDecision, type CopyDecisionResult } from "@/lib/admin/demo-copy-review";
+import { previewFactsPack, submitFactsPack, type FactsPackPreview, type FactsPackSubmitResult } from "@/lib/admin/demo-facts-pack";
 import { submitRevoke, submitWithdraw, type LifecycleResult } from "@/lib/admin/demo-lifecycle";
 import { submitDemoReview, type ReviewResult } from "@/lib/admin/demo-review";
 import { QUALITY_REVIEW_DISABLED_TEXT } from "@/lib/sales/demo-version/admin-messages";
@@ -58,6 +59,23 @@ export async function revokeDemoVersion(input: unknown): Promise<LifecycleResult
   if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
   await requireAdmin();
   const result = await submitRevoke(input, { env: process.env, now: new Date(), client: await createAuthClient() });
+  if (result.ok) revalidate(input);
+  return result;
+}
+
+// DEV-263f: 店舗の事実の登録 — the same order: flag, admin, then lib/admin/demo-facts-pack.ts checks the pasted facts
+// pack against the demo's content (preview writes nothing) and registers it only through sales_register_facts_pack as
+// the admin (append-only; the database checks the admin, the hashes and the demo's content again).
+export async function previewDemoFactsPack(input: unknown): Promise<FactsPackPreview> {
+  if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
+  await requireAdmin();
+  return previewFactsPack(input, { env: process.env, client: await createAuthClient() });
+}
+
+export async function registerDemoFactsPack(input: unknown): Promise<FactsPackSubmitResult> {
+  if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
+  await requireAdmin();
+  const result = await submitFactsPack(input, { env: process.env, client: await createAuthClient() });
   if (result.ok) revalidate(input);
   return result;
 }
