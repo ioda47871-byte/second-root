@@ -13,7 +13,7 @@ import {
 } from "@/lib/sales/copy-review/gate";
 import { COPY_SEND_CODES, COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels";
 import { SEND_ERROR_LABEL, sendErrorMessage } from "@/lib/sales/approval";
-import { auditReviseChain, candidateOf, cleanRound0, fictionalRound0, json, otherRound0, ownerReviseChain, type Round } from "../../../support/copy-review-fixture";
+import { auditReviseChain, candidateOf, cleanRound0, failingRound0, failingRound1, fictionalRound0, json, otherRound0, ownerReviseChain, sameFactsOtherLane, type Round } from "../../../support/copy-review-fixture";
 
 // DEV-199e (Issue #258 decision ①): the server side of the copy review store (what may be appended) and the copy send
 // gate of a demo version. The database side is tests/integration/demo-copy-send-guard.test.ts.
@@ -21,6 +21,7 @@ import { auditReviseChain, candidateOf, cleanRound0, fictionalRound0, json, othe
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const NO_PHOTOS: ReadonlySet<string> = new Set();
 const VERSION = "aaaaaaaa-0000-4000-8000-000000000001";
+const VFACTS = "9".repeat(64);
 const empty = (): ShopCopyState => ({ reviews: [], decisions: [], factsChecks: [] });
 
 /** Stores the rounds in order through planCopyAppend (as the importer does), with stable ids. */
@@ -32,7 +33,7 @@ function store(rounds: Round[], o: { state?: ShopCopyState; factsChecked?: boole
     if (plan.replay) continue;
     const row: StoredCopyReview = { ...plan.row, id: `review-${s.reviews.length}`, demo_id: "demo-1" };
     s.reviews.push(row);
-    if (o.factsChecked !== false) s.factsChecks.push({ review_id: row.id, facts_sha256: row.facts_sha256 });
+    if (o.factsChecked !== false) s.factsChecks.push({ review_id: row.id, facts_sha256: row.facts_sha256, demo_facts_sha256: VFACTS });
   }
   return s;
 }
@@ -53,6 +54,7 @@ const decide = (q: StoredCopyReview, decision: StoredOwnerDecision["decision"], 
 const gateInput = (s: ShopCopyState, q: StoredCopyReview, over: Partial<VersionCopyGateInput> = {}): VersionCopyGateInput => ({
   versionId: VERSION,
   photoUrls: NO_PHOTOS,
+  versionFactsSha256: VFACTS,
   pageHtmlSha256: q.page_html_sha256,
   pageCssSha256: q.page_css_sha256,
   linkedReviewId: q.id,
@@ -117,7 +119,49 @@ describe("planCopyAppend: copyReviewAppendBlockers against every stored review A
   });
 });
 
+describe("PR #262 M1: failed reviews are stored, and a fail is terminal for its facts content", () => {
+  it("round-0 fail: stored (stop_fail); a resubmission for the same facts is refused", () => {
+    const f0 = failingRound0();
+    expect(f0.review.verdict).toBe("fail");
+    const s = store([f0]);
+    expect(s.reviews[0]).toMatchObject({ next_step: "stop_fail", copy_verdict: "fail" });
+    expect(s.reviews[0]!.gate_blockers).toEqual(expect.arrayContaining(["REVIEW_NOT_PASSED", "OWNER_APPROVAL_MISSING"]));
+    expect(planCopyAppend(s, candidateOf(cleanRound0()), NO_PHOTOS)).toMatchObject({ ok: false, codes: expect.arrayContaining(["STORED_FAIL_IS_TERMINAL", "ROUND_0_ALREADY_STORED"]) });
+  });
+
+  it("round-1 fail: stored after its round 0; nothing (another round 1, a round 0) may follow", () => {
+    const [r0, bad1] = failingRound1();
+    expect(bad1.review.verdict).toBe("fail");
+    const s = store([r0, bad1]);
+    expect(s.reviews[1]).toMatchObject({ round: 1, next_step: "stop_fail" });
+    const [, good1] = auditReviseChain();
+    expect(planCopyAppend(s, candidateOf(good1), NO_PHOTOS)).toMatchObject({ ok: false, codes: expect.arrayContaining(["STORED_FAIL_IS_TERMINAL"]) });
+    expect(planCopyAppend(s, candidateOf(cleanRound0()), NO_PHOTOS)).toMatchObject({ ok: false, codes: expect.arrayContaining(["STORED_FAIL_IS_TERMINAL"]) });
+  });
+
+  it("a lane switch for the same facts content is refused (it would start a fresh chain)", () => {
+    const s = store([cleanRound0()]);
+    const other = sameFactsOtherLane();
+    expect(other.review.facts_content_sha256).toBe(s.reviews[0]!.facts_content_sha256);
+    expect(planCopyAppend(s, candidateOf(other), NO_PHOTOS)).toMatchObject({ ok: false, codes: expect.arrayContaining(["CHAIN_LANE_SWITCH"]) });
+  });
+
+  it("a forged fail (not the audit of its files) is still refused", () => {
+    const f0 = failingRound0();
+    const forged = { ...candidateOf(f0), review: json({ ...f0.review, sections: [] }) };
+    expect(planCopyAppend(empty(), forged, NO_PHOTOS)).toMatchObject({ ok: false, codes: expect.arrayContaining(["REVIEW_INVALID", "REVIEW_DOES_NOT_MATCH_AUDIT"]) });
+  });
+});
+
 describe("evaluateVersionCopyGate: every refusal, then the happy path", () => {
+  it("PR #262 M2: the facts-path check must be made on the facts the version was generated from", () => {
+    const s = store([cleanRound0()]);
+    const q = s.reviews[0]!;
+    s.decisions.push(decide(q, "approve"));
+    expect(evaluateVersionCopyGate(gateInput(s, q, { versionFactsSha256: "8".repeat(64) }))).toMatchObject({ ok: false, code: "demo_copy_facts_stale" });
+    expect(evaluateVersionCopyGate(gateInput(s, q, { versionFactsSha256: null }))).toMatchObject({ ok: false, code: "demo_copy_facts_stale" });
+  });
+
   const approved = () => {
     const s = store([cleanRound0()]);
     const q = s.reviews[0]!;

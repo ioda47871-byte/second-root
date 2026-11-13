@@ -81,7 +81,8 @@ export type StoredOwnerDecision = {
 export type ShopCopyState = {
   reviews: StoredCopyReview[];
   decisions: StoredOwnerDecision[];
-  factsChecks: { review_id: string; facts_sha256: string }[];
+  /** the facts-path checks: the review's facts pack, and the demo's facts when the check was made (PR #262 M2) */
+  factsChecks: { review_id: string; facts_sha256: string; demo_facts_sha256: string }[];
 };
 
 /** One round to store, as text (UTF-8, exactly the bytes reviewed). */
@@ -154,10 +155,17 @@ export function planCopyAppend(state: ShopCopyState, c: CopyCandidate, photoUrls
     r,
     { ownerRevision: last && lastRevision ? ownerApprovalOf(lastRevision, last) : null },
   );
+  // PR #262 M1: a fail is terminal for the facts content (any lane), and one facts content has one lane
+  const sameFacts = state.reviews.filter((q) => q.facts_content_sha256 === r.facts_content_sha256);
+  if (sameFacts.some((q) => q.next_step === "stop_fail")) codes.push("STORED_FAIL_IS_TERMINAL");
+  if (sameFacts.some((q) => q.lane !== r.lane)) codes.push("CHAIN_LANE_SWITCH");
   const files: CopyQualityFiles = { factsPack: c.factsPack, copyRecord: c.copyRecord, pageHtml: c.pageHtml, pageCss: c.pageCss };
   const previous = priorRoundsOf(state, chain);
   const check = checkCopyQualityReview(r, files, { previous, photoUrls });
-  if (!check.ok) codes.push("REVIEW_INVALID", ...check.codes);
+  // a failed review is stored too (honest: the only findings are the failed revision step the review names itself)
+  const named = new Set(r.revision_findings.filter((x) => x.severity === "fail").map((x) => x.code));
+  const honestFail = r.verdict === "fail" && check.codes.every((code) => code === "REVISION_INVALID" || named.has(code));
+  if (!check.ok && !honestFail) codes.push("REVIEW_INVALID", ...check.codes);
   if (codes.length) return { ok: false, codes: [...new Set(codes)] };
   const gateBlockers = copyGateSendBlockers(r, files, null, { previous, photoUrls });
   const row: StoredCopyReview = {
@@ -191,6 +199,8 @@ export type VersionCopyGateInput = {
   /** the photo URLs of the version's page (photoUrlPaths(manifest)): the same set the import audited with */
   photoUrls: ReadonlySet<string>;
   /** sha256 of the version's page/index.html and page/style.css (sales_demo_version_files) */
+  /** the version's facts_sha256 (sales_demo_versions): the facts-path check must be made on these facts (PR #262 M2) */
+  versionFactsSha256: string | null;
   pageHtmlSha256: string | null;
   pageCssSha256: string | null;
   /** sales_demo_version_copy_links.review_id of the version, or null */
@@ -208,7 +218,9 @@ export function evaluateVersionCopyGate(i: VersionCopyGateInput): VersionCopyGat
   const no = (code: CopySendCode, details: string[] = []): VersionCopyGate => ({ ok: false, code, details });
   const q = i.linkedReviewId ? i.state.reviews.find((r) => r.id === i.linkedReviewId) : undefined;
   if (!q) return no("demo_copy_review_missing");
-  if (!i.state.factsChecks.some((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256)) return no("demo_copy_facts_not_from_facts_path");
+  const checks = i.state.factsChecks.filter((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256);
+  if (!checks.length) return no("demo_copy_facts_not_from_facts_path");
+  if (!checks.some((c) => c.demo_facts_sha256 === i.versionFactsSha256)) return no("demo_copy_facts_stale");
   const chain = chainOf(i.state, q.lane, q.facts_content_sha256);
   if (q.page_html_sha256 !== i.pageHtmlSha256 || q.page_css_sha256 !== i.pageCssSha256 || chain.some((r) => r.round > q.round)) return no("demo_copy_review_stale");
   if (q.lane !== "real_shop_proposal" || q.copy_verdict !== "approve_candidate") return no("demo_copy_review_not_passed");

@@ -36,7 +36,7 @@ import { ownerRevisionsOf, planCopyAppend, type CopyCandidate, type ShopCopyStat
 import { CopyStoreError, loadShopCopyState, recordCopyReview, type RecordedCopyReview } from "@/lib/sales/copy-review/store";
 import { CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
-import { checkPackageCopy, PACKAGE_FORMAT_COPY, type DemoVersionPackage } from "./package";
+import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./package";
 import { RIN_PROSPECT_ID } from "./seed-rin";
 
 export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";
@@ -134,6 +134,26 @@ function copyCandidates(pkg: DemoVersionPackage, rounds: number): CopyCandidate[
   return out;
 }
 
+/**
+ * PR #262 M1: stores the rounds of a package whose last review honestly failed (no version is linked). Anything the
+ * store refuses (a fail already stored, a broken chain) is left as it is: the import is refused either way.
+ */
+async function recordFailedCopy(client: SupabaseClient, demoId: string, state: ShopCopyState, pkg: DemoVersionPackage, round: number, factsFromFactsPath: boolean): Promise<void> {
+  let plan: { candidate: CopyCandidate; gateBlockers: string[] }[];
+  try {
+    plan = planStore(state, copyCandidates(pkg, round), photoUrlPaths(pkg.manifest));
+  } catch {
+    return;
+  }
+  for (const p of plan) {
+    try {
+      await recordCopyReview(client, { demoId, versionId: null, candidate: p.candidate, gateBlockers: p.gateBlockers, factsFromFactsPath });
+    } catch {
+      return;
+    }
+  }
+}
+
 /** Each round must be appendable to the store, in order (the later rounds planned on top of the earlier ones). */
 function planStore(state: ShopCopyState, candidates: readonly CopyCandidate[], photoUrls: ReadonlySet<string>): { candidate: CopyCandidate; gateBlockers: string[] }[] {
   const s: ShopCopyState = { reviews: [...state.reviews], decisions: state.decisions, factsChecks: state.factsChecks };
@@ -167,7 +187,15 @@ export async function importPackage(
     }
   }
   // DEV-199d: the copy, recomputed from the package's bytes, before the database is written (throws PackageError)
-  const copy = checkPackageCopy(pkg, { trustedFactsPack: o.trustedFactsPack ?? null, ownerRevisions: state ? ownerRevisionsOf(state) : [] });
+  let copy: PackageCopyResult;
+  try {
+    copy = checkPackageCopy(pkg, { trustedFactsPack: o.trustedFactsPack ?? null, ownerRevisions: state ? ownerRevisionsOf(state) : [] });
+  } catch (e) {
+    // PR #262 M1: an honest failed review is recorded (no version, terminal for its facts content) before the refusal,
+    // so the same facts cannot be resubmitted until a review passes. The import is still refused with the same error.
+    if (e instanceof PackageError && e.failedCopyRound !== undefined && state) await recordFailedCopy(o.client, o.demoId, state, pkg, e.failedCopyRound, o.trustedFactsPack != null);
+    throw e;
+  }
   const toStore = copy.status === "checked" && state ? planStore(state, copyCandidates(pkg, copy.round), photoUrlPaths(pkg.manifest)) : [];
   if (pkg.images.length > 0) {
     // AI demo pictures belong to the fictional 輪 only: the demo must be that prospect's

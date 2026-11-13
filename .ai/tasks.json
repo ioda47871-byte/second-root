@@ -9872,14 +9872,16 @@
       "status": "backlog",
       "priority": "P1",
       "depends_on": [
-        "DEV-199a"
+        "DEV-199a",
+        "DEV-199e"
       ],
       "purpose": "Issue #258 の 2。copy_quality_review_v1 を実際にコピーが作られる経路 (今は comp-lane の手書き copy.json) に接続し、REVISE/HOLD なら次の提出・営業候補の完了に進まない。局所改稿 (最大2回) の後に再監査。既存の copy-record・facts SHA・権利・出典の検査は変更・緩和しない。prompt は変えない (新版が要るならオーナー承認)",
       "acceptance_criteria": [
         "監査の verdict が approve_candidate でない頁は次の段へ進まない",
         "根拠が足りなければ再生成せず HOLD",
         "入力の hash が変わると審査をやり直す",
-        "オーナー承認なしに送信・実店舗向け完成にならない"
+        "オーナー承認なしに送信・実店舗向け完成にならない",
+        "DEV-199e PR #262 M2 の必須の前提: facts の経路 (生成・改稿の側が書けない店舗の facts pack の保存先) を接続するときは、送信の時点で保存済みの review の facts pack (sales_demo_copy_reviews.facts_pack_text / facts_sha256) を今の facts の経路の facts pack と比べ直し、違えば送信を止める (送信の門 sales_copy_send_block と lib/sales/copy-review/gate.ts の両方)。取り込みの時の照合 (sales_demo_copy_facts_checks) だけでは足りない"
       ],
       "required_tests": [
         "unit (経路の分岐)",
@@ -10006,7 +10008,8 @@
         "送信の門: sales_copy_send_block と sales_demo_version_send_block (sales_send_guards → 承認・送信画面・送信済み) が、review なし・facts の経路と未照合・古い (版のファイルと不一致・後の round あり)・実店舗の approve_candidate でない・サーバーの gate に OWNER_APPROVAL_MISSING 以外が残る・オーナーの approve がない / 別の版 / 別の hash のどれでも拒否。サーバーの approveSend も保存されたバイトで監査を再実行し (copyGateSendBlockers + 保存済みの鎖 + オーナーの承認)、DB の前に拒否",
         "取り込み (importPackage): DB に書く前に店の保存済み review をすべて読み、copyReviewAppendBlockers (全件) と checkCopyQualityReview (保存済みの鎖・同じ photoUrls) を両方通す。オーナーの改稿依頼はオーナーの保存先からだけ。版の後に round を順に保存し最後の round を版に結び付ける。trustedFactsPack が無ければ facts_from_facts_path=false (送信不可)",
         "既存データ: 埋め戻しなし。既存の版は copy review が無いので版の経路では送信不可。承認された版の無いデモ (React のデモ) は今までどおり。版の共有は無効のまま (copy の検査は demo_not_shareable の後)。事実・権利・画像の検査は変更しない",
-        "テスト: 各拒否理由・正常系・追記のみ / 変更不可・RLS (管理者以外は書けない、サービスロールはオーナーの記録を書けない)・round 0 の再提出の拒否・ファイル変更後の stale・React のデモへの影響なし・既存データの上での migration と rollback (取り消す transaction の中)"
+        "テスト: 各拒否理由・正常系・追記のみ / 変更不可・RLS (管理者以外は書けない、サービスロールはオーナーの記録を書けない)・round 0 の再提出の拒否・ファイル変更後の stale・React のデモへの影響なし・既存データの上での migration と rollback (取り消す transaction の中)",
+        "PR #262 Fresh Review: fail の review も保存し (取り込みは拒否のまま)、fail は同じ prospect + facts の内容で終端 (どのレーンでも次を拒否)、同じ facts の内容のレーンの切り替えを拒否 (M1)。facts の経路の照合は版の facts (sales_demo_versions.facts_sha256) の時に行われたものだけを数え、それ以外は demo_copy_facts_stale (M2)"
       ],
       "required_tests": [
         "unit tests/unit/sales/copy-review/** tests/unit/demo-version-package/** tests/unit/design-agent/quality-pipeline/copy-quality-review.test.ts tests/unit/staging/lib.test.ts tests/unit/sales/send-approval.test.tsx",

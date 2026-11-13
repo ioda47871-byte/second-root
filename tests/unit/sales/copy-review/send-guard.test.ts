@@ -85,3 +85,47 @@ describe("approveSend: the copy guard of a quality-approved version", () => {
     expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: true });
   });
 });
+
+describe("PR #262 L1 / L2 / L4", () => {
+  it("L1: when the demo cannot be read, the path is unknown: no server refusal (the database's guard decides)", async () => {
+    const { outreachCopyGate } = await vi.importActual<typeof import("@/lib/sales/copy-review/store")>("@/lib/sales/copy-review/store");
+    const chainOf = (result: unknown) => {
+      const c = { select: () => c, eq: () => c, in: () => c, order: () => c, maybeSingle: async () => result };
+      return { from: () => c };
+    };
+    expect(await outreachCopyGate(chainOf({ data: null, error: { message: "boom" } }) as never, OUTREACH)).toEqual({ legacy: true, unread: true });
+    // a demo known to be on the versioned path whose version cannot be loaded still fails closed
+    expect(await outreachCopyGate(chainOf({ data: { prospect: { demo: { approved_version_id: "not-a-uuid" } } }, error: null }) as never, OUTREACH)).toMatchObject({ legacy: false, ok: false, code: "demo_copy_review_unverifiable" });
+  });
+
+  it("L1: approveSend lets an unread (legacy-or-unknown) path through to the database", async () => {
+    const { approveSend } = await import("@/app/admin/sales/_actions/send");
+    state.gate = { legacy: true, unread: true };
+    const body = composedFor(state.row as never)!.body;
+    expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: true });
+    expect(state.rpc).toHaveBeenCalledWith("sales_approve_outreach", expect.anything());
+  });
+
+  it("L2: the admin screen's send stop mirrors the database: demo_not_shareable first, then the copy guard", async () => {
+    const { lastSendStops } = await import("@/lib/sales/demo-version/view-model");
+    const { SEND_BLOCK_LABEL } = await import("@/lib/sales/demo-version/admin-messages");
+    expect(lastSendStops(["versioned_sharing_disabled"], "demo_copy_review_missing")).toEqual({ code: "demo_not_shareable", reasons: ["versioned_sharing_disabled"] });
+    expect(lastSendStops([], undefined)).toEqual({ code: "demo_copy_review_unverifiable", reasons: [] });
+    expect(lastSendStops([], null)).toBeNull();
+    for (const code of COPY_SEND_CODES) {
+      expect(lastSendStops([], code)).toEqual({ code, reasons: [] });
+      expect(SEND_BLOCK_LABEL[code]).toBe(COPY_SEND_LABEL[code]);
+    }
+  });
+
+  it("L4: approveSend is the only server entry point that calls the approve RPC", async () => {
+    const { readdirSync, readFileSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const walk = (d: string): string[] =>
+      readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (e.name === "node_modules" ? [] : walk(`${d}/${e.name}`)) : /\.(ts|tsx|mts|mjs|js)$/.test(e.name) ? [`${d}/${e.name}`] : []));
+    const callers = [...["app", "components", "lib", "scripts"].flatMap(walk), "proxy.ts"].filter((f) => readFileSync(f, "utf8").includes("sales_approve_outreach"));
+    expect(callers).toEqual(["app/admin/sales/_actions/send.ts"]);
+    const send = readFileSync("app/admin/sales/_actions/send.ts", "utf8");
+    expect(send.match(/sales_approve_outreach/g)).toHaveLength(1);
+    expect(send.slice(send.indexOf("export async function approveSend"), send.indexOf('rpc("sales_approve_outreach"'))).toContain("outreachCopyGate(");
+  });
+});

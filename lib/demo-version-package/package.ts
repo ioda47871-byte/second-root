@@ -52,6 +52,8 @@ export const RENDER_SIDE_LIMIT = ARTIFACT_LIMITS.imageSidePx;
 export const VIEWPORT_WIDTH: Readonly<Record<RenderViewport, number>> = { desktop_1440: 1440, tablet_768: 768, mobile_390: 390 };
 
 export class PackageError extends Error {
+  /** DEV-199e: the round of an honest failed copy review (COPY_INVALID only), which the importer records before refusing */
+  failedCopyRound?: number;
   constructor(
     public readonly code: string,
     public readonly details: readonly string[] = [],
@@ -116,7 +118,8 @@ export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manif
   try {
     return verifyPackageCopy(pkg, o);
   } catch (e) {
-    if (e instanceof CopyPackageError) throw new PackageError("COPY_INVALID", [e.code, ...e.details]);
+    // DEV-199e: an honest failed review keeps its round, so the importer can record it before refusing
+    if (e instanceof CopyPackageError) throw Object.assign(new PackageError("COPY_INVALID", [e.code, ...e.details]), { failedCopyRound: e.failedRound });
     throw e;
   }
 }

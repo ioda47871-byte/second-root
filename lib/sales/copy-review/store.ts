@@ -32,13 +32,13 @@ export async function loadShopCopyState(client: SupabaseClient, demoId: string):
   const ids = rows.map((r) => r.id);
   const [decisions, checks] = await Promise.all([
     client.from("sales_demo_copy_owner_decisions").select(DECISION_COLUMNS).in("review_id", ids),
-    client.from("sales_demo_copy_facts_checks").select("review_id, facts_sha256").in("review_id", ids),
+    client.from("sales_demo_copy_facts_checks").select("review_id, facts_sha256, demo_facts_sha256").in("review_id", ids),
   ]);
   if (decisions.error || checks.error || !Array.isArray(decisions.data) || !Array.isArray(checks.data)) throw new CopyStoreError("COPY_STORE_READ_FAILED");
   return {
     reviews: rows.map((r) => ({ ...r, seq: Number(r.seq) })),
     decisions: decisions.data as unknown as StoredOwnerDecision[],
-    factsChecks: checks.data as unknown as { review_id: string; facts_sha256: string }[],
+    factsChecks: checks.data as unknown as ShopCopyState["factsChecks"],
   };
 }
 
@@ -69,8 +69,8 @@ export async function loadVersionCopyGate(client: SupabaseClient, versionId: str
   const unverifiable: VersionCopyGate = { ok: false, code: "demo_copy_review_unverifiable", details: [] };
   try {
     if (!UUID.test(versionId)) return unverifiable;
-    const v = await client.from("sales_demo_versions").select("id, demo_id, manifest").eq("id", versionId).maybeSingle();
-    const row = v.data as { id: string; demo_id: string; manifest: unknown } | null;
+    const v = await client.from("sales_demo_versions").select("id, demo_id, manifest, facts_sha256").eq("id", versionId).maybeSingle();
+    const row = v.data as { id: string; demo_id: string; manifest: unknown; facts_sha256: string | null } | null;
     const manifest = ArtifactManifest.safeParse(row?.manifest);
     if (v.error || !row || !manifest.success) return unverifiable;
     const [files, link] = await Promise.all([
@@ -83,6 +83,7 @@ export async function loadVersionCopyGate(client: SupabaseClient, versionId: str
     return evaluateVersionCopyGate({
       versionId,
       photoUrls: photoUrlPaths(manifest.data),
+      versionFactsSha256: row.facts_sha256 ?? null,
       pageHtmlSha256: sha(HTML_NAME),
       pageCssSha256: sha(CSS_NAME),
       linkedReviewId: (link.data as { review_id?: string } | null)?.review_id ?? null,
@@ -93,14 +94,20 @@ export async function loadVersionCopyGate(client: SupabaseClient, versionId: str
   }
 }
 
+/** The PostgREST embed outreachCopyGate reads (pinned by the integration test against the real API). */
+export const OUTREACH_DEMO_SELECT = "prospect:sales_prospects!inner(demo:sales_demos(approved_version_id))";
+
 /**
  * The copy gate of the demo an initial outreach would send: `legacy` when the demo has no quality-approved version (the
- * React demo, unchanged: no copy gate), otherwise the approved version's gate.
+ * React demo, unchanged: no copy gate), otherwise the approved version's gate. When even the demo cannot be read, the
+ * path is unknown: `legacy` with `unread` (PR #262 L1) — the server does not refuse a React-demo send for a read error,
+ * and the database's own guard still refuses an unconfirmed versioned send. Only a demo known to be on the versioned
+ * path fails closed here (demo_copy_review_unverifiable).
  */
-export async function outreachCopyGate(client: SupabaseClient, outreachId: string): Promise<{ legacy: true } | ({ legacy: false } & VersionCopyGate)> {
+export async function outreachCopyGate(client: SupabaseClient, outreachId: string): Promise<{ legacy: true; unread?: true } | ({ legacy: false } & VersionCopyGate)> {
   const unverifiable = { legacy: false as const, ok: false as const, code: "demo_copy_review_unverifiable" as const, details: [] };
-  const { data, error } = await client.from("sales_outreaches").select("prospect:sales_prospects!inner(demo:sales_demos(approved_version_id))").eq("id", outreachId).maybeSingle();
-  if (error || !data) return unverifiable;
+  const { data, error } = await client.from("sales_outreaches").select(OUTREACH_DEMO_SELECT).eq("id", outreachId).maybeSingle();
+  if (error || !data) return { legacy: true, unread: true };
   const prospect = (data as { prospect?: unknown }).prospect as { demo?: unknown } | null | undefined;
   const demo = (Array.isArray(prospect?.demo) ? prospect.demo[0] : prospect?.demo) as { approved_version_id?: unknown } | null | undefined;
   const approved = demo?.approved_version_id;

@@ -4,12 +4,13 @@ import type { PoolClient } from "pg";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { makeCopyFiles } from "@/lib/demo-version-package/copy";
 import { importPackage, type PackageStore } from "@/lib/demo-version-package/import";
-import { buildPackage, type DemoVersionPackage } from "@/lib/demo-version-package/package";
-import { loadVersionCopyGate, outreachCopyGate } from "@/lib/sales/copy-review/store";
+import { buildPackage, PACKAGE_FORMAT_COPY, type DemoVersionPackage } from "@/lib/demo-version-package/package";
+import { loadVersionCopyGate, OUTREACH_DEMO_SELECT, outreachCopyGate } from "@/lib/sales/copy-review/store";
 import { bundleSha256, sha256Hex, validateManifest, type ArtifactManifest } from "@/lib/sales/demo-version/manifest";
 import { QUALITY_CHECKLIST_ITEMS } from "@/lib/sales/demo-version/quality";
-import { auditReviseChain, candidateOf, cleanRound0, json, otherRound0, ownerReviseChain, type Round } from "../support/copy-review-fixture";
+import { auditReviseChain, candidateOf, cleanRound0, failingRound0, failingRound1, json, otherRound0, ownerReviseChain, sameFactsOtherLane, type Round } from "../support/copy-review-fixture";
 import { anonClient, approve, candidate, createUser, db, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-199e (Issue #258 decision ①): the copy review store, the owner's copy confirmation and the copy send guard of a
@@ -56,6 +57,18 @@ async function pkgOf(r: Round, earlier: Round[] = []): Promise<DemoVersionPackag
     copy: { factsPack: r.files.factsPack, copyRecord: r.files.copyRecord, review: json(r.review), rounds: earlier.map((e) => ({ copyRecord: e.files.copyRecord, pageHtml: e.files.pageHtml, pageCss: e.files.pageCss, review: json(e.review) })) },
   });
 }
+
+/**
+ * A v2 package whose copy buildPackage would refuse (a failed review): the page is built alone and the copy files are
+ * attached with the builder's own makeCopyFiles, as a generator could hand it over. importPackage checks it again.
+ */
+async function rawPkgOf(r: Round, earlier: Round[] = []): Promise<DemoVersionPackage> {
+  const page = await buildPackage({ html: String(r.files.pageHtml), css: String(r.files.pageCss), renders: { desktop_1440: new Uint8Array(await png(1440, 900)), mobile_390: new Uint8Array(await png(390, 900)) }, source: "test" });
+  const copy = makeCopyFiles({ factsPack: r.files.factsPack, copyRecord: r.files.copyRecord, review: json(r.review), rounds: earlier.map((e) => ({ copyRecord: e.files.copyRecord, pageHtml: e.files.pageHtml, pageCss: e.files.pageCss, review: json(e.review) })) }, page.bundleSha256);
+  return { ...page, format: PACKAGE_FORMAT_COPY, ...copy };
+}
+
+const versionCount = async (s: Shop) => (await db.query("select count(*)::int as n from public.sales_demo_versions where demo_id = $1", [s.demoId])).rows[0].n as number;
 
 /** importPackage as the local operator; `trusted`: the facts pack from the facts path (a test stand-in for it). */
 const importRound = (s: Shop, pkg: DemoVersionPackage, r: Round, trusted = true) =>
@@ -377,6 +390,77 @@ describe("RLS and grants", () => {
       cross join lateral (values ('DELETE'), ('TRUNCATE')) as p(privilege_type) cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
       where n.nspname = 'public' and c.relname = any($1::text[]) and has_table_privilege(r.rolname, c.oid, p.privilege_type)`, [COPY_TABLES]);
     expect(deletes).toEqual([]);
+  });
+});
+
+describe("PR #262 M1: failed reviews are stored and terminal; one lane per facts content", () => {
+  it("round-0 fail: the import is refused but the failed review is stored; resubmitting the same facts is refused", async () => {
+    const s = await shop();
+    const f0 = failingRound0();
+    await expect(importRound(s, await rawPkgOf(f0), f0)).rejects.toThrow(/COPY_INVALID/);
+    expect(await versionCount(s)).toBe(0);
+    const stored = (await db.query("select round, verdict, next_step, gate_blockers from public.sales_demo_copy_reviews where prospect_id = $1", [s.prospectId])).rows;
+    expect(stored).toEqual([expect.objectContaining({ round: 0, verdict: "fail", next_step: "stop_fail" })]);
+    expect(stored[0].gate_blockers).toEqual(expect.arrayContaining(["REVIEW_NOT_PASSED", "OWNER_APPROVAL_MISSING"]));
+    // the fixed page as a fresh round 0: refused by the importer (before any version) and by the database
+    const fixed = cleanRound0();
+    await expect(importRound(s, await pkgOf(fixed), fixed)).rejects.toThrow(/COPY_NOT_APPENDABLE.*STORED_FAIL_IS_TERMINAL/);
+    expect(await versionCount(s)).toBe(0);
+    expect((await recordDirect(s, fixed)).error?.message).toContain("copy_review_after_fail");
+  });
+
+  it("round-1 fail: stored after its round 0; another round 1 (or a round 0) for the same facts is refused", async () => {
+    const s = await shop();
+    const [r0, bad1] = failingRound1();
+    await importRound(s, await pkgOf(r0), r0);
+    await expect(importRound(s, await rawPkgOf(bad1, [r0]), bad1)).rejects.toThrow(/COPY_INVALID/);
+    const rows = (await db.query("select round, next_step from public.sales_demo_copy_reviews where prospect_id = $1 order by seq", [s.prospectId])).rows;
+    expect(rows).toEqual([{ round: 0, next_step: "revise" }, { round: 1, next_step: "stop_fail" }]);
+    const [, good1] = auditReviseChain();
+    await expect(importRound(s, await pkgOf(good1, [r0]), good1)).rejects.toThrow(/COPY_NOT_APPENDABLE.*STORED_FAIL_IS_TERMINAL/);
+    expect((await recordDirect(s, good1)).error?.message).toContain("copy_review_after_fail");
+    expect((await recordDirect(s, cleanRound0())).error?.message).toContain("copy_review_after_fail");
+  });
+
+  it("a lane switch for the same facts content is refused (importer and database)", async () => {
+    const s = await shop();
+    const r0 = cleanRound0();
+    await importRound(s, await pkgOf(r0), r0);
+    const other = sameFactsOtherLane();
+    // (a real shop's facts in the fictional lane fails the base check, so this review is a fail: refused, and not
+    // stored either, because the store refuses the lane switch)
+    await expect(importRound(s, await rawPkgOf(other), other)).rejects.toThrow(/COPY_INVALID/);
+    expect((await db.query("select lane from public.sales_demo_copy_reviews where prospect_id = $1", [s.prospectId])).rows).toEqual([{ lane: "real_shop_proposal" }]);
+    expect((await recordDirect(s, other, { gate: ["FICTIONAL_RESEARCH_NOT_SENDABLE", "OWNER_APPROVAL_MISSING", "REVIEW_NOT_PASSED"] })).error?.message).toContain("copy_review_lane_switch");
+  });
+});
+
+describe("PR #262 M2: the facts-path check must be made on the version's facts", () => {
+  it("a check recorded after the demo's facts changed does not count for the version (demo_copy_facts_stale)", async () => {
+    const s = await shop();
+    const r0 = cleanRound0();
+    const v = await importRound(s, await pkgOf(r0), r0, false);
+    expect(await copyBlock(v.versionId)).toBe("demo_copy_facts_not_from_facts_path");
+    await db.query("update public.sales_demos set content = content || '{\"note\": \"changed\"}'::jsonb where id = $1", [s.demoId]);
+    const q = await reviewRow(v.storedCopy!.review_id);
+    const ins = await serviceClient().from("sales_demo_copy_facts_checks").insert({ review_id: q.id, facts_sha256: q.facts_sha256, demo_facts_sha256: "0".repeat(64) });
+    expect(ins.error, ins.error?.message).toBeNull();
+    const check = (await db.query("select c.demo_facts_sha256, v.facts_sha256 as version_facts from public.sales_demo_copy_facts_checks c join public.sales_demo_versions v on v.id = $2 where c.review_id = $1", [q.id, v.versionId])).rows[0];
+    expect(check.demo_facts_sha256).not.toBe(check.version_facts);
+    expect(await copyBlock(v.versionId)).toBe("demo_copy_facts_stale");
+    expect(await loadVersionCopyGate(admin, v.versionId)).toMatchObject({ ok: false, code: "demo_copy_facts_stale" });
+  });
+});
+
+describe("PostgREST embed the server gate reads", () => {
+  it("returns the demo's approved_version_id under prospect.demo (pinned against the real API)", async () => {
+    const s = await shop();
+    const { data, error } = await admin.from("sales_outreaches").select(OUTREACH_DEMO_SELECT).eq("id", s.outreachId).maybeSingle();
+    expect(error).toBeNull();
+    const demo = (data as unknown as { prospect: { demo: unknown } }).prospect.demo;
+    const one = (Array.isArray(demo) ? demo[0] : demo) as Record<string, unknown>;
+    expect(Object.keys(one)).toEqual(["approved_version_id"]);
+    expect(one.approved_version_id).toBeNull();
   });
 });
 

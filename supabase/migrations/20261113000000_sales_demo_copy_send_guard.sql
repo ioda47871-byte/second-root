@@ -15,10 +15,15 @@
 --      (copyReviewAppendBlockers): no second round 0 (no replay of a revision
 --      as a fresh first audit), rounds in order, linked to the last copy record,
 --      the same facts bytes, and only after a round that allows a revision
---      (the audit asked for one, or the owner asked for one, below).
+--      (the audit asked for one, or the owner asked for one, below). Failed
+--      reviews are stored too (PR #262 M1): a fail is terminal for its facts
+--      content (nothing more for the same prospect + facts content, in any
+--      lane), and one facts content has one lane (no lane switch).
 --   2. sales_demo_copy_facts_checks: evidence that the server compared the
 --      review's facts pack with the facts pack from the facts path (never the
---      generator's package). Separate and append-only, so a chain recorded
+--      generator's package), with the demo's facts hash at that moment
+--      (PR #262 M2: the send guard needs a check made on the facts the version
+--      was generated from). Separate and append-only, so a chain recorded
 --      before a facts path existed can still be confirmed later without
 --      changing the review.
 --   3. sales_demo_version_copy_links: which stored review describes a demo
@@ -34,7 +39,8 @@
 --      sales_send_guards → sales_approve_outreach / sales_mark_send_opened /
 --      sales_mark_sent), a send of an approved version is refused unless its
 --      copy review exists, is for the real-shop lane with copy verdict
---      approve_candidate, its facts came from the facts path, it is the
+--      approve_candidate, its facts came from the facts path (checked on the
+--      version's facts), it is the
 --      version's own page and the last round of its chain, the server's gate
 --      found nothing but the missing owner approval, and the owner approved
 --      exactly this review on this version.
@@ -123,10 +129,14 @@ create table public.sales_demo_copy_reviews (
 create index sales_demo_copy_reviews_prospect_idx on public.sales_demo_copy_reviews (prospect_id, seq);
 
 create table public.sales_demo_copy_facts_checks (
-  review_id uuid primary key references public.sales_demo_copy_reviews (id) on delete restrict,
+  review_id uuid not null references public.sales_demo_copy_reviews (id) on delete restrict,
   -- the review's facts pack, equal to the facts pack read from the facts path when the server checked it
   facts_sha256 text not null check (facts_sha256 ~ '^[0-9a-f]{64}$'),
-  checked_at timestamptz not null default now()
+  -- PR #262 M2: sales_demo_facts_sha256(demo) when the check was made (computed by the trigger). The send guard needs
+  -- a check made while the demo's facts were the ones the version was generated from (sales_demo_versions.facts_sha256).
+  demo_facts_sha256 text not null check (demo_facts_sha256 ~ '^[0-9a-f]{64}$'),
+  checked_at timestamptz not null default now(),
+  primary key (review_id, demo_facts_sha256)
 );
 
 create table public.sales_demo_version_copy_links (
@@ -257,6 +267,16 @@ begin
   if exists (select 1 from public.sales_demo_copy_reviews q where q.prospect_id = v_prospect and q.shop_id <> new.shop_id) then
     raise exception 'copy_review_other_shop' using errcode = 'P0001';
   end if;
+  -- PR #262 M1: a fail is terminal for its facts content (whatever the lane), and one facts content has one lane (a
+  -- lane switch would start a fresh chain for the same facts)
+  if exists (select 1 from public.sales_demo_copy_reviews q
+             where q.prospect_id = v_prospect and q.facts_content_sha256 = new.facts_content_sha256 and q.next_step = 'stop_fail') then
+    raise exception 'copy_review_after_fail' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.sales_demo_copy_reviews q
+             where q.prospect_id = v_prospect and q.facts_content_sha256 = new.facts_content_sha256 and q.lane <> new.lane) then
+    raise exception 'copy_review_lane_switch' using errcode = 'P0001';
+  end if;
   select count(*)::integer into v_n from public.sales_demo_copy_reviews q
     where q.prospect_id = v_prospect and q.lane = new.lane and q.facts_content_sha256 = new.facts_content_sha256;
   select * into last from public.sales_demo_copy_reviews q
@@ -308,6 +328,8 @@ begin
   if not exists (select 1 from public.sales_demo_copy_reviews q where q.id = new.review_id and q.facts_sha256 = new.facts_sha256) then
     raise exception 'copy_facts_check_mismatch' using errcode = 'check_violation';
   end if;
+  select public.sales_demo_facts_sha256(d) into new.demo_facts_sha256
+    from public.sales_demo_copy_reviews q join public.sales_demos d on d.id = q.demo_id where q.id = new.review_id;
   new.checked_at := now();
   return new;
 end;
@@ -432,6 +454,12 @@ begin
   end if;
   if not exists (select 1 from public.sales_demo_copy_facts_checks c where c.review_id = q.id and c.facts_sha256 = q.facts_sha256) then
     return 'demo_copy_facts_not_from_facts_path';
+  end if;
+  -- PR #262 M2: the facts-path check must have been made on the facts the version was generated from (the version's
+  -- facts_sha256; the demo's current facts are compared with it by demo_facts_changed before this)
+  if not exists (select 1 from public.sales_demo_copy_facts_checks c join public.sales_demo_versions v on v.id = p_version_id
+                 where c.review_id = q.id and c.facts_sha256 = q.facts_sha256 and c.demo_facts_sha256 = v.facts_sha256) then
+    return 'demo_copy_facts_stale';
   end if;
   -- the review's page must still be the version's page, and nothing may have followed it in its chain
   if (select f.sha256 from public.sales_demo_version_files f where f.version_id = p_version_id and f.path = 'page/index.html') is distinct from q.page_html_sha256
@@ -594,8 +622,11 @@ begin
       p_gate_blockers, p_review, p_copy_record, p_facts_pack, p_page_html, p_page_css)
     returning * into q;
   end if;
-  if p_facts_from_facts_path and not exists (select 1 from public.sales_demo_copy_facts_checks c where c.review_id = q.id) then
-    insert into public.sales_demo_copy_facts_checks (review_id, facts_sha256) values (q.id, q.facts_sha256);
+  if p_facts_from_facts_path then
+    -- one check per review and demo facts (the trigger computes demo_facts_sha256)
+    insert into public.sales_demo_copy_facts_checks (review_id, facts_sha256, demo_facts_sha256)
+    values (q.id, q.facts_sha256, repeat('0', 64))
+    on conflict (review_id, demo_facts_sha256) do nothing;
   end if;
   if p_version_id is not null then
     select review_id into v_linked from public.sales_demo_version_copy_links where version_id = p_version_id;

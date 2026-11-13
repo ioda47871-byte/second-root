@@ -13,6 +13,7 @@ import type { DemoVersionBadgeState } from "./badge";
 import type { LifecycleRefusal } from "./lifecycle-input";
 import type { ReviewRefusal } from "./review-input";
 import type { ApproveBlocker, SendBlockCode } from "./view-model";
+import { COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels";
 
 /** The leading code of a database error message (`invalid_version_transition:draft->approved` → its first part). */
 export function errorCodeOf(message: string | null | undefined): string {
@@ -243,6 +244,8 @@ export const SEND_BLOCK_LABEL: Readonly<Record<SendBlockCode, string>> = {
   demo_quality_not_approved: "品質承認した版に有効な品質承認がありません。この店舗の送信承認は止まっています。",
   demo_facts_changed: "品質承認した版を作った後に店舗の事実が変わりました。この店舗の送信承認は止まっています。新しい版を作り直してください。",
   demo_not_shareable: "品質承認した版を共有できないため（「デモを共有できない」）、この店舗の送信承認は止まっています。送るには品質承認を取り下げてください（React のデモで送ることになります）。",
+  // DEV-199e: the copy send guard (after demo_not_shareable)
+  ...COPY_SEND_LABEL,
 };
 
 /** Shown beside the send stop when the current facts could not be read (the facts may also have changed). */

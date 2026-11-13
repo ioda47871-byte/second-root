@@ -109,6 +109,8 @@ export const CopyManifest = z.strictObject({
 export type CopyManifest = z.infer<typeof CopyManifest>;
 
 export class CopyPackageError extends Error {
+  /** DEV-199e: set when the refused review is the honest audit of the files and says fail (the round of that review) */
+  failedRound?: number;
   constructor(
     public readonly code: string,
     public readonly details: readonly string[] = [],
@@ -256,31 +258,6 @@ export function verifyPackageCopy(
   const trusted = o.trustedFactsPack ?? null;
   if (trusted !== null && sha256(enc(trusted)) !== sha256(raw[COPY_FACTS_NAME]!)) throw new CopyPackageError("COPY_FACTS_NOT_FROM_FACTS_PATH");
 
-  // 3. the existing copy check (unchanged), and record ↔ page
-  const photoUrls = photoUrlPaths(pkg.manifest);
-  const safety = checkArtifactHtml(html, css, photoUrls);
-  if (!safety.ok) throw new CopyPackageError("COPY_PAGE_CHECK_FAILED", safety.findings.map((f) => f.code));
-  const copyRaw = parse("COPY_RECORD_INVALID", text[COPY_RECORD_NAME]!);
-  const base = checkArtifactCopy({ texts: safety.texts, copyRecord: copyRaw, shopId: facts.data.shop_id, factsSha256: sha256(raw[COPY_FACTS_NAME]!), facts: facts.data.facts });
-  if (!base.ok) throw new CopyPackageError("COPY_CHECK_FAILED", [...new Set(base.findings.map((f) => f.code))]);
-  const record = CopyRecord.parse(copyRaw);
-  const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
-  const page = pageText(html);
-  const shown = [...page.sections.flatMap((s) => s.entries.map((e) => e.text)), ...page.otherTexts].map(norm);
-  // the item's own text must be on the page: a label alone (所在地, 営業時間 …) does not show the item it introduces
-  const missing = record.items.filter((i) => !shown.some((t) => t.includes(norm(i.text))));
-  if (missing.length) throw new CopyPackageError("COPY_RECORD_ITEM_NOT_ON_PAGE", missing.map((i) => i.id).slice(0, 20));
-  if (pkg.images.length > 0 && record.lane !== "quality_research_fictional") throw new CopyPackageError("COPY_REAL_SHOP_LANE_WITH_AI_IMAGES");
-
-  // 4. the review chain, in order, then the review against these exact files
-  const review = parse("COPY_REVIEW_INVALID", text[COPY_REVIEW_NAME]!);
-  const head = CopyQualityReview.safeParse(review);
-  if (!head.success) throw new CopyPackageError("COPY_REVIEW_INVALID", ["REVIEW_SCHEMA"]);
-  const rounds = head.data.round;
-  const priorFiles = copy.files.filter((f) => f.role.startsWith("prior_"));
-  if (priorFiles.length !== 4 * rounds || priorFiles.some((f) => copyRoleOfName(f.name)!.round! >= rounds)) throw new CopyPackageError("COPY_ROUNDS_INCOMPLETE");
-  const previous: PriorRound[] = [];
-  const priorReviews: unknown[] = [];
   const ownerRevisionFor = (r: unknown): OwnerCopyApproval | null => {
     const q = CopyQualityReview.safeParse(r);
     if (!q.success) return null;
@@ -294,6 +271,60 @@ export function verifyPackageCopy(
       ? { shop_id: x.shop_id, facts_sha256: x.facts_sha256, copy_sha256: x.copy_sha256, page_html_sha256: x.page_html_sha256, page_css_sha256: x.page_css_sha256, decision: "revise" }
       : null;
   };
+
+  // DEV-199e (PR #262 M1): a review that is the honest audit of these files and says `fail` is kept by the store (fail
+  // is terminal), so the importer can record it before refusing. Honest: it parses, says fail, its rounds are complete
+  // and in order, and checkCopyQualityReview finds nothing but the failed revision step the review itself names.
+  const photoUrls = photoUrlPaths(pkg.manifest);
+  const failedRound = (): number | undefined => {
+    try {
+      const q = CopyQualityReview.safeParse(JSON.parse(text[COPY_REVIEW_NAME]!));
+      if (!q.success || q.data.verdict !== "fail") return undefined;
+      const n = q.data.round;
+      const prior: PriorRound[] = [];
+      const priorRaw: unknown[] = [];
+      for (let i = 0; i < n; i++) {
+        const t = text[priorName(i, "review.json")];
+        if (t === undefined || !raw[priorName(i, "copy.json")] || !raw[priorName(i, "index.html")] || !raw[priorName(i, "style.css")]) return undefined;
+        const r = JSON.parse(t) as unknown;
+        priorRaw.push(r);
+        prior.push({ review: r, copyRecord: raw[priorName(i, "copy.json")]!, pageHtml: raw[priorName(i, "index.html")]!, pageCss: raw[priorName(i, "style.css")]!, ownerRevision: ownerRevisionFor(r) });
+      }
+      const all = [...priorRaw, q.data];
+      for (let i = 0; i < all.length; i++) if (copyReviewAppendBlockers(all.slice(0, i), all[i], { ownerRevision: i > 0 ? prior[i - 1]!.ownerRevision : null }).length) return undefined;
+      const named = new Set(q.data.revision_findings.filter((x) => x.severity === "fail").map((x) => x.code));
+      const c = checkCopyQualityReview(q.data, files, { previous: prior, photoUrls });
+      return c.codes.every((code) => code === "REVISION_INVALID" || named.has(code)) ? n : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const failing = (e: CopyPackageError): CopyPackageError => Object.assign(e, { failedRound: failedRound() });
+
+  // 3. the existing copy check (unchanged), and record ↔ page
+  const safety = checkArtifactHtml(html, css, photoUrls);
+  if (!safety.ok) throw failing(new CopyPackageError("COPY_PAGE_CHECK_FAILED", safety.findings.map((f) => f.code)));
+  const copyRaw = parse("COPY_RECORD_INVALID", text[COPY_RECORD_NAME]!);
+  const base = checkArtifactCopy({ texts: safety.texts, copyRecord: copyRaw, shopId: facts.data.shop_id, factsSha256: sha256(raw[COPY_FACTS_NAME]!), facts: facts.data.facts });
+  if (!base.ok) throw failing(new CopyPackageError("COPY_CHECK_FAILED", [...new Set(base.findings.map((f) => f.code))]));
+  const record = CopyRecord.parse(copyRaw);
+  const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
+  const page = pageText(html);
+  const shown = [...page.sections.flatMap((s) => s.entries.map((e) => e.text)), ...page.otherTexts].map(norm);
+  // the item's own text must be on the page: a label alone (所在地, 営業時間 …) does not show the item it introduces
+  const missing = record.items.filter((i) => !shown.some((t) => t.includes(norm(i.text))));
+  if (missing.length) throw failing(new CopyPackageError("COPY_RECORD_ITEM_NOT_ON_PAGE", missing.map((i) => i.id).slice(0, 20)));
+  if (pkg.images.length > 0 && record.lane !== "quality_research_fictional") throw new CopyPackageError("COPY_REAL_SHOP_LANE_WITH_AI_IMAGES");
+
+  // 4. the review chain, in order, then the review against these exact files
+  const review = parse("COPY_REVIEW_INVALID", text[COPY_REVIEW_NAME]!);
+  const head = CopyQualityReview.safeParse(review);
+  if (!head.success) throw failing(new CopyPackageError("COPY_REVIEW_INVALID", ["REVIEW_SCHEMA"]));
+  const rounds = head.data.round;
+  const priorFiles = copy.files.filter((f) => f.role.startsWith("prior_"));
+  if (priorFiles.length !== 4 * rounds || priorFiles.some((f) => copyRoleOfName(f.name)!.round! >= rounds)) throw failing(new CopyPackageError("COPY_ROUNDS_INCOMPLETE"));
+  const previous: PriorRound[] = [];
+  const priorReviews: unknown[] = [];
   for (let i = 0; i < rounds; i++) {
     const r = parse("COPY_REVIEW_INVALID", text[priorName(i, "review.json")]!);
     priorReviews.push(r);
@@ -303,14 +334,14 @@ export function verifyPackageCopy(
   const chain = [...priorReviews, review];
   for (let i = 0; i < chain.length; i++) {
     const blockers = copyReviewAppendBlockers(chain.slice(0, i), chain[i], { ownerRevision: i > 0 ? previous[i - 1]!.ownerRevision : null });
-    if (blockers.length) throw new CopyPackageError("COPY_REVIEW_CHAIN_INVALID", blockers);
+    if (blockers.length) throw failing(new CopyPackageError("COPY_REVIEW_CHAIN_INVALID", blockers));
   }
   const check = checkCopyQualityReview(review, files, { previous, photoUrls });
-  if (!check.ok) throw new CopyPackageError("COPY_REVIEW_INVALID", check.codes);
+  if (!check.ok) throw failing(new CopyPackageError("COPY_REVIEW_INVALID", check.codes));
 
   // 5. the verdict as computed here
   const computed = reviewCopyQuality(files, { round: rounds, previousCopySha256: head.data.previous_copy_sha256, photoUrls, earlierRounds: previous });
-  if (computed.verdict === "fail") throw new CopyPackageError("COPY_REVIEW_FAIL", computed.unresolved);
+  if (computed.verdict === "fail") throw failing(new CopyPackageError("COPY_REVIEW_FAIL", computed.unresolved));
   const factsFromPath = trusted !== null;
   const send = copyGateSendBlockers(computed, files, null, { previous, photoUrls });
   return {

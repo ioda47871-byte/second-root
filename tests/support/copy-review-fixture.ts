@@ -59,6 +59,29 @@ export function otherRound0(): Round {
   return { files: f, review: reviewCopyQuality(f) };
 }
 
+const withUnrecordedSentence = (f: Round["files"]) => ({ ...f, pageHtml: String(f.pageHtml).replace("</main>", "<p>新しい一文です。</p>\n</main>") });
+
+/** PR #262 M1: a real-shop round 0 whose audit says fail (a page sentence the copy record does not hold). */
+export function failingRound0(): Round {
+  const files = withUnrecordedSentence(fx.realShop());
+  return { files, review: reviewCopyQuality(files) };
+}
+
+/** PR #262 M1: the audit revise chain's round 0, then a round 1 whose audit says fail. */
+export function failingRound1(): [Round, Round] {
+  const [r0, ok1] = auditReviseChain();
+  const files = withUnrecordedSentence(ok1.files);
+  return [r0, { files, review: reviewCopyQuality(files, { round: 1, previousCopySha256: r0.review.copy_sha256, earlierRounds: earlier(r0) }) }];
+}
+
+/** PR #262 M1: the same facts as cleanRound0 in the fictional research lane (a lane switch for the same facts). */
+export function sameFactsOtherLane(): Round {
+  const base = fx.realShop();
+  const record = { ...base.record, lane: "quality_research_fictional" };
+  const files = { ...base, copyRecord: `${JSON.stringify(record, null, 2)}\n`, record };
+  return { files, review: reviewCopyQuality(files) };
+}
+
 /** The fictional research lane (never sendable). */
 export function fictionalRound0(): Round {
   const f = fx.bakeryGood();

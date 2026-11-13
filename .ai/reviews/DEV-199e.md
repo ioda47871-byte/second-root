@@ -26,7 +26,7 @@ branch `feature/dev-199e-copy-send-guard` (`origin/develop` 55df274c、DEV-199d 
 | 表 | 何 | 誰が書く | 書き換え |
 |---|---|---|---|
 | `sales_demo_copy_reviews` | 監査した review と、監査したバイト (review・copy record・facts pack・頁の HTML / CSS)。列 (verdict・copy verdict・next step・5 つの hash・round・前の review) は trigger が review の JSON から導出し、テキストを sha256 で照合 | service role (importer、`sales_record_copy_review`) | 不可 (update / delete は trigger が拒否、DELETE の権限なし) |
-| `sales_demo_copy_facts_checks` | facts pack を facts の経路と照合した証拠 (review の facts_sha256 と同じであること) | service role | 不可 |
+| `sales_demo_copy_facts_checks` | facts pack を facts の経路と照合した証拠 (review の facts_sha256 と同じであること)。その時の demo の facts の hash (`demo_facts_sha256`、trigger が計算) を持ち、主キーは (review, demo_facts_sha256) | service role | 不可 |
 | `sales_demo_version_copy_links` | 版 → review (版の `page/index.html`・`page/style.css` の sha256 = review の hash、1 版に 1 review) | service role | 不可 |
 | `sales_demo_copy_owner_decisions` | オーナーの approve / revise / reject。review id・review の sha256・facts / copy / HTML / CSS の hash・版に束縛 | **署名済みの sales admin 本人だけ** (`sales_decide_copy_review`、trigger が `is_sales_admin()` と `decided_by = auth.uid()` を要求) | 不可 (1 review に 1 件) |
 
@@ -52,6 +52,7 @@ facts の経路 (生成・改稿の側が書けない店舗の facts pack の保
 |---|---|
 | `demo_copy_review_missing` | 版に結び付いた review が無い (既存の版・v1 の包み・copy の無い取り込み) |
 | `demo_copy_facts_not_from_facts_path` | facts の経路との照合の証拠が無い |
+| `demo_copy_facts_stale` | 照合の証拠はあるが、版の facts (`sales_demo_versions.facts_sha256`) の時に行われたものが無い (PR #262 M2) |
 | `demo_copy_review_stale` | review の HTML / CSS の hash が版のファイルと違う、または同じ鎖に後の round がある |
 | `demo_copy_review_not_passed` | 実店舗レーンでない、または copy verdict が approve_candidate でない |
 | `demo_copy_send_blocked` | 保存した gate (`copyGateSendBlockers`、オーナーなし) に `OWNER_APPROVAL_MISSING` 以外が残る。サーバーは保存したバイトで監査を再実行し、残れば同じ code |
@@ -102,7 +103,7 @@ facts の経路 (生成・改稿の側が書けない店舗の facts pack の保
 
 ## 既知の限界
 
-- **fail の review は保存されない**: DEV-199d の検査は fail の包みを DB の前に拒否するので、fail の round 0 は記録に残らず、直したコピーを新しい round 0 として出し直せる。fail は終端なので送信の安全には影響しない (直したものも監査・オーナーの確認を通る) が、「fail の後に改稿させない」ことは店をまたいで強制していない。fail も保存するなら DEV-199d の拒否の扱いを変える必要がある (判断待ち)。
+- fail の review を保存するのは、review がその頁の正直な監査であるときだけ (下の M1)。改ざん・古い・形の壊れた包みは今までどおり保存せずに拒否する (その場合、同じ facts の正直な提出は後から受け付ける)。
 - **facts の経路が無い**: 上記。照合の時点の facts pack と、送信の時点の facts の経路の中身の比較 (経路の facts が後で変わった場合) は、経路ができたときに送信の門へ足す必要がある。版の facts (`sales_demos.content`) が変わった場合は既存の `demo_facts_changed` が止める。
 - オーナーの記録は 1 review に 1 件。同じ頁で描画だけが違う 2 つ目の版は同じ review に結び付くが、オーナーの approve は最初の版のものなので 2 つ目は送れない (閉じる側)。
 - オーナーの文章の確認の画面は作っていない (RPC だけ。画面は別の Task)。
@@ -111,11 +112,26 @@ facts の経路 (生成・改稿の側が書けない店舗の facts pack の保
 
 ## 検証
 
-- `tests/unit/sales/copy-review/gate.test.ts` (19 件)・`send-guard.test.ts` (11 件)・`tests/unit/demo-version-package/copy-owner-revision.test.ts` (2 件)。
-- `tests/integration/demo-copy-send-guard.test.ts` (14 件): 正常系、各拒否理由 (DB とサーバー)、facts の照合を後から足せること、round 0 の再提出 (取り込みは版の前に拒否・DB も拒否)、オーナーの改稿依頼を明示の段として、追記のみ・変更不可・削除不可、RLS と権限、React のデモ、既存データの上での rollback と migration。
+- `tests/unit/sales/copy-review/gate.test.ts` (24 件)・`send-guard.test.ts` (15 件)・`tests/unit/demo-version-package/copy-owner-revision.test.ts` (2 件)。
+- `tests/integration/demo-copy-send-guard.test.ts` (19 件、round 1 の後): 正常系、各拒否理由 (DB とサーバー)、facts の照合を後から足せること、round 0 の再提出 (取り込みは版の前に拒否・DB も拒否)、オーナーの改稿依頼を明示の段として、追記のみ・変更不可・削除不可、RLS と権限、React のデモ、既存データの上での rollback と migration。
 - 統合の全体 (ローカル): 30 ファイル・493 件 pass。
 - unit の全体: このサンドボックスでは Chromium (playwright の版) が無く、243 ファイル中 69 ファイル (design-agent の描画・worker・CLI の 68 と、`swap-photos.test.ts` の描画の 2 件) が環境 (ブラウザの起動・描画) で落ちる。落ちたのはどれもブラウザ・描画・worker の件で (`swap-photos.test.ts` の importPackage の件は pass)、diff の挙動を見る件ではない。それ以外 (sales・admin・demo-version-package・staging・ai-tasks・copy-quality-review など) はすべて pass。
 - `npm run typecheck`・`npm run lint`・`npm run check:secrets`: pass。
+
+## PR #262 Fresh Review round 1 (head 907e2d3、C0 H0 M2 L5) と対応
+
+| ID | 指摘 | 対応 |
+|---|---|---|
+| M1 | fail の review が保存されないので、落ちた round を通るまで出し直せる (round 0 の再試行の oracle)。レーンを変えると同じ facts で新しい鎖が始まる | (coordinator の決定: 保存する) fail も `sales_demo_copy_reviews` に `next_step = stop_fail` で保存し、取り込みは**拒否する前に**記録する (結果は今までどおり `COPY_INVALID` で拒否、版は作らない)。trigger は同じ prospect + `facts_content_sha256` に fail があれば次を `copy_review_after_fail` (どのレーンでも)、同じ facts の内容で別のレーンを `copy_review_lane_switch` で拒否。サーバーの `planCopyAppend` も同じ (`STORED_FAIL_IS_TERMINAL`・`CHAIN_LANE_SWITCH`)。保存する fail は「正直な」もの: review が schema を通り verdict fail、round が揃い順序どおり、`checkCopyQualityReview` の指摘が review 自身の名指す fail の改稿の段 (`REVISION_INVALID` と `revision_findings` の fail の code) だけ。`verifyPackageCopy` は step 3–5 の拒否にその round を付け (`CopyPackageError.failedRound` → `PackageError.failedCopyRound`)、拒否の code は変えない (DEV-199d のテストはそのまま通る)。同じ規則を `copy.ts` と `gate.ts` に 3 行ずつ書いた (`lib/sales` は包みの module を import できないため)。テスト (unit・統合): round 0 の fail → 直した round 0 は拒否、round 1 の fail → 別の round 1・round 0 は拒否、レーンの切り替えは拒否、偽の fail は保存しない |
+| M2 | review の facts_sha256 と版 / demo の facts が結び付いていない | 照合の証拠にその時の demo の facts の hash (`sales_demo_facts_sha256`、trigger が計算) を持たせ、`sales_copy_send_block` と `gate.ts` は「review の facts pack = 証拠の facts pack」かつ「証拠の demo の facts = 版の facts_sha256」を要求、無ければ `demo_copy_facts_stale`。demo の今の facts と版の facts の比較は既存の `demo_facts_changed` (その前の段)。facts pack と demo の content は別の表現なので直接は比べられない。`.ai/tasks.json` の DEV-199b に必須の前提を追加: facts の経路を接続するときは、送信の時点で保存済みの facts pack を今の facts の経路と比べ直す (DEV-199b の依存に DEV-199e を追加)。テスト: facts が変わった後の照合は数えない (DB とサーバー) |
+| L1 | demo を読めないとき、React のデモの経路でも `demo_copy_review_unverifiable` で止める | 最初の読み出し (outreach → demo) が失敗したら経路は不明として `{ legacy: true, unread: true }` を返し、サーバーは止めない (DB の門が版の送信を止める)。承認された版があると分かった後の読み出しの失敗だけ fail closed。テスト |
+| L2 | 管理画面の送信の止まりが DB の順序と揃っていない | `SendBlockCode` に copy の code を加え、`sendStop` の最後を `lastSendStops` (demo_not_shareable → copy の門) にした。`buildDemoVersionsView` の `copySendBlock` (省略 = 読んでいない → `demo_copy_review_unverifiable`)。`SEND_BLOCK_LABEL` に copy の文言。版の共有が無効の間は demo_not_shareable で止まるので、画面の loader には配線していない (DEV-196g で接続)。`admin-messages.test.ts` の固定した一覧に copy の code を追加 (既存のテストの期待値の変更)。テスト |
+| L3 | オーナーの画面が無い・1 review に 1 件 | 記録だけ (既知の限界のとおり) |
+| L4 | approveSend が唯一の承認の入口であることのテスト | app・components・lib・scripts・proxy.ts で `sales_approve_outreach` を含むのが `send.ts` だけ・1 回だけ・その前に `outreachCopyGate` を通すことをテスト |
+| L5 | 4 表の service_role の UPDATE を外す | **外していない**。`scripts/staging/lib.mjs` の `REQUIRED_CHECKS` (`service_role_can_write`: すべての sales_* 表に SELECT / INSERT / UPDATE、DELETE は `NO_DELETE_TABLES` 以外) と `tests/unit/staging/lib.test.ts` (`explicitGrantGaps` の service_role update が空) が UPDATE を要求する。UPDATE は 4 表すべてで trigger が拒否する (統合テストで確認) |
+| (提案) | PostgREST の embed を固定するテスト | `OUTREACH_DEMO_SELECT` を export し、本物の API で `prospect.demo` の下に `approved_version_id` だけが返ることを統合テストで固定 |
+
+rollback SQL は変更なし (新しい関数は無い。列と主キーは表と一緒に消える)。再確認: rollback を流した後の `pg_dump --schema-only --schema=public` は migration なしと差分 0 行。
 
 ## Rollback SQL
 
