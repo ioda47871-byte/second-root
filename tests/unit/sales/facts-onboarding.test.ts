@@ -25,7 +25,7 @@ const code = (f: () => unknown) => {
   }
   return "no-throw";
 };
-const state = (o: Partial<OnboardingDemoState> = {}): OnboardingDemoState => ({ doNotContact: false, approvalInFlight: false, shopOnOtherProspect: false, demo: null, ...o });
+const state = (o: Partial<OnboardingDemoState> = {}): OnboardingDemoState => ({ doNotContact: false, approvalInFlight: false, shopOnOtherProspect: false, demo: null, prospect: { name: "架空の店 試験", address: "愛知県名古屋市（登録用） 架空市架空区試験町1-2-3" }, ...o });
 const demo = (content: unknown, o: Partial<NonNullable<OnboardingDemoState["demo"]>> = {}) => ({ content, expiresAt: null, disabledAt: null, designStatus: null, ...o });
 
 describe("onboardingDemoContent (strict derivation)", () => {
@@ -80,6 +80,20 @@ describe("planFactsOnboarding", () => {
     expect(refused(state({ approvalInFlight: true, demo: demo(legacy) }))).toBe("facts_onboarding_demo_in_use");
     expect(refused(state({ demo: demo(legacy, { designStatus: "processing" }) }))).toBe("design_pending");
     expect(planFactsOnboarding("{", state())).toMatchObject({ ok: false, code: "TRUSTED_FACTS_INVALID", sha256: null });
+  });
+});
+
+describe("onboardingIdentity (PR #271 L3)", () => {
+  const text = fictionalPack();
+  it("matches when the pack's name and address are the prospect's (whitespace, width and one inside the other ignored)", () => {
+    const p = planFactsOnboarding(text, state());
+    expect(p).toMatchObject({ ok: true, identity: { packName: "架空の店 試験", packAddress: "架空市架空区試験町1-2-3", mismatch: false } });
+    expect(planFactsOnboarding(text, state({ prospect: { name: "架空の店\u3000試験", address: "架空市架空区試験町１-２-３" } }))).toMatchObject({ ok: true, identity: { mismatch: false } });
+  });
+  it("flags another name or another address (the plan still says what would happen; the confirmation is the caller's)", () => {
+    expect(planFactsOnboarding(text, state({ prospect: { name: "別の店", address: "架空市架空区試験町1-2-3" } }))).toMatchObject({ ok: true, identity: { mismatch: true, prospectName: "別の店" } });
+    expect(planFactsOnboarding(text, state({ prospect: { name: "架空の店 試験", address: "愛知県名古屋市中区別町9" } }))).toMatchObject({ ok: true, identity: { mismatch: true } });
+    expect(planFactsOnboarding(text, state({ prospect: { name: "", address: "" } }))).toMatchObject({ ok: true, identity: { mismatch: true } });
   });
 });
 

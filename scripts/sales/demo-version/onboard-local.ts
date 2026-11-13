@@ -3,14 +3,15 @@
  * and register the same bytes in the facts store — the LOCAL development equivalent of the admin screen's
  * 「デモの事実を facts pack から作る」. docs/operations/real-shop-demo-workflow.md.
  *
- *   npx tsx scripts/sales/demo-version/onboard-local.ts --prospect <uuid> --facts <facts-pack.json> --admin <admin user id> [--replace-content]
+ *   npx tsx scripts/sales/demo-version/onboard-local.ts --prospect <uuid> --facts <facts-pack.json> --admin <admin user id> [--replace-content] [--identity-mismatch-confirmed]
  *
  * Local only: SUPABASE_DB_URL must be a local stack (assertLocalDbUrl: 127.0.0.1 / localhost, no query string, no PG*
  * host variable); anything else is refused before a connection. The database owner's local CLI switch
  * (sales_facts_registration_settings.operator_cli_enabled, default off) must be on, and the admin must be in
  * sales_admins. The facts pack file must be outside the repository or under its gitignored .local-shops/, never a link.
  * The prospect must already exist (the existing ingest; this never creates a prospect). Replacing an existing demo's
- * content needs --replace-content. Prints ids, hashes and codes only — never a fact, a key or a path.
+ * content needs --replace-content; a pack whose name / address differ from the prospect row needs
+ * --identity-mismatch-confirmed (the owner checked it is the same shop). Prints ids, hashes and codes only — never a fact, a key or a path.
  */
 import { resolve } from "node:path";
 import pg from "pg";
@@ -24,7 +25,7 @@ const arg = (k: string) => {
 };
 const REPO = resolve(__dirname, "../../..");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const KNOWN = new Set(["--prospect", "--facts", "--admin", "--replace-content"]);
+const KNOWN = new Set(["--prospect", "--facts", "--admin", "--replace-content", "--identity-mismatch-confirmed"]);
 
 async function main(): Promise<number> {
   const prospectId = arg("--prospect");
@@ -32,7 +33,7 @@ async function main(): Promise<number> {
   const adminId = arg("--admin");
   const flags = process.argv.slice(2).filter((a) => a.startsWith("--"));
   if (!prospectId || !UUID.test(prospectId) || !factsPath || !adminId || !UUID.test(adminId) || flags.some((f) => !KNOWN.has(f))) {
-    process.stderr.write("usage: onboard-local.ts --prospect <uuid> --facts <facts-pack.json> --admin <admin user id> [--replace-content]\n");
+    process.stderr.write("usage: onboard-local.ts --prospect <uuid> --facts <facts-pack.json> --admin <admin user id> [--replace-content] [--identity-mismatch-confirmed]\n");
     return 2;
   }
   // checked before any connection: the database (local only) and the file (outside the repository or .local-shops/)
@@ -41,7 +42,7 @@ async function main(): Promise<number> {
   const db = new pg.Client(config);
   await db.connect();
   try {
-    const r = await onboardFactsLocal(db, { prospectId, factsPack, adminId, replaceContent: process.argv.includes("--replace-content") });
+    const r = await onboardFactsLocal(db, { prospectId, factsPack, adminId, replaceContent: process.argv.includes("--replace-content"), identityConfirmed: process.argv.includes("--identity-mismatch-confirmed") });
     process.stdout.write(`${JSON.stringify({ status: "OK", ...r }, null, 2)}\n`);
     return 0;
   } finally {

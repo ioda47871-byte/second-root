@@ -27,6 +27,13 @@ const CASES: [string, boolean][] = [
   ["info@ｅｘａｍｐｌｅ．ｎｅｔ", true],
   ["info@example。com", true],
   ["info@x.test", true],
+  // PR #271 L1: the shorthand format controls (UTS46 ignored) are removed too
+  [`info@exampl${String.fromCodePoint(0x1bca0)}e.com`, true],
+  [`info@example.org${String.fromCodePoint(0x1bca3)}`, true],
+  // PR #271 L2: the placeholder is not a letter, so a non-ASCII character cannot complete a reserved name
+  ["info@e日ample.com", false],
+  ["info@exampl日.net", false],
+  ["info@日.example.com", true],
   ["info@shop.co.jp", false],
   ["info@mytest.com", false],
 ];

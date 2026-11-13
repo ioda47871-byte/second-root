@@ -48,7 +48,7 @@ export function readOnboardingFacts(repo: string, path: string, cwd: string = pr
 
 /** The prospect and its demo as the onboarding plan needs them (owner connection), or null when there is no prospect. */
 export async function loadOnboardingState(db: pg.ClientBase, prospectId: string, shopId: string | null): Promise<OnboardingDemoState | null> {
-  const p = await db.query("select do_not_contact from public.sales_prospects where id = $1", [prospectId]);
+  const p = await db.query("select name, address, do_not_contact from public.sales_prospects where id = $1", [prospectId]);
   if (!p.rows[0]) return null;
   const d = await db.query("select content, expires_at, disabled_at, design_status from public.sales_demos where prospect_id = $1", [prospectId]);
   const a = await db.query("select 1 from public.sales_outreach_approvals where prospect_id = $1 and state in ('approved', 'send_opened', 'sent') limit 1", [prospectId]);
@@ -64,6 +64,7 @@ export async function loadOnboardingState(db: pg.ClientBase, prospectId: string,
   const demo = d.rows[0] as { content: unknown; expires_at: Date | null; disabled_at: Date | null; design_status: string | null } | undefined;
   return {
     doNotContact: p.rows[0].do_not_contact === true,
+    prospect: { name: String(p.rows[0].name), address: String(p.rows[0].address) },
     approvalInFlight: a.rows.length > 0,
     shopOnOtherProspect: other,
     demo: demo ? { content: demo.content, expiresAt: demo.expires_at?.toISOString() ?? null, disabledAt: demo.disabled_at?.toISOString() ?? null, designStatus: demo.design_status } : null,
@@ -73,12 +74,13 @@ export async function loadOnboardingState(db: pg.ClientBase, prospectId: string,
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
- * Plans, then runs sales_onboard_facts_demo as the local owner ('operator_cli'). A replacement needs replaceContent.
+ * Plans, then runs sales_onboard_facts_demo as the local owner ('operator_cli'). A replacement needs replaceContent; a
+ * pack whose name / address differ from the prospect row needs identityConfirmed.
  * Throws FactsOnboardingError with the plan's or the database's code; writes nothing on a refusal.
  */
 export async function onboardFactsLocal(
   db: pg.ClientBase,
-  a: { prospectId: string; factsPack: string; adminId: string; replaceContent: boolean },
+  a: { prospectId: string; factsPack: string; adminId: string; replaceContent: boolean; identityConfirmed?: boolean },
 ): Promise<OnboardedDemo & { action: OnboardingAction }> {
   if (!UUID.test(a.prospectId) || !UUID.test(a.adminId)) throw new FactsOnboardingError("invalid_input");
   let shopId: string | null = null;
@@ -92,6 +94,8 @@ export async function onboardFactsLocal(
   if (!state) throw new FactsOnboardingError("not_found");
   const plan = planFactsOnboarding(a.factsPack, state);
   if (!plan.ok) throw new FactsOnboardingError(plan.code);
+  // PR #271 L3: a pack whose name / address differ from the prospect row needs the explicit confirmation
+  if (plan.identity.mismatch && !a.identityConfirmed) throw new FactsOnboardingError("facts_onboarding_identity_unconfirmed");
   if (plan.needsConfirm && !a.replaceContent) throw new FactsOnboardingError("facts_onboarding_replace_unconfirmed");
   try {
     const r = await db.query("select public.sales_onboard_facts_demo($1::uuid, $2::text, $3::boolean, $4::uuid, 'operator_cli') as r", [

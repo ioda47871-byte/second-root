@@ -83,6 +83,26 @@ describe("the database derivation (sales_derive_facts_demo_content)", () => {
     expect(await code(fictionalPack({ facts: BASE_FACTS.filter(([k]) => k !== "workshop") }))).toBe("facts_pack_incomplete");
     expect(await code(fictionalPack({ extra: { note: "x" } }))).toBe("invalid_facts_pack");
     expect(await code("{")).toBe("invalid_facts_pack");
+    // PR #271 M1: the server FactsPack rules — unsafe text, fact / source ids, at most 200 facts, 400 characters (code points, as zod counts)
+    const withValue = (v: string) => fictionalPack({ facts: BASE_FACTS.map(([k, x]) => [k, k === "name" ? v : x]) });
+    for (const v of ["<script>alert(1)</script>", "a<<<b>>>c", `a${String.fromCharCode(7)}b`, "< / b>", "<!-- x -->", "x <IMG src=y>", `a${String.fromCharCode(0x7f)}b`])
+      expect(await code(withValue(v)), JSON.stringify(v)).toBe("facts_pack_unsafe_text");
+    for (const v of ["1<2", "<3", "架空の店 <試験>", "x <= 5"]) expect(await code(withValue(v)), v).toBe("no-refusal");
+    const reshape = (f: (p: { facts: Record<string, string>[] }) => void) => {
+      const p = JSON.parse(fictionalPack()) as { facts: Record<string, string>[] };
+      f(p);
+      return JSON.stringify(p);
+    };
+    expect(await code(reshape((p) => (p.facts[0]!.id = "zzz")))).toBe("invalid_facts_pack");
+    expect(await code(reshape((p) => (p.facts[0]!.id = "F1234")))).toBe("invalid_facts_pack");
+    expect(await code(reshape((p) => (p.facts[0]!.source_id = "X1")))).toBe("invalid_facts_pack");
+    expect(await code(reshape((p) => p.facts.push(...Array.from({ length: 200 }, (_, i) => ({ id: "F9", key: `service_${i + 3}`, value: "品", source_id: "S1" })))))).toBe("invalid_facts_pack");
+    expect(await code(withValue(String.fromCodePoint(0x1f35e).repeat(401)))).toBe("invalid_facts_pack");
+    expect(await code(withValue(String.fromCodePoint(0x1f35e).repeat(400)))).toBe("no-refusal");
+    // every case agrees with the server's FactsPack
+    const { FactsPack } = await import("@/lib/design-agent/quality-pipeline/facts-pack");
+    for (const v of ["<script>alert(1)</script>", "a<<<b>>>c", "a < b", "1<2", String.fromCodePoint(0x1f35e).repeat(401), String.fromCodePoint(0x1f35e).repeat(400)])
+      expect(FactsPack.safeParse(JSON.parse(withValue(v))).success, v).toBe((await code(withValue(v))) === "no-refusal");
     for (const v of [" 空白", "空白\u3000", "\u00a0空白", "空白\n"]) expect(await code(fictionalPack({ facts: BASE_FACTS.map(([k, x]) => [k, k === "hours" ? v : x]) }))).toBe("facts_pack_value_untrimmed");
   });
 
@@ -190,7 +210,10 @@ describe("the local owner path (onboard-local.ts)", () => {
     const s = await shop();
     const c = await db.connect();
     try {
-      const run = (o: Partial<{ adminId: string; replaceContent: boolean }> = {}) => onboardFactsLocal(c, { prospectId: s.prospectId, factsPack: fictionalPack(), adminId, replaceContent: true, ...o });
+      // the test prospect's registry name / address are not the fictional pack's: the CLI needs the explicit confirmation
+      const run = (o: Partial<{ adminId: string; replaceContent: boolean; identityConfirmed: boolean }> = {}) =>
+        onboardFactsLocal(c, { prospectId: s.prospectId, factsPack: fictionalPack(), adminId, replaceContent: true, identityConfirmed: true, ...o });
+      expect(await refusal(run({ identityConfirmed: false }))).toBe("facts_onboarding_identity_unconfirmed");
       expect(await refusal(run())).toBe("facts_cli_registration_disabled");
       await setFactsCliRegistration(true);
       expect(await refusal(run({ adminId: randomUUID() }))).toBe("forbidden");

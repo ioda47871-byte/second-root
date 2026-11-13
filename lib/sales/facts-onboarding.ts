@@ -28,15 +28,34 @@ export type OnboardingDemoState = {
   /** another prospect's demo or stored facts already carries this shop id (null: not known to the caller) */
   shopOnOtherProspect: boolean | null;
   demo: null | { content: unknown; expiresAt: string | null; disabledAt: string | null; designStatus: string | null };
+  /** the prospect's registry name and address (PR #271 L3: compared with the pack's, never written) */
+  prospect: { name: string; address: string };
 };
+
+/** The prospect (registry) beside the pack's name and address; mismatch → the owner must confirm explicitly. */
+export type OnboardingIdentity = { prospectName: string; prospectAddress: string; packName: string; packAddress: string; mismatch: boolean };
 
 export type OnboardingAction = "create" | "replace_legacy" | "replace_facts" | "unchanged";
 
 export type OnboardingPlan =
-  | { ok: true; action: OnboardingAction; needsConfirm: boolean; sha256: string; shopId: string; facts: { id: string; key: string; value: string }[]; content: Record<string, unknown> }
+  | { ok: true; action: OnboardingAction; needsConfirm: boolean; identity: OnboardingIdentity; sha256: string; shopId: string; facts: { id: string; key: string; value: string }[]; content: Record<string, unknown> }
   | { ok: false; code: string; sha256: string | null; shopId: string | null; facts: { id: string; key: string; value: string }[] };
 
 const RIN = "fictional-bicycle-repair-wa";
+/** NFKC, no whitespace (any kind), lower case: a comparison key only. */
+const key = (v: string) => v.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+const near = (a: string, b: string) => {
+  const x = key(a);
+  const y = key(b);
+  return x !== "" && y !== "" && (x === y || x.includes(y) || y.includes(x));
+};
+
+/** Does the pack name the same shop as the prospect row (name and address, each equal or one inside the other)? */
+export function onboardingIdentity(content: Record<string, unknown>, prospect: { name: string; address: string }): OnboardingIdentity {
+  const packName = String(content.name ?? "");
+  const packAddress = String(content.address ?? "");
+  return { prospectName: prospect.name, prospectAddress: prospect.address, packName, packAddress, mismatch: !near(packName, prospect.name) || !near(packAddress, prospect.address) };
+}
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
 /** What the onboarding step would do (pure; the database decides again). */
@@ -61,7 +80,8 @@ export function planFactsOnboarding(text: string, s: OnboardingDemoState): Onboa
   }
   if (s.doNotContact) return refuse("facts_onboarding_do_not_contact");
   if (s.shopOnOtherProspect) return refuse("facts_onboarding_shop_other_prospect");
-  const ok = (action: OnboardingAction): OnboardingPlan => ({ ok: true, action, needsConfirm: action === "replace_legacy" || action === "replace_facts", sha256, shopId: shopId!, facts, content });
+  const identity = onboardingIdentity(content, s.prospect);
+  const ok = (action: OnboardingAction): OnboardingPlan => ({ ok: true, action, needsConfirm: action === "replace_legacy" || action === "replace_facts", identity, sha256, shopId: shopId!, facts, content });
   if (!s.demo) return ok("create");
   const cur = obj(s.demo.content);
   if (cur && canonicalJson(cur) === canonicalJson(content)) return ok("unchanged");

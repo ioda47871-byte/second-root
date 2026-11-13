@@ -95,8 +95,9 @@ npx tsx scripts/sales/demo-version/package-local.ts --out <置き場>/<shop_id>/
 
 1. `/admin/sales/demos/<prospect id>` を開く (旗 `SALES_DEMO_VERSIONS_ENABLED` と `SALES_DEMO_QUALITY_REVIEW_ENABLED`)。デモが無い候補でも、この頁に「デモの事実を facts pack から作る」だけが出る。
 2. 「デモの事実を facts pack から作る」に `facts-pack.json` の中身を貼り、**内容を確認**。何が起きるか (作る / React のデモの内容を置き換える / 前の facts を置き換える / 変更なし) と事実の一覧が出る。
-3. 置き換えなら「今のデモの内容を置き換えることを確認しました」に印を付け、**この事実からデモの事実を作る**。
-   - DB (`sales_create_demo_from_facts`) が 1 つの transaction で: 事実からデモの内容を作り (サーバーと同じ導き方)、デモを作るか内容を置き換え、同じバイトを店舗の事実として登録する (追記のみ)。
+3. 「候補の登録」と「facts pack」の店名・住所が並んで出る。違うときは警告が出て、別の店の事実でないことを確かめてから「店名・住所の違いを確かめ、同じ店であることを確認しました」に印を付けないと作れない (候補の登録の名前・住所は取り込みの値で、この手順では変えない)。
+4. 置き換えなら「今のデモの内容を置き換えることを確認しました」に印を付け、**この事実からデモの事実を作る**。
+   - DB (`sales_create_demo_from_facts`) が 1 つの transaction で (DB 自身も admin と FactsPack の規則 (形・id・長さ・使えない文字) を検める。旗は画面を隠すだけ): 事実からデモの内容を作り (サーバーと同じ導き方)、デモを作るか内容を置き換え、同じバイトを店舗の事実として登録する (追記のみ)。
    - 拒否されるもの: 連絡しない (DNC)・除外リスト・同じ shop_id が別の候補にある・輪・無効化されたデモ・送信の承認済み / 送信済み / 共有中のデモ・デザインの処理中・別の shop_id への置き換え。
    - React のデモの内容を置き換えると、React のデモの表示も変わる (業種の値によっては React のデモは出なくなる)。送るのは版だけ。
 
@@ -105,7 +106,7 @@ npx tsx scripts/sales/demo-version/package-local.ts --out <置き場>/<shop_id>/
 ```bash
 SUPABASE_DB_URL="$(npx supabase status -o json | jq -r .DB_URL)" \
 npx tsx scripts/sales/demo-version/onboard-local.ts --prospect <prospect id> \
-  --facts <置き場>/<shop_id>/facts-pack.json --admin "$ADMIN_ID" [--replace-content]
+  --facts <置き場>/<shop_id>/facts-pack.json --admin "$ADMIN_ID" [--replace-content] [--identity-mismatch-confirmed]
 ```
 
 facts pack のファイルはリポジトリの外か `.local-shops/` の下だけ (それ以外は `FACTS_FILE_IN_REPO`)。

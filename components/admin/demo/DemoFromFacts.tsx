@@ -25,23 +25,26 @@ export default function DemoFromFacts({ prospectId, target, enabled }: { prospec
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<DemoFromFactsPreview | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const [confirmIdentity, setConfirmIdentity] = useState(false);
   const [result, setResult] = useState<{ kind: "error" | "done"; text: string } | null>(null);
   const [pending, start] = useTransition();
 
   const reset = () => {
     setPreview(null);
     setConfirmReplace(false);
+    setConfirmIdentity(false);
   };
   const check = () =>
     start(async () => {
       setResult(null);
       setConfirmReplace(false);
+      setConfirmIdentity(false);
       setPreview(await previewDemoFromFactsPack({ prospectId, factsPack: text }));
     });
   const create = () =>
     start(async () => {
       if (!preview?.ok) return;
-      const r = await createDemoFromFactsPack({ prospectId, factsPack: text, sha256: preview.sha256, replaceContent: preview.needsConfirm && confirmReplace });
+      const r = await createDemoFromFactsPack({ prospectId, factsPack: text, sha256: preview.sha256, replaceContent: preview.needsConfirm && confirmReplace, identityConfirmed: preview.identity.mismatch && confirmIdentity });
       if (r.ok) {
         setResult({
           kind: "done",
@@ -89,7 +92,7 @@ export default function DemoFromFacts({ prospectId, target, enabled }: { prospec
             <button type="button" className={styles.primary} disabled={pending || text.trim().length < 2} onClick={check}>
               内容を確認
             </button>
-            <button type="button" className={styles.primary} disabled={pending || !preview?.ok || (preview.needsConfirm && !confirmReplace)} onClick={create}>
+            <button type="button" className={styles.primary} disabled={pending || !preview?.ok || (preview.needsConfirm && !confirmReplace) || (preview.identity.mismatch && !confirmIdentity)} onClick={create}>
               この事実からデモの事実を作る
             </button>
           </p>
@@ -100,6 +103,26 @@ export default function DemoFromFacts({ prospectId, target, enabled }: { prospec
                   <p style={{ margin: 0 }}>
                     {preview.shopId} の事実 {preview.facts.length} 件（sha256 {preview.sha256.slice(0, 12)}…）。{ACTION_TEXT[preview.action]}
                   </p>
+                  <dl style={{ margin: "8px 0 0" }} data-demo-from-facts-identity={preview.identity.mismatch ? "mismatch" : "match"}>
+                    <dt>候補の登録</dt>
+                    <dd>
+                      {preview.identity.prospectName}／{preview.identity.prospectAddress}
+                    </dd>
+                    <dt>facts pack</dt>
+                    <dd>
+                      {preview.identity.packName}／{preview.identity.packAddress}
+                    </dd>
+                  </dl>
+                  {preview.identity.mismatch && (
+                    <>
+                      <p className={styles.alert} role="alert" style={{ margin: "8px 0 0" }}>
+                        店名または住所が候補の登録と一致しません。別の店の事実ではないか確かめてください。
+                      </p>
+                      <label style={{ display: "block", marginTop: 8 }}>
+                        <input type="checkbox" checked={confirmIdentity} onChange={(e) => setConfirmIdentity(e.target.checked)} disabled={pending} data-demo-from-facts-identity-confirm="" /> 店名・住所の違いを確かめ、同じ店であることを確認しました
+                      </label>
+                    </>
+                  )}
                   {preview.needsConfirm && (
                     <label style={{ display: "block", marginTop: 8 }}>
                       <input type="checkbox" checked={confirmReplace} onChange={(e) => setConfirmReplace(e.target.checked)} disabled={pending} data-demo-from-facts-confirm="" /> 今のデモの内容を置き換えることを確認しました

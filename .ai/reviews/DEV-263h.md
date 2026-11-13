@@ -128,3 +128,15 @@ delete from supabase_migrations.schema_migrations where version = '2026111600010
 commit;
 ```
 <!-- rollback-sql-20261116000100:end -->
+
+## PR #271 Fresh Review (@ d38fe34a: C0 H0 M1 L4) と対応
+
+| ID | 指摘 | 対応 |
+|---|---|---|
+| M1 | `sales_derive_facts_demo_content` にサーバーの FactsPack の規則 (unsafeText・id `^F\d{1,3}$`・source_id `^S\d{1,3}$`・200 件まで) が無く、admin の session の直接の RPC でサーバーが拒否する pack (`<script>…`・`a<<<b>>>c`・制御文字・id `zzz`) を保存できる | migration `20261116000000` の導出に追加: facts は 1〜200 件、id `^F[0-9]{1,3}$`・source_id `^S[0-9]{1,3}$`、値の unsafeText (`[\x01-\x09\x0b-\x1f\x7f]|<<<|>>>|<\s*/?\s*[a-zA-Z!]`。`\s` は JavaScript と同じ Unicode の空白まで、NUL は text に入らない) → `facts_pack_unsafe_text`。長さは zod と同じく文字 (code point) で 400 まで (zod 4 の `max` が code point で数えることを確かめた)。統合テスト「refuses what the server refuses」に、unsafe 7 件 (拒否)・安全な `<` 4 件 (通る)・id / source_id・201 件・401 文字 / 400 文字、と**サーバーの FactsPack と同じ結果になること**を追加。migration の先頭に「DB は独立した門: admin を検め、FactsPack の規則と導出を DB でやり直す。旗は画面を隠すだけで、RPC は設計上 sales admin (オーナー) に開いている」と明記 |
+| L1 | 予備の判定の見えない文字に U+1BCA0–1BCA3 (UTS46 の ignored) が無い | `20261116000100` の文字の組に `\U0001bca0-\U0001bca3`。テスト `exampl\u{1BCA0}e.com` → 予約済み、`example.org\u{1BCA3}` → 予約済み |
+| L2 | 置き換えの `x` が `example` を作る (`e日ample.com` を拒否) | 置き換えを数字 `0` に。テスト `e日ample.com`・`exampl日.net` → 予約済みでない、`日.example.com` → 予約済み (サーバーの IDNA と同じ) |
+| L3 | preview で候補の店名・住所を pack のものと並べ、違えば警告し、明示の確認なしでは拒否 | `planFactsOnboarding` が `identity` (候補の登録の名前・住所と pack の `name`・`address`、NFKC・空白なし・小文字で、同じか片方が他方を含めば一致) を返す。画面は 2 つを並べ、違えば警告と「店名・住所の違いを確かめ、同じ店であることを確認しました」の印 (無ければボタンが押せない)。サーバーの submit は `identityConfirmed` が無いと `facts_onboarding_identity_unconfirmed` で拒否 (DB には行かない)。CLI は `--identity-mismatch-confirmed`。unit (一致・全角・別の名前・別の住所・空、admin の submit の拒否と確認後の成功) と統合 (CLI の拒否)。DB は名前を比べない (候補の登録の名前は取り込みの値で、pack と書き方が違いうるため。画面とサーバーと CLI の確認の規則) |
+| L4 | 予期しない DB の誤りの生の文を画面に出す | 既知の code だけを文言にし、他は 1 つの汎用の文 (`code: "unexpected"`、生の文を返さない)。unit (一意制約の誤りの文が結果に含まれない) |
+
+再実行 (@ 修正後): 統合の全体 38 ファイル 546 件 + 5 skipped (scratch のスタックを作り直して全 migration を当てた)、unit (sales・admin・demo-version-package・staging・ai-tasks) 73 ファイル 1614 件 pass (swap-photos の 2 件は Chromium が無いため、前と同じ)、tsc・eslint pass。

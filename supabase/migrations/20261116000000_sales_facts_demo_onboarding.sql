@@ -30,7 +30,12 @@
 -- owner's own connection (scripts/sales/demo-version/onboard-local.ts, local
 -- stack only) while the owner's local CLI switch
 -- (sales_facts_registration_settings.operator_cli_enabled, default off) is on.
--- No service-role entry point is added. New function names do not start with
+-- No service-role entry point is added. The database is a gate of its own:
+-- sales_create_demo_from_facts checks the admin and re-runs every FactsPack
+-- rule (shape, ids, lengths, unsafe text) and the derivation itself, so a
+-- direct RPC with an admin session can store nothing the server would refuse.
+-- The app's feature flag only hides the screen; by design the RPC is open to
+-- any signed-in sales admin (the owner). New function names do not start with
 -- sales_demo_ (DEV-196c's audit test counts those).
 --
 -- Rollback (one transaction; registered facts and demo content written by
@@ -78,7 +83,7 @@ begin
      or exists (select 1 from jsonb_object_keys(v_pack) x where x not in ('schema', 'shop_id', 'facts'))
      or v_pack->>'schema' is distinct from 'shop_facts_pack_v1'
      or jsonb_typeof(v_pack->'shop_id') is distinct from 'string' or (v_pack->>'shop_id') !~ '^[a-z0-9][a-z0-9_-]{1,40}$'
-     or jsonb_typeof(v_pack->'facts') is distinct from 'array' or coalesce(jsonb_array_length(v_pack->'facts'), 0) = 0 then
+     or jsonb_typeof(v_pack->'facts') is distinct from 'array' or coalesce(jsonb_array_length(v_pack->'facts'), 0) not between 1 and 200 then
     raise exception 'invalid_facts_pack' using errcode = '22023';
   end if;
   for f in select e.value from jsonb_array_elements(v_pack->'facts') e loop
@@ -86,8 +91,16 @@ begin
        or exists (select 1 from jsonb_object_keys(f) x where x not in ('id', 'key', 'value', 'source_id'))
        or jsonb_typeof(f->'id') is distinct from 'string' or jsonb_typeof(f->'key') is distinct from 'string'
        or jsonb_typeof(f->'value') is distinct from 'string' or jsonb_typeof(f->'source_id') is distinct from 'string'
-       or (f->>'key') !~ '^[a-z][a-z0-9_]{1,40}$' or char_length(f->>'value') not between 1 and 400 then
+       or (f->>'id') !~ '^F[0-9]{1,3}$' or (f->>'source_id') !~ '^S[0-9]{1,3}$'
+       or (f->>'key') !~ '^[a-z][a-z0-9_]{1,40}$'
+       -- FactsPack's max(400) counts characters (code points), as char_length does
+       or char_length(f->>'value') not between 1 and 400 then
       raise exception 'invalid_facts_pack' using errcode = '22023';
+    end if;
+    -- FactsPack's unsafeText (lib/design-agent/quality-pipeline/facts-pack.ts): control characters, <<< / >>>, a tag
+    -- opening (JavaScript's \s, case-insensitive [a-z]; NUL cannot be in a text value)
+    if (f->>'value') ~ '[\x01-\x09\x0b-\x1f\x7f]|<<<|>>>|<[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*/?[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[a-zA-Z!]' then
+      raise exception 'facts_pack_unsafe_text' using errcode = '22023';
     end if;
     if (f->>'value') ~ '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
        or (f->>'value') ~ '[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]$' then

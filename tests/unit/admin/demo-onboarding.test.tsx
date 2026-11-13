@@ -17,7 +17,7 @@ const LEGACY = { name: "テストベーカリー", category: "bakery" };
 type Demo = { content: unknown; expires_at: string | null; disabled_at: string | null; design_status: string | null } | null;
 const S = {
   admin: true,
-  prospect: { id: PROSPECT, do_not_contact: false } as unknown,
+  prospect: { id: PROSPECT, name: "架空の店 試験", address: "架空市架空区試験町1-2-3", do_not_contact: false } as unknown,
   demo: { content: LEGACY, expires_at: null, disabled_at: null, design_status: null } as Demo,
   approvals: [] as unknown[],
   otherDemos: [] as unknown[],
@@ -73,7 +73,7 @@ beforeEach(() => {
   rpc.mockClear();
   Object.assign(S, {
     admin: true,
-    prospect: { id: PROSPECT, do_not_contact: false },
+    prospect: { id: PROSPECT, name: "架空の店 試験", address: "架空市架空区試験町1-2-3", do_not_contact: false },
     demo: { content: LEGACY, expires_at: null, disabled_at: null, design_status: null },
     approvals: [],
     otherDemos: [],
@@ -89,9 +89,9 @@ describe("previewDemoFromFacts / submitDemoFromFacts", () => {
     expect(p).toMatchObject({ ok: true, action: "replace_legacy", needsConfirm: true, shopId: "fictional-onboarding-h1" });
     expect(rpc).not.toHaveBeenCalled();
     if (!p.ok) throw new Error("preview");
-    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: false }, o())).toMatchObject({ ok: false, code: "facts_onboarding_replace_unconfirmed" });
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: false, identityConfirmed: false }, o())).toMatchObject({ ok: false, code: "facts_onboarding_replace_unconfirmed" });
     expect(rpc).not.toHaveBeenCalled();
-    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true }, o())).toMatchObject({ ok: true, contentChanged: true });
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true, identityConfirmed: false }, o())).toMatchObject({ ok: true, contentChanged: true });
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith("sales_create_demo_from_facts", { p_prospect_id: PROSPECT, p_facts_pack: text, p_replace_content: true });
   });
@@ -101,7 +101,7 @@ describe("previewDemoFromFacts / submitDemoFromFacts", () => {
     const p = await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o());
     expect(p).toMatchObject({ ok: true, action: "create", needsConfirm: false });
     if (!p.ok) throw new Error("preview");
-    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true }, o())).toMatchObject({ ok: true, demoCreated: true });
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true, identityConfirmed: false }, o())).toMatchObject({ ok: true, demoCreated: true });
     expect(rpc).toHaveBeenLastCalledWith("sales_create_demo_from_facts", { p_prospect_id: PROSPECT, p_facts_pack: text, p_replace_content: false });
     S.demo = { content: onboardingDemoContent(new TextEncoder().encode(text)), expires_at: null, disabled_at: null, design_status: null };
     expect(await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o())).toMatchObject({ ok: true, action: "unchanged", needsConfirm: false });
@@ -109,14 +109,14 @@ describe("previewDemoFromFacts / submitDemoFromFacts", () => {
 
   it("the flag off refuses before reading; malformed input, an invalid pack, a stale sha256 and a missing prospect are refused without a write", async () => {
     expect(await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o({ SALES_DEMO_VERSIONS_ENABLED: "true" }))).toEqual({ ok: false, error: QUALITY_REVIEW_DISABLED_TEXT });
-    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: "a".repeat(64), replaceContent: true }, o({}))).toEqual({ ok: false, error: QUALITY_REVIEW_DISABLED_TEXT });
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: "a".repeat(64), replaceContent: true, identityConfirmed: false }, o({}))).toEqual({ ok: false, error: QUALITY_REVIEW_DISABLED_TEXT });
     expect(await previewDemoFromFacts({ prospectId: "x", factsPack: text }, o())).toMatchObject({ ok: false });
     expect(await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: fictionalPack({ facts: [...BASE_FACTS, ["price", "100円"]] }) }, o())).toMatchObject({ ok: false, code: "TRUSTED_FACTS_UNMAPPED_KEY" });
     expect(await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: "{}" }, o())).toMatchObject({ ok: false, code: "TRUSTED_FACTS_INVALID" });
-    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: "b".repeat(64), replaceContent: true }, o())).toMatchObject({ ok: false, code: "FACTS_PACK_STALE" });
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: "b".repeat(64), replaceContent: true, identityConfirmed: false }, o())).toMatchObject({ ok: false, code: "FACTS_PACK_STALE" });
     S.prospect = null;
     expect(await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o())).toMatchObject({ ok: false });
-    S.prospect = { id: PROSPECT, do_not_contact: false };
+    S.prospect = { id: PROSPECT, name: "架空の店 試験", address: "架空市架空区試験町1-2-3", do_not_contact: false };
     S.readError = true;
     expect(await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o())).toMatchObject({ ok: false });
     expect(rpc).not.toHaveBeenCalled();
@@ -127,9 +127,9 @@ describe("previewDemoFromFacts / submitDemoFromFacts", () => {
       const p = await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o());
       return p.ok ? "ok" : p.code;
     };
-    S.prospect = { id: PROSPECT, do_not_contact: true };
+    S.prospect = { id: PROSPECT, name: "架空の店 試験", address: "架空市架空区試験町1-2-3", do_not_contact: true };
     expect(await sub()).toBe("facts_onboarding_do_not_contact");
-    S.prospect = { id: PROSPECT, do_not_contact: false };
+    S.prospect = { id: PROSPECT, name: "架空の店 試験", address: "架空市架空区試験町1-2-3", do_not_contact: false };
     S.otherFacts = [{ id: "x" }];
     expect(await sub()).toBe("facts_onboarding_shop_other_prospect");
     S.otherFacts = [];
@@ -147,7 +147,28 @@ describe("previewDemoFromFacts / submitDemoFromFacts", () => {
     S.rpcError = { message: "facts_onboarding_excluded" };
     const p = await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o());
     if (!p.ok) throw new Error("preview");
-    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true }, o())).toMatchObject({ ok: false, code: "facts_onboarding_excluded", error: expect.stringContaining("除外") });
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true, identityConfirmed: false }, o())).toMatchObject({ ok: false, code: "facts_onboarding_excluded", error: expect.stringContaining("除外") });
+  });
+
+  it("PR #271 L3: the prospect's name / address beside the pack's; a mismatch is refused unless the owner confirms it", async () => {
+    S.prospect = { id: PROSPECT, name: "別の店", address: "愛知県名古屋市中区別町9", do_not_contact: false };
+    const p = await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o());
+    expect(p).toMatchObject({ ok: true, identity: { mismatch: true, prospectName: "別の店", packName: "架空の店 試験" } });
+    if (!p.ok) throw new Error("preview");
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true, identityConfirmed: false }, o())).toMatchObject({ ok: false, code: "facts_onboarding_identity_unconfirmed" });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true, identityConfirmed: true }, o())).toMatchObject({ ok: true });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("PR #271 L4: an unexpected database error is shown as one generic message (no raw text, code unexpected)", async () => {
+    S.rpcError = { message: "duplicate key value violates unique constraint sales_demos_public_token_key" };
+    const p = await previewDemoFromFacts({ prospectId: PROSPECT, factsPack: text }, o());
+    if (!p.ok) throw new Error("preview");
+    const r = await submitDemoFromFacts({ prospectId: PROSPECT, factsPack: text, sha256: p.sha256, replaceContent: true, identityConfirmed: false }, o());
+    expect(r).toMatchObject({ ok: false, code: "unexpected" });
+    expect(JSON.stringify(r)).not.toContain("sales_demos");
+    expect(JSON.stringify(r)).not.toContain("duplicate key");
   });
 
   it("a value holding an email address is never shown", async () => {
@@ -165,10 +186,10 @@ describe("server actions: flag first, then the admin", () => {
       delete process.env.SALES_DEMO_QUALITY_REVIEW_ENABLED;
       S.admin = false;
       expect(await previewDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text })).toEqual({ ok: false, error: QUALITY_REVIEW_DISABLED_TEXT });
-      expect(await createDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text, sha256: "a".repeat(64), replaceContent: true })).toEqual({ ok: false, error: QUALITY_REVIEW_DISABLED_TEXT });
+      expect(await createDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text, sha256: "a".repeat(64), replaceContent: true, identityConfirmed: false })).toEqual({ ok: false, error: QUALITY_REVIEW_DISABLED_TEXT });
       Object.assign(process.env, ENV);
       await expect(previewDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text })).rejects.toThrow("forbidden");
-      await expect(createDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text, sha256: "a".repeat(64), replaceContent: true })).rejects.toThrow("forbidden");
+      await expect(createDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text, sha256: "a".repeat(64), replaceContent: true, identityConfirmed: false })).rejects.toThrow("forbidden");
       expect(rpc).not.toHaveBeenCalled();
       S.admin = true;
       expect(await previewDemoFromFactsPack({ prospectId: PROSPECT, factsPack: text })).toMatchObject({ ok: true, action: "replace_legacy" });

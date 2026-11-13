@@ -10,8 +10,10 @@
 --    (default-ignorable / format) characters are removed — soft hyphen, the
 --    zero-width and bidi controls, word joiner and invisible operators, BOM,
 --    variation selectors, tags, the combining grapheme joiner, Hangul fillers,
---    Mongolian / Khmer invisibles — and every other remaining character is
---    replaced with a placeholder letter (x), so it still separates labels the
+--    Mongolian / Khmer invisibles, the shorthand format controls
+--    U+1BCA0–1BCA3 — and every other remaining character is replaced with the
+--    digit 0 (not a letter: e日ample.com must not read as example.com), so it
+--    still separates labels the
 --    way the server's IDNA mapping does (lib/sales/test-recipient.ts:
 --    domainToASCII turns a non-ASCII label into an xn-- label, never into
 --    ASCII that could match a reserved name). A zero-width character still
@@ -76,11 +78,12 @@ begin
     return true;
   end if;
   if v_domain ~ '[^a-z0-9.-]' then
-    -- the invisible characters go; every other character becomes a letter (it still belongs to its label)
+    -- the invisible characters go (UTS46 ignored / default-ignorable); every other character becomes the digit 0: it
+    -- still belongs to its label and, not being a letter, cannot complete a reserved name (e日ample.com)
     v_domain := regexp_replace(v_domain,
-      '[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8\U000e0000-\U000e0fff]',
+      '[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8\U0001bca0-\U0001bca3\U000e0000-\U000e0fff]',
       '', 'g');
-    v_domain := regexp_replace(regexp_replace(v_domain, '[^a-z0-9.-]', 'x', 'g'), '\.+$', '');
+    v_domain := regexp_replace(regexp_replace(v_domain, '[^a-z0-9.-]', '0', 'g'), '\.+$', '');
     return v_domain = '' or public.sales_reserved_test_domain(v_domain);
   end if;
   return false;
