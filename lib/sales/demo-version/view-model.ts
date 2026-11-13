@@ -27,11 +27,9 @@ import { QUALITY_CHECKLIST_ITEMS, type QualityChecklistItem, type QualityDecisio
 import { ADMIN_PREVIEW_STATUSES, ADMIN_RIGHTS_LABELS, RIGHTS_STATUSES, SHARE_PHOTOS_ENABLED, type RightsStatus } from "./rights";
 import { canAdminPreview, VERSION_STATUSES, type VersionStatus } from "./version-state";
 
-/**
- * Mirrors sales_demo_versioned_sharing_enabled() (DEV-196c: constant false until the dedicated artifact origin,
- * DEV-196g). A literal, not an option.
- */
-export const VERSIONED_SHARING_ENABLED = false as const;
+// DEV-196g: the DEV-196c literal VERSIONED_SHARING_ENABLED is replaced by the server flag SALES_DEMO_SHARE_ENABLED
+// (flags.ts demoShareEnabled), passed in as `versionedSharingEnabled` (default off). The database has its own switch
+// (sales_demo_share_settings, owner-only); the database decides every send and share, the screen only mirrors it.
 
 export type VersionRowDb = {
   id: string;
@@ -270,10 +268,10 @@ function reviewView(r: QualityReviewDb): ReviewView {
   };
 }
 
-/** Why a version cannot be shared now (§8.3). Today versioned sharing itself is off, so it always has a reason. */
-export function unshareableReasons(images: readonly { rightsStatus: RightsStatus }[]): UnshareableReason[] {
+/** Why a version cannot be shared now (§8.3). `versionedSharingEnabled`: the server flag (flags.ts demoShareEnabled); default off. */
+export function unshareableReasons(images: readonly { rightsStatus: RightsStatus }[], versionedSharingEnabled = false): UnshareableReason[] {
   const reasons: UnshareableReason[] = [];
-  if (!(VERSIONED_SHARING_ENABLED as boolean)) reasons.push("versioned_sharing_disabled");
+  if (!versionedSharingEnabled) reasons.push("versioned_sharing_disabled");
   if (images.some((i) => AI_STATUSES.includes(i.rightsStatus))) reasons.push("ai_images");
   if (images.length > 0 && !(SHARE_PHOTOS_ENABLED as boolean)) reasons.push("photos_not_shareable");
   return reasons;
@@ -295,6 +293,8 @@ export function buildDemoVersionsView(o: {
    * screen does not claim the copy is confirmed; the database decides).
    */
   copySendBlock?: CopySendCode | null;
+  /** DEV-196g: the server flag SALES_DEMO_SHARE_ENABLED (demoShareEnabled). Left out / false: versioned sharing is off. */
+  versionedSharingEnabled?: boolean;
   now: Date;
 }): DemoVersionsView {
   const byId = new Map(o.versions.map((v) => [v.id, v]));
@@ -392,7 +392,7 @@ export function buildDemoVersionsView(o: {
         approveBlockers,
         impersonationConfirmImageIds: images.filter((i) => i.needsImpersonationConfirm && i.imageId).map((i) => i.imageId!),
         revocable: status === "draft" || status === "approved" || status === "superseded",
-        unshareableReasons: unshareableReasons(images),
+        unshareableReasons: unshareableReasons(images, o.versionedSharingEnabled === true),
       };
     });
 
@@ -425,7 +425,7 @@ function sendStop(
   );
   if (!hasActiveApproval) return stop("demo_quality_not_approved");
   if (factsKnown && o.currentFactsSha256 !== v.facts_sha256) return stop("demo_facts_changed");
-  // versioned sharing is off (DEV-196g), so a version that got this far is never shareable today
+  // while versioned sharing is off (the default), a version that got this far is never shareable
   const reasons = view.unshareableReasons;
   const last = lastSendStops(reasons, o.copySendBlock);
   return last ? stop(last.code, last.reasons) : null;

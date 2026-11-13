@@ -25,6 +25,15 @@ async function withRollback<T>(fn: (query: (sql: string) => Promise<unknown[]>) 
 }
 
 describe("staging verification", () => {
+  it("DEV-196g [fail-closed]: the owner-only share switch turned on fails demo_version_sharing_disabled", async () => {
+    const failed = await withRollback(async (query) => {
+      await query("update public.sales_demo_share_settings set versioned_sharing_enabled = true");
+      const { results } = await runChecks(query, local);
+      return results.filter((r: { ok: boolean }) => !r.ok).map((r: { id: string; items: string[] }) => [r.id, r.items]);
+    });
+    expect(failed).toEqual([["demo_version_sharing_disabled", ["function sales_demo_versioned_sharing_enabled"]]]);
+  });
+
   it("passes on a database built from supabase/migrations/", async () => {
     const { ok, results } = await runChecks(async (sql: string) => (await db.query(sql)).rows, local);
     expect(results.filter((r: { ok: boolean }) => !r.ok)).toEqual([]);

@@ -273,13 +273,24 @@ export const SECURITY_CHECKS = [
   },
   {
     // DEV-196c: versioned demos are not shared until the dedicated artifact
-    // origin exists (spec §6.8, DEV-196g): both switches stay constant false,
-    // and no version claims to be share-eligible.
+    // origin exists (spec §6.8, DEV-196g): photo sharing stays constant false,
+    // versioned sharing answers false, and no version claims to be share-eligible.
+    // DEV-196g: sales_demo_versioned_sharing_enabled() now reads the owner-only
+    // switch (sales_demo_share_settings, default off) instead of a constant, so the
+    // check asks the function itself (evaluated only when it exists). Turning the
+    // switch on in a hosted project is a separate owner approval, and this check
+    // then has to be changed with it.
     id: "demo_version_sharing_disabled",
     title: "versioned demo sharing and photo sharing are switched off in the database",
     sql: `select 'function ' || p.proname as item from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-          where n.nspname = 'public' and p.proname in ('sales_demo_versioned_sharing_enabled', 'sales_demo_share_photos_enabled')
+          where n.nspname = 'public' and p.proname = 'sales_demo_share_photos_enabled'
             and regexp_replace(lower(p.prosrc), '\\s', '', 'g') <> 'selectfalse'
+          union all
+          select 'function sales_demo_versioned_sharing_enabled' as item
+          where case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                  where n.nspname = 'public' and p.proname = 'sales_demo_versioned_sharing_enabled')
+                     then (xpath('/row/v/text()', query_to_xml('select public.sales_demo_versioned_sharing_enabled() as v', false, true, '')))[1]::text is distinct from 'false'
+                     else false end
           union all
           select 'check sales_demo_versions.share_eligible' as item
           where exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace

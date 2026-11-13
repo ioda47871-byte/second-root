@@ -93,3 +93,38 @@ export function demoVersionsConfig(env: Env): DemoVersionsConfig {
   const k = readViewSigningKey(env);
   return { enabled: true, key: k.ok ? k.key : null, keyProblem: k.ok ? null : k.reason, artifactOrigin: artifactOrigin(env) };
 }
+
+/**
+ * DEV-196g (spec §6.4 step 1・§6.8・§12): versioned SHARING has its own flag. Strict "true", default off, and it needs
+ * the preview flag too. Off → `/demo/[publicToken]` is exactly what it was before DEV-196g (the React demo; the share
+ * resolver is not even called) and `/demo-frame/p/…` is the same 404 as every refusal. It is one half of the switch:
+ * the database's sales_demo_share_settings (owner-only) must be on as well, or the resolver never answers "version".
+ */
+export const SHARE_ENABLED_ENV = "SALES_DEMO_SHARE_ENABLED";
+/**
+ * DEV-196g (§6.7・§6.8): the app's own origin, named in the shared artifact's `frame-ancestors` (the artifact origin
+ * serves the document; only the app's share page may frame it). Required for sharing; unset / malformed / equal to the
+ * artifact origin → nothing is shared (fail closed).
+ */
+export const APP_ORIGIN_ENV = "SALES_DEMO_APP_ORIGIN";
+
+/** Strict "true" for both the preview flag and the share flag. */
+export function demoShareEnabled(env: Env): boolean {
+  return demoVersionsEnabled(env) && env[SHARE_ENABLED_ENV] === "true";
+}
+
+export type DemoShareConfig =
+  | { enabled: false }
+  /** the flag is on but the key / artifact origin / app origin is missing or wrong: serve no version (never the React demo instead) */
+  | { enabled: true; ready: false }
+  | { enabled: true; ready: true; key: Uint8Array; artifactOrigin: string; appOrigin: string };
+
+/** Everything sharing needs, read once. Fails closed: a version is served only when every setting is valid. */
+export function demoShareConfig(env: Env): DemoShareConfig {
+  if (!demoShareEnabled(env)) return { enabled: false };
+  const key = viewSigningKey(env);
+  const art = artifactOrigin(env);
+  const app = normaliseOrigin(env[APP_ORIGIN_ENV] ?? null);
+  if (!key || art.kind !== "set" || app === null || app === art.origin) return { enabled: true, ready: false };
+  return { enabled: true, ready: true, key, artifactOrigin: art.origin, appOrigin: app };
+}

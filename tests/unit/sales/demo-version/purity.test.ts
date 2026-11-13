@@ -28,6 +28,8 @@ describe("demo-version library purity", () => {
       "app/admin/sales/demos/[prospectId]/layout.tsx",
       "app/admin/sales/demos/[prospectId]/page.tsx",
       "app/admin/sales/page.tsx",
+      // DEV-196g (Issue #263, sharing approved for code and local tests): the share page reads only the share flag
+      "app/demo/[publicToken]/page.tsx",
       "components/admin/DemoVersionBadge.tsx",
       "components/admin/TodayCard.tsx",
       "components/admin/demo/CompareTables.tsx",

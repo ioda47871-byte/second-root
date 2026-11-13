@@ -40,5 +40,15 @@ export function supabaseFrameStore(client: SupabaseClient = createServiceClient(
       if (error || !data || data.size > maxBytes) return null;
       return new Uint8Array(await data.arrayBuffer());
     },
+    // DEV-196g: the database's share decision for the demo (sales_resolve_demo_share of its own public token)
+    async share(demoId) {
+      const d = await client.from("sales_demos").select("id, public_token").eq("id", demoId).maybeSingle();
+      const token = (d.data as { id?: unknown; public_token?: unknown } | null)?.public_token;
+      if (d.error || typeof token !== "string") return null;
+      const { data, error } = await client.rpc("sales_resolve_demo_share", { p_public_token: token });
+      const r = data as { mode?: unknown; version_id?: unknown } | null;
+      if (error || !r || typeof r.mode !== "string") return null;
+      return typeof r.version_id === "string" ? { mode: r.mode, version_id: r.version_id } : { mode: r.mode };
+    },
   };
 }
