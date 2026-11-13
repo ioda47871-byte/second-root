@@ -8,9 +8,9 @@ import { errorCode, OPENED_VIA, recordedSend, sendErrorMessage, type OpenedVia, 
 import { COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels";
 import { outreachCopyGate } from "@/lib/sales/copy-review/store";
 import { aiDesignEnabled } from "@/lib/sales/design";
-import { TEST_RECIPIENT_LABEL, testRecipientBlock } from "@/lib/sales/test-recipient";
 import { VERSIONED_SEND_SHARE_OFF } from "@/lib/sales/demo-version/admin-messages";
 import { demoShareEnabled } from "@/lib/sales/demo-version/flags";
+import { TEST_RECIPIENT_LABEL, testRecipientBlock } from "@/lib/sales/test-recipient";
 import { createAuthClient } from "@/lib/supabase/server";
 
 // The manual send of an initial message (MVP_SPEC §4, DEV-195):
