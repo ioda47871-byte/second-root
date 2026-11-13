@@ -23,6 +23,7 @@ import {
   NO_IMPERSONATION_STATEMENT,
   QUALITY_DECISION_LABEL,
   SEND_STOP_ACKNOWLEDGEMENT,
+  type StructureAdviceText,
 } from "@/lib/sales/demo-version/admin-messages";
 import type { QualityDecision } from "@/lib/sales/demo-version/quality";
 import { normaliseNote, REVIEW_EMPHASISED as EMPHASISED_ITEMS, REVIEW_ITEMS as QUALITY_CHECKLIST_ITEMS, type ReviewItem as QualityChecklistItem } from "@/lib/sales/demo-version/review-client";
@@ -39,7 +40,11 @@ export type ReviewVersion = {
   approveBlockers: ApproveBlocker[];
   reviewBlockers: ApproveBlocker[];
   aiImages: ReviewImage[];
+  /** DEV-196q: the stored structure findings as advice beside items 3・4 (never blocks) */
+  structure: StructureAdviceText;
 };
+
+const STRUCTURE_ITEMS: readonly QualityChecklistItem[] = ["shop_specific_structure", "no_generic_lp_regression"];
 
 type Answer = "ok" | "ng";
 
@@ -119,6 +124,18 @@ export default function QualityReviewForm({ prospectId, version, viewed }: { pro
                 </label>
               ))}
             </div>
+            {STRUCTURE_ITEMS.includes(k) && (
+              <div className={styles.note} data-structure-advice={version.structure.kind} role="note">
+                {version.structure.lines.length > 0 && (
+                  <ul style={{ margin: "0 0 4px" }}>
+                    {version.structure.lines.map((l) => (
+                      <li key={l}>{l}</li>
+                    ))}
+                  </ul>
+                )}
+                {version.structure.note}
+              </div>
+            )}
           </fieldset>
         );
       })}

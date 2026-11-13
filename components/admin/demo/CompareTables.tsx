@@ -4,7 +4,7 @@
  * page's visible text line by line. Every word is a fixed label, a fixed code, a vocabulary word or the page's own
  * visible text; no free text from a row.
  */
-import type { CopyDiff } from "@/lib/admin/demo-compare";
+import type { CopyDiff, CopyRecordSide } from "@/lib/admin/demo-compare";
 import { RIGHTS_STATUS_LABEL } from "@/lib/sales/demo-version/admin-messages";
 import type { FileChange, FileDiffEntry, StructureDiffEntry, VersionMetaDiff } from "@/lib/sales/demo-version/compare";
 import styles from "./demo.module.css";
@@ -134,6 +134,24 @@ export function StructureDiffTable({ entries, a, b }: { entries: StructureDiffEn
 
 const UNAVAILABLE_SIDE = { a: "比べる元の版", b: "比べる版", both: "両方の版" } as const;
 
+/** DEV-196p: each side's stored copy record, checked again on the server (fixed codes only). */
+function CopyRecordLine({ side, record }: { side: "a" | "b"; record: CopyRecordSide }) {
+  const who = UNAVAILABLE_SIDE[side];
+  const text =
+    record.state === "missing"
+      ? "文章の記録 (copy record) が保存されていません。"
+      : record.state === "unreadable"
+        ? "文章の記録を読めませんでした。"
+        : record.check.ok
+          ? "文章の記録と頁の文を照合しました。記録に無い文はなく、事実の行は事実パックと一致しています。"
+          : `文章の記録との照合で問題があります（${record.check.codes.join("・")}）。`;
+  return (
+    <li data-copy-record={side} data-copy-record-state={record.state === "checked" ? (record.check.ok ? "ok" : "ng") : record.state}>
+      {who}：{text}
+    </li>
+  );
+}
+
 export function CopyDiffList({ copy }: { copy: CopyDiff }) {
   if (copy.kind === "unavailable") {
     return (
@@ -152,13 +170,22 @@ export function CopyDiffList({ copy }: { copy: CopyDiff }) {
   const { ops, added, removed } = copy.result;
   return (
     <>
-      <p className={styles.sub} data-copy-counts={`${added}/${removed}`}>
-        追加 {added} 行・削除 {removed} 行。「事実」は店舗の事実と完全に一致する行です。印のない行は、店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）です。メールアドレスを含む行は表示しません。
+      <ul className={styles.sub} data-copy-records="">
+        <CopyRecordLine side="a" record={copy.records.a} />
+        <CopyRecordLine side="b" record={copy.records.b} />
+      </ul>
+      <p className={styles.sub} data-copy-counts={`${added}/${removed}`} data-copy-basis={copy.basis}>
+        追加 {added} 行・削除 {removed} 行。
+        {copy.basis === "copy_record"
+          ? "「事実」は保存された文章の記録 (copy record) の事実の行で、事実パックの値と一致した行です。「創作」は記録の創作の見出し（事実ではありません。品質の判定の項目 2 で判断してください）。印のない行は、ラベルか記録に無い行です。"
+          : "片方または両方の版に文章の記録が無い（または読めない）ため、店舗の事実との一致だけで印を付けています。「事実」は店舗の事実と完全に一致する行です。印のない行は、店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）です。"}
+        メールアドレスを含む行は表示しません。
       </p>
       <ol className={styles.lines} data-copy="ok">
         {ops.map((o, i) => (
           <li key={i} className={o.op === "add" ? styles.lineAdd : o.op === "del" ? styles.lineDel : undefined} data-op={o.op} data-kind={o.kind}>
-            <span className={styles.tag}>{o.op === "add" ? "＋" : o.op === "del" ? "−" : "＝"}</span> {o.kind === "fact" && <span className={styles.tag}>事実</span>} {o.text}
+            <span className={styles.tag}>{o.op === "add" ? "＋" : o.op === "del" ? "−" : "＝"}</span> {o.kind === "fact" && <span className={styles.tag}>事実</span>}
+            {o.kind === "creative" && <span className={styles.tag}>創作</span>} {o.text}
           </li>
         ))}
       </ol>
