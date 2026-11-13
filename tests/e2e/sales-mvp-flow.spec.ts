@@ -192,6 +192,9 @@ async function approveOnAdmin(page: Page, prospectId: string, versionId: string)
   await expect(form.locator('[data-review-result="done"]')).toBeVisible();
   await expect(page.locator('[data-version="1"]')).toContainText("品質承認済み");
   expect((await demoOf(prospectId)).approved_version_id).toBe(versionId);
+  expect((await db.query("select decision, state, reviewed_by from public.sales_demo_quality_reviews where version_id = $1", [versionId])).rows).toEqual([
+    { decision: "approved", state: "active", reviewed_by: adminId },
+  ]);
 
   // the owner's copy decision (decideCopyReview)
   const decision = page.locator("[data-copy-decision-form]");
