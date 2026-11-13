@@ -37,6 +37,8 @@ const INPUTS = {
   reviewDemoVersion: { prospectId: ID, versionId: ID, decision: "rejected", checklist: {}, viewedRenders: {}, bundleSha256: "a".repeat(64), impersonation: [], acknowledgedSendStop: false, note: null },
   withdrawDemoApproval: { prospectId: ID, versionId: ID, reviewId: ID, bundleSha256: "a".repeat(64), confirmed: true },
   revokeDemoVersion: { prospectId: ID, versionId: ID, bundleSha256: "a".repeat(64), code: "FACT_ERROR", urgent: true, confirmed: true },
+  // DEV-199b: the owner's copy decision is a quality-review write too
+  decideCopyReview: { prospectId: ID, versionId: ID, reviewId: ID, decision: "reject", reviewSha256: "a".repeat(64), factsSha256: "a".repeat(64), copySha256: "a".repeat(64), pageHtmlSha256: "a".repeat(64), pageCssSha256: "a".repeat(64), note: null },
 } as const;
 
 beforeEach(() => {

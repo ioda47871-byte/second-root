@@ -64,6 +64,24 @@ Claude は描いた PC と SP の全体を、自分で開いて見る。記録�
 
 描いた画像のバイトは書体で機械ごとに変わる。だから、バイトの照合は描いた場所でだけ意味があり、ほかでは報告だけにする。CI では記録の形・参照・範囲を確かめる。描いた画像の幅は 1440 と 390 に固定し、高さは1画面以上とする。判定が `show_owner` なら、失敗の符号を残せない。
 
+## 4. 文章の品質監査 (`copy_quality_review_v1`、DEV-199b、Issue #258)
+
+```
+npx tsx scripts/design-artifact/comp-copy.ts --audit  <カンプ> --facts <facts-pack.json>
+npx tsx scripts/design-artifact/comp-copy.ts --revise <カンプ> --facts <facts-pack.json>
+npx tsx scripts/design-artifact/comp-copy.ts --gate   <カンプ> --facts <facts-pack.json>
+npx tsx scripts/design-artifact/comp-lane.ts --check-review <カンプ> --facts <facts-pack.json>
+```
+
+`review.json` の判定が `show_owner` のカンプは、そのファイル (copy.json・index.html・style.css と facts pack) の文章の監査 (`copy-review.json`) が**オーナーの確認の段** (文章の判定 approve_candidate) にあるときだけ通る。それ以外は `SHOW_WITHOUT_COPY_APPROVE_CANDIDATE` と、`COPY_` を付けた理由で落とす (`--facts` が無ければ `SHOW_WITHOUT_COPY_REVIEW`・`COPY_FACTS_PACK_REQUIRED`)。監査そのものは DEV-199a の `reviewCopyQuality` で、ここでは作り直さない。
+
+- `--audit` は今のファイルを鎖の次の round として監査し、`copy-review.json` を書く。同じ facts の別のファイルの監査は上書きしない (`COPY_REVIEW_EXISTS_FOR_OTHER_FILES`)。直した頁は新しい round 0 ではなく、改稿の round として監査する。
+- `--revise` は次の段が `revise` のときだけ (上限 `MAX_COPY_REVISION_ROUNDS` = 2 の内)。今のファイルと監査を `copy-rounds/<n>/` へ移し、ファイルはその場で文言だけ直す。改稿は `validateCopyRevision` と鎖全体の再監査を通る。
+- `hold` は理由を出して止まる (事実を作らない)。`fail` は終端で、改稿できない。改ざん・古い監査・鎖の崩れは `refused`。
+- 架空の研究のカンプは、オーナーに見せられても送信できない (`FICTIONAL_RESEARCH_NOT_SENDABLE`)。実店舗の round がオーナーの確認に達した後の改稿依頼は、オーナーの保存先 (DB) が要るので、このレーンでは受けない。
+
+**限界**: このレーンはファイルで動く。`copy-review.json` を消して直したファイルを round 0 として監査し直すことは、ファイルだけでは止められない。追記のみの鎖は、取り込みの時に DB の保存先 (DEV-199e) が強制する。
+
 ## 例: つぐ手 d1「金の継ぎ目が横断する」
 
 `design-library/research/quality-pipeline/poc/tsugute/comps/d1-seam-across/`

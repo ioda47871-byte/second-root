@@ -13,6 +13,8 @@ import "server-only";
  */
 import { createAuthClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import type { CopySendCode } from "@/lib/sales/copy-review/labels";
+import { loadVersionCopyGate } from "@/lib/sales/copy-review/store";
 import { demoVersionsConfig, type Env } from "@/lib/sales/demo-version/flags";
 import { buildDemoVersionsView, type DemoImageDb, type DemoVersionsView, type QualityReviewDb, type SendApprovalDb, type VersionFileDb, type VersionRowDb } from "@/lib/sales/demo-version/view-model";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
@@ -147,17 +149,29 @@ export async function loadDemoVersionsPage(
   if (a.error) return { kind: "error" };
   const approvals = (a.data ?? []) as SendApprovalDb[];
 
-  const view = buildDemoVersionsView({
-    versions: listed,
-    files,
-    images,
-    reviews,
-    approvals,
-    approvedVersionId: d.approved_version_id,
-    demoDisabled: d.disabled_at !== null,
-    currentFactsSha256: await readFactsSafely(o.factsSha256 ?? currentFactsSha256, d.id),
-    now: o.now,
-  });
+  const factsNow = await readFactsSafely(o.factsSha256 ?? currentFactsSha256, d.id);
+  const build = (copySendBlock?: CopySendCode | null) =>
+    buildDemoVersionsView({
+      versions: listed,
+      files,
+      images,
+      reviews,
+      approvals,
+      approvedVersionId: d.approved_version_id,
+      demoDisabled: d.disabled_at !== null,
+      currentFactsSha256: factsNow,
+      copySendBlock,
+      now: o.now,
+    });
+  let view = build();
+  // DEV-199b (DEV-199e L2′): the copy send gate is the last step of the send block. Only when every earlier step passes
+  // (the view then says "unverifiable" for the unread copy) is the approved version's copy gate read, through the
+  // admin's session; a read failure stays demo_copy_review_unverifiable. While versioned sharing is off (DEV-196g) the
+  // send stops at demo_not_shareable first, so this read does not happen.
+  if (view.sendStop?.code === "demo_copy_review_unverifiable" && d.approved_version_id !== null) {
+    const gate = await loadVersionCopyGate(supabase, d.approved_version_id);
+    view = build(gate.ok ? null : gate.code);
+  }
 
   const tokens: Record<string, string> = {};
   if (config.key && config.artifactOrigin.kind === "unset") {

@@ -173,9 +173,11 @@ describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193
       [COMP_LANE]: [
         "../../lib/design-agent/phase2f/prototype-safety",
         "../../lib/design-agent/phase2f/render-prototype",
+        "../../lib/design-agent/quality-pipeline/comp-copy-gate",
         "../../lib/design-agent/quality-pipeline/comp-review",
         "../../lib/design-agent/quality-pipeline/copy-record",
         "../../lib/design-agent/quality-pipeline/facts-pack",
+        "./comp-copy",
         "./visual-read",
         "node:crypto",
         "node:fs",
@@ -184,6 +186,9 @@ describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193
       ],
       "lib/design-agent/quality-pipeline/comp-review.ts": ["../reference-originals/visual-read", "zod"],
       "lib/design-agent/quality-pipeline/copy-record.ts": ["zod"],
+      // DEV-199b: the comp lane's copy gate and its file steps (the audit itself is pinned by copy-quality-review.test.ts)
+      "scripts/design-artifact/comp-copy.ts": ["../../lib/design-agent/quality-pipeline/comp-copy-gate", "../../lib/design-agent/quality-pipeline/copy-quality-review", "node:fs", "node:path"],
+      "lib/design-agent/quality-pipeline/comp-copy-gate.ts": ["./copy-quality-review"],
       // what the comp lane reaches through ./visual-read (DEV-158 files, PR #199 confirmation review L2)
       "scripts/design-artifact/visual-read.ts": ["../../lib/design-agent/reference-originals/visual-read", "node:crypto", "node:fs", "node:path"],
       "lib/design-agent/reference-originals/visual-read.ts": ["./observation", "zod"],
