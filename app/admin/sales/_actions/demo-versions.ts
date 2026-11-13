@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
+import { submitCopyDecision, type CopyDecisionResult } from "@/lib/admin/demo-copy-review";
 import { submitRevoke, submitWithdraw, type LifecycleResult } from "@/lib/admin/demo-lifecycle";
 import { submitDemoReview, type ReviewResult } from "@/lib/admin/demo-review";
 import { QUALITY_REVIEW_DISABLED_TEXT } from "@/lib/sales/demo-version/admin-messages";
@@ -37,6 +38,17 @@ export async function withdrawDemoApproval(input: unknown): Promise<LifecycleRes
   if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
   await requireAdmin();
   const result = await submitWithdraw(input, { env: process.env, now: new Date(), client: await createAuthClient() });
+  if (result.ok) revalidate(input);
+  return result;
+}
+
+// DEV-199b: the owner's copy decision (文章を承認 / 改稿を依頼 / 却下) on a version's copy review — the same order: flag,
+// admin, then lib/admin/demo-copy-review.ts re-reads the store and re-checks (stale hashes, the database's rules, for an
+// approval the facts path and the re-run audit) and writes only through sales_decide_copy_review as the admin.
+export async function decideCopyReview(input: unknown): Promise<CopyDecisionResult> {
+  if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
+  await requireAdmin();
+  const result = await submitCopyDecision(input, { env: process.env, client: await createAuthClient() });
   if (result.ok) revalidate(input);
   return result;
 }
