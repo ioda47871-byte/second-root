@@ -7,7 +7,7 @@ import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
 import { COPY_FACTS_NAME, priorName } from "@/lib/demo-version-package/copy";
 import { importPackage, type PackageStore } from "@/lib/demo-version-package/import";
-import { assertDemoContentFromFacts, canonicalJson, compCopyInput, LocalInputError, readCommittedFacts } from "@/lib/demo-version-package/local-inputs";
+import { assertDemoContentFromFacts, canonicalJson, compCopyInput, FACTS_BASE_REF, LocalInputError, readCommittedFacts } from "@/lib/demo-version-package/local-inputs";
 import { buildPackage, checkPackageCopy, PACKAGE_FORMAT_COPY, type DemoVersionPackage } from "@/lib/demo-version-package/package";
 import { demoContentFromFacts, RIN_SHOP_ID, rinDemoContent, type FactsPack } from "@/lib/demo-version-package/seed-rin";
 import { SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_SHOP_ID, sendableDemoContent, sendableSeedContent } from "@/lib/demo-version-package/seed-sendable";
@@ -204,6 +204,20 @@ describe("import-local --trusted-facts: the local facts path", () => {
     // no origin/develop at all
     git("update-ref", "-d", "refs/remotes/origin/develop");
     expect(code(() => readCommittedFacts(d, "facts.json"))).toBe("TRUSTED_FACTS_NOT_ON_DEVELOP");
+  });
+
+  it("DEV-263e: only the remote-tracking ref counts — a local branch or tag named origin/develop is never the base", () => {
+    expect(FACTS_BASE_REF).toBe("refs/remotes/origin/develop");
+    const { d, git } = gitRepo();
+    writeFileSync(join(d, "head-only.json"), readFileSync(FACTS));
+    git("add", "head-only.json");
+    git("commit", "-q", "-m", "head only");
+    // a local branch and a tag spelled origin/develop, both at HEAD (which holds the pack); the real remote-tracking ref does not
+    git("branch", "origin/develop", "HEAD");
+    git("tag", "origin/develop", "HEAD");
+    expect(code(() => readCommittedFacts(d, "head-only.json"))).toBe("TRUSTED_FACTS_NOT_ON_DEVELOP");
+    git("update-ref", "refs/remotes/origin/develop", "HEAD");
+    expect(Buffer.from(readCommittedFacts(d, "head-only.json")).equals(readFileSync(FACTS))).toBe(true);
   });
 
   it("the fixture's facts pack is committed at this repository's HEAD", () => {
