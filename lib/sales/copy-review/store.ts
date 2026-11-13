@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArtifactManifest, CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
-import { evaluateVersionCopyGate, type CopyCandidate, type ShopCopyState, type StoredCopyReview, type StoredOwnerDecision, type VersionCopyGate } from "./gate";
+import { evaluateVersionCopyGate, type CopyCandidate, type ShopCopyState, type StoredCopyReview, type StoredOwnerDecision, type VersionCopyGate, type VersionCopyGateInput } from "./gate";
 
 export class CopyStoreError extends Error {
   constructor(public readonly code: string) {
@@ -64,33 +64,41 @@ export async function recordCopyReview(
   return data as RecordedCopyReview;
 }
 
+/**
+ * Everything the copy gate of one version is decided from (DEV-199b: also what the admin screen and the owner's copy
+ * decision read). Throws CopyStoreError on any read failure; `demoId` is the version's own demo.
+ */
+export async function loadVersionCopyContext(client: SupabaseClient, versionId: string): Promise<VersionCopyGateInput & { demoId: string }> {
+  if (!UUID.test(versionId)) throw new CopyStoreError("COPY_STORE_VERSION_INVALID");
+  const v = await client.from("sales_demo_versions").select("id, demo_id, manifest, facts_sha256").eq("id", versionId).maybeSingle();
+  const row = v.data as { id: string; demo_id: string; manifest: unknown; facts_sha256: string | null } | null;
+  const manifest = ArtifactManifest.safeParse(row?.manifest);
+  if (v.error || !row || !manifest.success) throw new CopyStoreError("COPY_STORE_VERSION_NOT_FOUND");
+  const [files, link] = await Promise.all([
+    client.from("sales_demo_version_files").select("path, sha256").eq("version_id", versionId).in("path", [HTML_NAME, CSS_NAME]),
+    client.from("sales_demo_version_copy_links").select("review_id").eq("version_id", versionId).maybeSingle(),
+  ]);
+  if (files.error || link.error || !Array.isArray(files.data)) throw new CopyStoreError("COPY_STORE_READ_FAILED");
+  const sha = (p: string) => (files.data as { path: string; sha256: string }[]).find((f) => f.path === p)?.sha256 ?? null;
+  const state = await loadShopCopyState(client, row.demo_id);
+  return {
+    demoId: row.demo_id,
+    versionId,
+    photoUrls: photoUrlPaths(manifest.data),
+    versionFactsSha256: row.facts_sha256 ?? null,
+    pageHtmlSha256: sha(HTML_NAME),
+    pageCssSha256: sha(CSS_NAME),
+    linkedReviewId: (link.data as { review_id?: string } | null)?.review_id ?? null,
+    state,
+  };
+}
+
 /** The copy gate of one version, from the rows (any read failure is a refusal: demo_copy_review_unverifiable). */
 export async function loadVersionCopyGate(client: SupabaseClient, versionId: string): Promise<VersionCopyGate> {
-  const unverifiable: VersionCopyGate = { ok: false, code: "demo_copy_review_unverifiable", details: [] };
   try {
-    if (!UUID.test(versionId)) return unverifiable;
-    const v = await client.from("sales_demo_versions").select("id, demo_id, manifest, facts_sha256").eq("id", versionId).maybeSingle();
-    const row = v.data as { id: string; demo_id: string; manifest: unknown; facts_sha256: string | null } | null;
-    const manifest = ArtifactManifest.safeParse(row?.manifest);
-    if (v.error || !row || !manifest.success) return unverifiable;
-    const [files, link] = await Promise.all([
-      client.from("sales_demo_version_files").select("path, sha256").eq("version_id", versionId).in("path", [HTML_NAME, CSS_NAME]),
-      client.from("sales_demo_version_copy_links").select("review_id").eq("version_id", versionId).maybeSingle(),
-    ]);
-    if (files.error || link.error || !Array.isArray(files.data)) return unverifiable;
-    const sha = (p: string) => (files.data as { path: string; sha256: string }[]).find((f) => f.path === p)?.sha256 ?? null;
-    const state = await loadShopCopyState(client, row.demo_id);
-    return evaluateVersionCopyGate({
-      versionId,
-      photoUrls: photoUrlPaths(manifest.data),
-      versionFactsSha256: row.facts_sha256 ?? null,
-      pageHtmlSha256: sha(HTML_NAME),
-      pageCssSha256: sha(CSS_NAME),
-      linkedReviewId: (link.data as { review_id?: string } | null)?.review_id ?? null,
-      state,
-    });
+    return evaluateVersionCopyGate(await loadVersionCopyContext(client, versionId));
   } catch {
-    return unverifiable;
+    return { ok: false, code: "demo_copy_review_unverifiable", details: [] };
   }
 }
 

@@ -31,6 +31,8 @@ describe("demo-version library purity", () => {
       "components/admin/DemoVersionBadge.tsx",
       "components/admin/TodayCard.tsx",
       "components/admin/demo/CompareTables.tsx",
+      // DEV-199b: the owner's copy decision form calls the demo-versions server action (decideCopyReview)
+      "components/admin/demo/CopyDecisionForm.tsx",
       "components/admin/demo/FactsPanel.tsx",
       "components/admin/demo/LiveFrame.tsx",
       "components/admin/demo/QualityReviewForm.tsx",

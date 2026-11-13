@@ -15,11 +15,12 @@
  *    overflow, and whether <dir>/review.json is of these renders (it is when rendered where the review was made;
  *    fonts make the bytes machine-dependent, so a mismatch elsewhere is reported, not failed)
  *
- *   npx tsx scripts/design-artifact/comp-lane.ts --check-review <comp dir>
+ *   npx tsx scripts/design-artifact/comp-lane.ts --check-review <comp dir> [--facts <facts-pack.json>]
  *
  * checks <dir>/review.json (Claude's own review of the renders, comp_review_v1) without a browser: it is of this
  * comp's files, its references are VISUAL_VERIFIED reads and quote their `learn` lines, the crops cover the renders.
  * The render bytes depend on the machine's fonts, so they are compared only where the comp is rendered.
+ * DEV-199b: a `show_owner` review also needs the comp's copy audit (comp-copy.ts) at owner review, which needs --facts.
  *
  * Exit 0 when all hold, 1 when a check fails, 2 for a usage or input error. The PNGs are for Claude and the owner to
  * look at; a passing run is not a quality verdict.
@@ -34,6 +35,7 @@ import {
 } from "../../lib/design-agent/phase2f/prototype-safety";
 import { RenderError, renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
 import { FactsPack } from "../../lib/design-agent/quality-pipeline/facts-pack";
+import { compShowOwnerCodes } from "../../lib/design-agent/quality-pipeline/comp-copy-gate";
 import { checkCompReview } from "../../lib/design-agent/quality-pipeline/comp-review";
 import {
   checkCopyRecord,
@@ -41,6 +43,7 @@ import {
   joinedTextsLookingLikeFact,
   textsNotInRecord,
 } from "../../lib/design-agent/quality-pipeline/copy-record";
+import { checkCompCopy } from "./comp-copy";
 import { checkAllReads } from "./visual-read";
 
 const arg = (k: string) => {
@@ -65,10 +68,15 @@ export function insideRepo(p: string): boolean {
   return !(rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel));
 }
 
-/** The review of a comp against its files, Claude's VISUAL_VERIFIED reads and the known failure codes. */
+/**
+ * The review of a comp against its files, Claude's VISUAL_VERIFIED reads and the known failure codes. DEV-199b: a
+ * `show_owner` verdict also needs the copy audit of these files at owner review (comp-copy.ts, with the facts pack);
+ * without the facts pack it is refused (SHOW_WITHOUT_COPY_REVIEW, COPY_FACTS_PACK_REQUIRED).
+ */
 export function checkReviewFile(
   dir: string,
   renders: Parameters<typeof checkCompReview>[1]["renders"] = null,
+  factsPath?: string,
 ) {
   const reads = checkAllReads().filter(
     (r) => r.check.ok && r.bytes === "in_repo",
@@ -89,8 +97,9 @@ export function checkReviewFile(
       "utf8",
     ),
   ) as { failure_codes: Array<{ code: string }> };
-  return checkCompReview(
-    JSON.parse(readFileSync(join(dir, "review.json"), "utf8")),
+  const raw = JSON.parse(readFileSync(join(dir, "review.json"), "utf8")) as { verdict?: unknown } | null;
+  const r = checkCompReview(
+    raw,
     {
       renders,
       verifiedReads,
@@ -104,6 +113,10 @@ export function checkReviewFile(
       },
     },
   );
+  const verdict = raw?.verdict;
+  const copy = verdict !== "show_owner" ? [] : factsPath ? compShowOwnerCodes(verdict, checkCompCopy(dir, factsPath)) : ["SHOW_WITHOUT_COPY_REVIEW", "COPY_FACTS_PACK_REQUIRED"];
+  const codes = [...r.codes, ...copy];
+  return { ok: codes.length === 0, codes };
 }
 
 export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; block: number; em: number; lh: number; vertical: boolean; lr?: boolean };
@@ -156,7 +169,8 @@ async function main(): Promise<number> {
   const reviewDir = arg("--check-review");
   if (reviewDir) {
     try {
-      const r = checkReviewFile(resolve(reviewDir));
+      const facts = arg("--facts");
+      const r = checkReviewFile(resolve(reviewDir), null, facts ? resolve(facts) : undefined);
       process.stdout.write(`${JSON.stringify(r)}\n`);
       return r.ok ? 0 : 1;
     } catch (e) {
@@ -409,7 +423,7 @@ async function main(): Promise<number> {
     let review: unknown = "none";
     if (existsSync(join(dir, "review.json"))) {
       const now = (k: "desktop_1440" | "mobile_390") => ({ sha256: sha(shots[k].png), width: shots[k].scrollWidth, height: shots[k].scrollHeight });
-      const withRenders = checkReviewFile(dir, { desktop: now("desktop_1440"), mobile: now("mobile_390") });
+      const withRenders = checkReviewFile(dir, { desktop: now("desktop_1440"), mobile: now("mobile_390") }, factsPath);
       const structural = withRenders.codes.filter((c) => !c.startsWith("RENDER_MISMATCH_"));
       for (const c of structural) findings.push({ code: `REVIEW_${c}` });
       review = { structural_ok: structural.length === 0, renders_match_here: withRenders.codes.every((c) => !c.startsWith("RENDER_MISMATCH_")) };

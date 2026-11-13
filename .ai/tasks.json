@@ -9869,7 +9869,7 @@
     {
       "id": "DEV-199b",
       "title": "文章品質監査を生成・レビュー経路に接続する (Issue #258 の 2/3)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-199a",
@@ -9888,7 +9888,16 @@
         "unit の全体・tsc・eslint・check:secrets"
       ],
       "allowed_scope": [
-        "(着手時に決める)"
+        "lib/design-agent/quality-pipeline/comp-copy-gate.ts (新規、純粋)",
+        "scripts/design-artifact/comp-copy.ts (新規)・scripts/design-artifact/comp-lane.ts (checkReviewFile の show_owner に文章の門を足すだけ)",
+        "lib/sales/copy-review/gate.ts (copyDecisionRefusals・recheckStoredReview の追加)・store.ts (loadVersionCopyContext への切り出し)・labels.ts (文言の追加)・view.ts (新規)",
+        "lib/admin/demo-copy-review.ts (新規)・lib/admin/demo-versions.ts (copySendBlock の配線)",
+        "app/admin/sales/_actions/demo-versions.ts (decideCopyReview)・app/admin/sales/demos/[prospectId]/page.tsx (文章の監査の区画)",
+        "components/admin/demo/CopyReviewPanel.tsx・CopyDecisionForm.tsx (新規)",
+        "docs/design/comp-lane.md (4. 文章の品質監査)",
+        "tests (新規。既存の固定した一覧への追加は .ai/reviews/DEV-199b.md に記録)",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-199b.md"
       ],
       "forbidden_scope": [
         "lib/design-agent/quality-pipeline/copy-record.ts・facts-pack.ts・comp-review.ts・権利と出典の検査の変更・緩和",
@@ -9902,11 +9911,14 @@
       "human_approval_triggers": [
         "新しい prompt の版はオーナー承認",
         "DB の変更はオーナー承認",
+        "facts の経路 (店舗の facts pack の保存先) の新設と、その送信時の比べ直し (上の必須の前提) はオーナー承認 (未着手)",
+        "フラグの有効化 (SALES_DEMO_VERSIONS_ENABLED / SALES_DEMO_QUALITY_REVIEW_ENABLED) は別の承認",
         "PR の Fresh Review と merge"
       ],
       "attempts": 0,
       "last_failure": null,
-      "note": "Issue #258"
+      "branch": "feature/dev-199b-copy-gate-integration",
+      "note": "記録は .ai/reviews/DEV-199b.md。comp-lane の show_owner は文章の監査がオーナーの確認の段のときだけ通る。管理画面に文章の監査の区画とオーナーの文章の確認 (フラグの後ろ、既定 OFF)。facts の経路はコードベースに無いので作っていない: facts_from_facts_path は常に false で送信不可・オーナーの確認も拒否、上の必須の前提 (送信の時の比べ直し) は未着手のまま開いている。migration なし。Issue #258"
     },
     {
       "id": "DEV-199c",
@@ -9995,7 +10007,7 @@
     {
       "id": "DEV-199e",
       "title": "文章品質監査の保存・オーナーの文章確認・版のデモの送信の阻止 (Issue #258 オーナー判断①、ローカルの DB だけ)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-199d"

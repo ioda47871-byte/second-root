@@ -1209,7 +1209,9 @@ describe("isolation", () => {
   // re-runs the audit on a package's files at build / read / import. Nothing else (the send path, the app) calls it.
   // DEV-199e (owner decision ①): the copy review store and the copy send gate (lib/sales/copy-review/gate.ts) are the
   // second caller: they re-run the audit on import (before storing) and before a send approval of a versioned demo.
-  it("nothing in the app, lib or scripts calls the audit except the package copy check (DEV-199d) and the copy store / send gate (DEV-199e)", () => {
+  // DEV-199b: the comp lane's copy gate (comp-copy-gate.ts, pure) and its file steps (scripts/design-artifact/comp-copy.ts:
+  // audit, revise, gate) are the third: a comp goes to the owner only with its copy at owner review.
+  it("nothing in the app, lib or scripts calls the audit except the package copy check (DEV-199d), the copy store / send gate (DEV-199e) and the comp lane copy gate (DEV-199b)", () => {
     const walk = (dir: string): string[] =>
       readdirSync(resolve(fx.REPO, dir), { withFileTypes: true }).flatMap((d) => {
         const p = `${dir}/${d.name}`;
@@ -1217,7 +1219,7 @@ describe("isolation", () => {
         return /\.(ts|tsx|mts|mjs|js)$/.test(d.name) ? [p] : [];
       });
     const callers = ["app", "lib", "scripts", "components"].flatMap(walk).filter((p) => /from\s*["'][^"']*copy-quality-(review|page)["']/.test(src(p)) && !p.includes("quality-pipeline/copy-quality-"));
-    expect(callers).toEqual(["lib/demo-version-package/copy.ts", "lib/sales/copy-review/gate.ts"]);
+    expect(callers).toEqual(["lib/demo-version-package/copy.ts", "lib/design-agent/quality-pipeline/comp-copy-gate.ts", "lib/sales/copy-review/gate.ts", "scripts/design-artifact/comp-copy.ts"]);
     expect(rules(reviewCopyQuality(fx.bakeryGood()))).toEqual([]);
   });
 });

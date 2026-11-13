@@ -28,6 +28,7 @@ import {
   copyReviewAppendBlockers,
   copyVerdict,
   CopyQualityReview,
+  MAX_COPY_REVISION_ROUNDS,
   nextCopyStep,
   type CopyQualityFiles,
   type OwnerCopyApproval,
@@ -234,4 +235,43 @@ export function evaluateVersionCopyGate(i: VersionCopyGateInput): VersionCopyGat
   if (blockers.includes("OWNER_APPROVAL_FOR_OTHER_INPUTS")) return no("demo_copy_owner_confirmation_mismatch", blockers);
   if (blockers.length) return no("demo_copy_send_blocked", blockers);
   return { ok: true };
+}
+
+// ---- DEV-199b: the owner's copy decision (admin screen) --------------------------------------------------------
+
+export const COPY_DECISIONS = ["approve", "revise", "reject"] as const;
+export type CopyDecision = (typeof COPY_DECISIONS)[number];
+
+/**
+ * The stored review re-checked on its stored bytes (the hash of the review text, then the audit re-run with the stored
+ * chain and the version page's photo URLs, no owner approval): what still stops it besides the owner's approval.
+ */
+export function recheckStoredReview(i: Pick<VersionCopyGateInput, "photoUrls" | "state">, q: StoredCopyReview): string[] {
+  if (sha256(q.review_text) !== q.review_sha256) return ["REVIEW_TEXT_DOES_NOT_MATCH_HASH"];
+  const chain = chainOf(i.state, q.lane, q.facts_content_sha256);
+  const previous = priorRoundsOf(i.state, chain.filter((r) => r.round < q.round));
+  return copyGateSendBlockers(parseJson(q.review_text), filesOf(q), null, { previous, photoUrls: i.photoUrls }).filter((b) => b !== "OWNER_APPROVAL_MISSING");
+}
+
+/**
+ * Why the owner may NOT record this decision on the version's linked review now (empty: the server may call
+ * the database's decision function, which checks again). The database's rules (sales_check_copy_decision_write) and, for an
+ * approval, what the send gate would still refuse: the facts-path check on the version's facts and the re-run audit.
+ * Without a facts path (none exists yet) every decision is refused: COPY_FACTS_NOT_FROM_FACTS_PATH.
+ */
+export function copyDecisionRefusals(i: VersionCopyGateInput, decision: CopyDecision): string[] {
+  const q = i.linkedReviewId ? i.state.reviews.find((r) => r.id === i.linkedReviewId) : undefined;
+  if (!q) return ["COPY_REVIEW_MISSING"];
+  const out: string[] = [];
+  if (q.page_html_sha256 !== i.pageHtmlSha256 || q.page_css_sha256 !== i.pageCssSha256) out.push("COPY_REVIEW_NOT_THIS_PAGE");
+  if (q.lane !== "real_shop_proposal") out.push("COPY_FICTIONAL_LANE");
+  const checks = i.state.factsChecks.filter((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256);
+  if (!checks.length) out.push("COPY_FACTS_NOT_FROM_FACTS_PATH");
+  else if (decision === "approve" && !checks.some((c) => c.demo_facts_sha256 === i.versionFactsSha256)) out.push("COPY_FACTS_STALE");
+  if (q.next_step !== "owner_review") out.push("COPY_NOT_AT_OWNER_REVIEW");
+  if (decision === "revise" && q.round >= MAX_COPY_REVISION_ROUNDS) out.push("COPY_REVISION_CAP");
+  if (chainOf(i.state, q.lane, q.facts_content_sha256).some((r) => r.round > q.round)) out.push("COPY_REVIEW_SUPERSEDED");
+  if (i.state.decisions.some((d) => d.review_id === q.id)) out.push("COPY_DECISION_EXISTS");
+  if (decision === "approve" && !out.length && (q.gate_blockers.some((b) => b !== "OWNER_APPROVAL_MISSING") || recheckStoredReview(i, q).length)) out.push("COPY_SEND_BLOCKERS_REMAIN");
+  return out;
 }
