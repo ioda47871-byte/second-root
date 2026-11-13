@@ -179,6 +179,8 @@ export const NO_DELETE_TABLES = [
   "sales_demo_copy_reviews", "sales_demo_copy_facts_checks", "sales_demo_version_copy_links", "sales_demo_copy_owner_decisions",
   // DEV-196q: the stored structure findings of a version (advice, insert-only)
   "sales_demo_structure_findings",
+  // DEV-263f: the facts store (append-only, written only by the owner's registration functions)
+  "sales_demo_facts_packs",
 ];
 
 /**

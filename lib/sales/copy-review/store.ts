@@ -5,8 +5,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArtifactManifest, CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
+import { FactsStoreError, loadCurrentFactsPack } from "@/lib/sales/facts-store";
 import { versionSchemaMissing } from "@/lib/sales/version-schema";
-import { evaluateVersionCopyGate, type CopyCandidate, type ShopCopyState, type StoredCopyReview, type StoredOwnerDecision, type VersionCopyGate, type VersionCopyGateInput } from "./gate";
+import { evaluateVersionCopyGate, type CopyCandidate, type FactsStoreState, type ShopCopyState, type StoredCopyReview, type StoredOwnerDecision, type VersionCopyGate, type VersionCopyGateInput } from "./gate";
 
 export class CopyStoreError extends Error {
   constructor(public readonly code: string) {
@@ -20,26 +21,45 @@ export const REVIEW_COLUMNS =
   "id, seq, demo_id, shop_id, lane, round, previous_review_id, copy_verdict, next_step, facts_sha256, facts_content_sha256, copy_sha256, page_html_sha256, page_css_sha256, review_sha256, gate_blockers, review_text, copy_record_text, facts_pack_text, page_html_text, page_css_text";
 const DECISION_COLUMNS = "id, review_id, version_id, decision, review_sha256, facts_sha256, copy_sha256, page_html_sha256, page_css_sha256";
 
-/** Every stored review of the demo's shop (stored order), the owner's decisions on them and the facts-path checks. */
+/**
+ * Every stored review of the demo's shop (stored order), the owner's decisions on them, the facts-path checks and
+ * (DEV-263f) the shop's facts store: its current stored facts pack and the facts pack the demo's content names.
+ */
 export async function loadShopCopyState(client: SupabaseClient, demoId: string): Promise<ShopCopyState> {
   if (!UUID.test(demoId)) throw new CopyStoreError("COPY_STORE_DEMO_INVALID");
-  const demo = await client.from("sales_demos").select("prospect_id").eq("id", demoId).maybeSingle();
-  const prospectId = (demo.data as { prospect_id?: unknown } | null)?.prospect_id;
+  const demo = await client.from("sales_demos").select("prospect_id, facts_pack_sha256:content->>facts_pack_sha256").eq("id", demoId).maybeSingle();
+  const d = demo.data as { prospect_id?: unknown; facts_pack_sha256?: unknown } | null;
+  const prospectId = d?.prospect_id;
   if (demo.error || typeof prospectId !== "string") throw new CopyStoreError("COPY_STORE_DEMO_NOT_FOUND");
+  let current: FactsStoreState["current"] = null;
+  let notSetUp = false;
+  try {
+    const cur = await loadCurrentFactsPack(client, prospectId);
+    current = cur ? { id: cur.id, facts_sha256: cur.facts_sha256, demo_id: cur.demo_id } : null;
+  } catch (e) {
+    // PR #269 L4: no facts store yet — no check can count (fail closed), but the screens still read
+    if (!(e instanceof FactsStoreError && e.code === "FACTS_STORE_NOT_SET_UP")) throw new CopyStoreError("COPY_STORE_READ_FAILED");
+    notSetUp = true;
+  }
+  const factsStore: FactsStoreState = { current, demoFactsPackSha256: typeof d?.facts_pack_sha256 === "string" ? d.facts_pack_sha256 : null, ...(notSetUp ? { notSetUp } : {}) };
   const reviews = await client.from("sales_demo_copy_reviews").select(REVIEW_COLUMNS).eq("prospect_id", prospectId).order("seq", { ascending: true });
   if (reviews.error || !Array.isArray(reviews.data)) throw new CopyStoreError("COPY_STORE_READ_FAILED");
   const rows = reviews.data as unknown as StoredCopyReview[];
-  if (!rows.length) return { reviews: [], decisions: [], factsChecks: [] };
+  if (!rows.length) return { reviews: [], decisions: [], factsChecks: [], factsStore };
   const ids = rows.map((r) => r.id);
   const [decisions, checks] = await Promise.all([
     client.from("sales_demo_copy_owner_decisions").select(DECISION_COLUMNS).in("review_id", ids),
-    client.from("sales_demo_copy_facts_checks").select("review_id, facts_sha256, demo_facts_sha256").in("review_id", ids),
+    // without the facts store there is no facts_pack_id column: the checks are read without it (none counts)
+    notSetUp
+      ? client.from("sales_demo_copy_facts_checks").select("review_id, facts_sha256, demo_facts_sha256").in("review_id", ids)
+      : client.from("sales_demo_copy_facts_checks").select("review_id, facts_sha256, demo_facts_sha256, facts_pack_id").in("review_id", ids),
   ]);
   if (decisions.error || checks.error || !Array.isArray(decisions.data) || !Array.isArray(checks.data)) throw new CopyStoreError("COPY_STORE_READ_FAILED");
   return {
     reviews: rows.map((r) => ({ ...r, seq: Number(r.seq) })),
     decisions: decisions.data as unknown as StoredOwnerDecision[],
-    factsChecks: checks.data as unknown as ShopCopyState["factsChecks"],
+    factsChecks: (checks.data as unknown as ShopCopyState["factsChecks"]).map((c) => ({ ...c, facts_pack_id: notSetUp ? null : (c.facts_pack_id ?? null) })),
+    factsStore,
   };
 }
 

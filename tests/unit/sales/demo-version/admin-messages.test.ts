@@ -93,8 +93,10 @@ describe("DEV-196d admin messages", () => {
     const codes = [...body.matchAll(/return '([a-z_]+)'/g)].map((m) => m[1]!);
     expect(codes).toEqual(["demo_version_unavailable", "demo_quality_not_approved", "demo_facts_changed", "demo_not_shareable"]);
     // DEV-199e: the copy send guard's codes follow (sales_copy_send_block, plus the screen-only unverifiable)
-    const copySql = readFileSync("supabase/migrations/20261113000000_sales_demo_copy_send_guard.sql", "utf8");
-    const copyFn = copySql.slice(copySql.indexOf("create function public.sales_copy_send_block("), copySql.indexOf("create or replace function public.sales_demo_version_send_block("));
+    // DEV-263f: the newest definition of sales_copy_send_block (20261115000000 adds demo_copy_facts_changed)
+    const copySql = readFileSync("supabase/migrations/20261115000000_sales_demo_facts_store.sql", "utf8");
+    const copyStart = copySql.indexOf("create or replace function public.sales_copy_send_block(");
+    const copyFn = copySql.slice(copyStart, copySql.indexOf("\n$$;", copyStart));
     const copyCodes = [...new Set([...copyFn.matchAll(/return '([a-z_]+)'/g)].map((m) => m[1]!)), "demo_copy_review_unverifiable"];
     expect(Object.keys(messages.SEND_BLOCK_LABEL).sort()).toEqual([...codes, ...copyCodes].sort());
     for (const c of codes) expect(messages.SEND_BLOCK_LABEL[c as keyof typeof messages.SEND_BLOCK_LABEL], c).toBeTruthy();

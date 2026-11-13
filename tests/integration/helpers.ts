@@ -34,6 +34,7 @@ const SALES_TABLES = [
   "sales_demo_copy_owner_decisions",
   "sales_demo_version_copy_links",
   "sales_demo_copy_facts_checks",
+  "sales_demo_facts_packs",
   "sales_demo_copy_reviews",
   "sales_demo_quality_reviews",
   "sales_demo_version_files",
@@ -73,6 +74,41 @@ export async function signedInClient(email: string, password = "correct-horse-ba
   const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return client;
+}
+
+/** DEV-263f (PR #269 M2): the DB owner's local switch for the CLI registration (sales_register_facts_pack_as). */
+export async function setFactsCliRegistration(on: boolean): Promise<void> {
+  await db.query("update public.sales_facts_registration_settings set operator_cli_enabled = $1", [on]);
+}
+
+/**
+ * DEV-263f: makes a test demo's content name this facts pack (content.facts_pack_sha256 and content.facts_pack, as the
+ * DB owner) — what a demo derived from the pack holds. Changed only when it does not name it yet (the demo's facts hash,
+ * and so a version's facts, stay the same on a second call). Returns the pack as text.
+ */
+export async function nameFactsInContent(demoId: string, factsPack: string | Uint8Array): Promise<string> {
+  const text = typeof factsPack === "string" ? factsPack : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(factsPack);
+  const sha = (await db.query("select encode(sha256(convert_to($1::text, 'UTF8')), 'hex') as s", [text])).rows[0].s as string;
+  const shopId = (JSON.parse(text) as { shop_id: string }).shop_id;
+  await db.query(
+    "update public.sales_demos set content = content || jsonb_build_object('facts_pack_sha256', $2::text, 'facts_pack', $3::text) where id = $1 and (content->>'facts_pack_sha256' is distinct from $2 or content->>'facts_pack' is distinct from $3)",
+    [demoId, sha, shopId],
+  );
+  return text;
+}
+
+/**
+ * DEV-263f: registers a facts pack in the facts store for a test demo, as the CLI does (sales_register_facts_pack_as,
+ * service role, an explicit admin). The demo's content is first made to name the pack (content.facts_pack_sha256 and
+ * content.facts_pack, as the DB owner) — the database ties the stored pack to the demo's content. The content is
+ * changed only when it does not name this pack yet. Returns the stored row id.
+ */
+export async function registerFacts(demoId: string, factsPack: string | Uint8Array, adminId: string): Promise<{ facts_pack_id: string; facts_sha256: string; replayed: boolean }> {
+  const text = await nameFactsInContent(demoId, factsPack);
+  await setFactsCliRegistration(true);
+  const { data, error } = await serviceClient().rpc("sales_register_facts_pack_as", { p_demo_id: demoId, p_facts_pack: text, p_admin_id: adminId });
+  if (error) throw new Error(`registerFacts: ${error.message}`);
+  return data as { facts_pack_id: string; facts_sha256: string; replayed: boolean };
 }
 
 export async function makeAdmin(userId: string): Promise<void> {

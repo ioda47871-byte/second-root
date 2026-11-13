@@ -68,7 +68,11 @@ export default function CopyReviewPanel({
             <dd>{COPY_STEP_LABEL[review.nextStep] ?? review.nextStep}</dd>
             <dt>事実の保存先との照合</dt>
             <dd data-facts-from-facts-path={String(review.factsFromFactsPath)}>
-              {review.factsFromFactsPath ? "照合済み" : "未照合（店舗の事実の保存先がまだ無いため、確認・送信の対象になりません）"}
+              {review.factsFromFactsPath
+                ? "照合済み"
+                : data.view.factsStoreNotSetUp
+                  ? "未照合（店舗の事実の保存先がこの DB にまだ設定されていません。確認・送信の対象になりません）"
+                  : "未照合（登録した店舗の事実と照合されていないため、確認・送信の対象になりません）"}
             </dd>
             <dt>送信を止める理由（監査の門）</dt>
             <dd data-copy-gate-blockers={review.gateBlockers.join(" ")}>{review.gateBlockers.length ? review.gateBlockers.join("・") : "なし"}</dd>

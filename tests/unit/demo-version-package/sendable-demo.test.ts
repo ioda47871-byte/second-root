@@ -267,7 +267,7 @@ describe("import-local --trusted-facts: the local facts path", () => {
   it("the CLI refuses a facts pack outside the repository before any request", () => {
     const outside = join(tmpDir(), "facts.json");
     writeFileSync(outside, readFileSync(FACTS));
-    const r = spawnSync("npx", ["tsx", join(REPO, "scripts/sales/demo-version/import-local.ts"), "--package", tmpDir(), "--seed-sendable", "--trusted-facts", outside], {
+    const r = spawnSync("npx", ["tsx", join(REPO, "scripts/sales/demo-version/import-local.ts"), "--package", tmpDir(), "--seed-sendable", "--trusted-facts", outside, "--admin", "00000000-0000-4000-8000-000000000001"], {
       cwd: REPO,
       encoding: "utf8",
       env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: "", SUPABASE_SERVICE_ROLE_KEY: "", SUPABASE_DB_URL: "" },
@@ -277,6 +277,11 @@ describe("import-local --trusted-facts: the local facts path", () => {
     // the sendable shop is never imported without the facts path
     const u = spawnSync("npx", ["tsx", join(REPO, "scripts/sales/demo-version/import-local.ts"), "--package", tmpDir(), "--seed-sendable"], { cwd: REPO, encoding: "utf8" });
     expect(u.status).toBe(2);
+    // DEV-263f: the committed pack is registered as a named admin (--admin is required), and never with --facts-from-store
+    const noAdmin = spawnSync("npx", ["tsx", join(REPO, "scripts/sales/demo-version/import-local.ts"), "--package", tmpDir(), "--seed-sendable", "--trusted-facts", FACTS], { cwd: REPO, encoding: "utf8" });
+    expect(noAdmin.status).toBe(2);
+    const both = spawnSync("npx", ["tsx", join(REPO, "scripts/sales/demo-version/import-local.ts"), "--package", tmpDir(), "--seed-sendable", "--facts-from-store", "--trusted-facts", FACTS, "--admin", "00000000-0000-4000-8000-000000000001"], { cwd: REPO, encoding: "utf8" });
+    expect(both.status).toBe(2);
   }, 120_000);
 
   it("import with the facts from the facts path: stored as from the facts path, the copy send block waits only on the owner", async () => {
@@ -291,7 +296,8 @@ describe("import-local --trusted-facts: the local facts path", () => {
             const q = {
               eq: () => q,
               in: () => q,
-              order: async () => ({ data: [], error: null }),
+              // DEV-263f: the facts store read (order + limit) answers with no row
+              order: () => Object.assign(Promise.resolve({ data: [], error: null }), { limit: async () => ({ data: [], error: null }) }),
               maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: "33333333-3333-4333-8333-333333333333", content: sendableSeedContent(factsBytes()) } : { id: VERSION, demo_id: DEMO, version_no: 1, storage_prefix: `v1/${DEMO}/${VERSION}/`, bundle_sha256: p.bundleSha256 }, error: null }),
             };
             return q;

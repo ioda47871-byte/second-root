@@ -9,7 +9,7 @@
  * per decision why it would be refused. No facts path exists yet: facts_from_facts_path is false for every stored
  * review, so the decision is always refused (COPY_FACTS_NOT_FROM_FACTS_PATH) and the copy is never sendable.
  */
-import { COPY_DECISIONS, copyDecisionRefusals, evaluateVersionCopyGate, type CopyDecision, type VersionCopyGateInput } from "./gate";
+import { COPY_DECISIONS, copyDecisionRefusals, evaluateVersionCopyGate, storeFactsChecks, type CopyDecision, type VersionCopyGateInput } from "./gate";
 import { COPY_SEND_LABEL, type CopySendCode } from "./labels";
 
 export type CopyFindingView = { code: string; severity: string; reason: string; texts: string[] };
@@ -34,6 +34,8 @@ export type CopyReviewView = {
   decision: null | { decision: CopyDecision; forThisVersion: boolean };
   sendBlock: null | { code: CopySendCode; label: string; details: string[] };
   refusals: Record<CopyDecision, string[]>;
+  /** PR #269 L4: the database has no facts store yet */
+  factsStoreNotSetUp: boolean;
 };
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -66,7 +68,8 @@ export function buildCopyReviewView(i: VersionCopyGateInput): CopyReviewView {
   const gate = evaluateVersionCopyGate(i);
   const sendBlock = gate.ok ? null : { code: gate.code, label: COPY_SEND_LABEL[gate.code], details: gate.details.slice(0, 40) };
   const refusals = Object.fromEntries(COPY_DECISIONS.map((d) => [d, copyDecisionRefusals(i, d)])) as Record<CopyDecision, string[]>;
-  if (!q) return { review: null, decision: null, sendBlock, refusals };
+  const factsStoreNotSetUp = i.state.factsStore.notSetUp === true;
+  if (!q) return { review: null, decision: null, sendBlock, refusals, factsStoreNotSetUp };
   const d = i.state.decisions.find((x) => x.review_id === q.id);
   return {
     review: {
@@ -75,7 +78,7 @@ export function buildCopyReviewView(i: VersionCopyGateInput): CopyReviewView {
       lane: q.lane,
       copyVerdict: q.copy_verdict,
       nextStep: q.next_step,
-      factsFromFactsPath: i.state.factsChecks.some((c) => c.review_id === q.id && c.facts_sha256 === q.facts_sha256),
+      factsFromFactsPath: storeFactsChecks(i.state, q).length > 0,
       ...parsed(q.review_text),
       gateBlockers: q.gate_blockers,
       hashes: { review: q.review_sha256, facts: q.facts_sha256, copy: q.copy_sha256, pageHtml: q.page_html_sha256, pageCss: q.page_css_sha256 },
@@ -84,5 +87,6 @@ export function buildCopyReviewView(i: VersionCopyGateInput): CopyReviewView {
     decision: d ? { decision: d.decision, forThisVersion: d.version_id === i.versionId } : null,
     sendBlock,
     refusals,
+    factsStoreNotSetUp,
   };
 }

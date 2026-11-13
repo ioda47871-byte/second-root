@@ -25,10 +25,13 @@
  * reviews of the shop (a round 0 replayed from another package is refused) and checkCopyQualityReview against the
  * stored chain with the page's photo URLs. After the version is ingested and its files verified, the rounds are
  * recorded with sales_record_copy_review and the last one is linked to the version. The facts pack counts as from the
- * facts path only when the caller passes `trustedFactsPack`: import-local.ts passes it only with --trusted-facts (DEV-263a,
- * the LOCAL facts path: a facts pack committed and on origin/develop, whose sha256 and derived content the demo row
- * holds); without it what is stored is never sendable. The hosted facts store and the send-time re-compare are not
- * here. Nothing here writes an owner decision.
+ * facts path only when the trusted facts are given; without them what is stored is never sendable. Nothing here writes
+ * an owner decision.
+ *
+ * DEV-263f: the trusted facts come from the facts store (`factsFromStore`: the shop's CURRENT stored facts pack,
+ * sales_demo_facts_packs, registered by the owner — never by this importer). The database records a facts-path check
+ * only when the review's facts pack is that stored pack of this demo (sales_check_copy_facts_check_write), so a
+ * `trustedFactsPack` given directly (tests) still needs the stored row to count.
  *
  * Prints nothing itself; returns ids and hashes only (never a key).
  */
@@ -37,6 +40,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ownerRevisionsOf, planCopyAppend, type CopyCandidate, type ShopCopyState } from "@/lib/sales/copy-review/gate";
 import { CopyStoreError, loadShopCopyState, recordCopyReview, type RecordedCopyReview } from "@/lib/sales/copy-review/store";
 import { CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
+import { FactsStoreError, loadCurrentFactsPack } from "@/lib/sales/facts-store";
 import { precheckStructureFindings, recordStructureFindings, StructureFindingsError } from "@/lib/sales/structure-findings/store";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
 import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./package";
@@ -159,13 +163,29 @@ async function recordFailedCopy(client: SupabaseClient, demoId: string, state: S
 
 /** Each round must be appendable to the store, in order (the later rounds planned on top of the earlier ones). */
 function planStore(state: ShopCopyState, candidates: readonly CopyCandidate[], photoUrls: ReadonlySet<string>): { candidate: CopyCandidate; gateBlockers: string[] }[] {
-  const s: ShopCopyState = { reviews: [...state.reviews], decisions: state.decisions, factsChecks: state.factsChecks };
+  const s: ShopCopyState = { ...state, reviews: [...state.reviews] };
   return candidates.map((candidate) => {
     const plan = planCopyAppend(s, candidate, photoUrls);
     if (!plan.ok) throw new ImportError("COPY_NOT_APPENDABLE", plan.codes.slice(0, 20).join(","));
     if (!plan.replay) s.reviews.push(plan.row);
     return { candidate, gateBlockers: plan.gateBlockers };
   });
+}
+
+/** DEV-263f: the demo's shop's current stored facts pack (its exact text), which must be a row of this demo. */
+async function storedFactsPack(client: SupabaseClient, demoId: string): Promise<string> {
+  const d = await client.from("sales_demos").select("prospect_id").eq("id", demoId).maybeSingle();
+  const prospectId = (d.data as { prospect_id?: unknown } | null)?.prospect_id;
+  if (d.error || typeof prospectId !== "string") throw new ImportError("DEMO_NOT_FOUND");
+  let cur;
+  try {
+    cur = await loadCurrentFactsPack(client, prospectId);
+  } catch (e) {
+    throw new ImportError("FACTS_STORE_UNAVAILABLE", e instanceof FactsStoreError ? e.code : undefined);
+  }
+  if (!cur) throw new ImportError("FACTS_STORE_EMPTY");
+  if (cur.demo_id !== demoId) throw new ImportError("FACTS_STORE_OTHER_DEMO");
+  return cur.facts_pack_text;
 }
 
 export async function importPackage(
@@ -177,6 +197,11 @@ export async function importPackage(
     workerCommit?: string | null;
     /** DEV-199d: the shop's facts pack from the facts path (never from the package); the package's must be the same bytes */
     trustedFactsPack?: string | Uint8Array | null;
+    /**
+     * DEV-263f: read the trusted facts pack from the facts store (the prospect's current stored facts pack, which must be
+     * a row of this demo). Refused before anything is written when there is none. Not with `trustedFactsPack`.
+     */
+    factsFromStore?: boolean;
     /**
      * DEV-196q: the version's structure findings (spec §7.5, advice only), computed outside this importer
      * ({source, findings, siblingsCompared}). Everything the database would refuse (shape and size, siblings, an
@@ -193,6 +218,8 @@ export async function importPackage(
       throw new ImportError("STRUCTURE_FINDINGS_INVALID", e instanceof StructureFindingsError ? e.code : undefined);
     }
   }
+  if (o.factsFromStore && o.trustedFactsPack != null) throw new ImportError("TRUSTED_FACTS_TWICE");
+  const trustedFactsPack = o.factsFromStore ? await storedFactsPack(o.client, o.demoId) : (o.trustedFactsPack ?? null);
   const jobId = manualImportJobId(pkg.bundleSha256);
   // DEV-199e: what the store holds for this shop (read only), for the owner's revise requests and the append checks
   let state: ShopCopyState | null = null;
@@ -206,11 +233,11 @@ export async function importPackage(
   // DEV-199d: the copy, recomputed from the package's bytes, before the database is written (throws PackageError)
   let copy: PackageCopyResult;
   try {
-    copy = checkPackageCopy(pkg, { trustedFactsPack: o.trustedFactsPack ?? null, ownerRevisions: state ? ownerRevisionsOf(state) : [] });
+    copy = checkPackageCopy(pkg, { trustedFactsPack, ownerRevisions: state ? ownerRevisionsOf(state) : [] });
   } catch (e) {
     // PR #262 M1: an honest failed review is recorded (no version, terminal for its facts content) before the refusal,
     // so the same facts cannot be resubmitted until a review passes. The import is still refused with the same error.
-    if (e instanceof PackageError && e.failedCopyRound !== undefined && state) await recordFailedCopy(o.client, o.demoId, state, pkg, e.failedCopyRound, o.trustedFactsPack != null);
+    if (e instanceof PackageError && e.failedCopyRound !== undefined && state) await recordFailedCopy(o.client, o.demoId, state, pkg, e.failedCopyRound, trustedFactsPack != null);
     throw e;
   }
   const toStore = copy.status === "checked" && state ? planStore(state, copyCandidates(pkg, copy.round), photoUrlPaths(pkg.manifest)) : [];

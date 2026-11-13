@@ -17,7 +17,7 @@ const PROSPECT = "00000000-0000-4000-8000-0000000000c1";
 const VERSION = "00000000-0000-4000-8000-0000000000a1";
 const REVIEW = "00000000-0000-4000-8000-0000000000e1";
 const FACTS = "f".repeat(64);
-const empty = (): ShopCopyState => ({ reviews: [], decisions: [], factsChecks: [] });
+const empty = (): ShopCopyState => ({ reviews: [], decisions: [], factsChecks: [], factsStore: { current: null, demoFactsPackSha256: null } });
 
 function rowOf(r: Round, id = REVIEW, state = empty()): StoredCopyReview {
   const plan = planCopyAppend(state, candidateOf(r), new Set());
@@ -39,7 +39,9 @@ function ctx(o: { round?: Round; row?: StoredCopyReview; factsChecked?: boolean 
     state: {
       reviews: [row, ...(o.extra?.reviews ?? [])],
       decisions: o.extra?.decisions ?? [],
-      factsChecks: checked ? [{ review_id: row.id, facts_sha256: row.facts_sha256, demo_facts_sha256: typeof checked === "string" ? checked : FACTS }] : [],
+      factsChecks: checked ? [{ review_id: row.id, facts_sha256: row.facts_sha256, demo_facts_sha256: typeof checked === "string" ? checked : FACTS, facts_pack_id: "facts-row-1" }] : [],
+      // DEV-263f: the shop's current stored facts pack is the review's
+      factsStore: { current: { id: "facts-row-1", facts_sha256: row.facts_sha256, demo_id: row.demo_id }, demoFactsPackSha256: row.facts_sha256 },
     },
   };
 }
@@ -72,7 +74,7 @@ describe("the copy review view and the decision refusals (pure)", () => {
     const [r0, r1] = auditReviseChain();
     const row0 = rowOf(r0);
     expect(copyDecisionRefusals(ctx({ row: row0 }), "reject")).toEqual(["COPY_NOT_AT_OWNER_REVIEW"]);
-    const row1 = rowOf(r1, "00000000-0000-4000-8000-0000000000e2", { reviews: [row0], decisions: [], factsChecks: [] });
+    const row1 = rowOf(r1, "00000000-0000-4000-8000-0000000000e2", { reviews: [row0], decisions: [], factsChecks: [], factsStore: { current: null, demoFactsPackSha256: null } });
     const superseded = buildCopyReviewView(ctx({ row: row0, extra: { reviews: [row1] } }));
     expect(superseded.review!.superseded).toBe(true);
     expect(superseded.refusals.reject).toEqual(expect.arrayContaining(["COPY_REVIEW_SUPERSEDED"]));
