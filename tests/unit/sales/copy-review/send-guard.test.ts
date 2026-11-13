@@ -109,7 +109,8 @@ describe("DEV-196g (PR #267 M1): with the share flag off, a versioned send is re
     const body = composedFor(state.row as never)!.body;
     for (const e of [
       { code: "42703", message: "column sales_demos_1.approved_version_id does not exist" },
-      { code: "PGRST200", message: "Could not find a relationship between 'sales_prospects' and 'sales_demos' in the schema cache", details: "approved_version_id" },
+      // DEV-263g: only the message counts, and a PGRST200 must name a version column
+      { code: "PGRST200", message: "Could not find a relationship for 'approved_version_id' between 'sales_prospects' and 'sales_demos' in the schema cache" },
       { code: "PGRST204", message: "Could not find the 'approved_version_id' column of 'sales_demos' in the schema cache" },
     ]) {
       state.rpc.mockClear();
@@ -127,7 +128,11 @@ describe("DEV-196g (PR #267 M1): with the share flag off, a versioned send is re
     vi.stubEnv("SALES_DEMO_SHARE_ENABLED", "false");
     state.realGate = true;
     const body = composedFor(state.row as never)!.body;
-    for (const e of [{ code: "42703", message: "column sales_demos_1.other_column does not exist" }, { code: "42501", message: "permission denied for table sales_demos" }, { code: "PGRST200", message: "Could not find a relationship between 'a' and 'b'" }]) {
+    for (const e of [{ code: "42703", message: "column sales_demos_1.other_column does not exist" }, { code: "42501", message: "permission denied for table sales_demos" }, { code: "PGRST200", message: "Could not find a relationship between 'a' and 'b'" },
+      // DEV-263g (PR #268 review Low): a name in details / hint does not count, nor a PGRST200 naming only the table
+      { code: "PGRST200", message: "Could not find a relationship between 'sales_prospects' and 'sales_demos' in the schema cache", details: "approved_version_id" },
+      { code: "42703", message: "column sales_demos_1.other_column does not exist", hint: "Perhaps you meant approved_version_id" },
+      { code: "PGRST200", message: "Could not find a relationship between 'sales_demo_versions' and 'x'" }]) {
       state.tableErrors = { approved_version_id: e };
       expect(await approveSend(OUTREACH, 3, { subject: null, body }), e.message).toEqual({ ok: false, error: "デモの版の状態を読み込めませんでした。画面を再読み込みしてください。" });
       state.tableErrors = { "sales_outreach_approvals demo_version_id": e };

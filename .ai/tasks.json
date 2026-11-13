@@ -10255,7 +10255,7 @@
       ],
       "human_approval_triggers": [
         "hosted の facts の保存先と送信時の比べ直しは DEV-263f (hosted への適用は別のオーナー承認)",
-        "架空の店・予約済みドメインの送信拒否の DB 側の guard (migration) は承認が要る (今はサーバーの門だけ)",
+        "架空の店・予約済みドメインの送信拒否の DB 側の guard は DEV-263g (hosted への適用は別のオーナー承認)",
         "フラグの有効化・Staging / Production への適用は別の承認",
         "PR の Fresh Review と merge"
       ],
@@ -10318,7 +10318,7 @@
     {
       "id": "DEV-263f",
       "title": "hosted の facts の保存先 (sales_demo_facts_packs、追記のみ・オーナーだけが書く) と送信時の facts の比べ直し (Issue #263、runbook B-2 の 1・2)",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-263e"
@@ -10363,7 +10363,52 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-263f-facts-store",
-      "note": "記録は .ai/reviews/DEV-263f.md。migration はローカルのスタックだけ。Issue #263"
+      "note": "記録は .ai/reviews/DEV-263f.md。migration はローカルのスタックだけ。Issue #263。PR #269 merged (develop 404ab4e1)"
+    },
+    {
+      "id": "DEV-263g",
+      "title": "DB 側のテスト宛先の guard (sales_send_guards で架空の店・予約済みドメインを拒否、DB の所有者のローカルのスイッチ) と DEV-263e の review の Low (Issue #263、runbook B-2 の 3)",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-263f"
+      ],
+      "purpose": "実店舗に送る前に必須の安全装置 (runbook B-2) の 3 つ目: サーバーの門だけだったテスト宛先の拒否を DB でも行う",
+      "acceptance_criteria": [
+        "sales_approve_outreach と送信画面を開く操作 (sales_send_guards) が、demo の content.facts_pack が ^fictional- (test_recipient_fictional_shop)、またはメールの宛先のドメインが予約済み (example.com/.net/.org とその下、*.example・*.test・*.invalid・*.localhost。NFKC・全角の点・大文字・末尾の点を正規化) (test_recipient_reserved_domain) なら拒否",
+        "DB の所有者だけが変える 1 行の表 sales_local_test_settings (既定 off) が on のときだけ通す。ローカルの統合・e2e は setup で所有者として on",
+        "サーバーの門 (lib/sales/test-recipient.ts) はそのまま",
+        "DEV-263e の Low: version-schema.ts は message だけ・PGRST200 は版の 2 列だけ / runbook A-2 の psql / spec の空白 / STATIC_PATH の届かない選択肢",
+        "rollback SQL を review の記録に置き、統合テストで確かめる"
+      ],
+      "required_tests": [
+        "統合 (新規 test-recipient-guard と全体)",
+        "unit (send-guard・guardrails・test-recipient・sales)",
+        "e2e (既存の全体が globalSetup のスイッチで通る)",
+        "tsc・eslint・check:secrets・build"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261115000100_sales_test_recipient_guard.sql (新規、ローカルだけ)",
+        "lib/sales/test-recipient.ts・lib/sales/test-recipient-labels.ts (新規)・lib/sales/approval.ts・lib/sales/version-schema.ts・proxy.ts",
+        "playwright.config.ts (globalSetup / globalTeardown)・vitest.integration.config.mts (setupFiles)・tests/support/local-test-recipients.ts・tests/e2e/support/global-setup.ts・global-teardown.ts・tests/integration/setup-local-test-recipients.ts",
+        "関係するテスト・docs/operations/sales-mvp-runbook.md・.ai/tasks.json・.ai/reviews/DEV-263g.md"
+      ],
+      "forbidden_scope": [
+        "Staging・Production への migration の適用、環境変数・DNS・Vercel の変更",
+        "実送信、Codex・画像生成・LLM の呼び出し",
+        "SR-001「輪」のデータの変更",
+        "workflow・package.json・lockfile・prompt・skill",
+        "guard の緩和",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "migration 20261115000100 の Staging / Production への適用 (runbook B-1・B-2)。hosted ではスイッチを off のまま",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-263g-test-recipient-guard",
+      "note": "記録は .ai/reviews/DEV-263g.md。migration はローカルのスタックだけ。develop 404ab4e1 (PR #269 の merge) の上。Issue #263"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { COPY_SEND_LABEL } from "./copy-review/labels";
+import { TEST_RECIPIENT_LABEL } from "./test-recipient-labels";
 import { formatJstDateTime } from "./evidence";
 import type { Channel } from "./types";
 
@@ -137,6 +138,8 @@ export const SEND_ERROR_LABEL: Readonly<Record<string, string>> = {
   already_sent: "すでに手動で送信済みとして記録されています。",
   // DEV-199e: the copy send gate of a quality-approved version (the database's sales_copy_send_block codes)
   ...COPY_SEND_LABEL,
+  // DEV-263g: the database's own test-recipient guard
+  ...TEST_RECIPIENT_LABEL,
 };
 
 export function sendErrorMessage(message: string | undefined, fallback = "記録できませんでした。画面を再読み込みしてください。"): string {

@@ -14,6 +14,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/integration/**/*.test.ts"],
+    // DEV-263g: the database owner's local test-recipient switch on for each file
+    setupFiles: ["tests/integration/setup-local-test-recipients.ts"],
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,
