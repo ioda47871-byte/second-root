@@ -138,6 +138,11 @@ describe("PR #267 M1: resolveLegacyOnly (the share flag off — React only for l
     }
     for (const code of ["PGRST203", "PGRST116", "42501", "P0001", undefined]) expect(await resolveLegacyOnly(db({ error: { code, message: "sales_resolve_demo_share(" } }), TOKEN), String(code)).toBe(false);
   });
+  it("PR #268 L3: PGRST202 counts only when its message names sales_resolve_demo_share(", async () => {
+    for (const message of ["Could not find the function public.sales_other_function(p_x) in the schema cache", "function not found", ""]) {
+      expect(await resolveLegacyOnly(db({ error: { code: "PGRST202", message } }), TOKEN), message).toBe(false);
+    }
+  });
 });
 
 describe("PR #267 L2: artifactHostRefused (the proxy's host gate)", () => {

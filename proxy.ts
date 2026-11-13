@@ -11,6 +11,12 @@ import { artifactHostRefused } from "./lib/sales/artifact-host";
 // share page, no API, no cookie. The matcher leaves out /demo-frame (the artifact
 // routes never pass through the session proxy; they gate themselves) and Next's
 // static assets. With SALES_DEMO_ARTIFACT_ORIGIN unset (today) this is a no-op.
+// DEV-263e (PR #268 L1): robots.txt, favicon.ico, sitemap.xml and static-looking
+// paths still go through the gate (404 on the artifact host); on the app host
+// they skip only the session work (STATIC_PATH).
+
+/** Well-known files and static files by extension: no session refresh for them (the host gate still applies). */
+export const STATIC_PATH = /(?:^\/(?:favicon\.ico|robots\.txt|sitemap\.xml)$)|\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff2?|ttf|otf)$/i;
 
 function notFound(): NextResponse {
   return new NextResponse("Not Found", {
@@ -30,6 +36,8 @@ export async function proxy(request: NextRequest) {
   if (artifactHostRefused({ host: request.headers.get("host"), pathname: request.nextUrl.pathname, artifactOrigin: process.env.SALES_DEMO_ARTIFACT_ORIGIN })) return notFound();
   const path = request.nextUrl.pathname;
   if (path !== "/admin" && !path.startsWith("/admin/")) return NextResponse.next();
+  // DEV-263e (PR #267 delta Low, PR #268 L1): well-known and static files need no session work (after the host gate)
+  if (STATIC_PATH.test(path)) return NextResponse.next();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -52,7 +60,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // every path except /demo-frame/… (and /demo-frame itself), Next's static assets, and (DEV-263e, PR #267 delta Low)
-  // favicon.ico / robots.txt / sitemap.xml and public static files by extension — no session work for them
-  matcher: ["/((?!demo-frame(?:/|$)|_next/static|_next/image|favicon\\.ico$|robots\\.txt$|sitemap\\.xml$|.*\\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff2?|ttf|otf)$).*)"],
+  // every path except /demo-frame/… (and /demo-frame itself) and Next's static assets. Kept broad (PR #268 L1): the
+  // artifact-host gate must see robots.txt, favicon.ico and static-looking paths too; only the session work skips them.
+  matcher: ["/((?!demo-frame(?:/|$)|_next/static|_next/image).*)"],
 };

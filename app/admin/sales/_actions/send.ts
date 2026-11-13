@@ -10,6 +10,7 @@ import { outreachCopyGate } from "@/lib/sales/copy-review/store";
 import { aiDesignEnabled } from "@/lib/sales/design";
 import { VERSIONED_SEND_SHARE_OFF } from "@/lib/sales/demo-version/admin-messages";
 import { demoShareEnabled } from "@/lib/sales/demo-version/flags";
+import { versionSchemaMissing } from "@/lib/sales/version-schema";
 import { TEST_RECIPIENT_LABEL, testRecipientBlock } from "@/lib/sales/test-recipient";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -30,6 +31,7 @@ export type MarkSentResult = { ok: true; recorded: RecordedSend | null } | { ok:
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOT_FOUND: SendResult = { ok: false, error: "対象が見つかりません。画面を再読み込みしてください。" };
 const APPROVAL_UNREADABLE = "承認の内容を読み込めませんでした。画面を再読み込みしてください。";
+const DEMO_STATE_UNREADABLE = "デモの版の状態を読み込めませんでした。画面を再読み込みしてください。";
 
 /**
  * この内容で送信を承認. `shown` is the text the owner saw on the card; the
@@ -59,9 +61,14 @@ export async function approveSend(outreachId: string, draftVersion: number, show
   const copyGate = await outreachCopyGate(supabase, outreachId);
   // DEV-196g (PR #267 M1): the database switch and the server flag must agree before a version is sent — with the
   // share flag off, the share URL would be 404, so a versioned send is refused here (the React demo is unchanged)
-  // DEV-263e (PR #267 delta Low): with the flag off, a copy gate that could not be read may hide a pinned version, so
-  // it is refused too (fail closed). With the flag on, an unread gate is left to the database's guards as before.
-  if ((!copyGate.legacy || copyGate.unread) && !demoShareEnabled(process.env)) return { ok: false, error: VERSIONED_SEND_SHARE_OFF };
+  // DEV-263e (PR #267 delta Low, PR #268 H1): with the flag off, a copy gate that could not be read may hide a pinned
+  // version, so it is refused too (fail closed), with its own message. A database without the demo-version schema is
+  // not "unread" (outreachCopyGate answers plain legacy: no version can exist there), so React sends go on as before.
+  // With the flag on, an unread gate is left to the database's guards as before.
+  if (!demoShareEnabled(process.env)) {
+    if (!copyGate.legacy) return { ok: false, error: VERSIONED_SEND_SHARE_OFF };
+    if (copyGate.unread) return { ok: false, error: DEMO_STATE_UNREADABLE };
+  }
   if (!copyGate.legacy && !copyGate.ok) return { ok: false, error: COPY_SEND_LABEL[copyGate.code] };
   const { error } = await supabase.rpc("sales_approve_outreach", {
     p_outreach_id: outreachId,
@@ -81,10 +88,11 @@ export async function markSendOpened(approvalId: string, via: OpenedVia): Promis
   if (!UUID.test(approvalId) || !(OPENED_VIA as readonly string[]).includes(via)) return NOT_FOUND;
   const supabase = await createAuthClient();
   // DEV-196g (PR #267 M1): an approval that pinned a version is not opened while the share flag is off (its share URL
-  // would be 404). DEV-263e (PR #267 delta Low): a pin that cannot be read is refused as well (fail closed).
+  // would be 404). DEV-263e (PR #267 delta Low): a pin that cannot be read is refused as well (fail closed), except on a
+  // database without the demo-version schema (PR #268 H1: no pin can exist there; the RPC decides as before).
   if (!demoShareEnabled(process.env)) {
     const pin = await supabase.from("sales_outreach_approvals").select("demo_version_id").eq("id", approvalId).maybeSingle();
-    if (pin.error) return { ok: false, error: APPROVAL_UNREADABLE };
+    if (pin.error && !versionSchemaMissing(pin.error)) return { ok: false, error: APPROVAL_UNREADABLE };
     if ((pin.data as { demo_version_id?: unknown } | null)?.demo_version_id) return { ok: false, error: VERSIONED_SEND_SHARE_OFF };
   }
   const { error } = await supabase.rpc("sales_mark_send_opened", { p_approval_id: approvalId, p_via: via, p_design_enabled: aiDesignEnabled() });

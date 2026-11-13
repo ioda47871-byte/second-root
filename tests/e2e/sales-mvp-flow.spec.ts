@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, test, type BrowserContext, type Page, type Request } from "@playwright/test";
 import pg from "pg";
+import { signViewToken } from "@/lib/sales/demo-version/view-token";
 import { SENDABLE_EMAIL, SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_PROSPECT_ID } from "@/lib/demo-version-package/seed-sendable";
 import { ensureUsers, removeUsers, usersFor } from "./support/admin-users";
 import { startFlagOnServer, type FlagOnServer } from "./support/flag-on-server";
@@ -175,6 +176,23 @@ async function approveOnAdmin(page: Page, prospectId: string, versionId: string)
   await expect(copyPanel.locator("[data-copy-verdict]")).toHaveAttribute("data-copy-verdict", "approve_candidate");
   await expect(copyPanel.locator("[data-copy-owner-decision]")).toHaveAttribute("data-copy-owner-decision", "none");
 
+  await qualityApprove(page, prospectId, versionId, 1);
+
+  // the owner's copy decision (decideCopyReview)
+  const decision = page.locator("[data-copy-decision-form]");
+  await decision.locator('[data-copy-decision="approve"] input[type="radio"]').check();
+  await decision.getByRole("button", { name: "「文章を承認」を記録する" }).click();
+  await expect(page.locator("[data-copy-owner-decision]")).toHaveAttribute("data-copy-owner-decision", "approve");
+  await expect(page.locator("[data-copy-send-block]")).toHaveCount(0);
+  await expect(page.locator("[data-send-stop]")).toHaveCount(0);
+}
+
+/** On the version's admin page: both renders viewed to the end, 7 items ok, the acknowledgement, 品質承認. */
+async function qualityApprove(page: Page, prospectId: string, versionId: string, versionNo: number) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${APP}/admin/sales/demos/${prospectId}?v=${versionId}`);
+  await expect(page.locator("[data-selected-version]")).toHaveAttribute("data-selected-version", String(versionNo));
+
   // preview: both full-page renders load and are scrolled to their end (the basis of the quality judgement)
   for (const v of ["desktop_1440", "mobile_390"]) {
     const figure = page.locator(`[data-render="${v}"]`);
@@ -190,19 +208,20 @@ async function approveOnAdmin(page: Page, prospectId: string, versionId: string)
   await form.locator("[data-ack]").check();
   await form.getByRole("button", { name: "品質承認" }).click();
   await expect(form.locator('[data-review-result="done"]')).toBeVisible();
-  await expect(page.locator('[data-version="1"]')).toContainText("品質承認済み");
+  await expect(page.locator(`[data-version="${versionNo}"]`)).toContainText("品質承認済み");
   expect((await demoOf(prospectId)).approved_version_id).toBe(versionId);
   expect((await db.query("select decision, state, reviewed_by from public.sales_demo_quality_reviews where version_id = $1", [versionId])).rows).toEqual([
     { decision: "approved", state: "active", reviewed_by: adminId },
   ]);
+}
 
-  // the owner's copy decision (decideCopyReview)
-  const decision = page.locator("[data-copy-decision-form]");
-  await decision.locator('[data-copy-decision="approve"] input[type="radio"]').check();
-  await decision.getByRole("button", { name: "「文章を承認」を記録する" }).click();
-  await expect(page.locator("[data-copy-owner-decision]")).toHaveAttribute("data-copy-owner-decision", "approve");
-  await expect(page.locator("[data-copy-send-block]")).toHaveCount(0);
-  await expect(page.locator("[data-send-stop]")).toHaveCount(0);
+/** Before 送信済み: the share URL and the artifact URL (a validly signed scope-p token for the version) are 404. */
+async function expectPrivate(browser: import("@playwright/test").Browser, token: string, versionId: string, demoId: string) {
+  const ctx = await browser.newContext({ baseURL: APP });
+  expect((await ctx.request.get(`/demo/${token}`)).status()).toBe(404);
+  const viewToken = signViewToken({ scope: "p", versionId, demoId, now: new Date(), key: KEY });
+  expect((await ctx.request.get(`${ART}/demo-frame/p/${viewToken}/index.html`, { headers: { "Sec-Fetch-Dest": "iframe" } })).status()).toBe(404);
+  await ctx.close();
 }
 
 /** A recipient: a fresh browser context with no cookie opens the share URL and sees exactly `versionId`. */
@@ -315,20 +334,21 @@ test("email: candidate → trusted import → preview → quality + copy approva
   expect(a).toEqual([{ state: "approved", demo_version_id: v.versionId, demo_bundle_sha256: v.bundleSha256, demo_share_eligible: true, reviewed: true }]);
 
   // a newer version arrives after the approval (not quality-approved): it must never be what the recipient sees
-  await seedDemoVersion(db, svc, {
+  const newer = await seedDemoVersion(db, svc, {
     noPhoto: true,
     html: `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>架空の店</title></head><body><h1>${NEWER_TEXT}</h1></body></html>`,
     into: { prospectId: SENDABLE_PROSPECT_ID, demoId: demo.id, parentVersionId: v.versionId },
   });
 
-  // 7. before 送信済み the share URL is private (404 for anyone)
-  const before = await browser.newContext({ baseURL: APP });
-  expect((await before.request.get(`/demo/${demo.public_token}`)).status()).toBe(404);
-  await before.close();
+  // 7. before 送信済み the share URL and the artifact URL (a validly signed scope-p token) are private (404 for anyone)
+  await expectPrivate(browser, demo.public_token, v.versionId, demo.id);
 
   // 8. the mail app handoff: records 「送信画面を開いた」 then hands the approved mailto to the device (captured)
   await card.getByTestId("open-mail").click();
   await expect(card.getByTestId("confirm-sent")).toBeVisible();
+  // PR #268 L2: opened (send_opened) is still not sent — both URLs stay private
+  expect((await db.query("select state from public.sales_outreach_approvals where outreach_id = $1", [outreachId])).rows).toEqual([{ state: "send_opened" }]);
+  await expectPrivate(browser, demo.public_token, v.versionId, demo.id);
   const opened = await openedMailto(page);
   expect(opened).toHaveLength(1);
   expect(opened[0]!.startsWith(`mailto:${SENDABLE_EMAIL}?`)).toBe(true);
@@ -342,6 +362,13 @@ test("email: candidate → trusted import → preview → quality + copy approva
   expect(a).toEqual([{ state: "sent", demo_version_id: v.versionId, status: "sent" }]);
 
   // 10. the recipient: a fresh, cookie-less context sees exactly the approved version from the artifact origin
+  await openAsRecipient(browser, demo.public_token, v.versionId);
+
+  // PR #268 M1: the share shows the version PINNED at send approval, not whichever is approved now — the owner
+  // quality-approves the newer version on the admin screen (approved_version_id moves to it), and the recipient
+  // still sees exactly v1's stored page
+  await qualityApprove(page, SENDABLE_PROSPECT_ID, newer.versionId, 2);
+  expect((await demoOf(SENDABLE_PROSPECT_ID)).approved_version_id).toBe(newer.versionId);
   await openAsRecipient(browser, demo.public_token, v.versionId);
 
   // 11. reply → meeting
@@ -401,7 +428,8 @@ test("Instagram: the same approvals, then DMを送る copies the text and opens 
   await popup.waitForURL(`https://www.instagram.com/${handle}/`);
   await popup.close();
   await expect(card.getByTestId("confirm-sent")).toBeVisible();
-  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  await expectPrivate(browser, demo.public_token, v.versionId, demo.id); // opened is not sent (PR #268 L2)
+  const clip =await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain(`${APP}/demo/${demo.public_token}`);
   let a = (await db.query("select state, opened_via, demo_version_id, body from public.sales_outreach_approvals where outreach_id = $1", [outreachId])).rows;
   expect(a).toEqual([{ state: "send_opened", opened_via: "instagram_profile", demo_version_id: v.versionId, body: clip }]);

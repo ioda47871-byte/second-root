@@ -9740,7 +9740,7 @@
     {
       "id": "DEV-196g",
       "title": "店舗デモの版の共有 URL (/demo/[publicToken] の外枠 + 別 origin の /demo-frame/p、旗 SALES_DEMO_SHARE_ENABLED と DB のスイッチ、どちらも既定で無効)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-196p",
@@ -9790,7 +9790,7 @@
         "PR のレビューと merge (coordinator)",
         "hosted への migration の適用、DB のスイッチを on にすること、Vercel の環境変数 (SALES_DEMO_SHARE_ENABLED・SALES_DEMO_ARTIFACT_ORIGIN・SALES_DEMO_APP_ORIGIN・SALES_DEMO_VIEW_SIGNING_KEY)、artifact origin の DNS / Vercel の domain (オーナーの別の承認)"
       ],
-      "note": "記録は .ai/reviews/DEV-196g.md。実際の送信で版を固定するには、版の文章確認 (DEV-199e の copy gate) が通る必要があり、それには facts の経路 (DEV-263a) が要る。テストの『送信済みの承認』は fixture が DB の所有者として書く。 PR #267 Fresh Review (C0 H0 M1 L5) を同じ PR で修正 (.ai/reviews/DEV-196g.md)。管理者プレビューの artifact origin への移行は DEV-196t。"
+      "note": "記録は .ai/reviews/DEV-196g.md。実際の送信で版を固定するには、版の文章確認 (DEV-199e の copy gate) が通る必要があり、それには facts の経路 (DEV-263a) が要る。テストの『送信済みの承認』は fixture が DB の所有者として書く。 PR #267 Fresh Review (C0 H0 M1 L5) を同じ PR で修正 (.ai/reviews/DEV-196g.md)。管理者プレビューの artifact origin への移行は DEV-196t。。PR #267 merged (develop a6e95d13)"
     },
     {
       "id": "DEV-196t",
@@ -10216,7 +10216,7 @@
     {
       "id": "DEV-263a",
       "title": "架空・写真なしの送信用デモを v2 の包み + ローカルの facts の経路で送信可能にする (Issue #263 の 1)",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-199d",
@@ -10264,7 +10264,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-263a-v2-package-facts",
-      "note": "記録は .ai/reviews/DEV-263a.md。facts の経路はローカルのもの (コミット済みの facts pack のバイト) だけ。DEV-199b (PR #264) の上に作った。migration なし。Issue #263"
+      "note": "記録は .ai/reviews/DEV-263a.md。facts の経路はローカルのもの (コミット済みの facts pack のバイト) だけ。DEV-199b (PR #264) の上に作った。migration なし。Issue #263。PR #266 merged (develop 5fc19463)"
     },
     {
       "id": "DEV-263e",
@@ -10294,6 +10294,7 @@
         "tests/e2e/sales-mvp-flow.spec.ts (新規)・tests/e2e/support/flag-on-server.ts (env の追加の option)",
         "lib/sales/test-recipient.ts・lib/demo-version-package/local-inputs.ts (PR #266 Low)",
         "lib/sales/demo-share.ts・app/admin/sales/_actions/send.ts・proxy.ts (PR #267 delta Low)",
+        "lib/sales/version-schema.ts (新規)・lib/sales/copy-review/store.ts (版の schema が無い DB を legacy に、PR #268 H1)",
         "関係する unit テスト",
         "docs/operations/sales-mvp-runbook.md (新規)",
         ".ai/tasks.json・.ai/reviews/DEV-263e.md"

@@ -2,7 +2,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import nextConfig from "@/next.config";
-import { config as proxyConfig } from "@/proxy";
+import { NextRequest } from "next/server";
+import { config as proxyConfig, proxy, STATIC_PATH } from "@/proxy";
 
 // DEV-196d-2 (spec §6.3・§6.8, SECURITY §12): the artifact route reads no cookie, logs nothing, never goes through
 // the admin session proxy, gets no header rule from next.config.ts (no X-Frame-Options: it must load in an iframe),
@@ -50,17 +51,34 @@ describe("demo-frame guardrails", () => {
   });
 
   it("the proxy never runs on /demo-frame (DEV-196g: it now runs elsewhere for the artifact-host gate; sessions only on /admin)", () => {
-    expect(proxyConfig.matcher).toEqual([
-      "/((?!demo-frame(?:/|$)|_next/static|_next/image|favicon\\.ico$|robots\\.txt$|sitemap\\.xml$|.*\\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff2?|ttf|otf)$).*)",
-    ]);
+    expect(proxyConfig.matcher).toEqual(["/((?!demo-frame(?:/|$)|_next/static|_next/image).*)"]);
     const re = new RegExp(`^${proxyConfig.matcher[0]}$`);
     for (const p of ["/demo-frame", "/demo-frame/a/t/index.html", "/demo-frame/p/t/index.html", "/_next/static/x.js"]) expect(re.test(p), p).toBe(false);
-    // DEV-263e (PR #267 delta Low): well-known files and public static files skip the proxy
-    for (const p of ["/favicon.ico", "/robots.txt", "/sitemap.xml", "/images/a.png", "/og.jpg", "/fonts/x.woff2", "/site.webmanifest"]) expect(re.test(p), p).toBe(false);
-    for (const p of ["/", "/admin", "/admin/sales", "/demo/abc", "/api/internal/x", "/demo-framex", "/robots.txtx", "/favicon.icox", "/admin/sales/demos/x"]) expect(re.test(p), p).toBe(true);
+    // PR #268 L1: the matcher stays broad — well-known and static-looking paths still reach the artifact-host gate
+    for (const p of ["/", "/admin", "/admin/sales", "/demo/abc", "/api/internal/x", "/demo-framex", "/robots.txt", "/favicon.ico", "/x.js", "/admin/x.png"]) expect(re.test(p), p).toBe(true);
+    // only the session work skips static paths
+    for (const p of ["/favicon.ico", "/robots.txt", "/sitemap.xml", "/admin/x.png", "/admin/a.js", "/admin/fonts/x.woff2"]) expect(STATIC_PATH.test(p), p).toBe(true);
+    for (const p of ["/admin", "/admin/sales", "/admin/sales/demos/x", "/robots.txtx", "/admin/x.pngx"]) expect(STATIC_PATH.test(p), p).toBe(false);
     // the session code still runs only for /admin (exactly, not /administrator)
     const src = readFileSync("proxy.ts", "utf8");
     expect(src).toMatch(/if \(path !== "\/admin" && !path\.startsWith\("\/admin\/"\)\) return NextResponse\.next\(\);/);
+  });
+
+  it("PR #268 L1: on the artifact host, static-looking paths are 404 like everything but /demo-frame/p/", async () => {
+    const prev = process.env.SALES_DEMO_ARTIFACT_ORIGIN;
+    process.env.SALES_DEMO_ARTIFACT_ORIGIN = "https://artifacts.example.com";
+    try {
+      const at = (host: string, p: string) => proxy(new NextRequest(`https://${host}${p}`, { headers: { host } }));
+      for (const p of ["/robots.txt", "/x.js", "/admin/x.png", "/favicon.ico", "/sitemap.xml", "/admin"]) expect((await at("artifacts.example.com", p)).status, p).toBe(404);
+      expect((await at("artifacts.example.com", "/demo-frame/p/t/index.html")).status).toBe(200);
+      // the app host: static files pass straight through (no session work)
+      const r = await at("app.example.com", "/robots.txt");
+      expect(r.status).toBe(200);
+      expect(r.headers.get("x-middleware-next")).toBe("1");
+    } finally {
+      if (prev === undefined) delete process.env.SALES_DEMO_ARTIFACT_ORIGIN;
+      else process.env.SALES_DEMO_ARTIFACT_ORIGIN = prev;
+    }
   });
 
   it("no next.config.ts header rule applies to /demo-frame (in particular no X-Frame-Options DENY)", async () => {

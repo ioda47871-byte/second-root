@@ -44,8 +44,19 @@ SALES_LOCAL_E2E_TEST_RECIPIENTS=true      # 架空の店・example.com 宛を承
 
 ### A-2. 環 を登録して、版を取り込む
 
+1 の管理者 (ローカルだけ。既にあれば不要。`API_URL`・`SERVICE_ROLE_KEY` は `npx supabase status -o env` の値。DB のコンテナ名は project id による):
+
 ```bash
-# 1. 管理者を作る (ローカルの auth に作り、sales_admins に入れる。既にあれば不要)
+ADMIN_EMAIL=owner-local@test.example.com; ADMIN_PW="$(openssl rand -base64 18)"
+ADMIN_ID=$(curl -sS -X POST "$API_URL/auth/v1/admin/users" -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PW\",\"email_confirm\":true}" \
+  | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+docker exec -i supabase_db_second-root psql -U postgres -c "insert into public.sales_admins (user_id) values ('$ADMIN_ID')"
+echo "$ADMIN_PW"                                  # この端末に出るだけ。どこにも書かない
+```
+
+```bash
+# 1. 管理者を作る (上)
 # 2. 候補: 環 (架空の店、固定の id 5e2d0a63-7c1b-4f0e-9a6d-263a00000001)
 npx tsx scripts/sales/demo-version/import-local.ts --seed-sendable --seed-only
 # 3. v2 の包み (頁 + 文章 + 監査)。出力先は repo の外
@@ -122,6 +133,8 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 
 - Staging で先に当て、`scripts/staging/` の照合を通してから Production。
 - 当てた直後の挙動は前と同じ (旗が off、スイッチが false なので、版は出ず React のデモのまま)。
+- 当てた後、PostgREST の schema cache を読み直させる (`notify pgrst, 'reload schema';`、DB の所有者)。読み直す前は新しい関数・列が API から見えず、共有の頁は「resolver が無い」(PGRST202) と区別できない。
+- **migration を当てる前のアプリ** (旗 off) も動く: 版の列・関係が無いことを示す読み込みの誤り (42703・PGRST200・PGRST204 で `approved_version_id` / `demo_version_id` / `sales_demo_versions` を名指すもの) は「版は存在し得ない」= React のデモとして扱い、送信承認・送信画面を開く操作は DB へ進む (PR #268 H1)。それ以外の読み込みの誤りは、旗 off の間は専用の文言で止まる (fail closed)。
 - private の Storage bucket `sales-demo-versions` (public でない) が要る。無ければ migration の承認と一緒に作る (🛑 承認)。
 
 ### B-2. 🛑 承認: 未完了の安全装置 (実店舗に送る前に必須)
@@ -137,7 +150,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 - 成果物用の sub domain (例 `https://demo-art.<domain>`) の DNS を作り、同じ Vercel project に domain を足す。
 - アプリの origin と別であること。cookie は host-only のまま (Domain 属性を付けない)。
 - 成果物の route (`/demo-frame/p/...`) は、要求の host が `SALES_DEMO_ARTIFACT_ORIGIN` のときだけ配る (アプリの host では 404。実装済み)。
-- 逆向きの host の制限 (DEV-196g、`proxy.ts` + `lib/sales/artifact-host.ts`): 成果物の host では `/demo-frame/p/*` 以外 (`/admin`・`/demo/*`・API) は 404。`favicon.ico`・`robots.txt`・`sitemap.xml` と拡張子付きの公開の静的ファイルは proxy を通らない (公開の資産だけ)。domain を足した後、成果物の host で `/admin` が 404 になることを確かめる。
+- 逆向きの host の制限 (DEV-196g、`proxy.ts` + `lib/sales/artifact-host.ts`): 成果物の host では `/demo-frame/p/*` 以外 (`/admin`・`/demo/*`・API) は 404。`favicon.ico`・`robots.txt`・`sitemap.xml` や拡張子付きの静的ファイルの path も、成果物の host では 404 (proxy の matcher は広いまま。アプリの host で静的ファイルの session の処理を飛ばすだけ)。domain を足した後、成果物の host で `/admin` が 404 になることを確かめる。
 
 ### B-4. 🛑 承認: 環境変数 (Vercel、server だけ)
 
@@ -174,7 +187,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 
 軽い順。どれか 1 つで共有は止まる (共有 URL は React のデモか 404 に戻る。別の版には切り替わらない):
 
-1. `SALES_DEMO_SHARE_ENABLED` を off にして deploy し直す。
+1. `SALES_DEMO_SHARE_ENABLED` を off にして deploy し直す。版を固定していない (legacy の) token は React のデモに戻る。版を固定して送った token は 404 (React にも別の版にも切り替わらない)。旗 off の間、版を使う新しい送信承認・送信画面を開く操作は止まる。
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):

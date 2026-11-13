@@ -59,6 +59,21 @@ CI: CI の stack は `storage-api` を外しているので、このファイル
 - unit: `tests/unit/sales`・`demo-version-package`・`admin`・`demo-frame/guardrails` 66 ファイル 1281 件 pass。
 - `tsc --noEmit`・eslint (変更したファイル)・`check:secrets`・`next build`。
 
+## Fresh Review (PR #268 @ e65d0fc: C0 H1 M1 L4) への対応
+
+develop (a6e95d13、#267 の squash) を merge commit で取り込んだ後 (4e0881b) に直した。
+
+- **H1 (旗 off で、版の schema が無い DB の読み込みの誤りが React の送信まで止める)**: `lib/sales/version-schema.ts` `versionSchemaMissing` — 42703・PGRST200・PGRST204 で、message / details / hint が `approved_version_id`・`demo_version_id`・`sales_demo_versions` を名指すときだけ「版の schema が無い」。`outreachCopyGate` はその誤りを plain の `legacy` (unread ではない) で返し、`approveSend` は DB へ進む。`markSendOpened` も固定の版の読み込みのその誤りでは DB へ進む。それ以外の誤りは旗 off の間 fail closed で、専用の文言 (`DEMO_STATE_UNREADABLE`「デモの版の状態を読み込めませんでした…」/ `APPROVAL_UNREADABLE`)。`VERSIONED_SEND_SHARE_OFF` は版が確かにあるときだけ。テスト (`send-guard.test.ts`): 本物の `outreachCopyGate` を mock の client で、3 つの code で RPC に届く / 別の列の 42703・42501・名指しの無い PGRST200 は専用の拒否で RPC に届かない。mock は「表 + select」ごとに誤りを返せるようにした。ファイルを `lib/sales/demo-version/` の外に置いたのは、そのディレクトリの純粋さのテストのモジュール一覧 (固定) を変えないため。runbook B-1 に追記。
+- **M1 (固定した版と approved_version_id を区別していない)**: 送信済みの後、新しい版 (v2) を管理画面で品質承認し (`approved_version_id` が v2 に動くことを確かめる)、受信者の確認をもう一度: HTML の sha256 は v1 の `page/index.html` のまま、新しい版の文は出ない。`approveOnAdmin` から品質承認を `qualityApprove` に切り出した (`?v=` で版を選ぶ)。
+- **L1**: `proxy.ts` の matcher を #267 の広い形に戻し、`proxy()` の中で host の門の後に `STATIC_PATH` (favicon・robots・sitemap・拡張子) の session の処理だけを飛ばす。テスト: 成果物の host で `/robots.txt`・`/x.js`・`/admin/x.png`・`/favicon.ico`・`/sitemap.xml`・`/admin` が 404、`/demo-frame/p/…` は通る、アプリの host の `/robots.txt` は素通り。proxy の冒頭の注記と runbook を直した。
+- **L2**: 送信画面を開いた後 (`send_opened`)、送信済みの前に、共有 URL と成果物の URL (テストの鍵で正しく署名した scope p の token) が 404 であることをもう一度見る (メールと Instagram の両方)。開く前にも同じ確認。
+- **L3**: `resolverMissing` の PGRST202 も message が `sales_resolve_demo_share(` を名指すときだけ。テスト。runbook の migration の段に schema cache の読み直し (`notify pgrst, 'reload schema';`)。
+- **L4**: runbook A-2 に管理者の作り方 (auth の admin API + `sales_admins`、パスワードは端末に出すだけ)。rollback 1 に「legacy の token は React に戻り、版を固定した token は 404」。
+
+- **CI unit (4e0881b) の `ai-tasks.test.ts`**: DEV-263e の依存 DEV-263a (PR #266) と DEV-196g (PR #267) は merge 済みなので `.ai/tasks.json` で done にした。`ai-tasks.test.ts` 230 件 pass。
+
+再実行: unit (sales・demo-frame・demo-version-package・admin) 70 ファイル 1332 件 pass。e2e: `sales-mvp-flow` (2)・`demo-share`・`email-send`・`instagram-send`・`demo` の desktop 21 件 pass、全体 158 passed・40 skipped (mobile)・0 failed。tsc・eslint・check:secrets・build。
+
 ## 開いている項目 (承認待ち)
 
 - runbook B-1〜B-6 はどれもオーナーの承認 (未実施)。
