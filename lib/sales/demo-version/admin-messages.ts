@@ -157,7 +157,7 @@ export function templateWarningText(w: TemplateWarning): string {
 export type StructureAdviceText = { kind: "not_stored" | "unreadable" | "stored"; lines: string[]; note: string };
 
 export function structureAdviceText(a: StructureAdvice): StructureAdviceText {
-  if (a.kind === "not_stored") return { kind: a.kind, lines: [], note: "この版の構造の比較の結果は保存されていません。項目 3・4 は描画画像を見て判断してください（参考の警告はありません）。" };
+  if (a.kind === "not_stored") return { kind: a.kind, lines: [], note: "この版の構造の比較の結果は保存されていません。項目 3・4 は描画画像を見て判断してください。" };
   if (a.kind === "unreadable") return { kind: a.kind, lines: [], note: "構造の比較の結果を読めませんでした（警告が無いという意味ではありません）。項目 3・4 は描画画像を見て判断してください。" };
   const unique = [...new Set(a.warnings.map(templateWarningText))];
   return {

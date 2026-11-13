@@ -51,6 +51,16 @@ async function newVersion(demoId: string) {
   return (res.data as { version_id: string }).version_id;
 }
 
+/** Sets a version's status as the database owner (triggers off): a fixture shortcut for states the flow reaches elsewhere. */
+async function forceStatus(id: string, status: string) {
+  await db.query("alter table public.sales_demo_versions disable trigger user");
+  try {
+    await db.query("update public.sales_demo_versions set status = $2 where id = $1", [id, status]);
+  } finally {
+    await db.query("alter table public.sales_demo_versions enable trigger user");
+  }
+}
+
 const input = (findings: unknown[], siblingsCompared = 0) => ({ source: "observation_report", findings, siblingsCompared });
 
 beforeAll(async () => {
@@ -74,6 +84,7 @@ describe("sales_demo_structure_findings (DEV-196q)", () => {
     const demo = await shop();
     const other = await shop();
     const sibling = await newVersion(other);
+    await forceStatus(sibling, "approved");
     const v = await newVersion(demo);
     const findings = [
       { code: "GENERIC_SKELETON", reasons: ["hero:split_copy_media", "flow:stacked_bands"] },
@@ -106,6 +117,9 @@ describe("sales_demo_structure_findings (DEV-196q)", () => {
     expect((await call(serviceClient(), [{ code: "GENERIC_SKELETON", reasons: ["Free text"] }])).error?.message).toMatch(/invalid_structure_findings/);
     expect((await call(serviceClient(), [{ code: "TOO_CLOSE_TO_REFERENCE", reference: "CP-001", similarity: 2 }])).error?.message).toMatch(/invalid_structure_findings/);
     expect((await call(serviceClient(), [{ code: "SIBLINGS_SAME_SKELETON", sibling: sameShop, similarity: 0.9 }])).error?.message).toMatch(/structure_findings_sibling_invalid/);
+    // PR #265 review L2: another shop's version that is not approved / superseded is not a sibling
+    const otherDraft = await newVersion(await shop());
+    expect((await call(serviceClient(), [{ code: "SIBLINGS_SAME_SKELETON", sibling: otherDraft, similarity: 0.9 }])).error?.message).toMatch(/structure_findings_sibling_invalid/);
     expect((await call(admin, [])).error).not.toBeNull();
     expect((await call(outsider, [])).error).not.toBeNull();
     expect((await call(serviceClient(), [{ code: "TOO_CLOSE_TO_REFERENCE", reference: "CP-001", similarity: 0.8 }])).error).toBeNull();
@@ -118,12 +132,7 @@ describe("sales_demo_structure_findings (DEV-196q)", () => {
   it("a version that is not live (rejected) cannot get findings", async () => {
     const demo = await shop();
     const v = await newVersion(demo);
-    await db.query("alter table public.sales_demo_versions disable trigger user");
-    try {
-      await db.query("update public.sales_demo_versions set status = 'rejected' where id = $1", [v]);
-    } finally {
-      await db.query("alter table public.sales_demo_versions enable trigger user");
-    }
+    await forceStatus(v, "rejected");
     await expect(recordStructureFindings(serviceClient(), v, input([]))).rejects.toThrow("structure_findings_version_unavailable");
   });
 });

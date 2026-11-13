@@ -28,6 +28,8 @@ describe("parseStructureFindingsInput", () => {
     ["too many siblings", { source: "observation_report", findings: [], siblingsCompared: 21 }],
     ["unknown source", { source: "model", findings: [], siblingsCompared: 0 }],
     ["not an object", null],
+    // PR #265 review L1: over the byte cap (the database caps the column at 16 KiB)
+    ["over the byte cap", { source: "observation_report", findings: Array.from({ length: 64 }, () => ({ code: "GENERIC_SKELETON", reasons: Array.from({ length: 8 }, () => `${"a".repeat(40)}:${"b".repeat(40)}`) })), siblingsCompared: 0 }],
   ])("refuses %s", (_name, raw) => {
     expect(parseStructureFindingsInput(raw)).toEqual({ ok: false, code: "STRUCTURE_FINDINGS_INVALID" });
   });

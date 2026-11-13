@@ -69,3 +69,14 @@ findings の**計算**。構造記述子の module (`lib/design-agent/structure/
 
 - Staging / Production: migration `20261114000000_sales_demo_structure_findings.sql` を 1 つ当てる (`npm run staging:apply` の手順、DEV-199e までの migration が先)。新しい環境変数・DNS・Vercel の設定はない。
 - 当てても画面は「保存されていません」と出るだけ (findings を作る側が無い間)。
+
+## PR #265 の修正 (coordinator / Fresh Review C0 H0 M0 L4)
+
+- CI unit (1/2) `tests/unit/ai-tasks.test.ts` (「review の task の依存は done」): DEV-196p / DEV-196q の `depends_on` を、まだできていない DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した (どちらも done)。copy record も findings も既存の import の経路 (`lib/demo-version-package/import.ts`) で保存し、アップロード API は使わない。テストは変えていない。
+- Vercel の preview の build が `type_error` で失敗: ローカルでは `.next` を消した clean な `npm run build` が通る (1 回目は Google Fonts の取得の一時的な失敗、2 回目は成功)。CI の `build` job も decea5d で success。Vercel の log はこの session から見えないので、push で再 build させて結果を確かめる (下の「未解決」)。
+- L1: 構造の findings の DB の拒否が、版と copy review の保存の**後**に起きうる問題。`precheckStructureFindings` (新、`lib/sales/structure-findings/store.ts`) が、書き込みの前に DB が拒否する条件を確かめる: 形と大きさ (JSON 8 KiB まで、DB の列の上限は 16 KiB)、sibling が他の店の approved / superseded の版であること、同じ bundle の版が既にあり違う findings を持っていないこと。それでも後で拒否された場合 (競合だけ) は、エラーの文に「版と copy review は findings なしで保存された」と書く (黙って半端な状態にしない)。テスト: unit (大きさの上限)、統合 (既存と違う findings・自店の sibling・大きすぎ、どれも版も object も書かない)。
+- L2: trigger は sibling の版の status が `approved` / `superseded` であることも確かめる (統合: 他の店の draft の版は拒否)。
+- L3: 保存されていないときの文から「（参考の警告はありません）」を削った。
+- L4: 比較の頁の説明を「片方または両方の版に文章の記録が無い（または読めない）ため」に直した。
+
+再実行: 統合 4 ファイル (27)・unit (`tests/unit/sales/demo-version`・`admin`・`ai-tasks`・`staging`、874)・`tsc`・eslint・clean な `npm run build`。

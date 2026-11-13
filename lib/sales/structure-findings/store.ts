@@ -30,6 +30,41 @@ export async function recordStructureFindings(client: SupabaseClient, versionId:
   return { versionId, replayed: r.replayed === true };
 }
 
+/**
+ * PR #265 review L1: everything the database would refuse, checked BEFORE the importer writes anything — the shape
+ * (with the byte cap), every sibling is an approved / superseded version of another shop's demo, and when this bundle
+ * is already a version of the demo, it has no findings yet or exactly these (a replay). Throws StructureFindingsError.
+ */
+export async function precheckStructureFindings(client: SupabaseClient, o: { demoId: string; bundleSha256: string; raw: unknown }): Promise<void> {
+  const parsed = parseStructureFindingsInput(o.raw);
+  if (!parsed.ok) throw new StructureFindingsError(parsed.code);
+  const siblings = [...new Set(parsed.value.findings.flatMap((f) => (f.code === "SIBLINGS_SAME_SKELETON" ? [f.sibling] : [])))];
+  if (siblings.length) {
+    const { data, error } = await client.from("sales_demo_versions").select("id, demo_id, status").in("id", siblings);
+    const rows = (data ?? []) as { id: string; demo_id: string; status: string }[];
+    if (error) throw new StructureFindingsError("STRUCTURE_FINDINGS_PRECHECK_FAILED");
+    const ok = siblings.every((id) => rows.some((r) => r.id === id && r.demo_id !== o.demoId && (r.status === "approved" || r.status === "superseded")));
+    if (!ok) throw new StructureFindingsError("STRUCTURE_FINDINGS_SIBLING_INVALID");
+  }
+  const existing = await client.from("sales_demo_versions").select("id").eq("demo_id", o.demoId).eq("bundle_sha256", o.bundleSha256).maybeSingle();
+  if (existing.error) throw new StructureFindingsError("STRUCTURE_FINDINGS_PRECHECK_FAILED");
+  const versionId = (existing.data as { id?: string } | null)?.id;
+  if (!versionId) return;
+  const f = await client.from("sales_demo_structure_findings").select("findings, siblings_compared, source").eq("version_id", versionId).maybeSingle();
+  if (f.error) throw new StructureFindingsError("STRUCTURE_FINDINGS_PRECHECK_FAILED");
+  const row = f.data as { findings: unknown; siblings_compared: number; source: string } | null;
+  if (!row) return;
+  const same = row.source === parsed.value.source && row.siblings_compared === parsed.value.siblingsCompared && canonical(row.findings) === canonical(parsed.value.findings);
+  if (!same) throw new StructureFindingsError("STRUCTURE_FINDINGS_EXIST");
+}
+
+/** JSON with sorted object keys (jsonb does not keep key order). */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v as object).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  return JSON.stringify(v);
+}
+
 /** The advice the admin screen shows for one version. A read failure is "unreadable", never "no warnings". */
 export async function loadStructureAdvice(client: SupabaseClient, versionId: string): Promise<StructureAdvice> {
   if (!UUID.test(versionId)) return { kind: "unreadable" };

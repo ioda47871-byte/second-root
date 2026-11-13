@@ -41,8 +41,14 @@ export function parseStructureFindingsInput(raw: unknown): { ok: true; value: St
   const o = z
     .strictObject({ source: z.enum(STRUCTURE_FINDING_SOURCES), findings: StructureFindings, siblingsCompared: z.number().int().min(0).max(MAX_SIBLINGS_COMPARED) })
     .safeParse(raw);
-  return o.success ? { ok: true, value: o.data as StructureFindingsRecord } : { ok: false, code: "STRUCTURE_FINDINGS_INVALID" };
+  if (!o.success) return { ok: false, code: "STRUCTURE_FINDINGS_INVALID" };
+  // well under the database's pg_column_size cap (16 KiB), so the database never refuses a size the server accepted
+  if (new TextEncoder().encode(JSON.stringify(o.data.findings)).byteLength > MAX_FINDINGS_JSON_BYTES) return { ok: false, code: "STRUCTURE_FINDINGS_INVALID" };
+  return { ok: true, value: o.data as StructureFindingsRecord };
 }
+
+/** The findings' JSON text may be at most this many bytes (the database caps the stored jsonb at 16 KiB). */
+export const MAX_FINDINGS_JSON_BYTES = 8192;
 
 /** What the screen shows for one version: not stored, stored but unreadable, or the advisory warnings. */
 export type StructureAdvice =

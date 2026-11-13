@@ -16,7 +16,8 @@
 -- Who writes: the server only (service role), through
 -- sales_record_structure_findings, after it validated the shape. The trigger
 -- checks the shape again, that the version is live (draft / approved /
--- superseded), and that every "sibling" is a version of ANOTHER shop's demo.
+-- superseded), and that every "sibling" is an approved (or superseded) version of
+-- ANOTHER shop's demo.
 -- The findings are computed outside the database (the structure descriptor
 -- module is isolated: who may compute them is a separate approval); the
 -- database only keeps what it was given, in a strict shape.
@@ -148,7 +149,8 @@ begin
     raise exception 'structure_findings_version_unavailable' using errcode = 'P0001';
   end if;
   for s in select e ->> 'sibling' from jsonb_array_elements(new.findings) e where e ->> 'code' = 'SIBLINGS_SAME_SKELETON' loop
-    if not exists (select 1 from public.sales_demo_versions o where o.id = s::uuid and o.demo_id <> new.demo_id) then
+    if not exists (select 1 from public.sales_demo_versions o
+                   where o.id = s::uuid and o.demo_id <> new.demo_id and o.status in ('approved', 'superseded')) then
       raise exception 'structure_findings_sibling_invalid' using errcode = 'check_violation';
     end if;
   end loop;

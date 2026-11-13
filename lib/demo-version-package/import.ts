@@ -35,8 +35,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ownerRevisionsOf, planCopyAppend, type CopyCandidate, type ShopCopyState } from "@/lib/sales/copy-review/gate";
 import { CopyStoreError, loadShopCopyState, recordCopyReview, type RecordedCopyReview } from "@/lib/sales/copy-review/store";
 import { CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
-import { parseStructureFindingsInput } from "@/lib/sales/demo-version/structure-findings";
-import { recordStructureFindings, StructureFindingsError } from "@/lib/sales/structure-findings/store";
+import { precheckStructureFindings, recordStructureFindings, StructureFindingsError } from "@/lib/sales/structure-findings/store";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
 import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./package";
 import { RIN_PROSPECT_ID } from "./seed-rin";
@@ -178,12 +177,20 @@ export async function importPackage(
     trustedFactsPack?: string | Uint8Array | null;
     /**
      * DEV-196q: the version's structure findings (spec §7.5, advice only), computed outside this importer
-     * ({source, findings, siblingsCompared}). Checked before anything is written; stored after the version is.
+     * ({source, findings, siblingsCompared}). Everything the database would refuse (shape and size, siblings, an
+     * existing different record for this bundle's version) is checked before anything is written; stored after the
+     * version is. A refusal after that (a race) says so: the version and its copy review stay, without findings.
      */
     structureFindings?: unknown;
   },
 ): Promise<ImportResult> {
-  if (o.structureFindings !== undefined && !parseStructureFindingsInput(o.structureFindings).ok) throw new ImportError("STRUCTURE_FINDINGS_INVALID");
+  if (o.structureFindings !== undefined) {
+    try {
+      await precheckStructureFindings(o.client, { demoId: o.demoId, bundleSha256: pkg.bundleSha256, raw: o.structureFindings });
+    } catch (e) {
+      throw new ImportError("STRUCTURE_FINDINGS_INVALID", e instanceof StructureFindingsError ? e.code : undefined);
+    }
+  }
   const jobId = manualImportJobId(pkg.bundleSha256);
   // DEV-199e: what the store holds for this shop (read only), for the owner's revise requests and the append checks
   let state: ShopCopyState | null = null;
@@ -279,7 +286,8 @@ export async function importPackage(
     try {
       await recordStructureFindings(o.client, v.id, o.structureFindings);
     } catch (e) {
-      throw new ImportError("STRUCTURE_FINDINGS_REFUSED", e instanceof StructureFindingsError ? e.code : undefined);
+      // only a race gets here (every database rule was checked first); the import itself is complete — re-run to replay
+      throw new ImportError("STRUCTURE_FINDINGS_REFUSED", `${e instanceof StructureFindingsError ? e.code : "unknown"}; version ${v.id} and its copy review were stored without structure findings`);
     }
   }
   return { versionId: v.id, versionNo: v.version_no, demoId: o.demoId, bundleSha256: pkg.bundleSha256, created, files, copy, storedCopy };
