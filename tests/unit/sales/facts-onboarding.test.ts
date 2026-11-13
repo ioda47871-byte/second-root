@@ -111,6 +111,12 @@ describe("near (DEV-263i: a short value inside a long one is not a match)", () =
     // a leading prefecture on one side only is ignored; a prefecture alone is nothing
     expect(near("愛知県架空市架空区試験町1-2-3", "架空市架空区試験町1-2-3")).toBe(true);
     expect(near("愛知県", "愛知県名古屋市中区別町9-9")).toBe(false);
+    // PR #272 L1: two different prefectures never match, the same one does
+    expect(near("愛知県架空市架空区試験町1-2-3", "岐阜県架空市架空区試験町1-2-3")).toBe(false);
+    expect(near("東京都府中市架空町1-1", "広島県府中市架空町1-1")).toBe(false);
+    expect(near("愛知県架空市架空区試験町1-2-3", "愛知県架空市架空区試験町1-2-3")).toBe(true);
+    // a name that merely ends in 県 is not a prefecture: kept, so it still has to match
+    expect(near("架空県架空市試験町1-2-3", "試験県架空市試験町1-2-3")).toBe(false);
     expect(NEAR_MIN_RATIO).toBe(0.65);
   });
   it("a pack address that is only a small part of the prospect's address is flagged as a mismatch", () => {

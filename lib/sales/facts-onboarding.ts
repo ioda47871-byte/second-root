@@ -46,15 +46,22 @@ const RIN = "fictional-bicycle-repair-wa";
 const key = (v: string) => v.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 /** DEV-263i (PR #271 delta Low): one value inside the other counts only when the shorter is most of the longer. */
 export const NEAR_MIN_RATIO = 0.65;
-/** A leading prefecture (one address may carry it and the other not): dropped before the comparison. */
-const PREFECTURE = /^(?:東京都|北海道|京都府|大阪府|[^都道府県]{2,3}県)/;
+/** The 47 prefectures (a fixed list: a name that merely ends in 県 is not one). */
+const PREFECTURES = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
+/** Split a comparison key into its leading prefecture ("" when it has none) and the rest. */
+const splitPrefecture = (k: string): [string, string] => {
+  const p = PREFECTURES.find((name) => k.startsWith(name));
+  return p ? [p, k.slice(p.length)] : ["", k];
+};
 /**
- * Equal, or one inside the other with the shorter at least NEAR_MIN_RATIO of the longer (in code points), after `key`
- * and without a leading prefecture. A bare city (名古屋市) is inside almost any address there: never a match alone.
+ * Equal, or one inside the other with the shorter at least NEAR_MIN_RATIO of the longer (in code points), after `key`.
+ * A leading prefecture is dropped only when one side carries it and the other does not; two different prefectures
+ * never match (府中市 is in 東京都 and in 広島県). A bare city (名古屋市) is inside almost any address there: never a match alone.
  */
 export const near = (a: string, b: string) => {
-  const x = key(a).replace(PREFECTURE, "");
-  const y = key(b).replace(PREFECTURE, "");
+  const [pa, x] = splitPrefecture(key(a));
+  const [pb, y] = splitPrefecture(key(b));
+  if (pa !== "" && pb !== "" && pa !== pb) return false;
   if (x === "" || y === "") return false;
   if (x === y) return true;
   const [short, long] = [...x].length <= [...y].length ? [x, y] : [y, x];
