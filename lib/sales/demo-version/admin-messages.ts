@@ -8,6 +8,7 @@
  */
 import type { QualityChecklistItem, QualityDecision, QualityDecisionCode, TemplateWarning } from "./quality";
 import type { RightsStatus } from "./rights";
+import type { StructureAdvice } from "./structure-findings";
 import type { VersionStatus } from "./version-state";
 import type { DemoVersionBadgeState } from "./badge";
 import type { LifecycleRefusal } from "./lifecycle-input";
@@ -150,6 +151,23 @@ export function templateWarningText(w: TemplateWarning): string {
     case "ASPECTS_UNKNOWN":
       return "構造の一部を計測できませんでした（参考）。";
   }
+}
+
+/** DEV-196q: what the quality form shows beside items 3 and 4 (plain strings, built on the server). Never blocks. */
+export type StructureAdviceText = { kind: "not_stored" | "unreadable" | "stored"; lines: string[]; note: string };
+
+export function structureAdviceText(a: StructureAdvice): StructureAdviceText {
+  if (a.kind === "not_stored") return { kind: a.kind, lines: [], note: "この版の構造の比較の結果は保存されていません。項目 3・4 は描画画像を見て判断してください（参考の警告はありません）。" };
+  if (a.kind === "unreadable") return { kind: a.kind, lines: [], note: "構造の比較の結果を読めませんでした（警告が無いという意味ではありません）。項目 3・4 は描画画像を見て判断してください。" };
+  const unique = [...new Set(a.warnings.map(templateWarningText))];
+  return {
+    kind: a.kind,
+    lines: unique,
+    note:
+      unique.length === 0
+        ? `構造の比較では、汎用 LP の骨格・ほかの店舗（${a.siblingsCompared} 件と比較）や成功例との近さの印は見つかりませんでした（参考。良い構成という意味ではありません）。`
+        : `構造の比較の結果です（ほかの店舗の承認済みの版 ${a.siblingsCompared} 件と比較）。参考の警告で、品質承認を止めません。`,
+  };
 }
 
 /** §8.1: each rights status, in the owner's words. */

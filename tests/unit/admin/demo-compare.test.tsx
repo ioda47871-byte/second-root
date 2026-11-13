@@ -170,7 +170,7 @@ describe("compare components (display only)", () => {
     expect(copy).toContain("事実");
     expect(copy).not.toMatch(/<form|<button/);
     expect(renderToStaticMarkup(<CopyDiffList copy={{ kind: "unavailable", side: "a" }} />)).toContain("比べる元の版の頁を読めない");
-    expect(renderToStaticMarkup(<CopyDiffList copy={{ kind: "ok", result: { ok: false, reason: "TOO_LARGE" } }} />)).toContain("文が多すぎる");
+    expect(renderToStaticMarkup(<CopyDiffList copy={{ kind: "ok", result: { ok: false, reason: "TOO_LARGE" }, basis: "facts", records: { a: { state: "missing" }, b: { state: "missing" } } }} />)).toContain("文が多すぎる");
     // review round 1 L2: the unmarked lines are described neutrally
     expect(copy).toContain("店舗の事実と完全には一致しない行（創作・事実を含む文などを区別しません）");
     expect(copy).not.toContain("創作の見出しか");
@@ -266,3 +266,53 @@ describe("review round 1 L3: email addresses are never shown and never a fact", 
   });
 });
 
+
+// DEV-196p: with a copy record stored on BOTH sides, the kinds come from the record (fact / creative heading / unknown)
+// and the server's copy check is re-run per side; otherwise the old facts-only marking stays (never "creative").
+describe("buildCompare: copy record (DEV-196p)", () => {
+  const FP = JSON.stringify({ schema: "shop_facts_pack_v1", shop_id: "fictional-bake", facts: [{ id: "F1", key: "name", value: "架空の焼き菓子店", source_id: "S1" }, { id: "F2", key: "hours", value: "8:00〜17:00", source_id: "S1" }, { id: "F3", key: "menu", value: "フィナンシェ", source_id: "S1" }] });
+  const rec = (creative: string[]) =>
+    JSON.stringify({
+      schema: "comp_copy_v1", shop_id: "fictional-bake", facts_sha256: h("e"), lane: "quality_research_fictional",
+      items: [
+        { id: "name", text: "架空の焼き菓子店", claim_type: "fact", source_fact_ids: ["F1"], owner_review_needed: false },
+        { id: "hours", text: "8:00〜17:00", claim_type: "fact", source_fact_ids: ["F2"], owner_review_needed: false },
+        { id: "menu", text: "フィナンシェ", claim_type: "fact", source_fact_ids: ["F3"], owner_review_needed: false },
+        ...creative.map((t, i) => ({ id: `c${i}`, text: t, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true })),
+      ],
+    });
+  const basisFor = { [id(1)]: { copyRecordText: rec(["朝の光と焼き色"]), factsPackText: FP, factsSha256: h("e") }, [id(2)]: { copyRecordText: rec(["静かな午後の一皿"]), factsPackText: FP, factsSha256: h("e") } };
+
+  it("both sides recorded: fact and creative lines from the record, each side checked", async () => {
+    const r = await buildCompare(page(), { a: null, b: null }, { store: store().make, copyBasis: async (v) => basisFor[v] ?? "missing" });
+    if (r.kind !== "ok" || r.copy.kind !== "ok" || !r.copy.result.ok) throw new Error("copy");
+    expect(r.copy.basis).toBe("copy_record");
+    const ops = r.copy.result.ops.map((o) => `${o.op}:${o.kind}:${o.text}`);
+    expect(ops).toContain("del:creative:朝の光と焼き色");
+    expect(ops).toContain("add:creative:静かな午後の一皿");
+    expect(ops).toContain("add:fact:フィナンシェ");
+    expect(r.copy.records).toEqual({ a: { state: "checked", check: { ok: true, codes: [] } }, b: { state: "checked", check: { ok: true, codes: [] } } });
+    const html = renderToStaticMarkup(<CopyDiffList copy={r.copy} />);
+    expect(html).toContain('data-kind="creative"');
+    expect(html).toContain("創作");
+    expect(html).toContain('data-copy-record-state="ok"');
+    expect(html).toContain('data-copy-basis="copy_record"');
+  });
+
+  it("a page line the record does not hold is reported per side by code", async () => {
+    const r = await buildCompare(page(), { a: null, b: null }, { store: store().make, copyBasis: async (v) => (v === id(2) ? { ...basisFor[id(2)]!, copyRecordText: rec([]) } : basisFor[v]!) });
+    if (r.kind !== "ok" || r.copy.kind !== "ok") throw new Error("copy");
+    expect(r.copy.records.b).toEqual({ state: "checked", check: { ok: false, codes: ["UNVERIFIED_COPY"] } });
+    expect(renderToStaticMarkup(<CopyDiffList copy={r.copy} />)).toContain("UNVERIFIED_COPY");
+  });
+
+  it("one side without a record (or unreadable): facts-only marking for both, never creative", async () => {
+    for (const other of ["missing", "unreadable"] as const) {
+      const r = await buildCompare(page(), { a: null, b: null }, { store: store().make, copyBasis: async (v) => (v === id(1) ? other : basisFor[v]!) });
+      if (r.kind !== "ok" || r.copy.kind !== "ok" || !r.copy.result.ok) throw new Error("copy");
+      expect(r.copy.basis).toBe("facts");
+      expect(r.copy.records.a).toEqual({ state: other });
+      expect(r.copy.result.ops.some((o) => o.kind === "creative")).toBe(false);
+    }
+  });
+});

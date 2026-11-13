@@ -13,9 +13,12 @@ import "server-only";
  *    admin checks. The bytes are checked against the manifest (size, sha256, UTF-8) before a word is used, and only
  *    the page's own visible text is passed on — what the admin already sees in the frame.
  *
- * A line is "fact" when it equals one of the shop's stored facts; every other line is "unknown". The copy record that
- * would tell creative headings apart (copy.json) is not stored by DEV-196c, so no line is ever called creative here
- * (the copy-record diff is deferred to DEV-196e).
+ * DEV-196p: when BOTH versions have a copy record stored with them (DEV-199e: sales_demo_version_copy_links ->
+ * sales_demo_copy_reviews, read through the admin's session), each line's kind comes from that record
+ * (copy-lines.ts: fact / creative heading / unknown) and the server's copy check is re-run on the stored record, facts
+ * pack and the page's texts, per side. Otherwise (a side has no stored record, or it cannot be read) the old rule
+ * stays: a line is "fact" when it equals one of the shop's stored facts, every other line is "unknown", and no line is
+ * ever called creative.
  *
  * Review of #249: a page whose HTML does not pass the server's own check (checkArtifactHtml) gives no text at all;
  * only the VISIBLE BODY TEXT is used (no <head> / <title>, no svg title / desc, nothing under [hidden], no script /
@@ -25,6 +28,8 @@ import "server-only";
 import type { DemoVersionsPage } from "@/lib/admin/demo-versions";
 import { supabaseFrameStore } from "@/lib/demo-frame/store";
 import type { FrameStore } from "@/lib/demo-frame/serve";
+import { createAuthClient } from "@/lib/supabase/server";
+import { classifyByCopyRecord, type CopyRecordCheck, type StoredCopyBasis } from "@/lib/sales/demo-version/copy-lines";
 import { compareVersionMeta, defaultBaseVersion, diffLines, diffManifests, diffStructure, type CopyLine, type LineDiffResult, type StructureDiffEntry, type VersionMetaDiff, type FileDiffEntry, type FileChange } from "@/lib/sales/demo-version/compare";
 import type { DefaultTreeAdapterTypes } from "parse5";
 import { containsEmail, HIDDEN_EMAIL_LABEL } from "@/lib/sales/demo-version/admin-messages";
@@ -36,8 +41,11 @@ import type { VersionFileDb, VersionRowDb, VersionView } from "@/lib/sales/demo-
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** DEV-196p: what each side's stored copy record said. */
+export type CopyRecordSide = { state: "checked"; check: CopyRecordCheck } | { state: "missing" } | { state: "unreadable" };
+
 export type CopyDiff =
-  | { kind: "ok"; result: LineDiffResult }
+  | { kind: "ok"; result: LineDiffResult; basis: "copy_record" | "facts"; records: { a: CopyRecordSide; b: CopyRecordSide } }
   /** a side's page could not be read (no storage, not previewable, bytes not the manifest's) */
   | { kind: "unavailable"; side: "a" | "b" | "both" };
 
@@ -114,8 +122,8 @@ export function visibleBodyText(html: string): string[] | null {
   return out;
 }
 
-/** The visible text lines of one version's page, or null. Never throws. */
-async function pageTexts(store: FrameStore, v: VersionRowDb, files: readonly VersionFileDb[]): Promise<string[] | null> {
+/** The visible text lines of one version's page (and the HTML check's texts), or null. Never throws. */
+async function pageTexts(store: FrameStore, v: VersionRowDb, files: readonly VersionFileDb[]): Promise<{ lines: string[]; checked: string[] } | null> {
   try {
     const entry = files.find((f) => f.path === HTML_NAME && f.role === "html");
     // the prefix is fixed by the table's check (sales_demo_versions_prefix): v1/<demo>/<version>/
@@ -129,10 +137,32 @@ async function pageTexts(store: FrameStore, v: VersionRowDb, files: readonly Ver
     const html = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const photos = new Set(files.filter((f) => f.role === "photo").map((f) => f.path.slice("page/".length)));
     // a page the server's own HTML check refuses gives no text at all
-    if (!checkArtifactHtml(html, "", photos).ok) return null;
-    return visibleBodyText(html);
+    const safety = checkArtifactHtml(html, "", photos);
+    if (!safety.ok) return null;
+    const lines = visibleBodyText(html);
+    return lines ? { lines, checked: safety.texts } : null;
   } catch {
     return null;
+  }
+}
+
+export type CopyBasisRead = StoredCopyBasis | "missing" | "unreadable";
+
+/** The copy record stored with a version (DEV-199e), through the admin's own session (RLS). Never throws. */
+export async function readStoredCopyBasis(client: Awaited<ReturnType<typeof createAuthClient>>, versionId: string): Promise<CopyBasisRead> {
+  try {
+    if (!UUID.test(versionId)) return "unreadable";
+    const link = await client.from("sales_demo_version_copy_links").select("review_id").eq("version_id", versionId).maybeSingle();
+    if (link.error) return "unreadable";
+    const reviewId = (link.data as { review_id?: unknown } | null)?.review_id;
+    if (reviewId === undefined || reviewId === null) return "missing";
+    if (typeof reviewId !== "string" || !UUID.test(reviewId)) return "unreadable";
+    const q = await client.from("sales_demo_copy_reviews").select("copy_record_text, facts_pack_text, facts_sha256").eq("id", reviewId).maybeSingle();
+    const r = q.data as { copy_record_text?: unknown; facts_pack_text?: unknown; facts_sha256?: unknown } | null;
+    if (q.error || !r || typeof r.copy_record_text !== "string" || typeof r.facts_pack_text !== "string" || typeof r.facts_sha256 !== "string") return "unreadable";
+    return { copyRecordText: r.copy_record_text, factsPackText: r.facts_pack_text, factsSha256: r.facts_sha256 };
+  } catch {
+    return "unreadable";
   }
 }
 
@@ -143,7 +173,7 @@ async function pageTexts(store: FrameStore, v: VersionRowDb, files: readonly Ver
 export async function buildCompare(
   page: Extract<DemoVersionsPage, { kind: "ok" }>,
   ask: { a: string | null; b: string | null },
-  o: { store?: () => FrameStore } = {},
+  o: { store?: () => FrameStore; copyBasis?: (versionId: string) => Promise<CopyBasisRead> } = {},
 ): Promise<CompareData> {
   const { view, rows } = page;
   const byId = new Map(view.versions.map((v) => [v.id, v]));
@@ -173,8 +203,21 @@ export async function buildCompare(
     const [ta, tb] = await Promise.all([pageTexts(store, ra, fa), pageTexts(store, rb, fb)]);
     if (!ta || !tb) copy = { kind: "unavailable", side: !ta && !tb ? "both" : !ta ? "a" : "b" };
     else {
-      const facts = factValues(page.content);
-      copy = { kind: "ok", result: diffLines(copyLines(ta, facts), copyLines(tb, facts)) };
+      const read = o.copyBasis ?? (async (id: string): Promise<CopyBasisRead> => createAuthClient().then((c) => readStoredCopyBasis(c, id), () => "unreadable" as const));
+      const [ba, bb] = await Promise.all([read(a.id), read(b.id)]);
+      const side = (basis: CopyBasisRead, t: { lines: string[]; checked: string[] }): { side: CopyRecordSide; lines: CopyLine[] | null } => {
+        if (basis === "missing" || basis === "unreadable") return { side: { state: basis }, lines: null };
+        const c = classifyByCopyRecord({ lines: t.lines, checkedTexts: t.checked, basis });
+        return c ? { side: { state: "checked", check: c.check }, lines: c.lines } : { side: { state: "unreadable" }, lines: null };
+      };
+      const sa = side(ba, ta);
+      const sb = side(bb, tb);
+      const records = { a: sa.side, b: sb.side };
+      if (sa.lines && sb.lines) copy = { kind: "ok", result: diffLines(sa.lines, sb.lines), basis: "copy_record", records };
+      else {
+        const facts = factValues(page.content);
+        copy = { kind: "ok", result: diffLines(copyLines(ta.lines, facts), copyLines(tb.lines, facts)), basis: "facts", records };
+      }
     }
   }
 

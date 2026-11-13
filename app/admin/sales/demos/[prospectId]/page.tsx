@@ -15,7 +15,8 @@ import { requireAdminPage } from "@/lib/admin/auth";
 import { loadVersionCopyReview } from "@/lib/admin/demo-copy-review";
 import { loadDemoVersionsPage, type PreviewUnavailable } from "@/lib/admin/demo-versions";
 import { createAuthClient } from "@/lib/supabase/server";
-import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, QUALITY_REVIEW_DISABLED_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL } from "@/lib/sales/demo-version/admin-messages";
+import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, QUALITY_REVIEW_DISABLED_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL, structureAdviceText } from "@/lib/sales/demo-version/admin-messages";
+import { loadStructureAdvice } from "@/lib/sales/structure-findings/store";
 import { demoQualityReviewEnabled, demoVersionsEnabled } from "@/lib/sales/demo-version/flags";
 import { VIEW_TOKEN_TTL_SECONDS } from "@/lib/sales/demo-version/view-token";
 
@@ -63,6 +64,8 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
   // DEV-199b: the selected version's copy review (read through the admin's session); the decision form needs the
   // quality-review write flag as well
   const copy = selected ? await loadVersionCopyReview(await createAuthClient(), selected.id) : null;
+  // DEV-196q: the selected version's stored structure findings, as advice beside items 3・4 (admin's session, RLS)
+  const structure = selected ? structureAdviceText(await loadStructureAdvice(await createAuthClient(), selected.id)) : null;
 
   return (
     <div className={styles.page} data-demo-versions-page="">
@@ -143,6 +146,7 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
                         aiImages: selected.images
                           .filter((i) => i.aiConcept && i.imageId)
                           .map((i) => ({ imageId: i.imageId!, sha256: i.sha256, path: i.path, thumbSrc: i.previewable ? `${base}${i.path.slice("page/".length)}` : null })),
+                        structure: structure ?? structureAdviceText({ kind: "unreadable" }),
                       }
                     : null
                 }

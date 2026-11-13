@@ -43,9 +43,10 @@ describe("migration plan", () => {
     }
     // The exemption list is pinned: widening it (silently skipping the DELETE check for another table) must fail here.
     // DEV-199e adds the copy review store, its facts-path checks, the version links and the owner's copy decisions.
+    // DEV-196q adds the stored structure findings of a version.
     expect([...NO_DELETE_TABLES].sort()).toEqual([
       "sales_demo_copy_facts_checks", "sales_demo_copy_owner_decisions", "sales_demo_copy_reviews", "sales_demo_images",
-      "sales_demo_quality_reviews", "sales_demo_version_copy_links", "sales_demo_version_files", "sales_demo_versions",
+      "sales_demo_quality_reviews", "sales_demo_structure_findings", "sales_demo_version_copy_links", "sales_demo_version_files", "sales_demo_versions",
     ]);
     // Before 20260928000000 the core tables relied on the defaults.
     const before = local.filter((m: { version: string }) => m.version < "20260928000000");

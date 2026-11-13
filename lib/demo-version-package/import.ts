@@ -35,6 +35,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ownerRevisionsOf, planCopyAppend, type CopyCandidate, type ShopCopyState } from "@/lib/sales/copy-review/gate";
 import { CopyStoreError, loadShopCopyState, recordCopyReview, type RecordedCopyReview } from "@/lib/sales/copy-review/store";
 import { CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
+import { parseStructureFindingsInput } from "@/lib/sales/demo-version/structure-findings";
+import { recordStructureFindings, StructureFindingsError } from "@/lib/sales/structure-findings/store";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
 import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./package";
 import { RIN_PROSPECT_ID } from "./seed-rin";
@@ -174,8 +176,14 @@ export async function importPackage(
     workerCommit?: string | null;
     /** DEV-199d: the shop's facts pack from the facts path (never from the package); the package's must be the same bytes */
     trustedFactsPack?: string | Uint8Array | null;
+    /**
+     * DEV-196q: the version's structure findings (spec §7.5, advice only), computed outside this importer
+     * ({source, findings, siblingsCompared}). Checked before anything is written; stored after the version is.
+     */
+    structureFindings?: unknown;
   },
 ): Promise<ImportResult> {
+  if (o.structureFindings !== undefined && !parseStructureFindingsInput(o.structureFindings).ok) throw new ImportError("STRUCTURE_FINDINGS_INVALID");
   const jobId = manualImportJobId(pkg.bundleSha256);
   // DEV-199e: what the store holds for this shop (read only), for the owner's revise requests and the append checks
   let state: ShopCopyState | null = null;
@@ -265,6 +273,13 @@ export async function importPackage(
       });
     } catch (e) {
       throw new ImportError("COPY_STORE_REFUSED", e instanceof CopyStoreError ? e.code : undefined);
+    }
+  }
+  if (o.structureFindings !== undefined) {
+    try {
+      await recordStructureFindings(o.client, v.id, o.structureFindings);
+    } catch (e) {
+      throw new ImportError("STRUCTURE_FINDINGS_REFUSED", e instanceof StructureFindingsError ? e.code : undefined);
     }
   }
   return { versionId: v.id, versionNo: v.version_no, demoId: o.demoId, bundleSha256: pkg.bundleSha256, created, files, copy, storedCopy };

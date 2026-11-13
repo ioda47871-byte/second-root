@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readStoredCopyBasis } from "@/lib/admin/demo-compare";
 import { loadVersionCopyReview, submitCopyDecision } from "@/lib/admin/demo-copy-review";
+import { classifyByCopyRecord } from "@/lib/sales/demo-version/copy-lines";
+import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
 import { importPackage, type PackageStore } from "@/lib/demo-version-package/import";
 import { buildPackage, type DemoVersionPackage } from "@/lib/demo-version-package/package";
 import { auditReviseChain, cleanRound0, json, type Round } from "../support/copy-review-fixture";
@@ -127,5 +130,23 @@ describe("the copy review panel and the owner's decision (admin session, local s
     const direct = await outsider.rpc("sales_decide_copy_review", { p_version_id: versionId, p_review_id: reviewId, p_decision: "approve", p_review_sha256: q.review_sha256, p_facts_sha256: q.facts_sha256, p_copy_sha256: q.copy_sha256, p_page_html_sha256: q.page_html_sha256, p_page_css_sha256: q.page_css_sha256, p_note: null });
     expect(direct.error).not.toBeNull();
     expect(await decisions(reviewId)).toEqual([]);
+  });
+});
+
+// DEV-196p: the compare page reads the copy record stored with each version through the admin's session and re-runs
+// the server's copy check on the stored bytes; a non-admin reads nothing (the page then keeps the facts-only marking).
+describe("the stored copy record for the compare page (DEV-196p, admin session, local stack)", () => {
+  it("reads the version's linked record; the line kinds and the check come from it", async () => {
+    const s = await shop();
+    const r = cleanRound0();
+    const { versionId } = await imported(s, r, false);
+    const basis = await readStoredCopyBasis(admin as never, versionId);
+    if (typeof basis === "string") throw new Error(basis);
+    const texts = checkArtifactHtml(String(r.files.pageHtml), "", new Set()).texts;
+    const c = classifyByCopyRecord({ lines: texts, checkedTexts: texts, basis })!;
+    expect(c.check.codes).not.toContain("UNVERIFIED_COPY");
+    expect(c.lines.some((l) => l.kind === "fact")).toBe(true);
+    expect(await readStoredCopyBasis(outsider as never, versionId)).toBe("missing");
+    expect(await readStoredCopyBasis(admin as never, randomUUID())).toBe("missing");
   });
 });
