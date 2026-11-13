@@ -37,6 +37,8 @@ describe("demo-version library purity", () => {
       "components/admin/demo/CompareTables.tsx",
       // DEV-199b: the owner's copy decision form calls the demo-versions server action (decideCopyReview)
       "components/admin/demo/CopyDecisionForm.tsx",
+      // DEV-263h: デモの事実を facts pack から作る calls the demo-versions server actions
+      "components/admin/demo/DemoFromFacts.tsx",
       // DEV-263f: the owner's facts pack registration calls the demo-versions server actions
       "components/admin/demo/FactsPackRegistration.tsx",
       "components/admin/demo/FactsPanel.tsx",

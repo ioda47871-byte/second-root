@@ -10357,7 +10357,7 @@
       ],
       "human_approval_triggers": [
         "migration 20261115000000 の Staging / Production への適用 (runbook B-1・B-2)",
-        "実店舗の demo の content を facts pack から作る経路 (候補の登録 / 取り込み) は別の Task",
+        "実店舗の demo の content を facts pack から作る経路は DEV-263h",
         "PR の Fresh Review と merge"
       ],
       "attempts": 0,
@@ -10409,6 +10409,55 @@
       "last_failure": null,
       "branch": "feature/dev-263g-test-recipient-guard",
       "note": "記録は .ai/reviews/DEV-263g.md。migration はローカルのスタックだけ。develop 404ab4e1 (PR #269 の merge) の上。Issue #263"
+    },
+    {
+      "id": "DEV-263h",
+      "title": "実店舗のデモの事実を facts pack から作る経路 (管理画面 + ローカルの CLI) と、店のデータを repo に入れない実店舗のデモの作業手順 (Issue #263、runbook B-2)",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-263f"
+      ],
+      "purpose": "DEV-263f の残り: 実店舗の demo の content を確認済みの facts pack から作り、同じバイトを facts の保存先に登録する経路が 環 の seed にしか無かった",
+      "acceptance_criteria": [
+        "既存の候補 (既存の取り込みで登録、候補の規則は不変) に対し、1 つの transaction で: DB が facts pack から demo の content を導き (サーバーの demoContentWithFactsSha と同じ。未対応の key・重複・不足・前後の空白は拒否)、demo を作るか content を置き換え (オーナーの明示の確認)、同じバイトを sales_demo_facts_packs に登録 (追記のみ、同じバイトは replay)",
+        "管理画面: 版の頁 (demo が無い候補でも) の「デモの事実を facts pack から作る」(旗の後ろ、旗 → admin → 再確認 → DB の順)。sales_create_demo_from_facts は admin の session だけ (SECURITY DEFINER)、内部の関数はどの API role も実行不可",
+        "拒否: admin でない・DNC・除外リスト・同じ shop_id が別の候補・輪・無効化・送信の承認済み / 送信済み / 共有中・デザインの処理中・別の shop_id への置き換え・置き換えの未確認",
+        "ローカルの CLI (onboard-local.ts): ローカルの DB だけ (assertLocalDbUrl)、DB の所有者の CLI のスイッチ、facts pack のファイルは repo の外か .local-shops/ の下だけ (リンク不可)",
+        "docs/operations/real-shop-demo-workflow.md と .gitignore の /.local-shops/、追跡されたファイルが無いことの guard テスト",
+        "既存の React のデモ (他の候補) は変わらない",
+        "PR #270 の review の Low: sales_test_email_reserved の予備の判定 (見えない文字だけ消し、他は x に置き換え) (migration 20261116000100。スイッチの表の grant の revoke は staging の照合 authenticated_can_read と衝突するので入れない)、loopbackDbUrl を pg-connection-string の host で、runbook A-5 / A-6 にスイッチを off に戻す手順"
+      ],
+      "required_tests": [
+        "unit: tests/unit/sales/facts-onboarding.test.ts (導き方・計画の拒否・ファイルの規則・.local-shops の guard)、tests/unit/admin/demo-onboarding.test.tsx (旗 off・admin でない・不正な pack・候補の規則・確認・action の順)",
+        "統合 (ローカルの Supabase): tests/integration/demo-facts-onboarding.test.ts (DB とサーバーの導き方の一致・権限・作る / 置き換え / replay・拒否・CLI の経路・取り込みから送信の門まで)、全体",
+        "tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261116000000_sales_facts_demo_onboarding.sql (新規、ローカルだけ)",
+        "supabase/migrations/20261116000100_sales_test_email_reserved_fallback.sql (新規、ローカルだけ)・tests/support/local-test-recipients.ts",
+        "lib/sales/facts-onboarding.ts・lib/sales/facts-onboarding-local.ts・lib/admin/demo-onboarding.ts・components/admin/demo/DemoFromFacts.tsx・scripts/sales/demo-version/onboard-local.ts (新規)",
+        "lib/demo-version-package/facts-content.ts・app/admin/sales/_actions/demo-versions.ts・app/admin/sales/demos/[prospectId]/page.tsx",
+        ".gitignore・docs/operations/real-shop-demo-workflow.md・docs/operations/sales-mvp-runbook.md・関係するテスト・.ai/tasks.json・.ai/reviews/DEV-263h.md"
+      ],
+      "forbidden_scope": [
+        "Staging・Production への migration の適用、環境変数・DNS・Vercel の変更",
+        "実店舗のデータを repo・テスト・PR の文に入れること",
+        "実送信、Codex・画像生成・LLM の呼び出し",
+        "SR-001「輪」のデータの変更",
+        "workflow・package.json・lockfile・prompt・skill",
+        "guard の緩和",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "migration 20261116000000 の Staging / Production への適用 (runbook B-1・B-2)",
+        "最初の実店舗の facts pack・頁の作成と送信 (runbook B-6)",
+        "PR の Fresh Review と merge"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-263h-real-shop-onboarding",
+      "note": "記録は .ai/reviews/DEV-263h.md。migration はローカルのスタックだけ。Issue #263"
     }
   ]
 }
