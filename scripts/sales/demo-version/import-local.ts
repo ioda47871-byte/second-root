@@ -11,6 +11,19 @@
  *
  * DEV-196s: `--seed-rin --seed-only` creates (or finds) the 輪 shop and stops, so the local-only patch
  * (apply-local-rin-patch.ts, which needs the seed row) can be applied before the photo package is imported.
+ *
+ * DEV-263a (Issue #263): the LOCAL facts path and the fictional sendable shop 環.
+ *
+ *   npx tsx scripts/sales/demo-version/import-local.ts --package <dir> (--prospect <uuid> | --seed-sendable) --trusted-facts <committed facts-pack.json>
+ *   npx tsx scripts/sales/demo-version/import-local.ts --seed-sendable --seed-only
+ *
+ * --trusted-facts reads the facts pack from the local facts path (lib/demo-version-package/local-inputs.ts
+ * readCommittedFacts: inside the repository, no symbolic link, byte-identical to HEAD and the same blob at
+ * origin/develop; refused before any request otherwise) and passes those bytes as `trustedFactsPack`. Before the import
+ * it refuses unless the target demo's sales_demos.content names the sha256 of the same bytes and equals the content
+ * derived from them (assertDemoContentFromFacts; a 輪 demo is refused), so the demo row and the facts evidence share
+ * one origin. --seed-sendable creates (or finds) 環 from its committed facts pack
+ * (lib/demo-version-package/seed-sendable.ts). The hosted facts store and the send-time re-compare are not here.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,7 +31,9 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { assertLocalSupabaseUrl, ImportError, importPackage, supabasePackageStore } from "../../../lib/demo-version-package/import";
 import { PackageError, readPackage } from "../../../lib/demo-version-package/package";
+import { assertDemoContentFromFacts, LocalInputError, readCommittedFacts } from "../../../lib/demo-version-package/local-inputs";
 import { assertLocalDbUrl, seedRinShop, type FactsPack } from "../../../lib/demo-version-package/seed-rin";
+import { SENDABLE_FACTS_PATH, seedSendableShop } from "../../../lib/demo-version-package/seed-sendable";
 
 const arg = (k: string) => {
   const i = process.argv.indexOf(k);
@@ -32,11 +47,26 @@ async function main(): Promise<number> {
   const dir = arg("--package");
   const prospectArg = arg("--prospect");
   const seedRin = process.argv.includes("--seed-rin");
+  const seedSendable = process.argv.includes("--seed-sendable");
   const seedOnly = process.argv.includes("--seed-only");
-  if (seedOnly ? !seedRin || dir || prospectArg : !dir || (!prospectArg && !seedRin) || (prospectArg && !UUID.test(prospectArg))) {
-    process.stderr.write("usage: import-local.ts --package <dir> (--prospect <uuid> | --seed-rin) | import-local.ts --seed-rin --seed-only\n");
+  const trustedPath = arg("--trusted-facts");
+  const seeds = Number(seedRin) + Number(seedSendable);
+  const usage =
+    seeds > 1 ||
+    (seedOnly ? seeds !== 1 || dir || prospectArg || trustedPath : !dir || (!prospectArg && !seeds) || (prospectArg && (seeds || !UUID.test(prospectArg)))) ||
+    (process.argv.includes("--trusted-facts") && !trustedPath) ||
+    // the sendable shop is imported only with its facts from the facts path; 輪's photo packages never are (ai_demo_internal)
+    (seedSendable && !seedOnly && !trustedPath) ||
+    (seedRin && trustedPath);
+  if (usage) {
+    process.stderr.write(
+      "usage: import-local.ts --package <dir> (--prospect <uuid> | --seed-rin | --seed-sendable) [--trusted-facts <committed facts-pack.json>]\n" +
+        "       import-local.ts (--seed-rin | --seed-sendable) --seed-only\n",
+    );
     return 2;
   }
+  // DEV-263a: the local facts path, checked before any request (inside the repository, committed, unmodified)
+  const trustedFacts = trustedPath ? readCommittedFacts(REPO, trustedPath) : null;
   const url = assertLocalSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) {
@@ -48,7 +78,18 @@ async function main(): Promise<number> {
 
   let prospectId = prospectArg ?? null;
   let demoId: string;
-  if (seedRin) {
+  if (seedSendable) {
+    const db = new pg.Client(assertLocalDbUrl(process.env.SUPABASE_DB_URL));
+    await db.connect();
+    try {
+      // committed at HEAD; the trusted import below also requires it on origin/develop
+      const seeded = await seedSendableShop(db, readCommittedFacts(REPO, SENDABLE_FACTS_PATH, { requireBase: false }));
+      prospectId = seeded.prospectId;
+      demoId = seeded.demoId;
+    } finally {
+      await db.end();
+    }
+  } else if (seedRin) {
     // the explicit config of the host checked (never the raw string: nothing in it can redirect the connection)
     const db = new pg.Client(assertLocalDbUrl(process.env.SUPABASE_DB_URL));
     await db.connect();
@@ -69,7 +110,13 @@ async function main(): Promise<number> {
     process.stdout.write(`${JSON.stringify({ status: "OK", seeded: true, prospect_id: prospectId, demo_id: demoId })}\n`);
     return 0;
   }
-  const result = await importPackage(pkg, { client, store: supabasePackageStore(client), demoId, workerCommit: (pkg.validatorResult.validator_commit ?? "").match(/^[0-9a-f]{7,40}$/) ? pkg.validatorResult.validator_commit : null });
+  if (trustedFacts) {
+    // DEV-263a: the demo row and the facts evidence share one origin
+    const d = await client.from("sales_demos").select("content").eq("id", demoId).maybeSingle();
+    if (d.error || !d.data) throw new ImportError("DEMO_NOT_FOUND");
+    assertDemoContentFromFacts((d.data as { content: unknown }).content, trustedFacts);
+  }
+  const result = await importPackage(pkg, { client, store: supabasePackageStore(client), demoId, trustedFactsPack: trustedFacts, workerCommit: (pkg.validatorResult.validator_commit ?? "").match(/^[0-9a-f]{7,40}$/) ? pkg.validatorResult.validator_commit : null });
   process.stdout.write(`${JSON.stringify({ status: "OK", prospect_id: prospectId, ...result }, null, 2)}\n`);
   return 0;
 }
@@ -77,7 +124,7 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((e) => {
-    if (e instanceof ImportError || e instanceof PackageError) {
+    if (e instanceof ImportError || e instanceof PackageError || e instanceof LocalInputError) {
       process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
       process.exit(1);
     }

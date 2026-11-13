@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { composeFollowUp } from "@/lib/admin/followup";
-import { composedFor, designWaiting, loadInitial } from "@/lib/admin/initial-send";
+import { composedFor, demoOf, designWaiting, loadInitial } from "@/lib/admin/initial-send";
 import { errorCode, OPENED_VIA, recordedSend, sendErrorMessage, type OpenedVia, type RecordedSend } from "@/lib/sales/approval";
 import { COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels";
 import { outreachCopyGate } from "@/lib/sales/copy-review/store";
 import { aiDesignEnabled } from "@/lib/sales/design";
 import { VERSIONED_SEND_SHARE_OFF } from "@/lib/sales/demo-version/admin-messages";
 import { demoShareEnabled } from "@/lib/sales/demo-version/flags";
+import { TEST_RECIPIENT_LABEL, testRecipientBlock } from "@/lib/sales/test-recipient";
 import { createAuthClient } from "@/lib/supabase/server";
 
 // The manual send of an initial message (MVP_SPEC §4, DEV-195):
@@ -43,6 +44,9 @@ export async function approveSend(outreachId: string, draftVersion: number, show
   if (row.status !== "drafted") return { ok: false, error: sendErrorMessage("invalid_transition") };
   if (row.draft_version !== draftVersion) return { ok: false, error: sendErrorMessage("stale_draft") };
   if (designWaiting(row)) return { ok: false, error: sendErrorMessage("design_pending") };
+  // DEV-263a: a fictional shop or a reserved test address is never approved outside the local E2E run
+  const testBlock = testRecipientBlock({ publicEmail: row.prospect?.public_email, channel: row.channel, factsPack: demoOf(row)?.facts_pack });
+  if (testBlock) return { ok: false, error: TEST_RECIPIENT_LABEL[testBlock] };
   const composed = composedFor(row);
   if (!composed) return { ok: false, error: "文面が長すぎるか宛先・デモが正しくないため、送る文面を作れません。" };
   if (composed.subject !== (shown.subject ?? null) || composed.body !== shown.body) {
@@ -147,13 +151,15 @@ export async function markFollowUpSent(outreachId: string): Promise<SendResult> 
   const supabase = await createAuthClient();
   const { data, error: loadError } = await supabase
     .from("sales_outreaches")
-    .select("subject, prospect:sales_prospects!inner(name, public_email, demo:sales_demos(public_token))")
+    .select("subject, prospect:sales_prospects!inner(name, public_email, demo:sales_demos(public_token, facts_pack:content->>facts_pack))")
     .eq("id", outreachId)
     .eq("kind", "initial")
     .maybeSingle();
   const row = data as unknown as FollowUpRow | null;
   const demo = Array.isArray(row?.prospect?.demo) ? row.prospect.demo[0] : row?.prospect?.demo;
   if (loadError || !row?.prospect?.public_email || !demo) return { ok: false, error: "対象が見つかりません。" };
+  const testBlock = testRecipientBlock({ publicEmail: row.prospect.public_email, channel: "email", factsPack: (demo as { facts_pack?: unknown }).facts_pack });
+  if (testBlock) return { ok: false, error: TEST_RECIPIENT_LABEL[testBlock] };
 
   const draft = composeFollowUp({
     shopName: row.prospect.name,

@@ -58,9 +58,18 @@ export function assertLocalDbUrl(raw: string | undefined, env: Readonly<Record<s
   return { host: c.host, port, ...(c.user ? { user: c.user } : {}), ...(c.password ? { password: c.password } : {}), ...(c.database ? { database: c.database } : {}) };
 }
 
-/** The demo content from the facts pack: every fact, under the keys the version page reads. Pure. */
+/** The demo content of 輪 from SR-001's facts pack (demoContentFromFacts, for 輪 only). Pure. */
 export function rinDemoContent(pack: FactsPack): Record<string, unknown> {
   if (pack.schema !== "shop_facts_pack_v1" || pack.shop_id !== RIN_SHOP_ID) throw new Error("FACTS_PACK_NOT_RIN");
+  return demoContentFromFacts(pack);
+}
+
+/**
+ * DEV-263a: the demo content from a fictional shop's facts pack: every fact, under the keys the version page reads (the
+ * derivation 輪 has always used, for any pack with these keys; a missing key throws FACT_MISSING). Pure.
+ */
+export function demoContentFromFacts(pack: FactsPack): Record<string, unknown> {
+  if (pack.schema !== "shop_facts_pack_v1") throw new Error("FACTS_PACK_SCHEMA");
   const v = (key: string) => {
     const f = pack.facts.find((x) => x.key === key);
     if (!f) throw new Error(`FACT_MISSING:${key}`);

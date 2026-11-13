@@ -215,7 +215,9 @@ describe("DEV-196r: the sales packaging script takes only renderPrototype from p
     const source = readFileSync(resolve(REPO, SALES_PACKAGE), "utf8");
     // node:child_process is the script's own `git rev-parse HEAD` for the validator commit (execFileSync, fixed arguments)
     // DEV-196s (owner approval 2026-11-11): swap-package reads 輪's photo-swapped page, rights and originals read-only
+    // DEV-263a: local-inputs reads a comp's page and copy (copy.json, copy-review.json, copy-rounds/) for --copy, read-only
     expect(specifiers(source).sort()).toEqual([
+      "../../../lib/demo-version-package/local-inputs",
       "../../../lib/demo-version-package/package",
       "../../../lib/demo-version-package/swap-package",
       "../../../lib/design-agent/phase2f/render-prototype",
