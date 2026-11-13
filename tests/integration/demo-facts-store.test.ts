@@ -280,48 +280,41 @@ describe("PR #269 review", () => {
     }
   });
 
-  it("L4: without the facts store (migration not applied) the copy panel still reads (not set up) and the send stays refused", async () => {
+  it("L4: without the facts store (a database before the migration) the copy panel still reads (not set up) and the send stays refused", async () => {
     const s = await shop();
     const { versionId } = await confirmedVersion(s, cleanRound0());
-    const c = await db.connect();
-    try {
-      await c.query("begin");
-      await c.query(rollbackSql());
-      await c.query("notify pgrst, 'reload schema'");
-      await c.query("commit");
-    } catch (e) {
-      await c.query("rollback");
-      c.release();
-      throw e;
-    }
-    try {
-      // wait for PostgREST to drop the table from its schema cache
-      for (let i = 0; i < 50; i++) {
-        const r = await admin.from("sales_demo_facts_packs").select("id").limit(1);
-        if (r.error) break;
-        await new Promise((ok) => setTimeout(ok, 200));
-      }
-      await expect(loadCurrentFactsPack(admin, s.prospectId)).rejects.toThrow("FACTS_STORE_NOT_SET_UP");
-      const { loadVersionCopyContext } = await import("@/lib/sales/copy-review/store");
-      const ctx = await loadVersionCopyContext(admin, versionId);
-      expect(ctx.state.factsStore.notSetUp).toBe(true);
-      expect(ctx.state.factsChecks.every((x) => x.facts_pack_id === null)).toBe(true);
-      expect(await loadVersionCopyGate(admin, versionId)).toMatchObject({ ok: false, code: "demo_copy_facts_not_from_facts_path" });
-    } finally {
-      // the migration again (its own transaction), then the schema cache
-      await c.query("begin");
-      await c.query(readFileSync(MIGRATION, "utf8"));
-      await c.query("insert into supabase_migrations.schema_migrations (version, name) values ('20261115000000', 'sales_demo_facts_store') on conflict do nothing");
-      await c.query("commit");
-      await c.query("notify pgrst, 'reload schema'");
-      c.release();
-      for (let i = 0; i < 50; i++) {
-        const r = await admin.from("sales_demo_facts_packs").select("id").limit(1);
-        if (!r.error) break;
-        await new Promise((ok) => setTimeout(ok, 200));
-      }
-      await setFactsCliRegistration(true);
-    }
+    // the real admin client, except that the facts store and its column answer as PostgREST does on a database
+    // without the migration (simulated: the shared local stack is never rolled back here)
+    const missing = (table: string) => ({ data: null, error: table === "sales_demo_facts_packs" ? { code: "PGRST205", message: "Could not find the table 'public.sales_demo_facts_packs' in the schema cache" } : { code: "42703", message: "column sales_demo_copy_facts_checks.facts_pack_id does not exist" } });
+    const chain = (table: string, real: unknown, cols: string) => {
+      const fail = table === "sales_demo_facts_packs" || (table === "sales_demo_copy_facts_checks" && cols.includes("facts_pack_id"));
+      if (!fail) return real;
+      const q: Record<string, unknown> = {};
+      for (const k of ["eq", "in", "order", "limit"]) q[k] = () => q;
+      q.then = (ok: (v: unknown) => unknown) => Promise.resolve(missing(table)).then(ok);
+      return q;
+    };
+    const legacyDb = new Proxy(admin, {
+      get(target, prop, recv) {
+        if (prop !== "from") return Reflect.get(target, prop, recv);
+        return (table: string) => {
+          const b = target.from(table);
+          return new Proxy(b, { get: (t, p, r) => (p === "select" ? (cols: string) => chain(table, t.select(cols), cols) : Reflect.get(t, p, r)) });
+        };
+      },
+    }) as SupabaseClient;
+    await expect(loadCurrentFactsPack(legacyDb, s.prospectId)).rejects.toThrow("FACTS_STORE_NOT_SET_UP");
+    const { loadVersionCopyContext } = await import("@/lib/sales/copy-review/store");
+    const ctx = await loadVersionCopyContext(legacyDb, versionId);
+    expect(ctx.state.factsStore.notSetUp).toBe(true);
+    expect(ctx.state.factsChecks.length).toBeGreaterThan(0);
+    expect(ctx.state.factsChecks.every((x) => x.facts_pack_id === null)).toBe(true);
+    expect(await loadVersionCopyGate(legacyDb, versionId)).toMatchObject({ ok: false, code: "demo_copy_facts_not_from_facts_path" });
+    // any other read error is still a refusal (unverifiable), never "not set up"
+    const broken = new Proxy(admin, { get: (t, p, r) => (p === "from" ? () => { throw new Error("network"); } : Reflect.get(t, p, r)) }) as SupabaseClient;
+    expect(await loadVersionCopyGate(broken, versionId)).toMatchObject({ ok: false, code: "demo_copy_review_unverifiable" });
+    // the real database is untouched
+    expect(await loadVersionCopyGate(admin, versionId)).toEqual({ ok: true });
   });
 });
 

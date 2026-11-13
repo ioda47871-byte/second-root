@@ -11,8 +11,9 @@ import { domainToASCII } from "node:url";
  *     subdomains), or ends in .example, .test, .invalid or .localhost.
  *
  * LOCAL_E2E_TEST_RECIPIENTS_ENV is exactly "true" only in the local E2E run (playwright.config.ts webServer env); it is
- * never set on a hosted deployment (default off). Server gate only: the database's own guard would need a migration
- * (not in DEV-263a; recorded in .ai/reviews/DEV-263a.md).
+ * never set on a hosted deployment (default off). DEV-263g: the database refuses the same recipients on its own
+ * (sales_test_recipient_block in sales_send_guards, migration 20261115000100) unless the database owner's local switch
+ * (sales_local_test_settings) is on; this server gate stays in front of it.
  *
  * DEV-263e (PR #266 review Lows): the domain is NFKC-normalised, put through the WHATWG IDNA mapping (domainToASCII:
  * full-width letters, ideographic full stops and mixed case all fold to the ASCII form) and stripped of every trailing
@@ -24,12 +25,9 @@ import { domainToASCII } from "node:url";
  */
 export const LOCAL_E2E_TEST_RECIPIENTS_ENV = "SALES_LOCAL_E2E_TEST_RECIPIENTS";
 
-export type TestRecipientCode = "test_recipient_fictional_shop" | "test_recipient_reserved_domain";
+import type { TestRecipientCode } from "./test-recipient-labels";
 
-export const TEST_RECIPIENT_LABEL: Record<TestRecipientCode, string> = {
-  test_recipient_fictional_shop: "架空の店（動作確認用）のデモなので送信できません。",
-  test_recipient_reserved_domain: "宛先が予約済みのテスト用ドメインのため送信できません。",
-};
+export { TEST_RECIPIENT_LABEL, type TestRecipientCode } from "./test-recipient-labels";
 
 const RESERVED_DOMAIN = /(^|\.)example\.(com|net|org)$|\.(example|test|invalid|localhost)$|^(example|test|invalid|localhost)$/;
 
