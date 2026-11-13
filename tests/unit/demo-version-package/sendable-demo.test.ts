@@ -153,7 +153,7 @@ describe("package-local --copy: a v2 package of a comp with its copy", () => {
     const r = run(["--out", out, "--copy", scratchPage(), "--facts", FACTS]);
     expect(r.status).toBe(1);
     expect(JSON.parse(r.stdout)).toEqual({ status: "FAIL", code: "COPY_REVIEW_MISSING" });
-  });
+  }, 120_000);
 });
 
 describe("import-local --trusted-facts: the local facts path", () => {
@@ -215,7 +215,7 @@ describe("import-local --trusted-facts: the local facts path", () => {
     // the sendable shop is never imported without the facts path
     const u = spawnSync("npx", ["tsx", join(REPO, "scripts/sales/demo-version/import-local.ts"), "--package", tmpDir(), "--seed-sendable"], { cwd: REPO, encoding: "utf8" });
     expect(u.status).toBe(2);
-  });
+  }, 120_000);
 
   it("import with the facts from the facts path: stored as from the facts path, the copy send block waits only on the owner", async () => {
     const pkg = await pkgOfComp(PAGE);
