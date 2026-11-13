@@ -1205,7 +1205,9 @@ describe("isolation", () => {
     for (const p of ["lib/design-agent/quality-pipeline/copy-quality-review.ts", "lib/design-agent/quality-pipeline/copy-quality-page.ts"])
       expect(src(p)).not.toMatch(/\bfetch\(|import\s*\(|require\s*\(|child_process|anthropic|openai|codex|\/worker\//i);
   });
-  it("nothing in the app, lib or scripts calls the audit yet (DEV-199b wires it in): the gate is not active", () => {
+  // DEV-199d: the demo version package's copy check (lib/demo-version-package/copy.ts) is the one caller allowed: it
+  // re-runs the audit on a package's files at build / read / import. Nothing else (the send path, the app) calls it.
+  it("nothing in the app, lib or scripts calls the audit except the package copy check (DEV-199d): the send gate is not active", () => {
     const walk = (dir: string): string[] =>
       readdirSync(resolve(fx.REPO, dir), { withFileTypes: true }).flatMap((d) => {
         const p = `${dir}/${d.name}`;
@@ -1213,7 +1215,7 @@ describe("isolation", () => {
         return /\.(ts|tsx|mts|mjs|js)$/.test(d.name) ? [p] : [];
       });
     const callers = ["app", "lib", "scripts", "components"].flatMap(walk).filter((p) => /from\s*["'][^"']*copy-quality-(review|page)["']/.test(src(p)) && !p.includes("quality-pipeline/copy-quality-"));
-    expect(callers).toEqual([]);
+    expect(callers).toEqual(["lib/demo-version-package/copy.ts"]);
     expect(rules(reviewCopyQuality(fx.bakeryGood()))).toEqual([]);
   });
 });
