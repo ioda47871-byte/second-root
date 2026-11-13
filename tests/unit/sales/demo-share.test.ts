@@ -129,7 +129,14 @@ describe("PR #267 M1: resolveLegacyOnly (the share flag off — React only for l
     expect(await resolveLegacyOnly(db({ data: { mode: "legacy" } }), "short")).toBe(false);
   });
   it("a database without the resolver (version migrations not applied: no version can exist) keeps the React demo", async () => {
-    for (const code of ["PGRST202", "42883"]) expect(await resolveLegacyOnly(db({ error: { code, message: "function not found" } }), TOKEN)).toBe(true);
+    expect(await resolveLegacyOnly(db({ error: { code: "PGRST202", message: "Could not find the function public.sales_resolve_demo_share(p_public_token) in the schema cache" } }), TOKEN)).toBe(true);
+    expect(await resolveLegacyOnly(db({ error: { code: "42883", message: "function public.sales_resolve_demo_share(p_public_token => text) does not exist" } }), TOKEN)).toBe(true);
+  });
+  it("DEV-263e: 42883 for anything else (a helper or operator missing inside the resolver) is not found, never React", async () => {
+    for (const message of ["function public.sales_demo_version_shareable(uuid) does not exist", "operator does not exist: uuid = text", "function not found", ""]) {
+      expect(await resolveLegacyOnly(db({ error: { code: "42883", message } }), TOKEN), message).toBe(false);
+    }
+    for (const code of ["PGRST203", "PGRST116", "42501", "P0001", undefined]) expect(await resolveLegacyOnly(db({ error: { code, message: "sales_resolve_demo_share(" } }), TOKEN), String(code)).toBe(false);
   });
 });
 

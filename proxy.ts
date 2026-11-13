@@ -52,6 +52,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // every path except /demo-frame/… (and /demo-frame itself) and Next's static assets
-  matcher: ["/((?!demo-frame(?:/|$)|_next/static|_next/image).*)"],
+  // every path except /demo-frame/… (and /demo-frame itself), Next's static assets, and (DEV-263e, PR #267 delta Low)
+  // favicon.ico / robots.txt / sitemap.xml and public static files by extension — no session work for them
+  matcher: ["/((?!demo-frame(?:/|$)|_next/static|_next/image|favicon\\.ico$|robots\\.txt$|sitemap\\.xml$|.*\\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff2?|ttf|otf)$).*)"],
 };

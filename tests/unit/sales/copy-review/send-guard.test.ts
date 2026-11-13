@@ -6,13 +6,13 @@ import { COPY_SEND_CODES, COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels
 // version whose copy gate refuses never reaches the database's approve RPC; a demo without an approved version (the
 // React demo) is approved exactly as before. The gate itself: gate.test.ts; the database: the integration test.
 
-const state = vi.hoisted(() => ({ row: null as unknown, rpc: vi.fn(), gate: { legacy: true } as unknown, gateCalls: 0, realGate: false }));
+const state = vi.hoisted(() => ({ row: null as unknown, rowError: null as unknown, rpc: vi.fn(), gate: { legacy: true } as unknown, gateCalls: 0, realGate: false }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/admin/auth", () => ({ requireAdmin: vi.fn(async () => undefined), requireAdminPage: vi.fn(async () => undefined) }));
 vi.mock("@/lib/supabase/server", () => ({
   createAuthClient: vi.fn(async () => {
-    const chain = { select: () => chain, eq: () => chain, in: () => chain, order: () => chain, maybeSingle: async () => ({ data: state.row, error: null }) };
+    const chain = { select: () => chain, eq: () => chain, in: () => chain, order: () => chain, maybeSingle: async () => ({ data: state.rowError ? null : state.row, error: state.rowError }) };
     return { from: () => chain, rpc: state.rpc };
   }),
 }));
@@ -47,6 +47,7 @@ beforeEach(() => {
   state.gate = { legacy: true };
   state.gateCalls = 0;
   state.realGate = false;
+  state.rowError = null;
   // DEV-196g: a versioned send needs the share flag on (the flag-off refusal has its own describe below)
   vi.unstubAllEnvs();
   vi.stubEnv("SALES_DEMO_VERSIONS_ENABLED", "true");
@@ -73,6 +74,25 @@ describe("DEV-196g (PR #267 M1): with the share flag off, a versioned send is re
     expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: true });
     state.row = { demo_version_id: null };
     expect(await markSendOpened("dddddddd-0000-4000-8000-000000000001", "copy")).toEqual({ ok: true });
+  });
+  it("DEV-263e (PR #267 delta Low): flag off — an unread copy gate and an unreadable pin are refused (fail closed)", async () => {
+    const { VERSIONED_SEND_SHARE_OFF } = await import("@/lib/sales/demo-version/admin-messages");
+    const { approveSend, markSendOpened } = await import("@/app/admin/sales/_actions/send");
+    vi.stubEnv("SALES_DEMO_SHARE_ENABLED", "false");
+    state.gate = { legacy: true, unread: true };
+    const body = composedFor(state.row as never)!.body;
+    expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: false, error: VERSIONED_SEND_SHARE_OFF });
+    state.rowError = { message: "boom" };
+    const opened = await markSendOpened("dddddddd-0000-4000-8000-000000000001", "copy");
+    expect(opened.ok).toBe(false);
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+  it("DEV-263e: flag on — an unread copy gate is left to the database's guards as before", async () => {
+    const { approveSend } = await import("@/app/admin/sales/_actions/send");
+    state.gate = { legacy: true, unread: true };
+    const body = composedFor(state.row as never)!.body;
+    expect(await approveSend(OUTREACH, 3, { subject: null, body })).toEqual({ ok: true });
+    expect(state.rpc).toHaveBeenCalledTimes(1);
   });
 });
 

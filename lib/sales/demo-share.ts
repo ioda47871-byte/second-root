@@ -33,11 +33,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
  * A database without the DEV-196c resolver (the function is missing: no version can exist there) is `legacy`, so a
  * project the version migrations were not applied to keeps its React demos; any other error is not found.
  */
+/**
+ * DEV-263e (PR #267 delta Low): "the resolver is missing" is only PostgREST's PGRST202 (no such function in the schema
+ * cache), or Postgres' 42883 (undefined function) when the message names `sales_resolve_demo_share(` itself — 42883
+ * also covers an operator or a helper missing inside a function that exists, which must stay not found.
+ */
+export function resolverMissing(error: { code?: string; message?: string }): boolean {
+  if (error.code === "PGRST202") return true;
+  return error.code === "42883" && typeof error.message === "string" && error.message.includes("sales_resolve_demo_share(");
+}
+
 export async function resolveLegacyOnly(db: SupabaseClient, token: string): Promise<boolean> {
   if (!isWellFormedDemoToken(token)) return false;
   try {
     const { data, error } = await db.rpc("sales_resolve_demo_share", { p_public_token: token });
-    if (error) return error.code === "PGRST202" || error.code === "42883";
+    if (error) return resolverMissing(error);
     return (data as { mode?: unknown } | null)?.mode === "legacy";
   } catch {
     return false;

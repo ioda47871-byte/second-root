@@ -137,7 +137,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 - 成果物用の sub domain (例 `https://demo-art.<domain>`) の DNS を作り、同じ Vercel project に domain を足す。
 - アプリの origin と別であること。cookie は host-only のまま (Domain 属性を付けない)。
 - 成果物の route (`/demo-frame/p/...`) は、要求の host が `SALES_DEMO_ARTIFACT_ORIGIN` のときだけ配る (アプリの host では 404。実装済み)。
-- **未実装 (この domain を足す前に要る)**: 逆向きの host の制限。同じ deploy なので、今のままでは成果物の host でもアプリの頁 (`/admin` など) が開ける (cookie は host-only なので管理者のセッションは渡らない)。成果物の host では `/demo-frame/p/*` 以外を 404 にする制限 (`proxy.ts` か Vercel の設定) を、別 Task で入れてから domain を足す。
+- 逆向きの host の制限 (DEV-196g、`proxy.ts` + `lib/sales/artifact-host.ts`): 成果物の host では `/demo-frame/p/*` 以外 (`/admin`・`/demo/*`・API) は 404。`favicon.ico`・`robots.txt`・`sitemap.xml` と拡張子付きの公開の静的ファイルは proxy を通らない (公開の資産だけ)。domain を足した後、成果物の host で `/admin` が 404 になることを確かめる。
 
 ### B-4. 🛑 承認: 環境変数 (Vercel、server だけ)
 
