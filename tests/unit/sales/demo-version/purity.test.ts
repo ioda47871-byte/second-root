@@ -27,6 +27,8 @@ describe("demo-version library purity", () => {
       // DEV-196g (PR #267 M1): the send actions refuse a versioned send while the share flag is off
       "app/admin/sales/_actions/send.ts",
       "app/admin/sales/demos/[prospectId]/compare/page.tsx",
+      // DEV-263i: the owner's hosted import (版を取り込む) reads both flags
+      "app/admin/sales/demos/[prospectId]/import/route.ts",
       "app/admin/sales/demos/[prospectId]/layout.tsx",
       "app/admin/sales/demos/[prospectId]/page.tsx",
       "app/admin/sales/page.tsx",

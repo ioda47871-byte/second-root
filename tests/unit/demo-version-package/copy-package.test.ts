@@ -452,13 +452,23 @@ describe("isolation", () => {
         if (e.isDirectory()) return e.name === "node_modules" ? [] : walk(p);
         return /\.(ts|tsx|mts|mjs|js)$/.test(e.name) ? [p] : [];
       });
-    const targets = new Set(["lib/demo-version-package/copy", "lib/demo-version-package/import", "lib/demo-version-package/package"]);
+    const targets = new Set(["lib/demo-version-package/copy", "lib/demo-version-package/import", "lib/demo-version-package/package", "lib/demo-version-package/verify"]);
     const resolveSpec = (file: string, spec: string) => (spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? posix.normalize(posix.join(posix.dirname(file), spec)) : spec).replace(/\.(ts|tsx)$/, "");
     const importers = ["app", "components", "lib", "scripts"]
       .flatMap(walk)
       .filter((p) => [...src(p).matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].some((m) => targets.has(resolveSpec(p, m[1]!))))
       .sort();
     // package-local.ts is the existing build CLI (DEV-196r): it builds packages and never reads a copy result
-    expect(importers).toEqual(["lib/demo-version-package/import.ts", "lib/demo-version-package/package.ts", "scripts/sales/demo-version/import-local.ts", "scripts/sales/demo-version/package-local.ts"]);
+    // DEV-263i: verify.ts holds the pure checks moved out of package.ts; the owner's hosted import (the upload library and
+    // its admin route) imports a package the same way import-local.ts does — still no send path
+    expect(importers).toEqual([
+      "app/admin/sales/demos/[prospectId]/import/route.ts",
+      "lib/admin/demo-version-upload.ts",
+      "lib/demo-version-package/import.ts",
+      "lib/demo-version-package/package.ts",
+      "lib/demo-version-package/verify.ts",
+      "scripts/sales/demo-version/import-local.ts",
+      "scripts/sales/demo-version/package-local.ts",
+    ]);
   });
 });

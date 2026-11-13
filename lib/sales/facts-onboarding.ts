@@ -44,10 +44,21 @@ export type OnboardingPlan =
 const RIN = "fictional-bicycle-repair-wa";
 /** NFKC, no whitespace (any kind), lower case: a comparison key only. */
 const key = (v: string) => v.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
-const near = (a: string, b: string) => {
-  const x = key(a);
-  const y = key(b);
-  return x !== "" && y !== "" && (x === y || x.includes(y) || y.includes(x));
+/** DEV-263i (PR #271 delta Low): one value inside the other counts only when the shorter is most of the longer. */
+export const NEAR_MIN_RATIO = 0.65;
+/** A leading prefecture (one address may carry it and the other not): dropped before the comparison. */
+const PREFECTURE = /^(?:東京都|北海道|京都府|大阪府|[^都道府県]{2,3}県)/;
+/**
+ * Equal, or one inside the other with the shorter at least NEAR_MIN_RATIO of the longer (in code points), after `key`
+ * and without a leading prefecture. A bare city (名古屋市) is inside almost any address there: never a match alone.
+ */
+export const near = (a: string, b: string) => {
+  const x = key(a).replace(PREFECTURE, "");
+  const y = key(b).replace(PREFECTURE, "");
+  if (x === "" || y === "") return false;
+  if (x === y) return true;
+  const [short, long] = [...x].length <= [...y].length ? [x, y] : [y, x];
+  return long.includes(short) && [...short].length >= NEAR_MIN_RATIO * [...long].length;
 };
 
 /** Does the pack name the same shop as the prospect row (name and address, each equal or one inside the other)? */

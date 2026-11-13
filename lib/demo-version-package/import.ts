@@ -43,7 +43,7 @@ import { CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/man
 import { FactsStoreError, loadCurrentFactsPack } from "@/lib/sales/facts-store";
 import { precheckStructureFindings, recordStructureFindings, StructureFindingsError } from "@/lib/sales/structure-findings/store";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
-import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./package";
+import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./verify";
 import { RIN_PROSPECT_ID } from "./seed-rin";
 
 export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";

@@ -7,7 +7,7 @@ import { demoContentWithFactsSha, onboardingDemoContent } from "@/lib/demo-versi
 import { LocalInputError } from "@/lib/demo-version-package/local-input-error";
 import { demoContentFromFacts } from "@/lib/demo-version-package/seed-rin";
 import { SENDABLE_FACTS_PATH } from "@/lib/demo-version-package/seed-sendable";
-import { planFactsOnboarding, type OnboardingDemoState } from "@/lib/sales/facts-onboarding";
+import { near, NEAR_MIN_RATIO, planFactsOnboarding, type OnboardingDemoState } from "@/lib/sales/facts-onboarding";
 import { LOCAL_SHOPS_DIR, readOnboardingFacts } from "@/lib/sales/facts-onboarding-local";
 import { BASE_FACTS as BASE, fictionalPack } from "@/tests/support/fictional-facts-pack";
 
@@ -25,7 +25,7 @@ const code = (f: () => unknown) => {
   }
   return "no-throw";
 };
-const state = (o: Partial<OnboardingDemoState> = {}): OnboardingDemoState => ({ doNotContact: false, approvalInFlight: false, shopOnOtherProspect: false, demo: null, prospect: { name: "架空の店 試験", address: "愛知県名古屋市（登録用） 架空市架空区試験町1-2-3" }, ...o });
+const state = (o: Partial<OnboardingDemoState> = {}): OnboardingDemoState => ({ doNotContact: false, approvalInFlight: false, shopOnOtherProspect: false, demo: null, prospect: { name: "架空の店 試験", address: "愛知県架空市架空区試験町1-2-3 架空ビル" }, ...o });
 const demo = (content: unknown, o: Partial<NonNullable<OnboardingDemoState["demo"]>> = {}) => ({ content, expiresAt: null, disabledAt: null, designStatus: null, ...o });
 
 describe("onboardingDemoContent (strict derivation)", () => {
@@ -94,6 +94,27 @@ describe("onboardingIdentity (PR #271 L3)", () => {
     expect(planFactsOnboarding(text, state({ prospect: { name: "別の店", address: "架空市架空区試験町1-2-3" } }))).toMatchObject({ ok: true, identity: { mismatch: true, prospectName: "別の店" } });
     expect(planFactsOnboarding(text, state({ prospect: { name: "架空の店 試験", address: "愛知県名古屋市中区別町9" } }))).toMatchObject({ ok: true, identity: { mismatch: true } });
     expect(planFactsOnboarding(text, state({ prospect: { name: "", address: "" } }))).toMatchObject({ ok: true, identity: { mismatch: true } });
+  });
+});
+
+describe("near (DEV-263i: a short value inside a long one is not a match)", () => {
+  it("one inside the other counts only when the shorter is at least 65% of the longer", () => {
+    expect(near("架空市架空区試験町1-2-3", "架空市架空区試験町１-２-３")).toBe(true);
+    // the prospect's address carries the building name: the pack's address is most of it
+    expect(near("架空市架空区試験町1-2-3", "架空市架空区試験町1-2-3 架空ビル")).toBe(true);
+    expect(near("架空の店 試験", "架空の店試験 本店")).toBe(true);
+    // a bare city (or prefecture) is inside almost any address there: not a match
+    expect(near("名古屋市", "愛知県名古屋市中区別町9-9")).toBe(false);
+    expect(near("愛知県名古屋市中区別町9-9", "名古屋市")).toBe(false);
+    expect(near("店", "架空の店 試験")).toBe(false);
+    expect(near("", "")).toBe(false);
+    // a leading prefecture on one side only is ignored; a prefecture alone is nothing
+    expect(near("愛知県架空市架空区試験町1-2-3", "架空市架空区試験町1-2-3")).toBe(true);
+    expect(near("愛知県", "愛知県名古屋市中区別町9-9")).toBe(false);
+    expect(NEAR_MIN_RATIO).toBe(0.65);
+  });
+  it("a pack address that is only a small part of the prospect's address is flagged as a mismatch", () => {
+    expect(planFactsOnboarding(fictionalPack(), state({ prospect: { name: "架空の店 試験", address: "架空市架空区試験町1-2-3 架空ビル2階 奥の部屋の右側" } }))).toMatchObject({ ok: true, identity: { mismatch: true } });
   });
 });
 

@@ -119,7 +119,7 @@ npx tsx scripts/sales/demo-version/import-local.ts --package <置き場>/<shop_i
 
 出力の `copy.facts_from_facts_path` が `true`。登録した facts と包みの facts pack が別のバイトなら `COPY_FACTS_NOT_FROM_FACTS_PATH` で止まる (何も書かない)。
 
-> hosted の取り込みの経路は、runbook B の承認と別の Task。ここまではローカルの DB での手順。
+> ここまではローカルの DB での手順。hosted (Staging / Production) へは、管理画面の版の頁の「版を取り込む」で同じ `pkg` のフォルダを選ぶ (DEV-263i、runbook B-5a)。server が `--facts-from-store` と同じ検査をして版にする。CLI から hosted へは入れない。前提 (migration・private bucket・旗) は runbook B-5a の承認が要る。
 
 ## 7. 管理画面で見て、承認する
 
