@@ -10425,7 +10425,8 @@
         "拒否: admin でない・DNC・除外リスト・同じ shop_id が別の候補・輪・無効化・送信の承認済み / 送信済み / 共有中・デザインの処理中・別の shop_id への置き換え・置き換えの未確認",
         "ローカルの CLI (onboard-local.ts): ローカルの DB だけ (assertLocalDbUrl)、DB の所有者の CLI のスイッチ、facts pack のファイルは repo の外か .local-shops/ の下だけ (リンク不可)",
         "docs/operations/real-shop-demo-workflow.md と .gitignore の /.local-shops/、追跡されたファイルが無いことの guard テスト",
-        "既存の React のデモ (他の候補) は変わらない"
+        "既存の React のデモ (他の候補) は変わらない",
+        "PR #270 の review の Low: sales_test_email_reserved の予備の判定 (見えない文字だけ消し、他は x に置き換え) (migration 20261116000100。スイッチの表の grant の revoke は staging の照合 authenticated_can_read と衝突するので入れない)、loopbackDbUrl を pg-connection-string の host で、runbook A-5 / A-6 にスイッチを off に戻す手順"
       ],
       "required_tests": [
         "unit: tests/unit/sales/facts-onboarding.test.ts (導き方・計画の拒否・ファイルの規則・.local-shops の guard)、tests/unit/admin/demo-onboarding.test.tsx (旗 off・admin でない・不正な pack・候補の規則・確認・action の順)",
@@ -10434,6 +10435,7 @@
       ],
       "allowed_scope": [
         "supabase/migrations/20261116000000_sales_facts_demo_onboarding.sql (新規、ローカルだけ)",
+        "supabase/migrations/20261116000100_sales_test_email_reserved_fallback.sql (新規、ローカルだけ)・tests/support/local-test-recipients.ts",
         "lib/sales/facts-onboarding.ts・lib/sales/facts-onboarding-local.ts・lib/admin/demo-onboarding.ts・components/admin/demo/DemoFromFacts.tsx・scripts/sales/demo-version/onboard-local.ts (新規)",
         "lib/demo-version-package/facts-content.ts・app/admin/sales/_actions/demo-versions.ts・app/admin/sales/demos/[prospectId]/page.tsx",
         ".gitignore・docs/operations/real-shop-demo-workflow.md・docs/operations/sales-mvp-runbook.md・関係するテスト・.ai/tasks.json・.ai/reviews/DEV-263h.md"

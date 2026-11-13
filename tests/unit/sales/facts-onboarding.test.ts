@@ -48,7 +48,7 @@ describe("onboardingDemoContent (strict derivation)", () => {
     expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: BASE.filter(([k]) => k !== "phone") }))))).toBe("TRUSTED_FACTS_INCOMPLETE");
     expect(code(() => onboardingDemoContent(enc(fictionalPack({ extra: { note: "x" } }))))).toBe("TRUSTED_FACTS_INVALID");
     expect(code(() => onboardingDemoContent(enc("{")))).toBe("TRUSTED_FACTS_INVALID");
-    for (const v of [" 前に空白", "後ろに空白　", " nbsp"])
+    for (const v of [" 前に空白", "後ろに空白\u3000", "\u00a0nbsp"])
       expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: BASE.map(([k, x]) => [k, k === "hours" ? v : x]) }))))).toBe("TRUSTED_FACTS_VALUE_UNTRIMMED");
     expect(code(() => onboardingDemoContent(enc(fictionalPack({ shopId: "fictional-bicycle-repair-wa" }))))).toBe("TRUSTED_FACTS_RIN_DEMO");
   });
@@ -106,7 +106,7 @@ describe("readOnboardingFacts (the local CLI's file rule)", () => {
     expect(err(join(root, "nope.json"))).toBe("FACTS_FILE_MISSING");
     writeFileSync(join(root, "bad.json"), Buffer.from([0xff, 0xfe, 0x00]));
     expect(err(join(root, "bad.json"))).toBe("TRUSTED_FACTS_INVALID");
-    writeFileSync(join(root, "bom.json"), `﻿${fictionalPack()}`);
+    writeFileSync(join(root, "bom.json"), `\ufeff${fictionalPack()}`);
     expect(planFactsOnboarding(readOnboardingFacts(repo, join(root, "bom.json"), root), state())).toMatchObject({ ok: false, code: "TRUSTED_FACTS_INVALID" });
   });
 });

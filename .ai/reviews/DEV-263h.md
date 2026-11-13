@@ -52,9 +52,9 @@ DEV-263h を足した (review)。DEV-263f は #269 が merge 済みなので don
 - 新規 unit `tests/unit/sales/facts-onboarding.test.ts` (7): 導き方 (番号の順・環 の seed と同じ)・拒否 (未対応・重複・不足・余計な欄・壊れた JSON・前後の空白 3 種・輪)、計画 (作る / 置き換え 2 種 / 変更なし (キーの順によらない)、DNC・重複・別の shop・輪・無効化・共有中・送信の承認・デザインの処理中)、CLI のファイルの規則 (外 / `.local-shops` は可、repo の追跡される場所・リンク・無い・UTF-8 でない・BOM)、`.local-shops/` の guard。
 - 新規 unit `tests/unit/admin/demo-onboarding.test.tsx` (7): preview は書かない・置き換えは確認なしで拒否・確認ありで `sales_create_demo_from_facts` だけ、demo なし → 作る / 変更なしは replace=false、旗 off・不正な入力・不正な pack・古い sha256・候補なし・読めない、DNC・重複 (demo / 保存先)・送信の承認・共有中、DB の除外リストの拒否の文言、メールの非表示、action の順 (旗 off は admin を見ずに拒否、admin でなければ拒否)、区画の markup。
 - 新規 統合 `tests/integration/demo-facts-onboarding.test.ts` (9、ローカルの Supabase): DB とサーバーの導き方が一致 (3 つの架空の pack)、DB の拒否、権限 (内部の関数は anon / service role / admin のどれも不可、admin の関数は anon / service role 不可、SECURITY DEFINER は 1 つ)、React のデモの置き換え (確認なしは何も変えない → 確認ありで content = サーバーの導出・template と token は不変・保存先の行 → replay・登録の区画も replay → **他の候補の React のデモは不変で描ける**)、demo なし → 作る、新しい facts で置き換え・別の shop は拒否、拒否 (admin でない・候補なし・未対応の key・輪・DNC・除外リスト・重複・共有中・無効化、何も書かない)、CLI の経路 (スイッチ off・admin でない id・未確認・`operator_cli`)、**全体**: 取り込んだ候補 → 環 の facts から作る → 環 の v2 の包みを `factsFromStore` で取り込む → `facts_from_facts_path: true`・送信の門は `demo_copy_owner_confirmation_missing` → facts を変えると止まる。
-- 統合の全体: 36 ファイル 537 件 + 5 skipped (関数名の変更前に DEV-263f の rollback テスト 1 件が名前の数え方で落ち、名前を変えて pass)。
+- 統合の全体 (#270 の merge と Low の対応の後): 38 ファイル 546 件 + 5 skipped。途中、DEV-263f の rollback テスト 1 件が関数名の数え方 (`sales_%facts_pack%`) で落ち、名前を変えて pass。
 - CLI を実際に流した (scratch のスタック): 作る → 2 回目は replay・`unchanged`、hosted の URL は `DB_URL_NOT_LOCAL`、repo の追跡される facts は `FACTS_FILE_IN_REPO`。
-- unit: sales・admin・demo-version-package・staging・ai-tasks 72 ファイル。`swap-photos.test.ts` の 2 件だけ、このコンテナに Chromium が無い (`browserType.launch: Executable doesn't exist`) ため落ちる (この変更と無関係、CI で走る)。
+- unit: sales・admin・demo-version-package・staging・ai-tasks 73 ファイル 1610 件 pass。`swap-photos.test.ts` の 2 件だけ、このコンテナに Chromium が無い (`browserType.launch: Executable doesn't exist`) ため落ちる (この変更と無関係、CI で走る)。
 - `tsc --noEmit` (`next typegen` の後)・eslint (変更したファイル)・`check:secrets`: pass。
 - e2e は流していない (画面の新しい区画は unit の markup と統合のサーバーの経路で確かめた)。
 
@@ -70,3 +70,61 @@ DEV-263h を足した (review)。DEV-263f は #269 が merge 済みなので don
 - ローカル: scratch のスタックに当て、統合テストの全体を流した。
 - hosted (別のオーナー承認): `20261115000000` の後。新しい表・列は無く、関数 3 つだけ。当てた直後は誰も呼ばない (画面の区画は旗の後ろ)。サーバーのコードが先だと、作る操作は DB の誤り (関数が無い) で拒否される (fail closed)。当てた後 `notify pgrst, 'reload schema';`。
 - rollback: migration の先頭の注記 (3 つの関数を drop、`schema_migrations` の行を消す)。作ったデモの内容と登録した facts は残る (消すかは人が判断する)。
+
+## PR #270 (DEV-263g) の review の Low (この PR に入れた)
+
+origin/develop (558f9cb1、#270 の squash) を merge commit で取り込んでから:
+
+| # | 指摘 | 対応 |
+|---|---|---|
+| 1 | `sales_test_email_reserved` の予備の判定が [a-z0-9.-] 以外を全部消すので、`日本example.com`・`shop.example.東京` を予約済みと読む | migration `20261116000100_sales_test_email_reserved_fallback.sql` (ローカルだけ) で関数を置き換え: 見えない文字 (U+00AD・U+034F・U+061C・ハングルの埋め字・U+17B4/5・U+180B–180F・U+200B–200F・U+202A–202E・U+2060–206F・U+FE00–FE0F・U+FEFF・U+FFF0–FFF8・U+E0000–E0FFF のタグと異体字セレクター) だけを消し、残りの文字は `x` に置き換えて同じラベルに残す (サーバーの IDNA が xn-- のラベルにするのと同じく、予約名には化けない)。ゼロ幅の文字で予約名を隠すことは今までどおりできない。統合テスト `tests/integration/test-recipient-fallback.test.ts` (非 ASCII 4 件は false・見えない文字 5 件は true・従来の件・サーバーの `isReservedEmailDomain` と一致・rollback と当て直し) |
+| 2 | `tests/support/local-test-recipients.ts` の `loopbackDbUrl` が URL の hostname だけを見る | pg-connection-string (pg 自身の解析) の host で判定 (`?host=` の上書きはその値で判定、`?hostaddr=` は拒否)、localhost・127.0.0.0/8・[::1] を受け付ける。unit `tests/unit/sales/local-test-recipients.test.ts` |
+| 3 | runbook A-5 にスイッチを off に戻す手順がない | A-5 の最後と A-6 に `update public.sales_local_test_settings set local_test_recipients_enabled = false` (A-6 には facts の CLI のスイッチも) |
+| 4 | `sales_local_test_settings` の `grant select … to authenticated` が無用 | **入れていない**: revoke すると staging の照合 `authenticated_can_read` (`scripts/staging/lib.mjs`: 署名済みの role がすべての sales_* 表を SELECT できること、行は RLS が絞る) と統合テスト `staging-checks` が落ちる (実際に 6 件落ちるのを確かめて戻した)。表に policy は無いので、署名済みの role が読める行は無い (`test-recipient-guard.test.ts` が確認済み)。照合の規則を変えるかはオーナーの判断 |
+
+既存の `tests/integration/test-recipient-guard.test.ts` の判定の表 (`info@ex\u200dample.com` は true など) は変わらず pass。
+
+### Rollback SQL (20261116000100)
+
+<!-- rollback-sql-20261116000100:start -->
+```sql
+begin;
+create or replace function public.sales_test_email_reserved(p_email text)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_at integer;
+  v_domain text;
+begin
+  if p_email is null then
+    return false;
+  end if;
+  v_at := length(p_email) - strpos(reverse(p_email), '@') + 1;
+  if strpos(p_email, '@') = 0 then
+    return false;
+  end if;
+  v_domain := btrim(substr(p_email, v_at + 1));
+  if v_domain = '' then
+    return false;
+  end if;
+  v_domain := lower(translate(normalize(v_domain, NFKC), '。．｡', '...'));
+  v_domain := regexp_replace(v_domain, '\.+$', '');
+  if v_domain = '' then
+    return true;
+  end if;
+  if public.sales_reserved_test_domain(v_domain) then
+    return true;
+  end if;
+  if v_domain ~ '[^a-z0-9.-]' then
+    return public.sales_reserved_test_domain(regexp_replace(regexp_replace(v_domain, '[^a-z0-9.-]', '', 'g'), '\.+$', ''));
+  end if;
+  return false;
+end;
+$$;
+delete from supabase_migrations.schema_migrations where version = '20261116000100';
+commit;
+```
+<!-- rollback-sql-20261116000100:end -->

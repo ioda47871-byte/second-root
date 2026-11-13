@@ -121,10 +121,19 @@ npm run build && npm run start            # http://127.0.0.1:3000
 
 Instagram の流れは、Instagram のハンドルを持つ候補で 5 の後に **DMを送る** (文面をコピーし、Instagram のプロフィールを開くだけ。人が自分で貼り付けて送る。初回 DM を API で送る機能は無い)。
 
+画面で通し終えたら、テスト宛先のスイッチを所有者として off に戻す (A-3 の後で on にしたもの):
+
+```bash
+psql "$(npx supabase status -o json | jq -r .DB_URL)" \
+  -c "update public.sales_local_test_settings set local_test_recipients_enabled = false;"
+```
+
 ### A-6. 片付け
 
 ```bash
 psql ... -c "update public.sales_demo_share_settings set versioned_sharing_enabled = false;"
+psql ... -c "update public.sales_local_test_settings set local_test_recipients_enabled = false;"
+psql ... -c "update public.sales_facts_registration_settings set operator_cli_enabled = false;"
 npx supabase stop
 ```
 
@@ -147,6 +156,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 5. `20261115000000_sales_demo_facts_store.sql` (DEV-263f: facts の保存先と送信時の比べ直し。B-2)
 6. `20261115000100_sales_test_recipient_guard.sql` (DEV-263g: DB 側のテスト宛先の guard。B-2)
 7. `20261116000000_sales_facts_demo_onboarding.sql` (DEV-263h: facts pack からデモの事実を作る + 登録。B-2。戻す SQL は本文の先頭)
+8. `20261116000100_sales_test_email_reserved_fallback.sql` (DEV-263h: テスト宛先の guard の予備の判定が実在の非 ASCII のドメインを拒否しないように)
 
 - Staging で先に当て、`scripts/staging/` の照合を通してから Production。
 - 当てた直後の挙動は前と同じ (旗が off、スイッチが false なので、版は出ず React のデモのまま)。
@@ -213,6 +223,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
+   - `20261116000100`: 本文の先頭の Rollback の注記 (`sales_test_email_reserved` を 20261115000100 の定義に戻す)。`.ai/reviews/DEV-263h.md` にも同じもの。
    - `20261116000000`: 本文の先頭の Rollback の注記 (3 つの関数を drop。作ったデモの内容と登録した facts は残る。消すかは人が判断する)。
    - `20261115000100`: 戻す SQL は `.ai/reviews/DEV-263g.md` (送信の門を 20261111000000 の定義に戻し、判定の関数とスイッチの表を drop)。
    - `20261115000000`: 戻す SQL は `.ai/reviews/DEV-263f.md` (送信の門と照合の証拠の trigger を 20261113000000 の定義に戻し、列・関数・表を drop。登録した facts は消える。消す前に人が判断する)。

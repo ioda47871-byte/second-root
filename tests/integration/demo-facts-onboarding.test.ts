@@ -83,7 +83,7 @@ describe("the database derivation (sales_derive_facts_demo_content)", () => {
     expect(await code(fictionalPack({ facts: BASE_FACTS.filter(([k]) => k !== "workshop") }))).toBe("facts_pack_incomplete");
     expect(await code(fictionalPack({ extra: { note: "x" } }))).toBe("invalid_facts_pack");
     expect(await code("{")).toBe("invalid_facts_pack");
-    for (const v of [" 空白", "空白　", " 空白", "空白\n"]) expect(await code(fictionalPack({ facts: BASE_FACTS.map(([k, x]) => [k, k === "hours" ? v : x]) }))).toBe("facts_pack_value_untrimmed");
+    for (const v of [" 空白", "空白\u3000", "\u00a0空白", "空白\n"]) expect(await code(fictionalPack({ facts: BASE_FACTS.map(([k, x]) => [k, k === "hours" ? v : x]) }))).toBe("facts_pack_value_untrimmed");
   });
 
   it("no API role can call the internal functions; only the admin function is open to the signed-in role", async () => {

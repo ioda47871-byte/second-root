@@ -89,8 +89,8 @@ begin
        or (f->>'key') !~ '^[a-z][a-z0-9_]{1,40}$' or char_length(f->>'value') not between 1 and 400 then
       raise exception 'invalid_facts_pack' using errcode = '22023';
     end if;
-    if (f->>'value') ~ '^[\s   -     　﻿]'
-       or (f->>'value') ~ '[\s   -     　﻿]$' then
+    if (f->>'value') ~ '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+       or (f->>'value') ~ '[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]$' then
       raise exception 'facts_pack_value_untrimmed' using errcode = '22023';
     end if;
     v_key := f->>'key';
