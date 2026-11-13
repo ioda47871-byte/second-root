@@ -56,7 +56,13 @@ route `app/admin/sales/demos/[prospectId]/import/route.ts` (POST ?step=begin|put
 
 既存のテストの変更 (意図したもの): `tests/unit/demo-version-package/copy-package.test.ts` の isolation (包みの module を import する file の一覧に verify.ts・upload の lib・route を足し、対象に verify を足した。送信の経路は依然として無い)、`tests/unit/sales/demo-version/purity.test.ts` (旗を読む画面の一覧に route を足した)。
 
-実行の結果は PR の本文に書く (unit の全体、統合の全体、e2e、tsc・eslint・check:secrets・build)。
+### 実行の結果 (merge の後、scratch のスタック `sr-dev263i`、Storage あり)
+
+- tsc・eslint (全体)・check:secrets・build: 通る。
+- unit: 関係する範囲 (`tests/unit/{admin,sales,demo-version-package,demo-frame,staging,instagram}`・ai-tasks・guardrails・existing-site・phase2f isolation) 86 files / 1839 tests 通る。全体の実行はこの環境で 25 分の上限を超えた (Chromium を使う design-agent のテストが遅い)。その途中で `tests/unit/design-agent/worker.test.ts` の 5 件 (shop の site の capture・SSRF・WebSocket) が落ちたが、この差分の file を import せず、この環境の Chromium の版違い (1194、`PLAYWRIGHT_CHROMIUM_EXECUTABLE`) によるもの。CI で確かめる。
+- 統合: 全体 39 files / 554 tests 通る。
+- e2e: `demo-version-upload.spec.ts` 通る。版の頁の変更に触れる `demo-versions-page`・`sales-mvp-flow`・`demo-review` (desktop / mobile) 16 通る・16 skip (mobile は file が自分で skip)。
+- 最初の e2e で、取り込んだ後に同じフォルダを選び直しても input の change が起きず、ボタンが押せなかった。取り込みの後に input を作り直すようにした (画面の修正)。
 
 ## 未解決・承認が要るもの
 
