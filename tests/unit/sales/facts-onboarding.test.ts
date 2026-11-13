@@ -7,7 +7,7 @@ import { demoContentWithFactsSha, onboardingDemoContent } from "@/lib/demo-versi
 import { LocalInputError } from "@/lib/demo-version-package/local-input-error";
 import { demoContentFromFacts } from "@/lib/demo-version-package/seed-rin";
 import { SENDABLE_FACTS_PATH } from "@/lib/demo-version-package/seed-sendable";
-import { near, NEAR_MIN_RATIO, planFactsOnboarding, type OnboardingDemoState } from "@/lib/sales/facts-onboarding";
+import { near, NEAR_MIN_RATIO, PREFECTURES, planFactsOnboarding, type OnboardingDemoState } from "@/lib/sales/facts-onboarding";
 import { LOCAL_SHOPS_DIR, readOnboardingFacts } from "@/lib/sales/facts-onboarding-local";
 import { BASE_FACTS as BASE, fictionalPack } from "@/tests/support/fictional-facts-pack";
 
@@ -109,15 +109,28 @@ describe("near (DEV-263i: a short value inside a long one is not a match)", () =
     expect(near("店", "架空の店 試験")).toBe(false);
     expect(near("", "")).toBe(false);
     // a leading prefecture on one side only is ignored; a prefecture alone is nothing
-    expect(near("愛知県架空市架空区試験町1-2-3", "架空市架空区試験町1-2-3")).toBe(true);
-    expect(near("愛知県", "愛知県名古屋市中区別町9-9")).toBe(false);
+    expect(near("愛知県架空市架空区試験町1-2-3", "架空市架空区試験町1-2-3", { address: true })).toBe(true);
+    expect(near("愛知県", "愛知県名古屋市中区別町9-9", { address: true })).toBe(false);
     // PR #272 L1: two different prefectures never match, the same one does
-    expect(near("愛知県架空市架空区試験町1-2-3", "岐阜県架空市架空区試験町1-2-3")).toBe(false);
-    expect(near("東京都府中市架空町1-1", "広島県府中市架空町1-1")).toBe(false);
-    expect(near("愛知県架空市架空区試験町1-2-3", "愛知県架空市架空区試験町1-2-3")).toBe(true);
+    expect(near("愛知県架空市架空区試験町1-2-3", "岐阜県架空市架空区試験町1-2-3", { address: true })).toBe(false);
+    expect(near("東京都府中市架空町1-1", "広島県府中市架空町1-1", { address: true })).toBe(false);
+    expect(near("愛知県架空市架空区試験町1-2-3", "愛知県架空市架空区試験町1-2-3", { address: true })).toBe(true);
     // a name that merely ends in 県 is not a prefecture: kept, so it still has to match
-    expect(near("架空県架空市試験町1-2-3", "試験県架空市試験町1-2-3")).toBe(false);
+    expect(near("架空県架空市試験町1-2-3", "試験県架空市試験町1-2-3", { address: true })).toBe(false);
+    // PR #273 review: the non-"XX県" entries, NFKC spaces, and another prefecture further in
+    expect(near("神奈川県架空市試験町1-1", "東京都架空市試験町1-1", { address: true })).toBe(false);
+    expect(near("北海道架空市試験町1-1", "架空市試験町1-1", { address: true })).toBe(true);
+    expect(near("愛知県　架空市試験町1-1", "愛知県架空市試験町1-1", { address: true })).toBe(true);
+    expect(near("日本岐阜県架空市架空区試験町1-2-3", "愛知県架空市架空区試験町1-2-3", { address: true })).toBe(false);
+    expect(near("（岐阜県）架空市架空区試験町1-2-3", "愛知県架空市架空区試験町1-2-3", { address: true })).toBe(false);
+    expect(PREFECTURES).toHaveLength(47);
+    expect(new Set(PREFECTURES).size).toBe(47);
     expect(NEAR_MIN_RATIO).toBe(0.65);
+  });
+  it("names keep their prefecture (PR #273 review)", () => {
+    expect(near("北海道ラーメン", "ラーメン")).toBe(false);
+    expect(near("京都府立架空植物園", "大阪府立架空植物園")).toBe(false);
+    expect(near("北海道ラーメン", "北海道ラーメン 架空店")).toBe(true);
   });
   it("a pack address that is only a small part of the prospect's address is flagged as a mismatch", () => {
     expect(planFactsOnboarding(fictionalPack(), state({ prospect: { name: "架空の店 試験", address: "架空市架空区試験町1-2-3 架空ビル2階 奥の部屋の右側" } }))).toMatchObject({ ok: true, identity: { mismatch: true } });

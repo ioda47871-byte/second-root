@@ -47,7 +47,7 @@ const key = (v: string) => v.normalize("NFKC").replace(/\s+/g, "").toLowerCase()
 /** DEV-263i (PR #271 delta Low): one value inside the other counts only when the shorter is most of the longer. */
 export const NEAR_MIN_RATIO = 0.65;
 /** The 47 prefectures (a fixed list: a name that merely ends in 県 is not one). */
-const PREFECTURES = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
+export const PREFECTURES = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
 /** Split a comparison key into its leading prefecture ("" when it has none) and the rest. */
 const splitPrefecture = (k: string): [string, string] => {
   const p = PREFECTURES.find((name) => k.startsWith(name));
@@ -55,13 +55,22 @@ const splitPrefecture = (k: string): [string, string] => {
 };
 /**
  * Equal, or one inside the other with the shorter at least NEAR_MIN_RATIO of the longer (in code points), after `key`.
- * A leading prefecture is dropped only when one side carries it and the other does not; two different prefectures
- * never match (府中市 is in 東京都 and in 広島県). A bare city (名古屋市) is inside almost any address there: never a match alone.
+ * With `address`, a leading prefecture is dropped only when one side carries it and the other does not; two different
+ * prefectures never match (府中市 is in 東京都 and in 広島県), nor does a side that names another prefecture further
+ * in (日本岐阜県… against 愛知県…). Names keep their prefecture (北海道ラーメン is not ラーメン). A bare city
+ * (名古屋市) is inside almost any address there: never a match alone.
  */
-export const near = (a: string, b: string) => {
-  const [pa, x] = splitPrefecture(key(a));
-  const [pb, y] = splitPrefecture(key(b));
-  if (pa !== "" && pb !== "" && pa !== pb) return false;
+export const near = (a: string, b: string, opts: { address?: boolean } = {}) => {
+  let x = key(a);
+  let y = key(b);
+  if (opts.address) {
+    const [pa, ra] = splitPrefecture(x);
+    const [pb, rb] = splitPrefecture(y);
+    if (pa !== "" && pb !== "" && pa !== pb) return false;
+    const p = pa || pb;
+    if (p !== "" && PREFECTURES.some((other) => other !== p && (ra.includes(other) || rb.includes(other)))) return false;
+    [x, y] = [ra, rb];
+  }
   if (x === "" || y === "") return false;
   if (x === y) return true;
   const [short, long] = [...x].length <= [...y].length ? [x, y] : [y, x];
@@ -72,7 +81,7 @@ export const near = (a: string, b: string) => {
 export function onboardingIdentity(content: Record<string, unknown>, prospect: { name: string; address: string }): OnboardingIdentity {
   const packName = String(content.name ?? "");
   const packAddress = String(content.address ?? "");
-  return { prospectName: prospect.name, prospectAddress: prospect.address, packName, packAddress, mismatch: !near(packName, prospect.name) || !near(packAddress, prospect.address) };
+  return { prospectName: prospect.name, prospectAddress: prospect.address, packName, packAddress, mismatch: !near(packName, prospect.name) || !near(packAddress, prospect.address, { address: true }) };
 }
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
