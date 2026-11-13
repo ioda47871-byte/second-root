@@ -71,3 +71,17 @@ export function assertDemoContentFromFacts(content: unknown, factsPack: Bytes): 
   if (!c || c.facts_pack_sha256 !== factsPackSha256(factsPack)) throw new LocalInputError("TRUSTED_FACTS_SHA_MISMATCH");
   if (canonicalJson(c) !== canonicalJson(demoContentWithFactsSha(factsPack))) throw new LocalInputError("TRUSTED_FACTS_CONTENT_MISMATCH");
 }
+
+/**
+ * DEV-263h: the demo content a shop's demo is CREATED from by the owner's onboarding step (lib/sales/facts-onboarding.ts):
+ * demoContentWithFactsSha (strict: the schema, every key mapped, none twice, none missing) and, in addition, every
+ * value exactly as written — FactsPack trims while the database copies the bytes (sales_derive_facts_demo_content), so a
+ * value with surrounding whitespace is refused instead of being derived two ways. 輪 is refused (ai_demo_internal).
+ */
+export function onboardingDemoContent(b: Bytes): Record<string, unknown> {
+  const content = demoContentWithFactsSha(b);
+  const raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(b)) as { facts: { value: unknown }[] };
+  if (raw.facts.some((f) => typeof f.value !== "string" || f.value !== f.value.trim())) throw new LocalInputError("TRUSTED_FACTS_VALUE_UNTRIMMED");
+  if (content.facts_pack === RIN_SHOP_ID) throw new LocalInputError("TRUSTED_FACTS_RIN_DEMO");
+  return content;
+}

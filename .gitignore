@@ -54,3 +54,6 @@ __pycache__/
 
 # DEV-154 (Issue #193): supplied success-case originals stay outside git (the repository is public)
 design-library/research/quality-pipeline/.intake/
+
+# DEV-263h (Issue #263): a real shop's working files (facts pack, page, renders, package) stay outside git (docs/operations/real-shop-demo-workflow.md)
+/.local-shops/

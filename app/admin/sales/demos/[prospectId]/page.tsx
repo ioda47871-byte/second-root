@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CopyReviewPanel from "@/components/admin/demo/CopyReviewPanel";
+import DemoFromFacts from "@/components/admin/demo/DemoFromFacts";
 import FactsPackRegistration, { type CurrentFactsPack } from "@/components/admin/demo/FactsPackRegistration";
 import FactsPanel from "@/components/admin/demo/FactsPanel";
 import type { RenderItem } from "@/components/admin/demo/RenderPane";
@@ -15,6 +16,7 @@ import VersionNotices from "@/components/admin/demo/VersionNotices";
 import styles from "@/components/admin/demo/demo.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
 import { loadVersionCopyReview } from "@/lib/admin/demo-copy-review";
+import { loadNoDemoProspect, onboardingTargetOf } from "@/lib/admin/demo-onboarding";
 import { loadDemoVersionsPage, type PreviewUnavailable } from "@/lib/admin/demo-versions";
 import { createAuthClient } from "@/lib/supabase/server";
 import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, QUALITY_REVIEW_DISABLED_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL, structureAdviceText } from "@/lib/sales/demo-version/admin-messages";
@@ -47,7 +49,17 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
   // DEV-196k: the quality-review writes have their own flag; without it this page is preview only (no forms)
   const reviewEnabled = demoQualityReviewEnabled(process.env);
   const data = await loadDemoVersionsPage(prospectId, { env: process.env, now });
-  if (data.kind === "not_found") notFound();
+  if (data.kind === "not_found") {
+    // DEV-263h: a prospect without a demo yet — only デモの事実を facts pack から作る
+    const target = await loadNoDemoProspect(await createAuthClient(), prospectId);
+    if (!target) notFound();
+    return (
+      <div className={styles.page} data-demo-versions-page="" data-no-demo="">
+        <h1 className={styles.title}>デモの版{target.shopName ? `：${target.shopName}` : ""}</h1>
+        <DemoFromFacts prospectId={target.prospectId} target="no_demo" enabled={reviewEnabled} />
+      </div>
+    );
+  }
   if (data.kind === "error") {
     return (
       <div className={styles.page}>
@@ -191,6 +203,7 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
       {selected && <ReviewHistory reviews={selected.reviews} />}
       <FactsPanel content={data.content} facts={selected?.facts ?? null} />
       <FactsPackRegistration prospectId={data.prospectId} current={factsPack} enabled={reviewEnabled && !data.demoDisabled} />
+      <DemoFromFacts prospectId={data.prospectId} target={onboardingTargetOf(data.content)} enabled={reviewEnabled && !data.demoDisabled} />
       {/* DEV-263i: the owner imports a reviewed package (both flags; the route checks everything again) */}
       <VersionImport prospectId={data.prospectId} enabled={reviewEnabled && !data.demoDisabled && factsPack.kind === "ok"} />
       {selected && <RightsPanel images={selected.images} photoBase={base} />}

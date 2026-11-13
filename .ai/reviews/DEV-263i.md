@@ -1,6 +1,6 @@
 # DEV-263i — hosted の取り込み: 管理画面の「版を取り込む」(Issue #263)
 
-branch `feature/dev-263i-hosted-import`。Base: `origin/develop` 558f9cb1 (PR #270 DEV-263g の merge)。PR #271 (DEV-263h) は未 merge。範囲: コード・テスト・ローカルの検証・PR。**hosted (Staging / Production) には何も当てていない・送っていない。** migration なし。Vercel / env / DNS・bucket の作成・実店舗のデータ・実送信・Codex / 画像 / LLM・輪・workflow / package.json / lockfile / prompt / skill には触れていない。ローカルの検証は scratch に複製した別 project id のスタック (`sr-dev263i`、port 599xx、Storage あり) だけ。
+branch `feature/dev-263i-hosted-import`。Base: `origin/develop` 558f9cb1 (PR #270 DEV-263g の merge)。その後 PR #271 (DEV-263h、squash aadcc6cd) を merge commit で取り込んだ。範囲: コード・テスト・ローカルの検証・PR。**hosted (Staging / Production) には何も当てていない・送っていない。** migration なし。Vercel / env / DNS・bucket の作成・実店舗のデータ・実送信・Codex / 画像 / LLM・輪・workflow / package.json / lockfile / prompt / skill には触れていない。ローカルの検証は scratch に複製した別 project id のスタック (`sr-dev263i`、port 599xx、Storage あり) だけ。
 
 ## 何が足りなかったか
 
@@ -41,6 +41,11 @@ route `app/admin/sales/demos/[prospectId]/import/route.ts` (POST ?step=begin|put
 
 `components/admin/demo/VersionImport.tsx`: 版の頁の「店舗の事実の登録」の下。旗 2 つ・demo が無効でない・facts が登録済み、のときだけ出る。フォルダを選ぶ → begin → staging に無いファイルだけ put (ブラウザでも sha256 を比べ、違えば送らない。判定ではなく早めに止めるだけ) → finalize → `router.refresh()`。
 
+## PR #271 の delta Low (coordinator の指示でこの PR に)
+
+- `lib/sales/facts-onboarding.ts` の `near()`: 片方がもう片方に含まれれば一致としていたため、pack の住所が「名古屋市」だけでもほぼどの住所とも一致した。比べる前に先頭の都道府県を両方から外し、包含は**短い方が長い方の 65% 以上** (`NEAR_MIN_RATIO`、code point で数える) のときだけ一致とする。等しいものは従来どおり一致、空は不一致。unit (`tests/unit/sales/facts-onboarding.test.ts`): 建物名つきの登録住所は一致、市だけ・県だけ・1 文字は不一致、片側だけの都道府県は無視。既存の fixture の登録住所 (「愛知県名古屋市（登録用） 架空市…」) は新しい規則では不一致になるため、「愛知県架空市架空区試験町1-2-3 架空ビル」に変えた (意図した変更)。
+- `docs/operations/real-shop-demo-workflow.md` §6 の hosted の注記を runbook B-5a を指すよう直した。
+
 ## テスト
 
 | 種類 | file | 何を |
@@ -57,6 +62,5 @@ route `app/admin/sales/demos/[prospectId]/import/route.ts` (POST ?step=begin|put
 
 1. **staging の後始末**: 版にならなかった `staging/<sha256>` は残る (配られない)。消す仕組みは別 Task (DEV-196e-1 の「object を取り返せない形では消さない」に合わせ、版のファイルと照らしてから)。
 2. **hosted で使う前の承認** (runbook B-5a): B-1 の migration、private bucket `sales-demo-versions` の作成 (public でない、4MiB、MIME 4 種、anon / authenticated の policy なし)、B-4 の旗 2 つ。新しい環境変数は無い。
-3. `docs/operations/real-shop-demo-workflow.md` §6 (PR #271 の branch にだけある) の「hosted の取り込みの経路は別の Task」の注記は、#271 の merge 後に runbook B-5a を指すよう直す。この branch では runbook の B-6 から指した。
-4. DEV-196e-1 は backlog のまま: worker (WSL) の経路 (bridge token、生成時の事実と取り込み時の事実の比べ直し) が残る。この PR はオーナーの手動の取り込みだけ。
-5. 1 回の要求の上限のため、文章のファイルの合計が約 4MiB を超える包み (改稿の round が多い包み) は画面から送れない (`COPY_TOO_LARGE_FOR_UPLOAD`)。今の包みは数十 KiB。
+3. DEV-196e-1 は backlog のまま: worker (WSL) の経路 (bridge token、生成時の事実と取り込み時の事実の比べ直し) が残る。この PR はオーナーの手動の取り込みだけ。
+4. 1 回の要求の上限のため、文章のファイルの合計が約 4MiB を超える包み (改稿の round が多い包み) は画面から送れない (`COPY_TOO_LARGE_FOR_UPLOAD`)。今の包みは数十 KiB。
