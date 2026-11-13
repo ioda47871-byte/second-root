@@ -76,6 +76,11 @@ export async function signedInClient(email: string, password = "correct-horse-ba
   return client;
 }
 
+/** DEV-263f (PR #269 M2): the DB owner's local switch for the CLI registration (sales_register_facts_pack_as). */
+export async function setFactsCliRegistration(on: boolean): Promise<void> {
+  await db.query("update public.sales_facts_registration_settings set operator_cli_enabled = $1", [on]);
+}
+
 /**
  * DEV-263f: makes a test demo's content name this facts pack (content.facts_pack_sha256 and content.facts_pack, as the
  * DB owner) — what a demo derived from the pack holds. Changed only when it does not name it yet (the demo's facts hash,
@@ -100,6 +105,7 @@ export async function nameFactsInContent(demoId: string, factsPack: string | Uin
  */
 export async function registerFacts(demoId: string, factsPack: string | Uint8Array, adminId: string): Promise<{ facts_pack_id: string; facts_sha256: string; replayed: boolean }> {
   const text = await nameFactsInContent(demoId, factsPack);
+  await setFactsCliRegistration(true);
   const { data, error } = await serviceClient().rpc("sales_register_facts_pack_as", { p_demo_id: demoId, p_facts_pack: text, p_admin_id: adminId });
   if (error) throw new Error(`registerFacts: ${error.message}`);
   return data as { facts_pack_id: string; facts_sha256: string; replayed: boolean };

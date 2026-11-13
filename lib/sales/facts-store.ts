@@ -26,10 +26,25 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type StoredFactsPack = { id: string; seq: number; demo_id: string; shop_id: string; facts_sha256: string; facts_pack_text: string; recorded_at: string; recorded_via: string };
 export const FACTS_PACK_COLUMNS = "id, seq, demo_id, shop_id, facts_sha256, facts_pack_text, recorded_at, recorded_via";
 
-/** The prospect's current stored facts pack (the newest row), or null. Throws FactsStoreError on a read failure. */
+/**
+ * PR #269 L4: the read failed because the database has no facts store yet (migration 20261115000000 not applied) —
+ * like versionSchemaMissing: only an undefined table / column (42P01, 42703, PGRST205, PGRST204, PGRST200) whose
+ * message, details or hint names the store or its column. Read-only screens say "not set up"; sends stay fail-closed.
+ */
+export function factsStoreSchemaMissing(error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined): boolean {
+  if (!error || !["42P01", "42703", "PGRST205", "PGRST204", "PGRST200"].includes(error.code ?? "")) return false;
+  const text = [error.message, error.details, error.hint].filter((s): s is string => typeof s === "string").join(" ");
+  return text.includes("sales_demo_facts_packs") || text.includes("facts_pack_id");
+}
+
+/**
+ * The prospect's current stored facts pack (the newest row), or null. Throws FactsStoreError on a read failure
+ * (FACTS_STORE_NOT_SET_UP when the database has no facts store).
+ */
 export async function loadCurrentFactsPack(client: SupabaseClient, prospectId: string): Promise<StoredFactsPack | null> {
   if (!UUID.test(prospectId)) throw new FactsStoreError("FACTS_STORE_PROSPECT_INVALID");
   const { data, error } = await client.from("sales_demo_facts_packs").select(FACTS_PACK_COLUMNS).eq("prospect_id", prospectId).order("seq", { ascending: false }).limit(1);
+  if (error && factsStoreSchemaMissing(error)) throw new FactsStoreError("FACTS_STORE_NOT_SET_UP");
   if (error || !Array.isArray(data)) throw new FactsStoreError("FACTS_STORE_READ_FAILED");
   const row = data[0] as StoredFactsPack | undefined;
   return row ? { ...row, seq: Number(row.seq) } : null;

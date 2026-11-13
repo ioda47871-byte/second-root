@@ -313,6 +313,8 @@ test.beforeAll(async () => {
     env: { SALES_DEMO_SHARE_ENABLED: "true", SALES_DEMO_ARTIFACT_ORIGIN: ART, SALES_DEMO_APP_ORIGIN: APP, SALES_DEMO_BASE_URL: APP, SALES_LOCAL_E2E_TEST_RECIPIENTS: "true" },
   });
   await setShareSwitch(db, true);
+  // PR #269 M2: the CLI facts registration (--trusted-facts --admin) is a local switch of the DB owner (default off)
+  await db.query("update public.sales_facts_registration_settings set operator_cli_enabled = true");
 });
 
 test.afterAll(async () => {
@@ -320,6 +322,7 @@ test.afterAll(async () => {
   if (db) {
     if (storageUp) {
       await setShareSwitch(db, false);
+      await db.query("update public.sales_facts_registration_settings set operator_cli_enabled = false");
       await purge([SENDABLE_PROSPECT_ID]);
     }
   }

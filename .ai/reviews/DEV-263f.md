@@ -51,9 +51,25 @@ DEV-199b の `hard prerequisite` (送信の時点で facts pack を facts の経
 ## 既知の限界・開いている項目
 
 - 実店舗の demo の content を facts pack から作る経路は、今は 環 の seed だけ (`demoContentFromFacts` は 輪 の鍵の写し方を一般化したもの)。管理画面の登録は、demo の content が**すでに**その pack から導かれているときだけ受け付ける (登録で content を書き換えない: 既存の版の facts が変わるため)。最初の実店舗の前に、登録と同時に content を作る経路 (候補の登録 / 取り込みの CLI) が別に要る (runbook B-2)。
+- hosted に当てるとき、既存の照合の証拠 (`facts_pack_id` なし) は数えないが、店の facts を登録してから同じ包みを取り込み直すと、`sales_record_copy_review` がその証拠に保存先の行を埋める (replay、PR #269 M1)。
 - 正規の内容の hash は jsonb の正規形。copy-quality-review の `factsContentSha256` (正規化した key / value の組) とは別物 (DB で同じ正規化はできない)。送信の門はバイトの sha256 で比べる。
-- 古い facts pack (A) → 新しい (B) → A を登録し直すと、最新の行は A のバイトになり、A で作った証拠がまた数える (同じバイトなので安全側)。
-- service role は `sales_register_facts_pack_as` で任意の admin の id を名乗れる (service role の鍵は管理者と同じ信頼。生成側・包みの取り込みはこの関数を呼ばない)。
+- A-B-A: 古い facts pack (A) → 新しい (B) → A を登録し直すと、最新の行は A のバイトの**新しい行**になる。A のときに作った証拠は古い A の行を名指したままで、送信の門は「証拠が保存先から作られた (facts_pack_id あり)」かつ「review の facts pack = 今の行のバイト」で数えるので、また数える (同じバイトなので安全側)。証拠を今の行へ付け替えはしない (付け替えの update は、facts_pack_id が null の証拠を埋めるときだけ許す。下の M1)。統合テストで確認。
+- service role の `sales_register_facts_pack_as` は、DB の所有者のローカルのスイッチ (`sales_facts_registration_settings.operator_cli_enabled`、既定 false) が on のときだけ (PR #269 M2)。hosted では off のままで、facts を登録できるのは署名済みの admin だけ。
+
+## PR #269 Fresh Review (@ 6709f25: C0 H0 M2 L4) と対応
+
+| ID | 指摘 | 対応 |
+|---|---|---|
+| M1 | 証拠の主キー (review_id, demo_facts_sha256) と `on conflict do nothing` で、migration 前の証拠のある review を取り込み直しても facts_pack_id 付きの行が捨てられ、それでも `facts_from_facts_path` は true を返す | `sales_record_copy_review` を置き換え: `on conflict … do update set facts_pack_id = excluded.facts_pack_id where 既存の facts_pack_id is null`。証拠の trigger は、facts_pack_id が null の行を (他の列はそのまま、今の行で検め直して) 埋める update だけ許す。それ以外の update / delete は従来どおり `copy_facts_check_immutable`。`facts_from_facts_path` は facts_pack_id のある証拠だけ。統合テスト: 古い証拠 → facts 登録 → 取り込み直し → 送信の門が先へ進む (`demo_copy_owner_confirmation_missing`)、名指し済みの証拠は書き換えられない、保存先なしの取り込みは false |
+| M2 | `sales_register_facts_pack_as` (service role が任意の admin の id) が hosted の migration に入る | DB の所有者だけが変える 1 行の表 `sales_facts_registration_settings` (`operator_cli_enabled`、既定 false。共有スイッチと同じ trigger) が on のときだけ受け付ける (`facts_cli_registration_disabled`)。ローカルの開発・統合・e2e は所有者として on にする。統合テスト: off → 拒否、API role は on にできない、admin の session の登録は影響なし、admin でない id は on でも拒否、既定は false |
+| L1 | `sales_check_copy_decision_write` が保存先の証拠と今の facts を見ない | 置き換え: facts_pack_id のある証拠を要求、承認は送信の門と同じ今の facts の一致 (`copy_facts_changed`)。`COPY_DECISION_DB_ERROR_LABEL` に文言。統合テスト: facts が変わった後の承認は拒否・却下は可、古い証拠だけなら判断できない |
+| L2 | facts pack の trigger の null の扱い | `is distinct from` と `coalesce(jsonb_array_length(...), 0) = 0` |
+| L3 | A-B-A の挙動 | 上の既知の限界に記載 (付け替えはしない。同じバイトなので安全側)。統合テストで確認済み |
+| L4 | 読むだけの画面: 保存先の表が無い DB | `factsStoreSchemaMissing` (42P01・42703・PGRST205・PGRST204・PGRST200 で `sales_demo_facts_packs` / `facts_pack_id` を名指すときだけ)。`loadShopCopyState` は「未設定」(`factsStore.notSetUp`、証拠は facts_pack_id なしで読む) を返し、文章の監査の区画は「保存先がこの DB にまだ設定されていません」、登録の区画は form を出さない。送信は fail closed (`demo_copy_facts_not_from_facts_path`)。統合テスト (migration を戻した DB で実際の PostgREST の誤り) と unit |
+
+再実行 (@ 修正後): 統合の全体 35 ファイル 533 件 pass、e2e `sales-mvp-flow`・`demo-review`・`demo-share` desktop 12 passed (production build)、関係する unit (sales・admin・staging・demo-version-package の copy-package / sendable-demo) pass、tsc・eslint・`next build`。
+
+rollback SQL に、置き換えた 2 つの関数 (`sales_record_copy_review`・`sales_check_copy_decision_write`) の 20261113000000 の定義と、新しいスイッチの表・関数を足した。
 
 ## Migration の計画
 
@@ -69,7 +85,7 @@ DEV-199b の `hard prerequisite` (送信の時点で facts pack を facts の経
 
 ## 検証 (ローカル、scratch のスタック `sr-dev263f`)
 
-- 新規: `tests/integration/demo-facts-store.test.ts` (8): 登録 (admin の session・CLI の明示の admin・replay・最新が今の行・jsonb の hash)、拒否 (content が名指さない・形の誤り・admin でない・CLI が admin でない id)、表への直接の書き込み・update・delete の拒否と RLS・関数の権限 (SECURITY DEFINER は登録の 2 つだけ、内部の関数はどの API role も実行不可)、証拠が保存先の行を名指す (保存先なし・別の pack が今のときは記録しない、`FACTS_STORE_EMPTY`・`TRUSTED_FACTS_TWICE`)、保存先以前の証拠は数えない、送信時の比べ直し (新しい pack → DB とサーバーで `demo_copy_facts_changed`、送信の門全体は `demo_facts_changed`、古い pack を登録し直すと戻る、content が名指さなくなると止まる)、rollback と当て直し。
+- 新規: `tests/integration/demo-facts-store.test.ts` (13、PR #269 の 5 件を含む): 登録 (admin の session・CLI の明示の admin・replay・最新が今の行・jsonb の hash)、拒否 (content が名指さない・形の誤り・admin でない・CLI が admin でない id)、表への直接の書き込み・update・delete の拒否と RLS・関数の権限 (SECURITY DEFINER は登録の 2 つだけ、内部の関数はどの API role も実行不可)、証拠が保存先の行を名指す (保存先なし・別の pack が今のときは記録しない、`FACTS_STORE_EMPTY`・`TRUSTED_FACTS_TWICE`)、保存先以前の証拠は数えない、送信時の比べ直し (新しい pack → DB とサーバーで `demo_copy_facts_changed`、送信の門全体は `demo_facts_changed`、古い pack を登録し直すと戻る、content が名指さなくなると止まる)、rollback と当て直し。
 - 新規: `tests/unit/admin/demo-facts-pack.test.tsx` (7)、`gate.test.ts` の DEV-263f (4)。
 - 統合の全体: 35 ファイル・528 件 pass (新しいファイルを含む)。
 - e2e (production build、`PLAYWRIGHT_CHROMIUM_EXECUTABLE`、Storage あり): desktop の全体 99 passed (`sales-mvp-flow` 2 件を含む: メールは管理画面で facts を登録 → `--facts-from-store`、Instagram は `--trusted-facts --admin`)。
@@ -84,7 +100,7 @@ begin;
 drop function public.sales_register_facts_pack_as(uuid, text, uuid);
 drop function public.sales_register_facts_pack(uuid, text);
 drop function public.sales_insert_facts_pack(uuid, text, uuid, text);
--- sales_copy_send_block: exactly the 20261113000000 definition (create or replace keeps its grants)
+-- the four functions below: exactly the 20261113000000 definitions (create or replace keeps their grants)
 create or replace function public.sales_copy_send_block(p_version_id uuid)
 returns text
 language plpgsql
@@ -134,7 +150,6 @@ begin
   return null;
 end;
 $$;
--- sales_check_copy_facts_check_write: exactly the 20261113000000 definition
 create or replace function public.sales_check_copy_facts_check_write()
 returns trigger
 language plpgsql
@@ -153,9 +168,128 @@ begin
   return new;
 end;
 $$;
+create or replace function public.sales_record_copy_review(
+  p_demo_id uuid,
+  p_version_id uuid,
+  p_review text,
+  p_copy_record text,
+  p_facts_pack text,
+  p_page_html text,
+  p_page_css text,
+  p_gate_blockers text[],
+  p_facts_from_facts_path boolean)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  d public.sales_demos;
+  q public.sales_demo_copy_reviews;
+  v_sha text;
+  v_replayed boolean := false;
+  v_linked uuid;
+begin
+  if p_demo_id is null or p_review is null or p_copy_record is null or p_facts_pack is null or p_page_html is null
+     or p_page_css is null or p_facts_from_facts_path is null or not public.sales_copy_codes_valid(p_gate_blockers) then
+    raise exception 'invalid_copy_review' using errcode = '22023';
+  end if;
+  select * into d from public.sales_demos where id = p_demo_id;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('second_root_copy_reviews:' || d.prospect_id::text));
+  v_sha := encode(sha256(convert_to(p_review, 'UTF8')), 'hex');
+  select * into q from public.sales_demo_copy_reviews r where r.prospect_id = d.prospect_id and r.review_sha256 = v_sha;
+  if found then
+    -- the same review: a replay only for exactly the same bytes and the same gate result
+    if q.demo_id <> p_demo_id or q.copy_record_text <> p_copy_record or q.facts_pack_text <> p_facts_pack
+       or q.page_html_text <> p_page_html or q.page_css_text <> p_page_css
+       or (select array_agg(x order by x) from unnest(q.gate_blockers) x) is distinct from (select array_agg(x order by x) from unnest(p_gate_blockers) x) then
+      raise exception 'copy_review_replay_differs' using errcode = 'P0001';
+    end if;
+    v_replayed := true;
+  else
+    insert into public.sales_demo_copy_reviews (prospect_id, demo_id, shop_id, lane, round, auditor_version, verdict, copy_verdict,
+      next_step, unresolved, revision_findings, facts_sha256, facts_content_sha256, copy_sha256, page_html_sha256, page_css_sha256,
+      review_sha256, gate_blockers, review_text, copy_record_text, facts_pack_text, page_html_text, page_css_text)
+    -- placeholders: the trigger derives every column from the review text
+    values (d.prospect_id, p_demo_id, '-', 'real_shop_proposal', 0, 'copy_quality_rules_v1', 'fail', 'fail', 'stop_fail', '{}', '[]',
+      repeat('0', 64), repeat('0', 64), repeat('0', 64), repeat('0', 64), repeat('0', 64), repeat('0', 64),
+      p_gate_blockers, p_review, p_copy_record, p_facts_pack, p_page_html, p_page_css)
+    returning * into q;
+  end if;
+  if p_facts_from_facts_path then
+    -- one check per review and demo facts (the trigger computes demo_facts_sha256)
+    insert into public.sales_demo_copy_facts_checks (review_id, facts_sha256, demo_facts_sha256)
+    values (q.id, q.facts_sha256, repeat('0', 64))
+    on conflict (review_id, demo_facts_sha256) do nothing;
+  end if;
+  if p_version_id is not null then
+    select review_id into v_linked from public.sales_demo_version_copy_links where version_id = p_version_id;
+    if v_linked is null then
+      insert into public.sales_demo_version_copy_links (version_id, review_id, demo_id) values (p_version_id, q.id, p_demo_id);
+    elsif v_linked <> q.id then
+      raise exception 'version_copy_already_linked' using errcode = 'P0001';
+    end if;
+  end if;
+  return jsonb_build_object(
+    'review_id', q.id, 'round', q.round, 'previous_review_id', q.previous_review_id, 'replayed', v_replayed,
+    'copy_verdict', q.copy_verdict, 'next_step', q.next_step,
+    'facts_from_facts_path', exists (select 1 from public.sales_demo_copy_facts_checks c where c.review_id = q.id),
+    'linked_version_id', p_version_id);
+end;
+$$;
+create or replace function public.sales_check_copy_decision_write()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  q public.sales_demo_copy_reviews;
+begin
+  if tg_op <> 'INSERT' then
+    raise exception 'copy_decision_immutable' using errcode = 'check_violation';
+  end if;
+  if not public.is_sales_admin() or new.decided_by is distinct from auth.uid() then
+    raise exception 'admin_identity_required' using errcode = '42501';
+  end if;
+  select * into q from public.sales_demo_copy_reviews where id = new.review_id;
+  if q.id is null then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if not exists (select 1 from public.sales_demo_version_copy_links l
+                 where l.version_id = new.version_id and l.review_id = q.id and l.demo_id = new.demo_id) then
+    raise exception 'copy_review_not_linked_to_version' using errcode = 'P0001';
+  end if;
+  if row(new.review_sha256, new.facts_sha256, new.copy_sha256, new.page_html_sha256, new.page_css_sha256)
+     is distinct from row(q.review_sha256, q.facts_sha256, q.copy_sha256, q.page_html_sha256, q.page_css_sha256) then
+    raise exception 'copy_decision_snapshot_mismatch' using errcode = 'check_violation';
+  end if;
+  if q.lane <> 'real_shop_proposal' then
+    raise exception 'copy_decision_fictional_lane' using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from public.sales_demo_copy_facts_checks c where c.review_id = q.id) then
+    raise exception 'copy_facts_not_from_facts_path' using errcode = 'P0001';
+  end if;
+  if q.next_step <> 'owner_review' then
+    raise exception 'copy_review_not_at_owner_review' using errcode = 'P0001';
+  end if;
+  if new.decision = 'revise' and q.round >= 2 then
+    raise exception 'copy_revision_cap' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.sales_demo_copy_reviews n
+             where n.prospect_id = q.prospect_id and n.lane = q.lane and n.facts_content_sha256 = q.facts_content_sha256 and n.round > q.round) then
+    raise exception 'copy_review_superseded' using errcode = 'P0001';
+  end if;
+  new.decided_at := now();
+  return new;
+end;
+$$;
 alter table public.sales_demo_copy_facts_checks drop column facts_pack_id;
 drop table public.sales_demo_facts_packs;
 drop function public.sales_check_facts_pack_write();
+drop table public.sales_facts_registration_settings;
+drop function public.sales_check_facts_registration_settings_write();
 delete from supabase_migrations.schema_migrations where version = '20261115000000';
 commit;
 ```

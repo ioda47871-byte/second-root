@@ -66,7 +66,9 @@ npx tsx scripts/sales/demo-version/package-local.ts --out /tmp/tamaki-pkg \
 # 4. 取り込み。facts は facts の保存先 (sales_demo_facts_packs) から (DEV-263f)。どちらか 1 つ:
 #  (a) 管理画面で facts を登録してから (A-5 の 2 の「店舗の事実の登録」)、保存先で取り込む
 npx tsx scripts/sales/demo-version/import-local.ts --package /tmp/tamaki-pkg --seed-sendable --facts-from-store
-#  (b) 開発用: コミット済みの facts pack (origin/develop と同じ blob) を管理者として登録してから取り込む
+#  (b) 開発用: コミット済みの facts pack (origin/develop と同じ blob) を管理者として登録してから取り込む。
+#      CLI の登録は DB の所有者のローカルのスイッチが要る (既定 off。hosted では off のまま):
+psql "$(npx supabase status -o json | jq -r .DB_URL)" -c "update public.sales_facts_registration_settings set operator_cli_enabled = true"
 npx tsx scripts/sales/demo-version/import-local.ts --package /tmp/tamaki-pkg --seed-sendable \
   --trusted-facts design-library/research/quality-pipeline/poc/sendable-tamaki/facts-pack.json --admin "$ADMIN_ID"
 ```
@@ -148,7 +150,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 
 - **hosted の facts の保存先** (DEV-263f、ローカルで実装済み・hosted は未適用): `sales_demo_facts_packs` (追記のみ)。書けるのはオーナーだけ (管理画面の「店舗の事実の登録」= `sales_register_facts_pack`、または CLI の `--trusted-facts … --admin <管理者>` = `sales_register_facts_pack_as`)。デモの `content.facts_pack_sha256` / `content.facts_pack` がその pack を名指すときだけ登録できる。取り込みは保存先から (`--facts-from-store`)。
 - **送信時の facts の比べ直し** (DEV-263f、同上): `sales_copy_send_block` と `lib/sales/copy-review/gate.ts` の両方で、文章の監査の facts pack が prospect の今の facts pack (最新の行、この demo のもの、demo の content が名指す) と同じでなければ `demo_copy_facts_changed` で止める。保存先より前の照合の証拠は数えない。
-  - hosted に当てるとき: 上の B-1 の 5。当てると**既存の照合の証拠は数えなくなる**ので、版の送信は `demo_copy_facts_not_from_facts_path` で止まる。店ごとに facts を登録し、同じ包みを取り込み直す (replay で証拠だけ足す)。サーバーのコードと同時に出す (片方だけなら fail closed)。rollback は `.ai/reviews/DEV-263f.md`。
+  - hosted に当てるとき: 上の B-1 の 5。当てると**既存の照合の証拠は数えなくなる**ので、版の送信は `demo_copy_facts_not_from_facts_path` で止まる。店ごとに facts を管理画面で登録し、同じ包みを取り込み直す (replay で既存の証拠に保存先の行が入る)。CLI の登録のスイッチ (`sales_facts_registration_settings`) は hosted では off のまま。サーバーのコードと同時に出す (片方だけなら fail closed)。rollback は `.ai/reviews/DEV-263f.md`。
   - まだ無いもの: 実店舗の demo の content を facts pack から作る経路 (今は 環 の seed だけ)。最初の実店舗の前に別 Task。
 - **DB 側のテスト宛先の guard**: 架空の店・予約済みのドメインへの承認を `sales_approve_outreach` でも拒否する (今はサーバーの門 `lib/sales/test-recipient.ts` だけ)。
 

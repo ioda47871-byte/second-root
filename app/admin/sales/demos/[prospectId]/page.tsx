@@ -17,7 +17,7 @@ import { loadVersionCopyReview } from "@/lib/admin/demo-copy-review";
 import { loadDemoVersionsPage, type PreviewUnavailable } from "@/lib/admin/demo-versions";
 import { createAuthClient } from "@/lib/supabase/server";
 import { DEMO_VERSION_ERROR_LABEL, NO_VERSIONS_TEXT, QUALITY_REVIEW_DISABLED_TEXT, REVOKE_REASON_LABEL, RIGHTS_BLOCKED_LABEL, structureAdviceText } from "@/lib/sales/demo-version/admin-messages";
-import { loadCurrentFactsPack } from "@/lib/sales/facts-store";
+import { FactsStoreError, loadCurrentFactsPack } from "@/lib/sales/facts-store";
 import { loadStructureAdvice } from "@/lib/sales/structure-findings/store";
 import { demoQualityReviewEnabled, demoVersionsEnabled } from "@/lib/sales/demo-version/flags";
 import { VIEW_TOKEN_TTL_SECONDS } from "@/lib/sales/demo-version/view-token";
@@ -73,8 +73,8 @@ export default async function DemoVersionsPage({ params, searchParams }: PagePro
   try {
     const cur = await loadCurrentFactsPack(await createAuthClient(), data.prospectId);
     factsPack = cur ? { kind: "ok", sha256: cur.facts_sha256, recordedAt: cur.recorded_at, via: cur.recorded_via } : { kind: "none" };
-  } catch {
-    factsPack = { kind: "error" };
+  } catch (e) {
+    factsPack = e instanceof FactsStoreError && e.code === "FACTS_STORE_NOT_SET_UP" ? { kind: "not_set_up" } : { kind: "error" };
   }
 
   return (

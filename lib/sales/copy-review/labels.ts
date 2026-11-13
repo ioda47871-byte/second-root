@@ -60,6 +60,7 @@ export const COPY_DECISION_DB_ERROR_LABEL: Readonly<Record<string, string>> = {
   copy_review_not_linked_to_version: COPY_DECISION_REFUSAL_LABEL.COPY_REVIEW_NOT_THIS_PAGE!,
   copy_decision_fictional_lane: COPY_DECISION_REFUSAL_LABEL.COPY_FICTIONAL_LANE!,
   copy_facts_not_from_facts_path: COPY_DECISION_REFUSAL_LABEL.COPY_FACTS_NOT_FROM_FACTS_PATH!,
+  copy_facts_changed: COPY_DECISION_REFUSAL_LABEL.COPY_FACTS_CHANGED!,
   copy_review_not_at_owner_review: COPY_DECISION_REFUSAL_LABEL.COPY_NOT_AT_OWNER_REVIEW!,
   copy_revision_cap: COPY_DECISION_REFUSAL_LABEL.COPY_REVISION_CAP!,
   copy_review_superseded: COPY_DECISION_REFUSAL_LABEL.COPY_REVIEW_SUPERSEDED!,

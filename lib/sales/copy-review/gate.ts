@@ -85,6 +85,8 @@ export type StoredOwnerDecision = {
 export type FactsStoreState = {
   current: { id: string; facts_sha256: string; demo_id: string } | null;
   demoFactsPackSha256: string | null;
+  /** PR #269 L4: the database has no facts store yet (read-only screens say so; every versioned send is refused) */
+  notSetUp?: boolean;
 };
 
 /** Everything stored for one shop: reviews in stored order, the owner's decisions, the facts-path checks. */

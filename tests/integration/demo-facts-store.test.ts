@@ -10,7 +10,7 @@ import { loadVersionCopyGate, outreachCopyGate } from "@/lib/sales/copy-review/s
 import { loadCurrentFactsPack, registerFactsPackAsAdmin, registerFactsPackAsOperator } from "@/lib/sales/facts-store";
 import { QUALITY_CHECKLIST_ITEMS } from "@/lib/sales/demo-version/quality";
 import { cleanRound0, json, type Round } from "../support/copy-review-fixture";
-import { anonClient, candidate, createUser, db, makeAdmin, nameFactsInContent, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
+import { anonClient, candidate, createUser, db, makeAdmin, nameFactsInContent, resetSalesData, rpc, serviceClient, setFactsCliRegistration, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-263f (Issue #263, runbook B-2): the hosted facts store (sales_demo_facts_packs) and the send-time re-compare of
 // the facts, on the LOCAL stack. The made-up real-shop sample ("パン店 見本") in test prospects, example.com only; no
@@ -103,11 +103,15 @@ beforeAll(async () => {
   outsider = await signedInClient("facts-store-outsider@test.example.com");
 });
 beforeEach(async () => {
+  await setFactsCliRegistration(true);
   await db.query(
     "truncate public.sales_demo_facts_packs, public.sales_demo_copy_owner_decisions, public.sales_demo_version_copy_links, public.sales_demo_copy_facts_checks, public.sales_demo_copy_reviews, public.sales_demo_quality_reviews, public.sales_demo_version_files, public.sales_demo_versions, public.sales_outreach_approvals, public.sales_outreaches, public.sales_demos, public.sales_sources, public.sales_prospects, public.sales_agent_runs cascade",
   );
 });
-afterAll(resetSalesData);
+afterAll(async () => {
+  await setFactsCliRegistration(false);
+  await resetSalesData();
+});
 
 describe("registration: only the owner, tied to the demo's content, append-only", () => {
   it("the admin (own session) and the CLI (service role + a named admin) register; the same bytes replay; the newest row is current", async () => {
@@ -178,6 +182,146 @@ describe("registration: only the owner, tied to the demo's content, append-only"
       { proname: "sales_register_facts_pack", prosecdef: true },
       { proname: "sales_register_facts_pack_as", prosecdef: true },
     ]);
+  });
+});
+
+describe("PR #269 review", () => {
+  it("M2: the CLI registration needs the DB owner's local switch (off by default; only the owner changes it); a non-admin id is refused either way", async () => {
+    const s = await shop();
+    const packText = text(cleanRound0().files.factsPack);
+    await nameFactsInContent(s.demoId, packText);
+    await setFactsCliRegistration(false);
+    await expect(registerFactsPackAsOperator(serviceClient(), { demoId: s.demoId, factsPack: packText, adminId })).rejects.toThrow("facts_cli_registration_disabled");
+    // no API role can switch it on
+    expect((await serviceClient().from("sales_facts_registration_settings").update({ operator_cli_enabled: true }).eq("id", true)).error?.message).toContain("facts_cli_switch_owner_only");
+    // the admin's own session is not affected by the switch
+    expect((await registerFactsPackAsAdmin(admin, { demoId: s.demoId, factsPack: packText })).replayed).toBe(false);
+    await setFactsCliRegistration(true);
+    await expect(registerFactsPackAsOperator(serviceClient(), { demoId: s.demoId, factsPack: packText, adminId: outsiderId })).rejects.toThrow("forbidden");
+    // the migration's default is off
+    const def = (await db.query("select column_default from information_schema.columns where table_name = 'sales_facts_registration_settings' and column_name = 'operator_cli_enabled'")).rows[0].column_default;
+    expect(def).toBe("false");
+  });
+
+  it("M1: a review imported before the facts store (legacy evidence) is recovered by registering the facts and re-importing the same package", async () => {
+    const s = await shop();
+    const r0 = cleanRound0();
+    const pkg = await pkgOf(r0);
+    await nameFactsInContent(s.demoId, r0.files.factsPack);
+    await registerFactsPackAsOperator(serviceClient(), { demoId: s.demoId, factsPack: text(r0.files.factsPack), adminId });
+    const first = await importPackage(pkg, { client: serviceClient(), store: memoryStore(), demoId: s.demoId, factsFromStore: true });
+    // make the evidence a pre-migration row (no store row), as the DB owner
+    const own = await db.connect();
+    try {
+      await own.query("begin");
+      await own.query("set local session_replication_role = replica");
+      await own.query("update public.sales_demo_copy_facts_checks set facts_pack_id = null where review_id = $1", [first.storedCopy!.review_id]);
+      await own.query("commit");
+    } finally {
+      own.release();
+    }
+    expect(await copyBlock(first.versionId)).toBe("demo_copy_facts_not_from_facts_path");
+    // the same package again: the replay fills the store row of the existing check
+    const again = await importPackage(pkg, { client: serviceClient(), store: memoryStore(), demoId: s.demoId, factsFromStore: true });
+    expect(again.storedCopy).toMatchObject({ review_id: first.storedCopy!.review_id, replayed: true, facts_from_facts_path: true });
+    const checks = (await db.query("select facts_pack_id from public.sales_demo_copy_facts_checks where review_id = $1", [first.storedCopy!.review_id])).rows;
+    expect(checks).toHaveLength(1);
+    expect(checks[0].facts_pack_id).not.toBeNull();
+    expect(await copyBlock(first.versionId)).toBe("demo_copy_owner_confirmation_missing");
+    // a check that names a row is never re-pointed or otherwise updated
+    const svc = serviceClient();
+    expect((await svc.from("sales_demo_copy_facts_checks").update({ facts_pack_id: null }).eq("review_id", first.storedCopy!.review_id)).error?.message).toContain("copy_facts_check_immutable");
+  });
+
+  it("M1: facts_from_facts_path is false when only legacy evidence exists and no store row matches", async () => {
+    const s = await shop();
+    const r0 = cleanRound0();
+    await nameFactsInContent(s.demoId, r0.files.factsPack);
+    const res = await importPackage(await pkgOf(r0), { client: serviceClient(), store: memoryStore(), demoId: s.demoId });
+    expect(res.storedCopy).toMatchObject({ facts_from_facts_path: false });
+  });
+
+  it("L1: the owner cannot approve copy whose facts are no longer the current stored facts (a revise / reject stays possible)", async () => {
+    const s = await shop();
+    const r0 = cleanRound0();
+    await nameFactsInContent(s.demoId, r0.files.factsPack);
+    await registerFactsPackAsOperator(serviceClient(), { demoId: s.demoId, factsPack: text(r0.files.factsPack), adminId });
+    const res = await importPackage(await pkgOf(r0), { client: serviceClient(), store: memoryStore(), demoId: s.demoId, factsFromStore: true });
+    const other = reserialised(r0.files.factsPack);
+    await nameFactsInContent(s.demoId, other);
+    await registerFactsPackAsOperator(serviceClient(), { demoId: s.demoId, factsPack: other, adminId });
+    const q = (await db.query("select * from public.sales_demo_copy_reviews where id = $1", [res.storedCopy!.review_id])).rows[0];
+    const args = (decision: string) => ({
+      p_version_id: res.versionId, p_review_id: q.id, p_decision: decision, p_review_sha256: q.review_sha256, p_facts_sha256: q.facts_sha256,
+      p_copy_sha256: q.copy_sha256, p_page_html_sha256: q.page_html_sha256, p_page_css_sha256: q.page_css_sha256, p_note: null,
+    });
+    expect((await admin.rpc("sales_decide_copy_review", args("approve"))).error?.message).toContain("copy_facts_changed");
+    expect((await admin.rpc("sales_decide_copy_review", args("reject"))).error).toBeNull();
+    // legacy evidence only: no decision at all
+    const t = await shop();
+    await nameFactsInContent(t.demoId, r0.files.factsPack);
+    await registerFactsPackAsOperator(serviceClient(), { demoId: t.demoId, factsPack: text(r0.files.factsPack), adminId });
+    const tr = await importPackage(await pkgOf(r0), { client: serviceClient(), store: memoryStore(), demoId: t.demoId, factsFromStore: true });
+    const tq = (await db.query("select * from public.sales_demo_copy_reviews where id = $1", [tr.storedCopy!.review_id])).rows[0];
+    const c = await db.connect();
+    try {
+      await c.query("begin");
+      await c.query("set local session_replication_role = replica");
+      await c.query("update public.sales_demo_copy_facts_checks set facts_pack_id = null where review_id = $1", [tq.id]);
+      await c.query("set local session_replication_role = origin");
+      await c.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: adminId, role: "authenticated" })]);
+      await c.query("set local role authenticated");
+      await expect(
+        c.query("select public.sales_decide_copy_review($1, $2, 'reject', $3, $4, $5, $6, $7, null)", [tr.versionId, tq.id, tq.review_sha256, tq.facts_sha256, tq.copy_sha256, tq.page_html_sha256, tq.page_css_sha256]),
+      ).rejects.toThrow("copy_facts_not_from_facts_path");
+    } finally {
+      await c.query("rollback");
+      c.release();
+    }
+  });
+
+  it("L4: without the facts store (migration not applied) the copy panel still reads (not set up) and the send stays refused", async () => {
+    const s = await shop();
+    const { versionId } = await confirmedVersion(s, cleanRound0());
+    const c = await db.connect();
+    try {
+      await c.query("begin");
+      await c.query(rollbackSql());
+      await c.query("notify pgrst, 'reload schema'");
+      await c.query("commit");
+    } catch (e) {
+      await c.query("rollback");
+      c.release();
+      throw e;
+    }
+    try {
+      // wait for PostgREST to drop the table from its schema cache
+      for (let i = 0; i < 50; i++) {
+        const r = await admin.from("sales_demo_facts_packs").select("id").limit(1);
+        if (r.error) break;
+        await new Promise((ok) => setTimeout(ok, 200));
+      }
+      await expect(loadCurrentFactsPack(admin, s.prospectId)).rejects.toThrow("FACTS_STORE_NOT_SET_UP");
+      const { loadVersionCopyContext } = await import("@/lib/sales/copy-review/store");
+      const ctx = await loadVersionCopyContext(admin, versionId);
+      expect(ctx.state.factsStore.notSetUp).toBe(true);
+      expect(ctx.state.factsChecks.every((x) => x.facts_pack_id === null)).toBe(true);
+      expect(await loadVersionCopyGate(admin, versionId)).toMatchObject({ ok: false, code: "demo_copy_facts_not_from_facts_path" });
+    } finally {
+      // the migration again (its own transaction), then the schema cache
+      await c.query("begin");
+      await c.query(readFileSync(MIGRATION, "utf8"));
+      await c.query("insert into supabase_migrations.schema_migrations (version, name) values ('20261115000000', 'sales_demo_facts_store') on conflict do nothing");
+      await c.query("commit");
+      await c.query("notify pgrst, 'reload schema'");
+      c.release();
+      for (let i = 0; i < 50; i++) {
+        const r = await admin.from("sales_demo_facts_packs").select("id").limit(1);
+        if (!r.error) break;
+        await new Promise((ok) => setTimeout(ok, 200));
+      }
+      await setFactsCliRegistration(true);
+    }
   });
 });
 

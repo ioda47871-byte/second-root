@@ -11,7 +11,7 @@ import { previewDemoFactsPack, registerDemoFactsPack } from "@/app/admin/sales/_
 import type { FactsPackPreview } from "@/lib/admin/demo-facts-pack";
 import styles from "./demo.module.css";
 
-export type CurrentFactsPack = { kind: "none" } | { kind: "error" } | { kind: "ok"; sha256: string; recordedAt: string; via: string };
+export type CurrentFactsPack = { kind: "none" } | { kind: "error" } | { kind: "not_set_up" } | { kind: "ok"; sha256: string; recordedAt: string; via: string };
 
 const VIA_LABEL: Record<string, string> = { admin_session: "管理画面", operator_cli: "登録の CLI" };
 
@@ -49,10 +49,12 @@ export default function FactsPackRegistration({ prospectId, current, enabled }: 
           ? `今の登録: sha256 ${current.sha256.slice(0, 12)}…（${new Date(current.recordedAt).toLocaleString("ja-JP")}、${VIA_LABEL[current.via] ?? current.via}）`
           : current.kind === "none"
             ? "まだ登録されていません。文章の監査は、登録した事実と照合したものだけが送信の対象になります。"
-            : "登録を読み込めませんでした。画面を再読み込みしてください。"}
+            : current.kind === "not_set_up"
+              ? "店舗の事実の保存先がこの DB にまだ設定されていません（migration の適用前）。登録できません。"
+              : "登録を読み込めませんでした。画面を再読み込みしてください。"}
       </p>
       <p className={styles.note}>確認済みの事実だけを登録します。デモの事実がこの facts pack から作られていないときは登録できません。登録は追記のみで、後から変更・削除できません。</p>
-      {enabled ? (
+      {enabled && current.kind !== "not_set_up" ? (
         <>
           <label className={styles.note}>
             facts pack（JSON）

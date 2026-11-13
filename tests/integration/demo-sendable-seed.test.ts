@@ -5,7 +5,7 @@ import { importPackage, type PackageStore } from "@/lib/demo-version-package/imp
 import { assertDemoContentFromFacts, compCopyInput, LocalInputError, readCommittedFacts } from "@/lib/demo-version-package/local-inputs";
 import { buildPackage } from "@/lib/demo-version-package/package";
 import { SENDABLE_EMAIL, SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_PROSPECT_ID, seedSendableShop } from "@/lib/demo-version-package/seed-sendable";
-import { createUser, db, makeAdmin, resetSalesData, serviceClient } from "./helpers";
+import { createUser, db, makeAdmin, resetSalesData, serviceClient, setFactsCliRegistration } from "./helpers";
 
 // DEV-263a (Issue #263): the fictional sendable shop 環 on the LOCAL stack — the seed, the local facts path
 // (import-local.ts --trusted-facts) and the copy send block afterwards. Fictional shop, example.com only; nothing is
@@ -54,6 +54,7 @@ describe("the fictional sendable shop 環", () => {
     // DEV-263f: the dev-only source is registered in the facts store as an admin, then the import reads the store
     const adminId = await createUser("sendable-seed-admin@test.example.com");
     await makeAdmin(adminId);
+    await setFactsCliRegistration(true);
     const reg = await serviceClient().rpc("sales_register_facts_pack_as", { p_demo_id: s.demoId, p_facts_pack: new TextDecoder().decode(trusted), p_admin_id: adminId });
     expect(reg.error, reg.error?.message).toBeNull();
     expect(reg.data).toMatchObject({ shop_id: "fictional-bicycle-repair-tamaki", replayed: false });

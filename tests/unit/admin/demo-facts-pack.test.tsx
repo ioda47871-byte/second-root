@@ -138,3 +138,21 @@ describe("FactsPackRegistration (markup)", () => {
     expect(off).not.toContain("data-facts-input");
   });
 });
+
+describe("PR #269 L4: a database without the facts store", () => {
+  it("only an undefined table / column naming the store counts as not set up", async () => {
+    const { factsStoreSchemaMissing } = await import("@/lib/sales/facts-store");
+    expect(factsStoreSchemaMissing({ code: "PGRST205", message: "Could not find the table 'public.sales_demo_facts_packs' in the schema cache" })).toBe(true);
+    expect(factsStoreSchemaMissing({ code: "42P01", message: 'relation "public.sales_demo_facts_packs" does not exist' })).toBe(true);
+    expect(factsStoreSchemaMissing({ code: "42703", message: "column sales_demo_copy_facts_checks.facts_pack_id does not exist" })).toBe(true);
+    expect(factsStoreSchemaMissing({ code: "42703", message: "column x.other does not exist" })).toBe(false);
+    expect(factsStoreSchemaMissing({ code: "42501", message: "permission denied for table sales_demo_facts_packs" })).toBe(false);
+    expect(factsStoreSchemaMissing(null)).toBe(false);
+  });
+
+  it("the registration panel says so and offers no form", () => {
+    const html = renderToStaticMarkup(<FactsPackRegistration prospectId={PROSPECT} current={{ kind: "not_set_up" }} enabled />);
+    expect(html).toContain('data-facts-current="not_set_up"');
+    expect(html).not.toContain("data-facts-input");
+  });
+});
