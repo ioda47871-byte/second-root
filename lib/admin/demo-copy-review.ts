@@ -22,6 +22,7 @@ import { buildCopyReviewView, type CopyReviewView } from "@/lib/sales/copy-revie
 import { DEMO_VERSION_ERROR_LABEL, errorCodeOf, QUALITY_REVIEW_DISABLED_TEXT } from "@/lib/sales/demo-version/admin-messages";
 import { demoQualityReviewEnabled, type Env } from "@/lib/sales/demo-version/flags";
 import { normaliseNote } from "@/lib/sales/demo-version/review-input";
+import { NOTE_MAX_CHARS } from "@/lib/sales/demo-version/review-client";
 import type { createAuthClient } from "@/lib/supabase/server";
 
 type Client = Awaited<ReturnType<typeof createAuthClient>>;
@@ -48,7 +49,8 @@ export const CopyDecisionInput = z.strictObject({
   copySha256: Sha,
   pageHtmlSha256: Sha,
   pageCssSha256: Sha,
-  note: z.string().max(2000).nullable().optional(),
+  // the database's limit (sales_demo_note_valid via normaliseNote), not a looser one (PR #264 review L)
+  note: z.string().refine((n) => [...n.trim()].length <= NOTE_MAX_CHARS).nullable().optional(),
 });
 
 export type CopyDecisionResult = { ok: true; decision: CopyDecision } | { ok: false; error: string; refusals?: string[] };

@@ -17,10 +17,13 @@ export const REVIEW_EMPHASISED: readonly ReviewItem[] = ["shop_specific_structur
  * stays the judge). Trims and turns an empty note into null; refuses a URL, a domain-like word ("style.css",
  * "example.com") or an email address, and more than 500 characters.
  */
+/** The note limit of sales_demo_note_valid (characters, after trimming): the form and the input schema use it too. */
+export const NOTE_MAX_CHARS = 500;
+
 export function normaliseNote(raw: string | null | undefined): { ok: true; note: string | null } | { ok: false } {
   const n = (raw ?? "").trim();
   if (n === "") return { ok: true, note: null };
-  if ([...n].length > 500) return { ok: false };
+  if ([...n].length > NOTE_MAX_CHARS) return { ok: false };
   const k = n.normalize("NFKC");
   const lower = k.toLowerCase();
   if (/([a-z][a-z0-9+.-]*:\/\/|https?:|www\.)/.test(lower)) return { ok: false };

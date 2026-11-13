@@ -87,11 +87,16 @@ export function compCopyGate(i: CompCopyGateInput): CompCopyGate {
   const codes: string[] = [];
   // order: this round after the earlier rounds as a store would hold them (no owner revision in the comp lane); the
   // earlier rounds' own order and links are checked again by checkCopyQualityReview's chain
-  codes.push(...copyReviewAppendBlockers(previous.map((p) => p.review), r, {}));
+  const append = copyReviewAppendBlockers(previous.map((p) => p.review), r, {});
+  codes.push(...append);
   const check = checkCopyQualityReview(r, i.files, { previous, photoUrls });
-  // an honest fail: the only problems are the failed revision step the review names itself (as planCopyAppend)
+  // an honest fail: the only problems are the failed revision step the review names itself (as planCopyAppend), and
+  // only when the review is appendable and every earlier round re-checks cleanly on its own files (PR #264 review L:
+  // a REVISION_INVALID from a broken earlier round is never excused as this round's named failure)
   const named = new Set(r.revision_findings.filter((x) => x.severity === "fail").map((x) => x.code));
-  const honestFail = r.verdict === "fail" && check.codes.every((c) => c === "REVISION_INVALID" || named.has(c));
+  const earlierClean = () =>
+    previous.every((p, k) => checkCopyQualityReview(p.review, { factsPack: i.files.factsPack, copyRecord: p.copyRecord, pageHtml: p.pageHtml, pageCss: p.pageCss }, { previous: previous.slice(0, k), photoUrls }).ok);
+  const honestFail = r.verdict === "fail" && append.length === 0 && check.codes.every((c) => c === "REVISION_INVALID" || named.has(c)) && earlierClean();
   if (!check.ok && !honestFail) codes.push(...check.codes);
   if (codes.length) return refused(codes, r.round);
 

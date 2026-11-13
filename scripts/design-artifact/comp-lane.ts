@@ -43,7 +43,7 @@ import {
   joinedTextsLookingLikeFact,
   textsNotInRecord,
 } from "../../lib/design-agent/quality-pipeline/copy-record";
-import { checkCompCopy } from "./comp-copy";
+import { checkCompCopy, CompCopyError } from "./comp-copy";
 import { checkAllReads } from "./visual-read";
 
 const arg = (k: string) => {
@@ -114,7 +114,16 @@ export function checkReviewFile(
     },
   );
   const verdict = raw?.verdict;
-  const copy = verdict !== "show_owner" ? [] : factsPath ? compShowOwnerCodes(verdict, checkCompCopy(dir, factsPath)) : ["SHOW_WITHOUT_COPY_REVIEW", "COPY_FACTS_PACK_REQUIRED"];
+  // PR #264 review L: malformed earlier rounds (copy-rounds/) are a refusal of the copy review, not an input error
+  const gateOf = (facts: string): string[] => {
+    try {
+      return compShowOwnerCodes(verdict, checkCompCopy(dir, facts));
+    } catch (e) {
+      if (e instanceof CompCopyError) return ["SHOW_WITHOUT_COPY_APPROVE_CANDIDATE", "COPY_REVIEW_REFUSED", e.code];
+      throw e;
+    }
+  };
+  const copy = verdict !== "show_owner" ? [] : factsPath ? gateOf(factsPath) : ["SHOW_WITHOUT_COPY_REVIEW", "COPY_FACTS_PACK_REQUIRED"];
   const codes = [...r.codes, ...copy];
   return { ok: codes.length === 0, codes };
 }

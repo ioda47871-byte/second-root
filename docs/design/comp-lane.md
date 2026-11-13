@@ -78,6 +78,7 @@ npx tsx scripts/design-artifact/comp-lane.ts --check-review <カンプ> --facts 
 - `--audit` は今のファイルを鎖の次の round として監査し、`copy-review.json` を書く。同じ facts の別のファイルの監査は上書きしない (`COPY_REVIEW_EXISTS_FOR_OTHER_FILES`)。直した頁は新しい round 0 ではなく、改稿の round として監査する。
 - `--revise` は次の段が `revise` のときだけ (上限 `MAX_COPY_REVISION_ROUNDS` = 2 の内)。今のファイルと監査を `copy-rounds/<n>/` へ移し、ファイルはその場で文言だけ直す。改稿は `validateCopyRevision` と鎖全体の再監査を通る。
 - `hold` は理由を出して止まる (事実を作らない)。`fail` は終端で、改稿できない。改ざん・古い監査・鎖の崩れは `refused`。
+- 文章の門より前に `show_owner` になったコミット済みのカンプ (`copy-review.json` を持たない) は、`--check-review` で落ちる。これは意図どおりで、そのカンプのファイルは変えない (オーナーに見せ直すなら、写して監査する)。
 - 架空の研究のカンプは、オーナーに見せられても送信できない (`FICTIONAL_RESEARCH_NOT_SENDABLE`)。実店舗の round がオーナーの確認に達した後の改稿依頼は、オーナーの保存先 (DB) が要るので、このレーンでは受けない。
 
 **限界**: このレーンはファイルで動く。`copy-review.json` を消して直したファイルを round 0 として監査し直すことは、ファイルだけでは止められない。追記のみの鎖は、取り込みの時に DB の保存先 (DEV-199e) が強制する。

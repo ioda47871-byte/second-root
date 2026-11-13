@@ -1,0 +1,555 @@
+{
+  "schema": "copy_quality_review_v1",
+  "auditor_version": "copy_quality_rules_v1",
+  "shop_id": "fictional-bicycle-repair-tamaki",
+  "lane": "real_shop_proposal",
+  "facts_sha256": "dc4ce58609b5b2c602622dd6636b6563a86be0dc4456857697a79d3fbbd92595",
+  "facts_content_sha256": "6ba0eed4dd1f6f0b01120a64ad1f07a4d994bbf04767b71e027913f0502e646e",
+  "copy_sha256": "21d1e687e9b563182d520e77509cf0122fc60938113974b71b39144cba53daed",
+  "page_html_sha256": "4349817874445187587a398c62eb808185ef3b4a6c603871702f781d907b8da1",
+  "page_css_sha256": "00171b317e1ce41583dcb56cb55fd011a7703c590fddc65c58f2cdb532c38f59",
+  "round": 0,
+  "previous_copy_sha256": null,
+  "revision_findings": [],
+  "base_checks": {
+    "ok": true,
+    "codes": []
+  },
+  "sections": [
+    {
+      "section_id": "_page",
+      "index": 0,
+      "entries": [
+        {
+          "position": {
+            "section": 0,
+            "entry": 0
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "電話",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "000-0000-0263",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 2
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "時間",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 3
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "10:00〜19:00",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 4
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "定休",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 5
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "水曜",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 6
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "所在地",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 7
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空市架空区架空町二丁目3-5",
+          "copy_item_id": "address"
+        }
+      ]
+    },
+    {
+      "section_id": "hero",
+      "index": 1,
+      "entries": [
+        {
+          "position": {
+            "section": 1,
+            "entry": 0
+          },
+          "role": "heading",
+          "kind": "fact",
+          "text": "環",
+          "copy_item_id": "name"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空自転車修理 環",
+          "copy_item_id": "name-full"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 2
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "まがった車輪も、まっすぐに。",
+          "copy_item_id": "tagline"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 3
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "パンク修理から車輪の振れ取りまで、店先の作業台で直します。",
+          "copy_item_id": "how"
+        }
+      ]
+    },
+    {
+      "section_id": "spokes",
+      "index": 2,
+      "entries": [
+        {
+          "position": {
+            "section": 2,
+            "entry": 0
+          },
+          "role": "decoration",
+          "kind": "decoration",
+          "text": "まわる",
+          "copy_item_id": "ghost-turn"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 1
+          },
+          "role": "decoration",
+          "kind": "decoration",
+          "text": "まわる",
+          "copy_item_id": "ghost-turn"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 2
+          },
+          "role": "heading",
+          "kind": "prose",
+          "text": "修理のご案内",
+          "copy_item_id": "h-spokes"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 3
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜振れ取り台の車輪",
+          "copy_item_id": "ph-d"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 4
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "車輪の振れ取り",
+          "copy_item_id": "s4"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 5
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜パンクを直す手元",
+          "copy_item_id": "ph-a"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 6
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "パンク修理",
+          "copy_item_id": "s1"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 7
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜外したチェーン",
+          "copy_item_id": "ph-c"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 8
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "チェーン交換",
+          "copy_item_id": "s3"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 9
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜ブレーキの接写",
+          "copy_item_id": "ph-b"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 10
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "ブレーキ調整",
+          "copy_item_id": "s2"
+        }
+      ]
+    },
+    {
+      "section_id": "truing",
+      "index": 3,
+      "entries": [
+        {
+          "position": {
+            "section": 3,
+            "entry": 0
+          },
+          "role": "heading",
+          "kind": "prose",
+          "text": "振れ取り",
+          "copy_item_id": "h-truing"
+        },
+        {
+          "position": {
+            "section": 3,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "振れ取りでは、スポークを一本ずつ締めて車輪をまっすぐにします",
+          "copy_item_id": "truing"
+        },
+        {
+          "position": {
+            "section": 3,
+            "entry": 2
+          },
+          "role": "decoration",
+          "kind": "decoration",
+          "text": "締める",
+          "copy_item_id": "ghost-tight"
+        }
+      ]
+    },
+    {
+      "section_id": "check",
+      "index": 4,
+      "entries": [
+        {
+          "position": {
+            "section": 4,
+            "entry": 0
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜作業台と自転車",
+          "copy_item_id": "ph-bench"
+        },
+        {
+          "position": {
+            "section": 4,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "修理の前に、どこを直すかを一緒に確かめます",
+          "copy_item_id": "check"
+        },
+        {
+          "position": {
+            "section": 4,
+            "entry": 2
+          },
+          "role": "heading",
+          "kind": "prose",
+          "text": "修理の流れ",
+          "copy_item_id": "h-check"
+        }
+      ]
+    },
+    {
+      "section_id": "lesson",
+      "index": 5,
+      "entries": [
+        {
+          "position": {
+            "section": 5,
+            "entry": 0
+          },
+          "role": "heading",
+          "kind": "prose",
+          "text": "空気の入れ方の講座",
+          "copy_item_id": "h-lesson"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "月に一回、空気の入れ方の講座を開いています",
+          "copy_item_id": "lesson"
+        }
+      ]
+    },
+    {
+      "section_id": "visit",
+      "index": 6,
+      "entries": [
+        {
+          "position": {
+            "section": 6,
+            "entry": 0
+          },
+          "role": "heading",
+          "kind": "prose",
+          "text": "店舗情報",
+          "copy_item_id": "h-visit"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 1
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "電話",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 2
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "000-0000-0263",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 3
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "所在地",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 4
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空市架空区架空町二丁目3-5",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 5
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "道順",
+          "copy_item_id": "access"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 6
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空線架空駅 北口から徒歩5分",
+          "copy_item_id": "access"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 7
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "時間",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 8
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "10:00〜19:00",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 9
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "定休",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 10
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "水曜",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 6,
+            "entry": 11
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "動作確認用の架空の自転車修理店です。実在の店ではありません。",
+          "copy_item_id": "fictional"
+        }
+      ]
+    }
+  ],
+  "axes": {
+    "natural_japanese": {
+      "score": 5,
+      "evidence": [
+        "real-shop lane: prose is proposal_pending_review and is not judged as the shop's words; only the facts and labels shown are judged"
+      ]
+    },
+    "shop_specificity": {
+      "score": 5,
+      "evidence": [
+        "real-shop lane: prose is proposal_pending_review and is not judged as the shop's words; only the facts and labels shown are judged"
+      ]
+    },
+    "usefulness": {
+      "score": 5,
+      "evidence": [
+        "5 of 5 non-hero sections carry a fact or label",
+        "offering, hours and location are on the page"
+      ]
+    },
+    "restraint_consistency": {
+      "score": 5,
+      "evidence": [
+        "real-shop lane: prose is proposal_pending_review and is not judged as the shop's words; only the facts and labels shown are judged"
+      ]
+    },
+    "fact_correctness": {
+      "score": 5,
+      "evidence": [
+        "facts pack, HTML and copy record checks pass",
+        "prose lines with a claim sign the facts do not hold: 0"
+      ]
+    }
+  },
+  "findings": [
+    {
+      "code": "COPY_APPROVAL_MISSING",
+      "severity": "hold",
+      "rule": "real_shop_needs_owner_approval",
+      "location": null,
+      "texts": [
+        "まがった車輪も、まっすぐに。",
+        "修理のご案内",
+        "写真｜振れ取り台の車輪",
+        "写真｜パンクを直す手元",
+        "写真｜外したチェーン",
+        "写真｜ブレーキの接写",
+        "振れ取り",
+        "写真｜作業台と自転車",
+        "修理の流れ",
+        "空気の入れ方の講座",
+        "店舗情報"
+      ],
+      "reason": "Copy proposed for a real shop is never the shop's own words and never sent before the owner approves it (a separate record).",
+      "evidence": [
+        "lane real_shop_proposal; 11 proposal_pending_review lines on the page"
+      ]
+    }
+  ],
+  "verdict": "hold",
+  "unresolved": [
+    "COPY_APPROVAL_MISSING"
+  ]
+}
