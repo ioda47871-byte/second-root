@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,8 +9,8 @@ import { COPY_FACTS_NAME, priorName } from "@/lib/demo-version-package/copy";
 import { importPackage, type PackageStore } from "@/lib/demo-version-package/import";
 import { assertDemoContentFromFacts, canonicalJson, compCopyInput, LocalInputError, readCommittedFacts } from "@/lib/demo-version-package/local-inputs";
 import { buildPackage, checkPackageCopy, PACKAGE_FORMAT_COPY, type DemoVersionPackage } from "@/lib/demo-version-package/package";
-import { demoContentFromFacts, rinDemoContent, type FactsPack } from "@/lib/demo-version-package/seed-rin";
-import { SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_SHOP_ID, sendableDemoContent } from "@/lib/demo-version-package/seed-sendable";
+import { demoContentFromFacts, RIN_SHOP_ID, rinDemoContent, type FactsPack } from "@/lib/demo-version-package/seed-rin";
+import { SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_SHOP_ID, sendableDemoContent, sendableSeedContent } from "@/lib/demo-version-package/seed-sendable";
 import { isFictionalShop } from "@/lib/design-agent/quality-pipeline/copy-record";
 import { reviewCopyQuality } from "@/lib/design-agent/quality-pipeline/copy-quality-review";
 import { auditCompCopy, checkCompCopy, startCompCopyRevision } from "../../../scripts/design-artifact/comp-copy";
@@ -165,11 +166,13 @@ describe("import-local --trusted-facts: the local facts path", () => {
     writeFileSync(join(d, "facts.json"), readFileSync(FACTS));
     git("add", "facts.json");
     git("commit", "-q", "-m", "facts");
-    return d;
+    // the remote-tracking develop as a clone would have it (nothing is fetched)
+    git("update-ref", "refs/remotes/origin/develop", "HEAD");
+    return { d, git };
   };
 
   it("reads only a committed, unmodified file inside the repository (no symbolic link)", () => {
-    const d = gitRepo();
+    const { d } = gitRepo();
     expect(Buffer.from(readCommittedFacts(d, "facts.json")).equals(readFileSync(FACTS))).toBe(true);
     writeFileSync(join(d, "untracked.json"), readFileSync(FACTS));
     expect(code(() => readCommittedFacts(d, "untracked.json"))).toBe("TRUSTED_FACTS_NOT_COMMITTED");
@@ -186,20 +189,65 @@ describe("import-local --trusted-facts: the local facts path", () => {
     expect(code(() => readCommittedFacts(d, "missing.json"))).toBe("TRUSTED_FACTS_MISSING");
   });
 
-  it("the fixture's facts pack is committed in this repository", () => {
-    expect(Buffer.from(readCommittedFacts(REPO, SENDABLE_FACTS_PATH)).equals(readFileSync(FACTS))).toBe(true);
+  it("PR #266 M1: a pack committed only at the local HEAD (not the same blob on origin/develop) is refused", () => {
+    const { d, git } = gitRepo();
+    // a new pack committed on the local branch only
+    writeFileSync(join(d, "head-only.json"), readFileSync(FACTS));
+    git("add", "head-only.json");
+    git("commit", "-q", "-m", "head only");
+    expect(code(() => readCommittedFacts(d, "head-only.json"))).toBe("TRUSTED_FACTS_NOT_ON_DEVELOP");
+    expect(Buffer.from(readCommittedFacts(d, "head-only.json", { requireBase: false })).equals(readFileSync(FACTS))).toBe(true);
+    // the develop pack changed by a local commit (committed, unmodified on disk, but not develop's blob)
+    writeFileSync(join(d, "facts.json"), `${readFileSync(FACTS, "utf8")}\n`);
+    git("commit", "-q", "-am", "local edit");
+    expect(code(() => readCommittedFacts(d, "facts.json"))).toBe("TRUSTED_FACTS_NOT_ON_DEVELOP");
+    // no origin/develop at all
+    git("update-ref", "-d", "refs/remotes/origin/develop");
+    expect(code(() => readCommittedFacts(d, "facts.json"))).toBe("TRUSTED_FACTS_NOT_ON_DEVELOP");
+  });
+
+  it("the fixture's facts pack is committed at this repository's HEAD", () => {
+    expect(Buffer.from(readCommittedFacts(REPO, SENDABLE_FACTS_PATH, { requireBase: false })).equals(readFileSync(FACTS))).toBe(true);
   });
 
   it("the demo content must be the content derived from the same facts pack bytes (key order aside)", () => {
-    const content = sendableDemoContent(pack());
+    const content = sendableSeedContent(factsBytes());
+    expect(content.facts_pack_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(() => assertDemoContentFromFacts(content, factsBytes())).not.toThrow();
     const reordered = JSON.parse(canonicalJson(content));
     expect(() => assertDemoContentFromFacts(reordered, factsBytes())).not.toThrow();
     expect(code(() => assertDemoContentFromFacts({ ...content, hours: "9:00〜18:00" }, factsBytes()))).toBe("TRUSTED_FACTS_CONTENT_MISMATCH");
+    // without the sha (content derived the 輪 way only) it is refused
+    expect(code(() => assertDemoContentFromFacts(sendableDemoContent(pack()), factsBytes()))).toBe("TRUSTED_FACTS_SHA_MISMATCH");
     expect(code(() => assertDemoContentFromFacts({ ...content, extra: 1 }, factsBytes()))).toBe("TRUSTED_FACTS_CONTENT_MISMATCH");
     const rin = readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/facts-pack.json"));
-    expect(code(() => assertDemoContentFromFacts(content, new Uint8Array(rin)))).toBe("TRUSTED_FACTS_CONTENT_MISMATCH");
-    expect(code(() => assertDemoContentFromFacts(content, new TextEncoder().encode("{}")))).toBe("TRUSTED_FACTS_INVALID");
+    expect(code(() => assertDemoContentFromFacts(content, new Uint8Array(rin)))).toBe("TRUSTED_FACTS_SHA_MISMATCH");
+    expect(code(() => assertDemoContentFromFacts(content, new TextEncoder().encode("{}")))).toBe("TRUSTED_FACTS_SHA_MISMATCH");
+  });
+
+  it("PR #266 M1: the whole pack is bound — an added fact (F17 創業50年) is refused, mapped or not", () => {
+    const content = sendableSeedContent(factsBytes());
+    const withFact = (key: string) => {
+      const p = pack();
+      p.facts.push({ id: "F17", key, value: "創業50年", source_id: "S1" } as FactsPack["facts"][number]);
+      return new TextEncoder().encode(`${JSON.stringify(p, null, 2)}\n`);
+    };
+    // an unmapped key: the demo content would not carry it, so the derivation refuses it
+    expect(code(() => sendableSeedContent(withFact("history")))).toBe("TRUSTED_FACTS_UNMAPPED_KEY");
+    expect(code(() => assertDemoContentFromFacts({ ...content, facts_pack_sha256: createHash("sha256").update(withFact("history")).digest("hex") }, withFact("history")))).toBe("TRUSTED_FACTS_UNMAPPED_KEY");
+    // a mapped key on the seeded demo: the sha no longer names the trusted bytes
+    expect(code(() => assertDemoContentFromFacts(content, withFact("statement_3")))).toBe("TRUSTED_FACTS_SHA_MISMATCH");
+    expect(code(() => assertDemoContentFromFacts(content, withFact("history")))).toBe("TRUSTED_FACTS_SHA_MISMATCH");
+    // a key twice
+    expect(code(() => sendableSeedContent(withFact("hours")))).toBe("TRUSTED_FACTS_DUPLICATE_KEY");
+  });
+
+  it("PR #266 L1: a 輪 demo is refused whatever the facts pack", () => {
+    const rinBytes = new Uint8Array(readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/facts-pack.json")));
+    const rinContent = rinDemoContent(JSON.parse(new TextDecoder().decode(rinBytes)) as FactsPack);
+    expect(rinContent.facts_pack).toBe(RIN_SHOP_ID);
+    expect(code(() => assertDemoContentFromFacts(rinContent, rinBytes))).toBe("TRUSTED_FACTS_RIN_DEMO");
+    expect(code(() => assertDemoContentFromFacts({ ...sendableSeedContent(factsBytes()), facts_pack: RIN_SHOP_ID }, factsBytes()))).toBe("TRUSTED_FACTS_RIN_DEMO");
   });
 
   it("the CLI refuses a facts pack outside the repository before any request", () => {
@@ -230,7 +278,7 @@ describe("import-local --trusted-facts: the local facts path", () => {
               eq: () => q,
               in: () => q,
               order: async () => ({ data: [], error: null }),
-              maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: "33333333-3333-4333-8333-333333333333", content: sendableDemoContent(pack()) } : { id: VERSION, demo_id: DEMO, version_no: 1, storage_prefix: `v1/${DEMO}/${VERSION}/`, bundle_sha256: p.bundleSha256 }, error: null }),
+              maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: "33333333-3333-4333-8333-333333333333", content: sendableSeedContent(factsBytes()) } : { id: VERSION, demo_id: DEMO, version_no: 1, storage_prefix: `v1/${DEMO}/${VERSION}/`, bundle_sha256: p.bundleSha256 }, error: null }),
             };
             return q;
           },
@@ -243,8 +291,9 @@ describe("import-local --trusted-facts: the local facts path", () => {
     const objects = new Map<string, Uint8Array>();
     const store: PackageStore = { download: async (k) => objects.get(k) ?? null, upload: async (k, b) => void objects.set(k, b) };
     // what import-local.ts does with --trusted-facts: the committed bytes, the content check, then the import
-    const trusted = readCommittedFacts(REPO, SENDABLE_FACTS_PATH);
-    assertDemoContentFromFacts(sendableDemoContent(pack()), trusted);
+    // (readCommittedFacts is tested above on a scratch repository: this branch's fixture is not on origin/develop yet)
+    const trusted = factsBytes();
+    assertDemoContentFromFacts(sendableSeedContent(factsBytes()), trusted);
     const res = await importPackage(pkg, { client: client(pkg), store, demoId: DEMO, trustedFactsPack: trusted });
     expect(res.copy).toMatchObject({ status: "checked", facts_from_facts_path: true, copy_verdict: "approve_candidate", send_blockers: ["OWNER_APPROVAL_MISSING"] });
     const recorded = rpcs.find((r) => r.name === "sales_record_copy_review")!;

@@ -50,7 +50,7 @@ export const CopyDecisionInput = z.strictObject({
   pageHtmlSha256: Sha,
   pageCssSha256: Sha,
   // the database's limit (sales_demo_note_valid via normaliseNote), not a looser one (PR #264 review L)
-  note: z.string().refine((n) => [...n.trim()].length <= NOTE_MAX_CHARS).nullable().optional(),
+  note: z.string().max(NOTE_MAX_CHARS * 4).refine((n) => [...n.trim()].length <= NOTE_MAX_CHARS).nullable().optional(),
 });
 
 export type CopyDecisionResult = { ok: true; decision: CopyDecision } | { ok: false; error: string; refusals?: string[] };

@@ -74,3 +74,17 @@ Base: develop (059b458d) + PR #264 (DEV-199b) の branch を merge commit で取
 - facts の経路はローカルのもの (コミット済みの facts pack) だけ。hosted の facts の保存先と送信時の比べ直しはオーナー承認待ち (上)。
 - 管理画面のオーナーの文章の確認・品質の承認・公開の共有 URL・送信の全体の E2E は後の PR。
 - 輪 の d1-v9 (と `<wbr>` を使う研究の頁) は、そのままでは v2 の包みのサーバーの文章の検査を通らない。サーバーの抽出を `<wbr>` で切らないようにするかは別の判断 (ここでは検査を変えず、fixture 側で `<wbr>` を外した)。
+
+## Fresh Review (PR #266 @ 1ac51b5: C0 H0 M1 L5) への対応
+
+- **M1 (内容の照合が facts pack 全体を縛らない / committed がローカルの HEAD だけ)**:
+  - (a) seed は `sales_demos.content.facts_pack_sha256` に facts pack のバイトの sha256 を書く (`sendableSeedContent` = `demoContentWithFactsSha`)。`assertDemoContentFromFacts` は、trusted のバイトがその sha256 になることを先に要求し (`TRUSTED_FACTS_SHA_MISMATCH`)、そのうえで導いた内容 + sha と正規化した JSON で一致を見る。導き方 (`demoContentFromFactsBytes`) は、写していない鍵 (`TRUSTED_FACTS_UNMAPPED_KEY`) と同じ鍵の重複 (`TRUSTED_FACTS_DUPLICATE_KEY`) を拒否する。余分な欄は FactsPack の strictObject が拒否する。F17「創業50年」を足した pack は、鍵が写されない (`history`) なら導出で、写される (`statement_3`) なら sha で落ちる (テスト)。**輪 の経路は不変**: `rinDemoContent`・`seedRinShop` は変えていない (sha は 環 の seed だけ。輪 を seed し直す必要はない)。
+  - (b) `readCommittedFacts` は、HEAD のバイトと作業ファイルの一致に加えて、`git rev-parse origin/develop:<rel>` の blob id が HEAD のものと同じことを要求する (fetch しない。無い・違う → `TRUSTED_FACTS_NOT_ON_DEVELOP`)。HEAD だけにある pack・ローカルの commit で変えた pack・origin/develop の無い repo は拒否 (一時の git のテスト)。seed は HEAD に commit 済みであれば読める (`requireBase: false`、取り込みの trusted は常に develop を要求)。
+  - 結果として、この PR が develop に入るまで `--trusted-facts` で 環 を取り込むことはできない (ローカルで `TRUSTED_FACTS_NOT_ON_DEVELOP` を確認)。統合テストと代役の取り込みのテストは、コミット済みのバイトを直接使う (facts の経路の判定自体は一時の git で unit テスト)。
+- **L1**: 対象のデモの `content.facts_pack` が `RIN_SHOP_ID` なら `TRUSTED_FACTS_RIN_DEMO` (sha の照合より先)。テスト。
+- **L2**: 送信の門 `lib/sales/test-recipient.ts` (`testRecipientBlock`): デモの `content.facts_pack` が `^fictional-`、またはメールの宛先のドメインが予約済み (example.com / .net / .org とその下、`*.example`・`*.test`・`*.invalid`・`*.localhost`) なら、`approveSend` と `markFollowUpSent` は RPC の前に拒否する。`SALES_LOCAL_E2E_TEST_RECIPIENTS` がちょうど `"true"` のときだけ通す (既定 OFF)。ローカルの E2E は `playwright.config.ts` の webServer の env でこれを立てる (既存の e2e は example.com の宛先を承認するため。デプロイ先には設定しない)。`loadInitial` の select に `facts_pack:content->>facts_pack` を足した。**DB の guard は migration が要るので入れていない (サーバーの門だけ)**: DB 側 (`sales_approve_outreach`) の同等の拒否は、migration の承認とともに別の Task。テスト (`tests/unit/sales/test-recipient.test.ts`): 純粋な判定と、action が flag なしで拒否し RPC を呼ばない / flag ありで従来どおり承認。
+- **L3**: `lib/demo-version-package/import.ts` の冒頭の注記 (「import-local.ts は渡さない」) を、`--trusted-facts` のときだけ渡す、に直した。
+- **L4**: 環 は、送信の経路の試験のために、輪 の架空の事実の文 (statement / service / workshop) と頁の構成を**意図して**使い回している (架空の店どうし。実在の店の情報は含まない)。
+- **L5**: `CopyDecisionInput.note` は、前後の空白を除いた文字数の refine の前に、生の `.max(NOTE_MAX_CHARS * 4)` を置いた。
+
+再実行: 関係する unit (demo-version-package・sales・admin・phase2f isolation・comp-copy-gate・comp-lane・ai-tasks: 66 ファイル 1498 件) pass、統合 `demo-sendable-seed` (3) を scratch のローカルの stack で pass、tsc・eslint・check:secrets pass。e2e は CI (playwright.config.ts の env の追加を含む)。

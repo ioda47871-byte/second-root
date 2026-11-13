@@ -10133,6 +10133,7 @@
         "lib/demo-version-package/local-inputs.ts・seed-sendable.ts (新規)・seed-rin.ts (demoContentFromFacts の切り出し、輪 の出力は不変)",
         "design-library/research/quality-pipeline/poc/sendable-tamaki/ (新規の fixture)",
         "PR #264 の Low: docs/design/comp-lane.md・scripts/design-artifact/comp-lane.ts・lib/design-agent/quality-pipeline/comp-copy-gate.ts・lib/admin/demo-copy-review.ts・lib/sales/demo-version/review-client.ts・components/admin/demo/CopyDecisionForm.tsx",
+        "Fresh Review (PR #266) の対応: lib/sales/test-recipient.ts (新規、送信の門)・app/admin/sales/_actions/send.ts・lib/admin/initial-send.ts (select に facts_pack)・playwright.config.ts (ローカルの E2E の env)・lib/demo-version-package/import.ts (注記)",
         "tests (新規。既存の固定した一覧への追加は .ai/reviews/DEV-263a.md に記録)",
         ".ai/tasks.json",
         ".ai/reviews/DEV-263a.md"
@@ -10148,6 +10149,7 @@
       "human_approval_triggers": [
         "hosted の facts の保存先 (登録の時に書く追記のみの表) の新設はオーナー承認 (未着手)",
         "送信の時点での保存済みの facts pack と facts の経路の比べ直し (DEV-199b の必須の前提) はオーナー承認 (未着手)",
+        "架空の店・予約済みドメインの送信拒否の DB 側の guard (migration) は承認が要る (今はサーバーの門だけ)",
         "フラグの有効化・Staging / Production への適用は別の承認",
         "PR の Fresh Review と merge"
       ],

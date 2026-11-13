@@ -6,21 +6,25 @@
  *     --audit, and the earlier rounds in copy-rounds/<i>/) with the facts pack given, as the bytes buildPackage's `copy`
  *     takes. Nothing is audited here: buildPackage checks the copy again (verifyPackageCopy) and refuses what fails.
  *   - readCommittedFacts: the LOCAL facts path. The facts pack must be a file inside the repository, not a symbolic link,
- *     and exactly the bytes committed at HEAD (an untracked, staged-only or edited file is refused). Those bytes are what
- *     the importer passes as `trustedFactsPack`.
+ *     exactly the bytes committed at HEAD (an untracked, staged-only or edited file is refused) AND the same blob at
+ *     origin/develop (PR #266 M1: a pack committed only on a local branch is refused; nothing is fetched, the local
+ *     origin/develop ref is read). Those bytes are what the importer passes as `trustedFactsPack`.
  *   - assertDemoContentFromFacts: the demo row and the facts evidence share one origin — the demo's
- *     sales_demos.content must equal the content derived from the same facts pack bytes (demoContentFromFacts, the
- *     derivation the 輪 seed has always used), compared as canonical JSON (jsonb does not keep key order).
+ *     sales_demos.content must hold the sha256 of exactly these facts pack bytes (content.facts_pack_sha256, written by
+ *     the seed) and equal the content derived from them (demoContentFromFacts, the derivation the 輪 seed has always
+ *     used, here with every fact key mapped: an unmapped key is refused), compared as canonical JSON (jsonb does not keep
+ *     key order). A 輪 demo (content.facts_pack = RIN_SHOP_ID) is refused: its photo packages are ai_demo_internal.
  *
  * This is the local facts path only. The hosted facts store (an append-only table written at registration) and the
  * send-time re-compare of the stored facts pack with the facts path are NOT here: both stay open owner-approval items
  * (.ai/reviews/DEV-263a.md).
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
-import { demoContentFromFacts } from "./seed-rin";
+import { demoContentFromFacts, RIN_SHOP_ID } from "./seed-rin";
 
 export class LocalInputError extends Error {
   constructor(public readonly code: string) {
@@ -71,11 +75,16 @@ export const repoGit =
   (args) =>
     execFileSync("git", args, { cwd: repo, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 8 * 1024 * 1024 });
 
+/** The branch whose blob the facts pack must be (the local remote-tracking ref; nothing is fetched). */
+export const FACTS_BASE_REF = "origin/develop";
+
 /**
  * The facts pack from the local facts path: inside the repository, a regular file (no symbolic link anywhere on the
- * way), tracked and byte-identical to HEAD. Returns the committed bytes.
+ * way), tracked, byte-identical to HEAD and the same blob at FACTS_BASE_REF (unless `requireBase` is false: the seed
+ * reads a committed pack before it is on develop; the trusted import never does). Returns the committed bytes.
  */
-export function readCommittedFacts(repo: string, path: string, git: GitRunner = repoGit(repo)): Bytes {
+export function readCommittedFacts(repo: string, path: string, o: { git?: GitRunner; requireBase?: boolean } = {}): Bytes {
+  const git = o.git ?? repoGit(repo);
   const abs = resolve(repo, path);
   const repoReal = realpathSync(repo);
   const inside = (p: string, base: string) => {
@@ -98,10 +107,30 @@ export function readCommittedFacts(repo: string, path: string, git: GitRunner = 
   }
   const onDisk = readFileSync(real);
   if (!committed.equals(onDisk)) throw new LocalInputError("TRUSTED_FACTS_MODIFIED");
+  if (o.requireBase !== false) {
+    const blob = (ref: string) => {
+      try {
+        return git(["rev-parse", "--verify", "--quiet", `${ref}:${rel}`]).toString("utf8").trim();
+      } catch {
+        return "";
+      }
+    };
+    const base = blob(FACTS_BASE_REF);
+    if (!/^[0-9a-f]{40,64}$/.test(base) || base !== blob("HEAD")) throw new LocalInputError("TRUSTED_FACTS_NOT_ON_DEVELOP");
+  }
   return new Uint8Array(committed);
 }
 
-/** The demo content derived from facts pack bytes (FactsPack schema, then demoContentFromFacts). */
+/** The fact keys the demo content maps (demoContentFromFacts): one of each, and numbered services / statements. */
+const SINGLE_KEYS = new Set(["name", "category", "ward", "address", "hours", "closed_days", "access", "phone", "description", "workshop"]);
+const MANY_KEY = /^(service|statement)_[1-9][0-9]{0,2}$/;
+
+export const factsPackSha256 = (b: Bytes) => createHash("sha256").update(b).digest("hex");
+
+/**
+ * The demo content derived from facts pack bytes (FactsPack schema — strict, no extra field —, every key mapped, no
+ * key twice, then demoContentFromFacts). An unmapped key (a fact the demo would not carry) is refused.
+ */
 export function demoContentFromFactsBytes(b: Bytes): Record<string, unknown> {
   let pack: FactsPack;
   try {
@@ -109,11 +138,22 @@ export function demoContentFromFactsBytes(b: Bytes): Record<string, unknown> {
   } catch {
     throw new LocalInputError("TRUSTED_FACTS_INVALID");
   }
+  const seen = new Set<string>();
+  for (const f of pack.facts) {
+    if (!SINGLE_KEYS.has(f.key) && !MANY_KEY.test(f.key)) throw new LocalInputError("TRUSTED_FACTS_UNMAPPED_KEY");
+    if (seen.has(f.key)) throw new LocalInputError("TRUSTED_FACTS_DUPLICATE_KEY");
+    seen.add(f.key);
+  }
   try {
     return demoContentFromFacts(pack);
   } catch {
     throw new LocalInputError("TRUSTED_FACTS_INCOMPLETE");
   }
+}
+
+/** The content a demo seeded from these facts pack bytes holds: the derived content and the bytes' sha256. */
+export function demoContentWithFactsSha(b: Bytes): Record<string, unknown> {
+  return { ...demoContentFromFactsBytes(b), facts_pack_sha256: factsPackSha256(b) };
 }
 
 /** JSON with object keys sorted at every level (jsonb's key order is not the writer's). */
@@ -127,7 +167,13 @@ export function canonicalJson(v: unknown): string {
   return JSON.stringify(v);
 }
 
-/** Refuses unless the demo's content is exactly the content derived from these facts pack bytes. */
+/**
+ * Refuses unless the demo's content is exactly demoContentWithFactsSha of these facts pack bytes (it names their
+ * sha256 and holds what they derive to). A 輪 demo is refused first.
+ */
 export function assertDemoContentFromFacts(content: unknown, factsPack: Bytes): void {
-  if (canonicalJson(content ?? null) !== canonicalJson(demoContentFromFactsBytes(factsPack))) throw new LocalInputError("TRUSTED_FACTS_CONTENT_MISMATCH");
+  const c = content && typeof content === "object" && !Array.isArray(content) ? (content as Record<string, unknown>) : null;
+  if (c?.facts_pack === RIN_SHOP_ID) throw new LocalInputError("TRUSTED_FACTS_RIN_DEMO");
+  if (!c || c.facts_pack_sha256 !== factsPackSha256(factsPack)) throw new LocalInputError("TRUSTED_FACTS_SHA_MISMATCH");
+  if (canonicalJson(c) !== canonicalJson(demoContentWithFactsSha(factsPack))) throw new LocalInputError("TRUSTED_FACTS_CONTENT_MISMATCH");
 }

@@ -1,11 +1,9 @@
-import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { importPackage, type PackageStore } from "@/lib/demo-version-package/import";
 import { assertDemoContentFromFacts, compCopyInput, LocalInputError, readCommittedFacts } from "@/lib/demo-version-package/local-inputs";
 import { buildPackage } from "@/lib/demo-version-package/package";
-import type { FactsPack } from "@/lib/demo-version-package/seed-rin";
 import { SENDABLE_EMAIL, SENDABLE_FACTS_PATH, SENDABLE_PAGE_DIR, SENDABLE_PROSPECT_ID, seedSendableShop } from "@/lib/demo-version-package/seed-sendable";
 import { db, resetSalesData, serviceClient } from "./helpers";
 
@@ -14,7 +12,8 @@ import { db, resetSalesData, serviceClient } from "./helpers";
 // sent (no outreach is created), no network, no model.
 
 const REPO = resolve(__dirname, "../..");
-const pack = () => JSON.parse(readFileSync(join(REPO, SENDABLE_FACTS_PATH), "utf8")) as FactsPack;
+// the committed bytes (the facts path check itself, origin/develop included, is unit-tested on a scratch repository)
+const factsBytes = () => readCommittedFacts(REPO, SENDABLE_FACTS_PATH, { requireBase: false });
 const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: { r: Math.floor(Math.random() * 255), g: 90, b: 140 } } }).png().toBuffer();
 const memoryStore = (): PackageStore => {
   const objects = new Map<string, Uint8Array>();
@@ -23,7 +22,7 @@ const memoryStore = (): PackageStore => {
 const seed = async () => {
   const c = await db.connect();
   try {
-    return await seedSendableShop(c, pack());
+    return await seedSendableShop(c, factsBytes());
   } finally {
     c.release();
   }
@@ -50,7 +49,7 @@ describe("the fictional sendable shop 環", () => {
 
   it("imported with the facts from the facts path: stored as such, and the copy send block waits only on the owner", async () => {
     const s = await seed();
-    const trusted = readCommittedFacts(REPO, SENDABLE_FACTS_PATH);
+    const trusted = factsBytes();
     assertDemoContentFromFacts(await demoContent(s.demoId), trusted);
     const res = await importPackage(await fixturePackage(), { client: serviceClient(), store: memoryStore(), demoId: s.demoId, trustedFactsPack: trusted });
     expect(res.copy).toMatchObject({ status: "checked", facts_from_facts_path: true, copy_verdict: "approve_candidate", send_blockers: ["OWNER_APPROVAL_MISSING"] });
@@ -63,10 +62,10 @@ describe("the fictional sendable shop 環", () => {
   it("a demo whose content is not derived from the same facts pack is refused before the import", async () => {
     const s = await seed();
     await db.query("update public.sales_demos set content = jsonb_set(content, '{hours}', '\"9:00〜18:00\"') where id = $1", [s.demoId]);
-    expect(() => assertDemoContentFromFacts(null, readCommittedFacts(REPO, SENDABLE_FACTS_PATH))).toThrow(LocalInputError);
+    expect(() => assertDemoContentFromFacts(null, factsBytes())).toThrow(LocalInputError);
     let code = "";
     try {
-      assertDemoContentFromFacts(await demoContent(s.demoId), readCommittedFacts(REPO, SENDABLE_FACTS_PATH));
+      assertDemoContentFromFacts(await demoContent(s.demoId), factsBytes());
     } catch (e) {
       code = (e as LocalInputError).code;
     }

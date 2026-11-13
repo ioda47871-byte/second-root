@@ -14,6 +14,7 @@
  */
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
+import { demoContentWithFactsSha } from "./local-inputs";
 import { demoContentFromFacts, type FactsPack } from "./seed-rin";
 
 export const SENDABLE_SHOP_ID = "fictional-bicycle-repair-tamaki";
@@ -35,13 +36,24 @@ export function sendableDemoContent(pack: FactsPack): Record<string, unknown> {
 }
 
 /**
+ * DEV-263a (PR #266 M1): the content seeded for 環 from its facts pack BYTES — the derived content (every key mapped)
+ * and content.facts_pack_sha256, so import-local.ts --trusted-facts can require the trusted pack to be exactly these
+ * bytes. 輪's seed (seed-rin.ts) is unchanged.
+ */
+export function sendableSeedContent(factsPack: Uint8Array): Record<string, unknown> {
+  const pack = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(factsPack)) as FactsPack;
+  sendableDemoContent(pack);
+  return demoContentWithFactsSha(factsPack);
+}
+
+/**
  * Creates (or finds) the fictional 環 prospect (id SENDABLE_PROSPECT_ID), its email source and its demo, in one
  * transaction on this client (the email provenance check runs at commit). Idempotent: a row with the fixed id must
  * still be 環 (name, placeholder address, example.com email, no Instagram) with the same demo content, else
  * SENDABLE_SEED_ID_TAKEN / SENDABLE_SEED_CONTENT_STALE (reset the local database).
  */
-export async function seedSendableShop(db: pg.ClientBase, pack: FactsPack): Promise<{ prospectId: string; demoId: string; created: boolean }> {
-  const content = sendableDemoContent(pack);
+export async function seedSendableShop(db: pg.ClientBase, factsPack: Uint8Array): Promise<{ prospectId: string; demoId: string; created: boolean }> {
+  const content = sendableSeedContent(factsPack);
   const name = content.name as string;
   const byId = await db.query(
     `select p.normalized_name, p.normalized_address, p.public_email, p.instagram_handle, p.recommended_channel, d.id as demo_id, d.content

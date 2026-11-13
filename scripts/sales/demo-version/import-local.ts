@@ -18,10 +18,11 @@
  *   npx tsx scripts/sales/demo-version/import-local.ts --seed-sendable --seed-only
  *
  * --trusted-facts reads the facts pack from the local facts path (lib/demo-version-package/local-inputs.ts
- * readCommittedFacts: inside the repository, no symbolic link, byte-identical to HEAD; refused before any request
- * otherwise) and passes those bytes as `trustedFactsPack`. Before the import it refuses unless the target demo's
- * sales_demos.content equals the content derived from the same bytes (assertDemoContentFromFacts), so the demo row and
- * the facts evidence share one origin. --seed-sendable creates (or finds) 環 from its committed facts pack
+ * readCommittedFacts: inside the repository, no symbolic link, byte-identical to HEAD and the same blob at
+ * origin/develop; refused before any request otherwise) and passes those bytes as `trustedFactsPack`. Before the import
+ * it refuses unless the target demo's sales_demos.content names the sha256 of the same bytes and equals the content
+ * derived from them (assertDemoContentFromFacts; a 輪 demo is refused), so the demo row and the facts evidence share
+ * one origin. --seed-sendable creates (or finds) 環 from its committed facts pack
  * (lib/demo-version-package/seed-sendable.ts). The hosted facts store and the send-time re-compare are not here.
  */
 import { readFileSync } from "node:fs";
@@ -81,8 +82,8 @@ async function main(): Promise<number> {
     const db = new pg.Client(assertLocalDbUrl(process.env.SUPABASE_DB_URL));
     await db.connect();
     try {
-      const pack = JSON.parse(new TextDecoder().decode(readCommittedFacts(REPO, SENDABLE_FACTS_PATH))) as FactsPack;
-      const seeded = await seedSendableShop(db, pack);
+      // committed at HEAD; the trusted import below also requires it on origin/develop
+      const seeded = await seedSendableShop(db, readCommittedFacts(REPO, SENDABLE_FACTS_PATH, { requireBase: false }));
       prospectId = seeded.prospectId;
       demoId = seeded.demoId;
     } finally {
