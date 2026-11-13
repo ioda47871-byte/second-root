@@ -7,6 +7,9 @@ const port = Number(process.env.E2E_PORT ?? 3100);
 // future Sales Agent specs must use example.com / fictional accounts only.
 export default defineConfig({
   testDir: "tests/e2e",
+  // DEV-263g: switches the database owner's local test-recipient switch on (loopback database only)
+  globalSetup: "./tests/e2e/support/global-setup.ts",
+  globalTeardown: "./tests/e2e/support/global-teardown.ts",
   // One worker: sales specs share one local database and today's queue
   // (max 5 items), so parallel specs could push each other's rows out.
   fullyParallel: false,

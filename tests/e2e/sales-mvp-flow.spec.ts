@@ -462,7 +462,7 @@ test("Instagram: the same approvals, then DMを送る copies the text and opens 
   await popup.close();
   await expect(card.getByTestId("confirm-sent")).toBeVisible();
   await expectPrivate(browser, demo.public_token, v.versionId, demo.id); // opened is not sent (PR #268 L2)
-  const clip =await page.evaluate(() => navigator.clipboard.readText());
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain(`${APP}/demo/${demo.public_token}`);
   let a = (await db.query("select state, opened_via, demo_version_id, body from public.sales_outreach_approvals where outreach_id = $1", [outreachId])).rows;
   expect(a).toEqual([{ state: "send_opened", opened_via: "instagram_profile", demo_version_id: v.versionId, body: clip }]);

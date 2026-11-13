@@ -16,7 +16,8 @@ import { artifactHostRefused } from "./lib/sales/artifact-host";
 // they skip only the session work (STATIC_PATH).
 
 /** Well-known files and static files by extension: no session refresh for them (the host gate still applies). */
-export const STATIC_PATH = /(?:^\/(?:favicon\.ico|robots\.txt|sitemap\.xml)$)|\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff2?|ttf|otf)$/i;
+// (favicon.ico, robots.txt and sitemap.xml are covered by their extensions; DEV-263g dropped the unreachable names)
+export const STATIC_PATH = /\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff2?|ttf|otf)$/i;
 
 function notFound(): NextResponse {
   return new NextResponse("Not Found", {

@@ -45,14 +45,14 @@ SALES_LOCAL_E2E_TEST_RECIPIENTS=true      # 架空の店・example.com 宛を承
 
 ### A-2. 環 を登録して、版を取り込む
 
-1 の管理者 (ローカルだけ。既にあれば不要。`API_URL`・`SERVICE_ROLE_KEY` は `npx supabase status -o env` の値。DB のコンテナ名は project id による):
+1 の管理者 (ローカルだけ。既にあれば不要。`API_URL`・`SERVICE_ROLE_KEY` は `npx supabase status -o env` の値):
 
 ```bash
 ADMIN_EMAIL=owner-local@test.example.com; ADMIN_PW="$(openssl rand -base64 18)"
 ADMIN_ID=$(curl -sS -X POST "$API_URL/auth/v1/admin/users" -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json" -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PW\",\"email_confirm\":true}" \
   | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-docker exec -i supabase_db_second-root psql -U postgres -c "insert into public.sales_admins (user_id) values ('$ADMIN_ID')"
+psql "$(npx supabase status -o json | jq -r .DB_URL)" -c "insert into public.sales_admins (user_id) values ('$ADMIN_ID')"
 echo "$ADMIN_PW"                                  # この端末に出るだけ。どこにも書かない
 ```
 
@@ -81,6 +81,13 @@ npx tsx scripts/sales/demo-version/import-local.ts --package /tmp/tamaki-pkg --s
 ```bash
 psql "$(npx supabase status -o json | jq -r .DB_URL)" \
   -c "update public.sales_demo_share_settings set versioned_sharing_enabled = true;"
+```
+
+環 は架空の店・example.com の宛先なので、DB 側のテスト宛先の guard (DEV-263g) のローカルのスイッチも所有者として on にする (hosted では off のまま):
+
+```bash
+psql "$(npx supabase status -o json | jq -r .DB_URL)" \
+  -c "update public.sales_local_test_settings set local_test_recipients_enabled = true;"
 ```
 
 ### A-4. 下書きを置く
@@ -138,7 +145,8 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 3. `20261114000000_sales_demo_structure_findings.sql` (DEV-196q: 構造の所見)
 4. `20261114000100_sales_demo_share_switch.sql` (DEV-196g: DB の共有スイッチ、既定 false)
 5. `20261115000000_sales_demo_facts_store.sql` (DEV-263f: facts の保存先と送信時の比べ直し。B-2)
-6. `20261116000000_sales_facts_demo_onboarding.sql` (DEV-263h: facts pack からデモの事実を作る + 登録。B-2。戻す SQL は本文の先頭)
+6. `20261115000100_sales_test_recipient_guard.sql` (DEV-263g: DB 側のテスト宛先の guard。B-2)
+7. `20261116000000_sales_facts_demo_onboarding.sql` (DEV-263h: facts pack からデモの事実を作る + 登録。B-2。戻す SQL は本文の先頭)
 
 - Staging で先に当て、`scripts/staging/` の照合を通してから Production。
 - 当てた直後の挙動は前と同じ (旗が off、スイッチが false なので、版は出ず React のデモのまま)。
@@ -154,7 +162,10 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 - **送信時の facts の比べ直し** (DEV-263f、同上): `sales_copy_send_block` と `lib/sales/copy-review/gate.ts` の両方で、文章の監査の facts pack が prospect の今の facts pack (最新の行、この demo のもの、demo の content が名指す) と同じでなければ `demo_copy_facts_changed` で止める。保存先より前の照合の証拠は数えない。
   - hosted に当てるとき: 上の B-1 の 5。当てると**既存の照合の証拠は数えなくなる**ので、版の送信は `demo_copy_facts_not_from_facts_path` で止まる。店ごとに facts を管理画面で登録し、同じ包みを取り込み直す (replay で既存の証拠に保存先の行が入る)。CLI の登録のスイッチ (`sales_facts_registration_settings`) は hosted では off のまま。サーバーのコードと同時に出す (片方だけなら fail closed)。rollback は `.ai/reviews/DEV-263f.md`。
   - 実店舗の demo の content を facts pack から作る経路 (DEV-263h、ローカルで実装済み・hosted は未適用): 管理画面の「デモの事実を facts pack から作る」(`sales_create_demo_from_facts`、admin の session) が、DB で事実からデモの内容を作り、デモを作るか内容を置き換え (オーナーの確認)、同じバイトを保存先に登録する (1 つの transaction)。DNC・除外リスト・同じ shop_id の重複・送信の承認後 / 送信後 / 共有中のデモは拒否。ローカルの CLI は `scripts/sales/demo-version/onboard-local.ts`。手順は [`real-shop-demo-workflow.md`](real-shop-demo-workflow.md)。
-- **DB 側のテスト宛先の guard**: 架空の店・予約済みのドメインへの承認を `sales_approve_outreach` でも拒否する (今はサーバーの門 `lib/sales/test-recipient.ts` だけ)。
+- **DB 側のテスト宛先の guard** (DEV-263g、ローカルで実装済み・hosted は未適用): 送信承認 (`sales_approve_outreach`) と送信画面を開く操作 (`sales_send_guards`) が、架空の店 (`content.facts_pack` が `fictional-…`) と予約済みのドメイン (example.com/.net/.org、`*.example`・`*.test`・`*.invalid`・`*.localhost`) を拒否する (`test_recipient_fictional_shop` / `test_recipient_reserved_domain`)。サーバーの門 `lib/sales/test-recipient.ts` はその前にそのまま。
+  - DB の所有者だけのスイッチ `sales_local_test_settings.local_test_recipients_enabled` (既定 false) が on の間だけ通す。**hosted では off のまま** (on にしない)。ローカルの統合テストと e2e は setup で所有者として on にし、終わると off に戻す。
+  - ローカルで 環 を画面で通すとき (A-5) は、所有者として on にする: `psql "$(npx supabase status -o json | jq -r .DB_URL)" -c "update public.sales_local_test_settings set local_test_recipients_enabled = true"`。
+  - rollback は `.ai/reviews/DEV-263g.md`。
 
 ### B-3. 🛑 承認: 成果物の origin (DNS / Vercel)
 
@@ -203,6 +214,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
    - `20261116000000`: 本文の先頭の Rollback の注記 (3 つの関数を drop。作ったデモの内容と登録した facts は残る。消すかは人が判断する)。
+   - `20261115000100`: 戻す SQL は `.ai/reviews/DEV-263g.md` (送信の門を 20261111000000 の定義に戻し、判定の関数とスイッチの表を drop)。
    - `20261115000000`: 戻す SQL は `.ai/reviews/DEV-263f.md` (送信の門と照合の証拠の trigger を 20261113000000 の定義に戻し、列・関数・表を drop。登録した facts は消える。消す前に人が判断する)。
    - `20261114000100`: 本文の先頭の Rollback の注記 (DEV-196c の定数に戻す SQL)。`.ai/reviews/DEV-196g.md` にも同じもの。
    - `20261114000000`: 本文の先頭の Rollback の注記 (表と関数を drop)。

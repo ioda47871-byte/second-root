@@ -8,11 +8,15 @@
  *   - PGRST204 (PostgREST: column not found in the schema cache).
  *
  * Anything else (a network error, permissions, another missing column) is not this, and callers fail closed. Pure.
+ *
+ * DEV-263g (PR #268 review Low): only the error's `message` is read (never details / hint, which can quote other
+ * names), and a PGRST200 counts only when it names one of the two version columns.
  */
-const VERSION_SCHEMA_NAMES = ["approved_version_id", "demo_version_id", "sales_demo_versions"] as const;
+const VERSION_COLUMNS = ["approved_version_id", "demo_version_id"] as const;
+const VERSION_SCHEMA_NAMES = [...VERSION_COLUMNS, "sales_demo_versions"] as const;
 
 export function versionSchemaMissing(error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined): boolean {
-  if (!error || !["42703", "PGRST200", "PGRST204"].includes(error.code ?? "")) return false;
-  const text = [error.message, error.details, error.hint].filter((s): s is string => typeof s === "string").join(" ");
-  return VERSION_SCHEMA_NAMES.some((n) => text.includes(n));
+  if (!error || typeof error.message !== "string") return false;
+  const names: readonly string[] = error.code === "PGRST200" ? VERSION_COLUMNS : ["42703", "PGRST204"].includes(error.code ?? "") ? VERSION_SCHEMA_NAMES : [];
+  return names.some((n) => error.message!.includes(n));
 }
