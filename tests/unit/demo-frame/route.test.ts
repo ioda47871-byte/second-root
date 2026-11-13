@@ -159,8 +159,10 @@ describe("the real route handlers, refusals", () => {
     expect(storeCalls).toEqual([]);
   });
 
-  it("a configured artifact origin (DEV-196g scope): 404 — fail closed", async () => {
-    vi.stubEnv("SALES_DEMO_ARTIFACT_ORIGIN", "https://artifacts.example.com");
+  it("DEV-196g: the artifact origin never serves scope a, and a malformed one serves nothing — 404, nothing read", async () => {
+    vi.stubEnv("SALES_DEMO_ARTIFACT_ORIGIN", ORIGIN);
+    expect((await call(`${ORIGIN}/demo-frame/a/${tok()}/index.html`, { "sec-fetch-dest": "iframe" })).status).toBe(404);
+    vi.stubEnv("SALES_DEMO_ARTIFACT_ORIGIN", "not an origin");
     expect((await call(`${ORIGIN}/demo-frame/a/${tok()}/index.html`, { "sec-fetch-dest": "iframe" })).status).toBe(404);
     expect(built).toBe(0);
   });

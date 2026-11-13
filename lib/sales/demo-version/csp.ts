@@ -60,6 +60,19 @@ export function outerFrameSrc(o: { page: "admin_preview" | "share"; appOrigin: s
   return art && art !== app ? `frame-src ${art}` : null;
 }
 
+/**
+ * DEV-196g (§6.7・§6.8): the CSP of the share page `/demo/[publicToken]` while versioned sharing is on — never framed
+ * itself, and it may frame only the artifact origin (`frame-src 'none'` when that origin or the app origin is not
+ * valid: nothing is shared then). null when the share flag is off: next.config.ts then adds nothing, and the page's
+ * headers are exactly today's. The environment is an argument (next.config.ts passes it at build time); the names are
+ * the ones in flags.ts (a test keeps them equal).
+ */
+export function shareOuterPageCsp(env: Readonly<Record<string, string | undefined>>): string | null {
+  if (env.SALES_DEMO_VERSIONS_ENABLED !== "true" || env.SALES_DEMO_SHARE_ENABLED !== "true") return null;
+  const frame = outerFrameSrc({ page: "share", appOrigin: env.SALES_DEMO_APP_ORIGIN ?? "", artifactOrigin: env.SALES_DEMO_ARTIFACT_ORIGIN ?? null });
+  return `frame-ancestors 'none'; ${frame ?? "frame-src 'none'"}`;
+}
+
 /** §6.7: the HTML's CSP. `'self'` is not used (its meaning in an opaque origin varied by browser): host and path. */
 export function buildArtifactHtmlCsp(o: { scope: ViewScope; servingOrigin: string; appOrigin: string; token: string }): string {
   const serving = normaliseOrigin(o.servingOrigin);

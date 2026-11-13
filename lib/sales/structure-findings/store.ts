@@ -46,10 +46,16 @@ export async function precheckStructureFindings(client: SupabaseClient, o: { dem
     const ok = siblings.every((id) => rows.some((r) => r.id === id && r.demo_id !== o.demoId && (r.status === "approved" || r.status === "superseded")));
     if (!ok) throw new StructureFindingsError("STRUCTURE_FINDINGS_SIBLING_INVALID");
   }
-  const existing = await client.from("sales_demo_versions").select("id").eq("demo_id", o.demoId).eq("bundle_sha256", o.bundleSha256).maybeSingle();
+  // the same rows as the unique index sales_demo_versions_bundle_key (status <> 'rejected'), so the importer's replay
+  // (duplicate_bundle → this version) is the version checked here (PR #265 delta review L1)
+  const existing = await client.from("sales_demo_versions").select("id, status").eq("demo_id", o.demoId).eq("bundle_sha256", o.bundleSha256).neq("status", "rejected").maybeSingle();
   if (existing.error) throw new StructureFindingsError("STRUCTURE_FINDINGS_PRECHECK_FAILED");
-  const versionId = (existing.data as { id?: string } | null)?.id;
+  const row0 = existing.data as { id?: string; status?: string } | null;
+  const versionId = row0?.id;
   if (!versionId) return;
+  // PR #265 delta review L2: the trigger records findings only on a live version (draft / approved / superseded);
+  // a replay onto a revoked, expired or still-uploading version is refused here, before anything is written
+  if (row0?.status !== "draft" && row0?.status !== "approved" && row0?.status !== "superseded") throw new StructureFindingsError("STRUCTURE_FINDINGS_VERSION_UNAVAILABLE");
   const f = await client.from("sales_demo_structure_findings").select("findings, siblings_compared, source").eq("version_id", versionId).maybeSingle();
   if (f.error) throw new StructureFindingsError("STRUCTURE_FINDINGS_PRECHECK_FAILED");
   const row = f.data as { findings: unknown; siblings_compared: number; source: string } | null;

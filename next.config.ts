@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { shareOuterPageCsp } from "./lib/sales/demo-version/csp";
 
 // Sales Agent pages are never indexed, never leak their URL (which holds
 // the demo token) to third parties through the Referer header, and can
@@ -16,6 +17,11 @@ const privateRouteHeaders = [
 /** The admin demo version page: never framed itself, may frame only its own origin (lib/sales/demo-version/csp.ts outerFrameSrc). */
 export const ADMIN_DEMO_PAGE_CSP = "frame-ancestors 'none'; frame-src 'self'";
 
+function shareRules() {
+  const csp = shareOuterPageCsp(process.env);
+  return csp ? [{ source: "/demo/:path*", headers: [{ key: "Content-Security-Policy", value: csp }] }] : [];
+}
+
 const nextConfig: NextConfig = {
   // DEV-050: `next dev` logs every Server Function call with its arguments by
   // default. Admin actions receive shop emails (exclusion list), DM / email
@@ -25,6 +31,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/demo/:path*", headers: privateRouteHeaders },
+      // DEV-196g (spec §6.7・§6.8): only while versioned sharing is on (SALES_DEMO_VERSIONS_ENABLED and
+      // SALES_DEMO_SHARE_ENABLED, read at build time), the share page may frame the dedicated artifact origin — and
+      // nothing else. Off: no rule, the share page's headers are exactly as above. Stays AFTER "/demo/:path*" (the
+      // last matching rule wins for the same key), so only the CSP changes; X-Frame-Options DENY stays. Changing the
+      // flags or the origins needs a redeploy (headers are fixed at build time; PR #267 L5).
+      ...shareRules(),
       { source: "/design-preview/:path*", headers: privateRouteHeaders },
       { source: "/admin/:path*", headers: privateRouteHeaders },
       // DEV-196d-3 (spec §6.7・§6.8): the admin demo version page frames the version's page from the interim

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bundleSha256, sha256Hex, validateManifest, type ArtifactManifest } from "@/lib/sales/demo-version/manifest";
-import { loadStructureAdvice, recordStructureFindings } from "@/lib/sales/structure-findings/store";
+import { loadStructureAdvice, precheckStructureFindings, recordStructureFindings } from "@/lib/sales/structure-findings/store";
 import { anonClient, candidate, createUser, db, makeAdmin, resetSalesData, rpc, serviceClient, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-196q: the stored structure findings of a version — insert-only, strict shape (server and database), siblings
@@ -134,5 +134,19 @@ describe("sales_demo_structure_findings (DEV-196q)", () => {
     const v = await newVersion(demo);
     await forceStatus(v, "rejected");
     await expect(recordStructureFindings(serviceClient(), v, input([]))).rejects.toThrow("structure_findings_version_unavailable");
+  });
+
+  it("PR #265 delta review: the importer's pre-check looks at the bundle's non-rejected version and refuses a replay onto one that is not live", async () => {
+    const demo = await shop();
+    const v = await newVersion(demo);
+    const bundle = (await db.query("select bundle_sha256 from public.sales_demo_versions where id = $1", [v])).rows[0].bundle_sha256 as string;
+    await expect(precheckStructureFindings(serviceClient(), { demoId: demo, bundleSha256: bundle, raw: input([]) })).resolves.toBeUndefined();
+    for (const status of ["expired", "uploading"]) {
+      await forceStatus(v, status);
+      await expect(precheckStructureFindings(serviceClient(), { demoId: demo, bundleSha256: bundle, raw: input([]) }), status).rejects.toThrow("STRUCTURE_FINDINGS_VERSION_UNAVAILABLE");
+    }
+    // a rejected row with the same bundle is not the one a replay would use: nothing to check against
+    await forceStatus(v, "rejected");
+    await expect(precheckStructureFindings(serviceClient(), { demoId: demo, bundleSha256: bundle, raw: input([]) })).resolves.toBeUndefined();
   });
 });

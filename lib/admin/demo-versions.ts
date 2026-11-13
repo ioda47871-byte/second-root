@@ -15,7 +15,7 @@ import { createAuthClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { CopySendCode } from "@/lib/sales/copy-review/labels";
 import { loadVersionCopyGate } from "@/lib/sales/copy-review/store";
-import { demoVersionsConfig, type Env } from "@/lib/sales/demo-version/flags";
+import { demoShareEnabled, demoVersionsConfig, type Env } from "@/lib/sales/demo-version/flags";
 import { buildDemoVersionsView, type DemoImageDb, type DemoVersionsView, type QualityReviewDb, type SendApprovalDb, type VersionFileDb, type VersionRowDb } from "@/lib/sales/demo-version/view-model";
 import { signViewToken } from "@/lib/sales/demo-version/view-token";
 
@@ -45,10 +45,11 @@ export type DemoVersionsPage =
     };
 
 /**
- * Why no render, photo or frame can be shown at all: the signing key is not set / malformed, or a dedicated artifact
- * origin is configured (served only from DEV-196g on; the artifact route answers 404 until then).
+ * Why no render, photo or frame can be shown at all: the signing key is not set / malformed, or the dedicated artifact
+ * origin is malformed. A valid artifact origin (set for sharing, DEV-196g) keeps the admin preview on the app origin
+ * (the admin-only interim, spec §6.8; lib/demo-frame/serve.ts refuses scope `a` on the artifact origin).
  */
-export type PreviewUnavailable = "signing_key_missing" | "signing_key_invalid" | "artifact_origin_configured";
+export type PreviewUnavailable = "signing_key_missing" | "signing_key_invalid" | "artifact_origin_invalid";
 
 type Client = Awaited<ReturnType<typeof createAuthClient>>;
 
@@ -60,6 +61,20 @@ async function currentFactsSha256(demoId: string): Promise<string | null> {
     return !error && typeof facts === "string" && SHA256.test(facts) ? facts : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * DEV-196g (PR #267 L4): the database half of the share switch (sales_demo_versioned_sharing_enabled(), executable by
+ * the service role only), read after the page checked the admin and only when the server flag is on. Any failure is
+ * false (the screen then never claims sharing is on).
+ */
+export async function dbVersionedSharingEnabled(): Promise<boolean> {
+  try {
+    const { data, error } = await createServiceClient().rpc("sales_demo_versioned_sharing_enabled");
+    return !error && data === true;
+  } catch {
+    return false;
   }
 }
 
@@ -95,7 +110,7 @@ async function readFactsSafely(read: (demoId: string) => Promise<string | null>,
 
 export async function loadDemoVersionsPage(
   prospectId: string,
-  o: { env: Env; now: Date; client?: Client; factsSha256?: (demoId: string) => Promise<string | null> },
+  o: { env: Env; now: Date; client?: Client; factsSha256?: (demoId: string) => Promise<string | null>; dbSharing?: () => Promise<boolean> },
 ): Promise<DemoVersionsPage> {
   if (!UUID.test(prospectId)) return { kind: "not_found" };
   const config = demoVersionsConfig(o.env);
@@ -150,6 +165,8 @@ export async function loadDemoVersionsPage(
   const approvals = (a.data ?? []) as SendApprovalDb[];
 
   const factsNow = await readFactsSafely(o.factsSha256 ?? currentFactsSha256, d.id);
+  // PR #267 L4: the screen says sharing is on only when the server flag AND the database switch are on
+  const sharing = demoShareEnabled(o.env) && (await (o.dbSharing ?? dbVersionedSharingEnabled)());
   const build = (copySendBlock?: CopySendCode | null) =>
     buildDemoVersionsView({
       versions: listed,
@@ -161,6 +178,7 @@ export async function loadDemoVersionsPage(
       demoDisabled: d.disabled_at !== null,
       currentFactsSha256: factsNow,
       copySendBlock,
+      versionedSharingEnabled: sharing,
       now: o.now,
     });
   let view = build();
@@ -174,7 +192,7 @@ export async function loadDemoVersionsPage(
   }
 
   const tokens: Record<string, string> = {};
-  if (config.key && config.artifactOrigin.kind === "unset") {
+  if (config.key && config.artifactOrigin.kind !== "invalid") {
     for (const v of view.versions) {
       // a disabled demo serves nothing (the artifact route refuses it too)
       if (v.previewable && d.disabled_at === null) tokens[v.id] = signViewToken({ scope: "a", versionId: v.id, demoId: d.id, now: o.now, key: config.key });
@@ -184,8 +202,8 @@ export async function loadDemoVersionsPage(
     ? config.keyProblem === "invalid"
       ? "signing_key_invalid"
       : "signing_key_missing"
-    : config.artifactOrigin.kind !== "unset"
-      ? "artifact_origin_configured"
+    : config.artifactOrigin.kind === "invalid"
+      ? "artifact_origin_invalid"
       : null;
 
   return {

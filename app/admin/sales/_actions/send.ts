@@ -8,6 +8,8 @@ import { errorCode, OPENED_VIA, recordedSend, sendErrorMessage, type OpenedVia, 
 import { COPY_SEND_LABEL } from "@/lib/sales/copy-review/labels";
 import { outreachCopyGate } from "@/lib/sales/copy-review/store";
 import { aiDesignEnabled } from "@/lib/sales/design";
+import { VERSIONED_SEND_SHARE_OFF } from "@/lib/sales/demo-version/admin-messages";
+import { demoShareEnabled } from "@/lib/sales/demo-version/flags";
 import { TEST_RECIPIENT_LABEL, testRecipientBlock } from "@/lib/sales/test-recipient";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -54,6 +56,9 @@ export async function approveSend(outreachId: string, draftVersion: number, show
   // quality audit (re-run here on the stored bytes) and the owner confirmed exactly that copy. The database refuses on
   // its own (sales_copy_send_block); a demo without an approved version (the React demo) is unchanged.
   const copyGate = await outreachCopyGate(supabase, outreachId);
+  // DEV-196g (PR #267 M1): the database switch and the server flag must agree before a version is sent — with the
+  // share flag off, the share URL would be 404, so a versioned send is refused here (the React demo is unchanged)
+  if (!copyGate.legacy && !demoShareEnabled(process.env)) return { ok: false, error: VERSIONED_SEND_SHARE_OFF };
   if (!copyGate.legacy && !copyGate.ok) return { ok: false, error: COPY_SEND_LABEL[copyGate.code] };
   const { error } = await supabase.rpc("sales_approve_outreach", {
     p_outreach_id: outreachId,
@@ -72,6 +77,12 @@ export async function markSendOpened(approvalId: string, via: OpenedVia): Promis
   await requireAdmin();
   if (!UUID.test(approvalId) || !(OPENED_VIA as readonly string[]).includes(via)) return NOT_FOUND;
   const supabase = await createAuthClient();
+  // DEV-196g (PR #267 M1): an approval that pinned a version is not opened while the share flag is off (its share URL
+  // would be 404). Unreadable → refused only on the database's own guards, as before.
+  if (!demoShareEnabled(process.env)) {
+    const pin = await supabase.from("sales_outreach_approvals").select("demo_version_id").eq("id", approvalId).maybeSingle();
+    if (!pin.error && (pin.data as { demo_version_id?: unknown } | null)?.demo_version_id) return { ok: false, error: VERSIONED_SEND_SHARE_OFF };
+  }
   const { error } = await supabase.rpc("sales_mark_send_opened", { p_approval_id: approvalId, p_via: via, p_design_enabled: aiDesignEnabled() });
   if (error) return { ok: false, error: sendErrorMessage(error.message) };
   revalidatePath("/admin/sales");
