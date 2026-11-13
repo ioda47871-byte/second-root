@@ -75,8 +75,11 @@ export const repoGit =
   (args) =>
     execFileSync("git", args, { cwd: repo, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 8 * 1024 * 1024 });
 
-/** The branch whose blob the facts pack must be (the local remote-tracking ref; nothing is fetched). */
-export const FACTS_BASE_REF = "origin/develop";
+/**
+ * The branch whose blob the facts pack must be: the local remote-tracking ref, spelled out in full so a local branch
+ * or tag named `origin/develop` can never stand in for it (DEV-263e, PR #266 review Low). Nothing is fetched.
+ */
+export const FACTS_BASE_REF = "refs/remotes/origin/develop";
 
 /**
  * The facts pack from the local facts path: inside the repository, a regular file (no symbolic link anywhere on the

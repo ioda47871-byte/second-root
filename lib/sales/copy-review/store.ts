@@ -5,6 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArtifactManifest, CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
+import { versionSchemaMissing } from "@/lib/sales/version-schema";
 import { evaluateVersionCopyGate, type CopyCandidate, type ShopCopyState, type StoredCopyReview, type StoredOwnerDecision, type VersionCopyGate, type VersionCopyGateInput } from "./gate";
 
 export class CopyStoreError extends Error {
@@ -115,6 +116,8 @@ export const OUTREACH_DEMO_SELECT = "prospect:sales_prospects!inner(demo:sales_d
 export async function outreachCopyGate(client: SupabaseClient, outreachId: string): Promise<{ legacy: true; unread?: true } | ({ legacy: false } & VersionCopyGate)> {
   const unverifiable = { legacy: false as const, ok: false as const, code: "demo_copy_review_unverifiable" as const, details: [] };
   const { data, error } = await client.from("sales_outreaches").select(OUTREACH_DEMO_SELECT).eq("id", outreachId).maybeSingle();
+  // DEV-263e (PR #268 H1): a database without the demo-version schema cannot hold a version — the React demo, plainly
+  if (error && versionSchemaMissing(error)) return { legacy: true };
   if (error || !data) return { legacy: true, unread: true };
   const prospect = (data as { prospect?: unknown }).prospect as { demo?: unknown } | null | undefined;
   const demo = (Array.isArray(prospect?.demo) ? prospect.demo[0] : prospect?.demo) as { approved_version_id?: unknown } | null | undefined;
