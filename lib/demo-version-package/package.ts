@@ -107,7 +107,7 @@ export type DemoVersionPackage = {
  * DEV-199d: the package's copy, checked on its bytes. v1 (no copy) → `copy_unreviewed` (never sendable); a v1 package
  * carrying copy files, or a v2 package without them, is refused. Throws PackageError("COPY_INVALID", [code, ...]).
  */
-export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manifest" | "bundleSha256" | "files" | "images" | "copy" | "copyFiles">, o: { trustedFactsPack?: string | Uint8Array | null } = {}): PackageCopyResult {
+export function checkPackageCopy(pkg: Pick<DemoVersionPackage, "format" | "manifest" | "bundleSha256" | "files" | "images" | "copy" | "copyFiles">, o: Parameters<typeof verifyPackageCopy>[1] = {}): PackageCopyResult {
   if (pkg.format === PACKAGE_FORMAT) {
     if (pkg.copy !== undefined || pkg.copyFiles !== undefined) throw new PackageError("COPY_INVALID", ["COPY_IN_V1_PACKAGE"]);
     return LEGACY_COPY_RESULT;

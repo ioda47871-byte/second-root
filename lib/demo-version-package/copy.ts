@@ -34,8 +34,9 @@
  * A v1 package (no copy) is still read, but its result is `copy_unreviewed` with COPY_UNREVIEWED_LEGACY_PACKAGE: it can
  * never become sendable, and taking the copy out of a v2 package only lands it there.
  *
- * Not here (DEV-199e, the database): the append-only review store across packages (a fresh round 0 replayed from an
- * earlier package is not visible inside one package), the owner's approval / revision records, persisting the result.
+ * Not here: the append-only review store across packages (a fresh round 0 replayed from an earlier package is not
+ * visible inside one package) and persisting the result — DEV-199e does both in import.ts (lib/sales/copy-review). The
+ * owner's revise requests come only from the owner's store, as `ownerRevisions`.
  *
  * Pure apart from sha256 (node:crypto). No file access, no network, no model call.
  */
@@ -48,10 +49,12 @@ import {
   copyReviewAppendBlockers,
   copyVerdict,
   CopyQualityReview,
+  isOwnerRevisionFor,
   MAX_COPY_REVISION_ROUNDS,
   nextCopyStep,
   reviewCopyQuality,
   type CopyQualityFiles,
+  type OwnerCopyApproval,
   type PriorRound,
   type Verdict,
 } from "@/lib/design-agent/quality-pipeline/copy-quality-review";
@@ -198,7 +201,16 @@ const parse = (code: string, s: string): unknown => {
  */
 export function verifyPackageCopy(
   pkg: { manifest: ArtifactManifest; bundleSha256: string; files: Readonly<Record<string, Uint8Array>>; images: readonly unknown[]; copy?: unknown; copyFiles?: Readonly<Record<string, Uint8Array>> },
-  o: { trustedFactsPack?: string | Uint8Array | null } = {},
+  o: {
+    trustedFactsPack?: string | Uint8Array | null;
+    /**
+     * DEV-199e: the owner's revise requests from the owner's store (sales_demo_copy_owner_decisions, never the package):
+     * an earlier real-shop round at owner review may be followed by a revision only when one of these is for exactly
+     * that round (isOwnerRevisionFor). Left out (undefined) means the store was not consulted (build / read): see
+     * ownerRevisionFor below. The importer always passes the store's records (an empty list when there are none).
+     */
+    ownerRevisions?: readonly OwnerCopyApproval[];
+  } = {},
 ): Extract<PackageCopyResult, { status: "checked" }> {
   // 1. the copy manifest and the bytes
   const cm = CopyManifest.safeParse(pkg.copy);
@@ -269,15 +281,28 @@ export function verifyPackageCopy(
   if (priorFiles.length !== 4 * rounds || priorFiles.some((f) => copyRoleOfName(f.name)!.round! >= rounds)) throw new CopyPackageError("COPY_ROUNDS_INCOMPLETE");
   const previous: PriorRound[] = [];
   const priorReviews: unknown[] = [];
+  const ownerRevisionFor = (r: unknown): OwnerCopyApproval | null => {
+    const q = CopyQualityReview.safeParse(r);
+    if (!q.success) return null;
+    if (o.ownerRevisions !== undefined) return o.ownerRevisions.find((a) => isOwnerRevisionFor(a, q.data)) ?? null;
+    // DEV-199e: the owner's store was not consulted (buildPackage / readPackage, which never store or send). A real-shop
+    // round at owner review is checked AS IF the owner had asked for a revision, so a package holding such a chain can
+    // be built and read; the importer always consults the store (its records only) and the database requires the real
+    // revise record before it stores the next round (sales_check_copy_review_write). Nothing here is ever stored.
+    const x = q.data;
+    return x.lane === "real_shop_proposal" && nextCopyStep(x) === "owner_review"
+      ? { shop_id: x.shop_id, facts_sha256: x.facts_sha256, copy_sha256: x.copy_sha256, page_html_sha256: x.page_html_sha256, page_css_sha256: x.page_css_sha256, decision: "revise" }
+      : null;
+  };
   for (let i = 0; i < rounds; i++) {
     const r = parse("COPY_REVIEW_INVALID", text[priorName(i, "review.json")]!);
     priorReviews.push(r);
-    // owner records are never taken from a package (they come from the owner's store, DEV-199e)
-    previous.push({ review: r, copyRecord: raw[priorName(i, "copy.json")]!, pageHtml: raw[priorName(i, "index.html")]!, pageCss: raw[priorName(i, "style.css")]!, ownerRevision: null });
+    // owner records are never taken from a package: only from the owner's store (DEV-199e, o.ownerRevisions)
+    previous.push({ review: r, copyRecord: raw[priorName(i, "copy.json")]!, pageHtml: raw[priorName(i, "index.html")]!, pageCss: raw[priorName(i, "style.css")]!, ownerRevision: ownerRevisionFor(r) });
   }
   const chain = [...priorReviews, review];
   for (let i = 0; i < chain.length; i++) {
-    const blockers = copyReviewAppendBlockers(chain.slice(0, i), chain[i]);
+    const blockers = copyReviewAppendBlockers(chain.slice(0, i), chain[i], { ownerRevision: i > 0 ? previous[i - 1]!.ownerRevision : null });
     if (blockers.length) throw new CopyPackageError("COPY_REVIEW_CHAIN_INVALID", blockers);
   }
   const check = checkCopyQualityReview(review, files, { previous, photoUrls });

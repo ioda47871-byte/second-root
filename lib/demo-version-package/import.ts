@@ -17,15 +17,26 @@
  * DEV-199d: before anything is read from or written to the database, the package's copy is checked again on its bytes
  * (checkPackageCopy: re-hash, the existing copy check, the review re-audited with its chain) — a package whose copy is
  * tampered, stale, forged or failed is refused. The computed result (never the package's declared one) is returned
- * as `copy`; a v1 package returns `copy_unreviewed`. Nothing of it is written to the database yet (DEV-199e), and no
- * result here is sendable.
+ * as `copy`; a v1 package returns `copy_unreviewed`. No result here is sendable.
+ *
+ * DEV-199e: the review is also STORED (append-only, lib/sales/copy-review). Before anything is written, every stored
+ * review of the shop is read and each round of the package (earlier rounds first) must be appendable: the owner's
+ * revise requests come from the owner's store (never the package), copyReviewAppendBlockers runs against all stored
+ * reviews of the shop (a round 0 replayed from another package is refused) and checkCopyQualityReview against the
+ * stored chain with the page's photo URLs. After the version is ingested and its files verified, the rounds are
+ * recorded with sales_record_copy_review and the last one is linked to the version. The facts pack counts as from the
+ * facts path only when the caller passes `trustedFactsPack` (import-local.ts does not: no facts path exists yet, so
+ * what it stores is never sendable). Nothing here writes an owner decision.
  *
  * Prints nothing itself; returns ids and hashes only (never a key).
  */
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PackageCopyResult } from "./copy";
-import { checkPackageCopy, type DemoVersionPackage } from "./package";
+import { ownerRevisionsOf, planCopyAppend, type CopyCandidate, type ShopCopyState } from "@/lib/sales/copy-review/gate";
+import { CopyStoreError, loadShopCopyState, recordCopyReview, type RecordedCopyReview } from "@/lib/sales/copy-review/store";
+import { CSS_NAME, HTML_NAME, photoUrlPaths } from "@/lib/sales/demo-version/manifest";
+import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
+import { checkPackageCopy, PACKAGE_FORMAT_COPY, type DemoVersionPackage } from "./package";
 import { RIN_PROSPECT_ID } from "./seed-rin";
 
 export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";
@@ -89,9 +100,50 @@ export type ImportResult = {
   /** created now, or replayed / found existing */
   created: boolean;
   files: { name: string; sha256: string; bytes: number; uploaded: boolean }[];
-  /** DEV-199d: the copy check as computed by this import (not persisted yet: DEV-199e) */
+  /** DEV-199d: the copy check as computed by this import */
   copy: PackageCopyResult;
+  /** DEV-199e: the stored review linked to the version (null for a v1 package: nothing stored, never sendable) */
+  storedCopy: RecordedCopyReview | null;
 };
+
+const utf8 = (name: string, b: Uint8Array | undefined): string => {
+  try {
+    if (!b) throw new Error("missing");
+    // the exact bytes: a BOM is kept, so the database re-hashes the same text
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(b);
+  } catch {
+    throw new ImportError("COPY_FILE_UNREADABLE", name);
+  }
+};
+
+/** The rounds of a v2 package (earlier rounds first), as the texts the store keeps. */
+function copyCandidates(pkg: DemoVersionPackage, rounds: number): CopyCandidate[] {
+  const c = pkg.copyFiles ?? {};
+  const factsPack = utf8(COPY_FACTS_NAME, c[COPY_FACTS_NAME]);
+  const out: CopyCandidate[] = [];
+  for (let i = 0; i < rounds; i++) {
+    out.push({
+      review: utf8(priorName(i, "review.json"), c[priorName(i, "review.json")]),
+      copyRecord: utf8(priorName(i, "copy.json"), c[priorName(i, "copy.json")]),
+      factsPack,
+      pageHtml: utf8(priorName(i, "index.html"), c[priorName(i, "index.html")]),
+      pageCss: utf8(priorName(i, "style.css"), c[priorName(i, "style.css")]),
+    });
+  }
+  out.push({ review: utf8(COPY_REVIEW_NAME, c[COPY_REVIEW_NAME]), copyRecord: utf8(COPY_RECORD_NAME, c[COPY_RECORD_NAME]), factsPack, pageHtml: utf8(HTML_NAME, pkg.files[HTML_NAME]), pageCss: utf8(CSS_NAME, pkg.files[CSS_NAME]) });
+  return out;
+}
+
+/** Each round must be appendable to the store, in order (the later rounds planned on top of the earlier ones). */
+function planStore(state: ShopCopyState, candidates: readonly CopyCandidate[], photoUrls: ReadonlySet<string>): { candidate: CopyCandidate; gateBlockers: string[] }[] {
+  const s: ShopCopyState = { reviews: [...state.reviews], decisions: state.decisions, factsChecks: state.factsChecks };
+  return candidates.map((candidate) => {
+    const plan = planCopyAppend(s, candidate, photoUrls);
+    if (!plan.ok) throw new ImportError("COPY_NOT_APPENDABLE", plan.codes.slice(0, 20).join(","));
+    if (!plan.replay) s.reviews.push(plan.row);
+    return { candidate, gateBlockers: plan.gateBlockers };
+  });
+}
 
 export async function importPackage(
   pkg: DemoVersionPackage,
@@ -105,8 +157,18 @@ export async function importPackage(
   },
 ): Promise<ImportResult> {
   const jobId = manualImportJobId(pkg.bundleSha256);
-  // DEV-199d: the copy, recomputed from the package's bytes, before the database is touched (throws PackageError)
-  const copy = checkPackageCopy(pkg, { trustedFactsPack: o.trustedFactsPack ?? null });
+  // DEV-199e: what the store holds for this shop (read only), for the owner's revise requests and the append checks
+  let state: ShopCopyState | null = null;
+  if (pkg.format === PACKAGE_FORMAT_COPY) {
+    try {
+      state = await loadShopCopyState(o.client, o.demoId);
+    } catch (e) {
+      throw new ImportError("COPY_STORE_UNAVAILABLE", e instanceof CopyStoreError ? e.code : undefined);
+    }
+  }
+  // DEV-199d: the copy, recomputed from the package's bytes, before the database is written (throws PackageError)
+  const copy = checkPackageCopy(pkg, { trustedFactsPack: o.trustedFactsPack ?? null, ownerRevisions: state ? ownerRevisionsOf(state) : [] });
+  const toStore = copy.status === "checked" && state ? planStore(state, copyCandidates(pkg, copy.round), photoUrlPaths(pkg.manifest)) : [];
   if (pkg.images.length > 0) {
     // AI demo pictures belong to the fictional 輪 only: the demo must be that prospect's
     const d = await o.client.from("sales_demos").select("prospect_id").eq("id", o.demoId).maybeSingle();
@@ -161,5 +223,21 @@ export async function importPackage(
     if (!after || after.byteLength !== entry.bytes || sha256(after) !== entry.sha256) throw new ImportError("UPLOAD_NOT_VERIFIED", entry.name);
     files.push({ name: entry.name, sha256: entry.sha256, bytes: entry.bytes, uploaded });
   }
-  return { versionId: v.id, versionNo: v.version_no, demoId: o.demoId, bundleSha256: pkg.bundleSha256, created, files, copy };
+  // DEV-199e: store the rounds in order (the database checks the chain again) and link the last one to the version
+  let storedCopy: RecordedCopyReview | null = null;
+  for (let i = 0; i < toStore.length; i++) {
+    const last = i === toStore.length - 1;
+    try {
+      storedCopy = await recordCopyReview(o.client, {
+        demoId: o.demoId,
+        versionId: last ? v.id : null,
+        candidate: toStore[i]!.candidate,
+        gateBlockers: toStore[i]!.gateBlockers,
+        factsFromFactsPath: copy.status === "checked" && copy.facts_from_facts_path,
+      });
+    } catch (e) {
+      throw new ImportError("COPY_STORE_REFUSED", e instanceof CopyStoreError ? e.code : undefined);
+    }
+  }
+  return { versionId: v.id, versionNo: v.version_no, demoId: o.demoId, bundleSha256: pkg.bundleSha256, created, files, copy, storedCopy };
 }

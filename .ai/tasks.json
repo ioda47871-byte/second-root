@@ -9946,7 +9946,7 @@
     {
       "id": "DEV-199d",
       "title": "デモ版パッケージに copy.json と文章品質監査を入れ、取り込みで検め直す (Issue #258 オーナー判断②)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-199a"
@@ -9989,6 +9989,55 @@
       ],
       "branch": "feature/dev-199d-copy-json-package",
       "note": "記録は .ai/reviews/DEV-199d.md。送信経路・DB には接続していない。Issue #258"
+    },
+    {
+      "id": "DEV-199e",
+      "title": "文章品質監査の保存・オーナーの文章確認・版のデモの送信の阻止 (Issue #258 オーナー判断①、ローカルの DB だけ)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-199d"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "オーナー Issue #258 の判断①: 送信の阻止を採用。承認された範囲は必要な DB の変更・送信の門のコード・ローカルのテスト。文章が未審査・不合格・オーナー未確認の版のデモを送信可能にしない。既存の営業データ・送信機能 (React のデモ) を壊さない。Staging / Production の DB 変更・deploy は別の承認",
+      "acceptance_criteria": [
+        "migration 20261113000000 (ローカルだけ): sales_demo_copy_reviews (店 + レーン + facts の内容 hash ごとの追記のみの鎖、監査したバイトと hash を再計算、列は review JSON から導出、round 0 の再提出・順序違い・鎖の外れ・改稿を許さない round の後を拒否)、sales_demo_copy_facts_checks (facts の経路と照合した証拠)、sales_demo_version_copy_links (版の頁 = review の頁)、sales_demo_copy_owner_decisions (オーナーの approve / revise / reject、review id・review の sha256・facts / copy / HTML / CSS の hash に束縛、署名済みの管理者本人だけ、変更・削除不可)",
+        "送信の門: sales_copy_send_block と sales_demo_version_send_block (sales_send_guards → 承認・送信画面・送信済み) が、review なし・facts の経路と未照合・古い (版のファイルと不一致・後の round あり)・実店舗の approve_candidate でない・サーバーの gate に OWNER_APPROVAL_MISSING 以外が残る・オーナーの approve がない / 別の版 / 別の hash のどれでも拒否。サーバーの approveSend も保存されたバイトで監査を再実行し (copyGateSendBlockers + 保存済みの鎖 + オーナーの承認)、DB の前に拒否",
+        "取り込み (importPackage): DB に書く前に店の保存済み review をすべて読み、copyReviewAppendBlockers (全件) と checkCopyQualityReview (保存済みの鎖・同じ photoUrls) を両方通す。オーナーの改稿依頼はオーナーの保存先からだけ。版の後に round を順に保存し最後の round を版に結び付ける。trustedFactsPack が無ければ facts_from_facts_path=false (送信不可)",
+        "既存データ: 埋め戻しなし。既存の版は copy review が無いので版の経路では送信不可。承認された版の無いデモ (React のデモ) は今までどおり。版の共有は無効のまま (copy の検査は demo_not_shareable の後)。事実・権利・画像の検査は変更しない",
+        "テスト: 各拒否理由・正常系・追記のみ / 変更不可・RLS (管理者以外は書けない、サービスロールはオーナーの記録を書けない)・round 0 の再提出の拒否・ファイル変更後の stale・React のデモへの影響なし・既存データの上での migration と rollback (取り消す transaction の中)"
+      ],
+      "required_tests": [
+        "unit tests/unit/sales/copy-review/** tests/unit/demo-version-package/** tests/unit/design-agent/quality-pipeline/copy-quality-review.test.ts tests/unit/staging/lib.test.ts tests/unit/sales/send-approval.test.tsx",
+        "integration tests/integration/demo-copy-send-guard.test.ts と統合の全体 (ローカルの Supabase)",
+        "tsc・eslint・check:secrets"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261113000000_sales_demo_copy_send_guard.sql (新規)",
+        "lib/sales/copy-review/{gate,store,labels}.ts (新規)",
+        "lib/demo-version-package/import.ts (保存の追加)・copy.ts (ownerRevisions)・package.ts (option の型だけ)",
+        "app/admin/sales/_actions/send.ts (approveSend の copy の門)・lib/sales/approval.ts (文言の追加)",
+        "scripts/staging/lib.mjs (NO_DELETE_TABLES に 4 表)",
+        "tests (新規・既存の期待値の更新は .ai/reviews/DEV-199e.md に記録)",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-199e.md"
+      ],
+      "forbidden_scope": [
+        "Staging / Production への migration の適用・deploy・Vercel の env",
+        "実際の送信・画像生成・LLM の呼び出し・repo のファイルへのモデル名",
+        "既存の事実・権利・画像の確認の検査の変更・緩和",
+        "SR-001「輪」のデータ・オーナーの WSL / ローカル環境の設定",
+        "prompt・skill・.github/workflows・package.json・lockfile",
+        "progress.md"
+      ],
+      "human_approval_triggers": [
+        "Staging / Production への migration の適用と deploy (別の承認)",
+        "版の共有の有効化 (DEV-196g) は別の承認",
+        "PR の Fresh Review と merge (coordinator)"
+      ],
+      "branch": "feature/dev-199e-copy-send-guard",
+      "note": "記録は .ai/reviews/DEV-199e.md (migration の計画・rollback SQL・Staging / Production に当てる条件)。Issue #258"
     },
     {
       "id": "DEV-199f",
