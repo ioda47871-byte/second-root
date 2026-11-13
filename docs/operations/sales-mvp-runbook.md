@@ -7,6 +7,7 @@
 `🛑 承認` の印のところで止まり、オーナーの承認を受けてから次へ進む。
 
 E2E で同じ流れを通すテストは `tests/e2e/sales-mvp-flow.spec.ts` (DEV-263e)。
+実店舗のデモ (事実 → 頁 → 包み → 登録 → 取り込み) を repo に店のデータを入れずに作る手順は [`real-shop-demo-workflow.md`](real-shop-demo-workflow.md) (DEV-263h)。
 
 ---
 
@@ -137,6 +138,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 3. `20261114000000_sales_demo_structure_findings.sql` (DEV-196q: 構造の所見)
 4. `20261114000100_sales_demo_share_switch.sql` (DEV-196g: DB の共有スイッチ、既定 false)
 5. `20261115000000_sales_demo_facts_store.sql` (DEV-263f: facts の保存先と送信時の比べ直し。B-2)
+6. `20261116000000_sales_facts_demo_onboarding.sql` (DEV-263h: facts pack からデモの事実を作る + 登録。B-2。戻す SQL は本文の先頭)
 
 - Staging で先に当て、`scripts/staging/` の照合を通してから Production。
 - 当てた直後の挙動は前と同じ (旗が off、スイッチが false なので、版は出ず React のデモのまま)。
@@ -151,7 +153,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 - **hosted の facts の保存先** (DEV-263f、ローカルで実装済み・hosted は未適用): `sales_demo_facts_packs` (追記のみ)。書けるのはオーナーだけ (管理画面の「店舗の事実の登録」= `sales_register_facts_pack`、または CLI の `--trusted-facts … --admin <管理者>` = `sales_register_facts_pack_as`)。デモの `content.facts_pack_sha256` / `content.facts_pack` がその pack を名指すときだけ登録できる。取り込みは保存先から (`--facts-from-store`)。
 - **送信時の facts の比べ直し** (DEV-263f、同上): `sales_copy_send_block` と `lib/sales/copy-review/gate.ts` の両方で、文章の監査の facts pack が prospect の今の facts pack (最新の行、この demo のもの、demo の content が名指す) と同じでなければ `demo_copy_facts_changed` で止める。保存先より前の照合の証拠は数えない。
   - hosted に当てるとき: 上の B-1 の 5。当てると**既存の照合の証拠は数えなくなる**ので、版の送信は `demo_copy_facts_not_from_facts_path` で止まる。店ごとに facts を管理画面で登録し、同じ包みを取り込み直す (replay で既存の証拠に保存先の行が入る)。CLI の登録のスイッチ (`sales_facts_registration_settings`) は hosted では off のまま。サーバーのコードと同時に出す (片方だけなら fail closed)。rollback は `.ai/reviews/DEV-263f.md`。
-  - まだ無いもの: 実店舗の demo の content を facts pack から作る経路 (今は 環 の seed だけ)。最初の実店舗の前に別 Task。
+  - 実店舗の demo の content を facts pack から作る経路 (DEV-263h、ローカルで実装済み・hosted は未適用): 管理画面の「デモの事実を facts pack から作る」(`sales_create_demo_from_facts`、admin の session) が、DB で事実からデモの内容を作り、デモを作るか内容を置き換え (オーナーの確認)、同じバイトを保存先に登録する (1 つの transaction)。DNC・除外リスト・同じ shop_id の重複・送信の承認後 / 送信後 / 共有中のデモは拒否。ローカルの CLI は `scripts/sales/demo-version/onboard-local.ts`。手順は [`real-shop-demo-workflow.md`](real-shop-demo-workflow.md)。
 - **DB 側のテスト宛先の guard**: 架空の店・予約済みのドメインへの承認を `sales_approve_outreach` でも拒否する (今はサーバーの門 `lib/sales/test-recipient.ts` だけ)。
 
 ### B-3. 🛑 承認: 成果物の origin (DNS / Vercel)
@@ -200,6 +202,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
+   - `20261116000000`: 本文の先頭の Rollback の注記 (3 つの関数を drop。作ったデモの内容と登録した facts は残る。消すかは人が判断する)。
    - `20261115000000`: 戻す SQL は `.ai/reviews/DEV-263f.md` (送信の門と照合の証拠の trigger を 20261113000000 の定義に戻し、列・関数・表を drop。登録した facts は消える。消す前に人が判断する)。
    - `20261114000100`: 本文の先頭の Rollback の注記 (DEV-196c の定数に戻す SQL)。`.ai/reviews/DEV-196g.md` にも同じもの。
    - `20261114000000`: 本文の先頭の Rollback の注記 (表と関数を drop)。

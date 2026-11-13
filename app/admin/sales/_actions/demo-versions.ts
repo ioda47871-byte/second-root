@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { submitCopyDecision, type CopyDecisionResult } from "@/lib/admin/demo-copy-review";
 import { previewFactsPack, submitFactsPack, type FactsPackPreview, type FactsPackSubmitResult } from "@/lib/admin/demo-facts-pack";
+import { previewDemoFromFacts, submitDemoFromFacts, type DemoFromFactsPreview, type DemoFromFactsResult } from "@/lib/admin/demo-onboarding";
 import { submitRevoke, submitWithdraw, type LifecycleResult } from "@/lib/admin/demo-lifecycle";
 import { submitDemoReview, type ReviewResult } from "@/lib/admin/demo-review";
 import { QUALITY_REVIEW_DISABLED_TEXT } from "@/lib/sales/demo-version/admin-messages";
@@ -76,6 +77,23 @@ export async function registerDemoFactsPack(input: unknown): Promise<FactsPackSu
   if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
   await requireAdmin();
   const result = await submitFactsPack(input, { env: process.env, client: await createAuthClient() });
+  if (result.ok) revalidate(input);
+  return result;
+}
+
+// DEV-263h: デモの事実を facts pack から作る — the same order: flag, admin, then lib/admin/demo-onboarding.ts checks the
+// pasted facts pack against the prospect and its demo (preview writes nothing) and writes only through
+// sales_create_demo_from_facts as the admin (one transaction: the demo content derived in the database + the facts store).
+export async function previewDemoFromFactsPack(input: unknown): Promise<DemoFromFactsPreview> {
+  if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
+  await requireAdmin();
+  return previewDemoFromFacts(input, { env: process.env, client: await createAuthClient() });
+}
+
+export async function createDemoFromFactsPack(input: unknown): Promise<DemoFromFactsResult> {
+  if (!demoQualityReviewEnabled(process.env)) return { ok: false, error: QUALITY_REVIEW_DISABLED_TEXT };
+  await requireAdmin();
+  const result = await submitDemoFromFacts(input, { env: process.env, client: await createAuthClient() });
   if (result.ok) revalidate(input);
   return result;
 }
