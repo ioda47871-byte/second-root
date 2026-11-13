@@ -70,7 +70,7 @@ export const INVENTED_FACT_SIGNS: ReadonlyArray<readonly [string, RegExp]> = [
 
 export type CopyFinding = { code: string; item?: string; detail?: string };
 
-const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
+export const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
 
 /** What a fact item may show of a value: all of it, whole consecutive sentences (split at 。), or one whole space-separated part. */
 export function factParts(value: string): Set<string> {

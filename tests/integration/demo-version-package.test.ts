@@ -102,6 +102,31 @@ describe("importPackage (local stack)", () => {
     expect(r).toMatchObject({ versionId: (direct.data as { version_id: string }).version_id, created: false });
     expect((await db.query("select count(*)::int as n from public.sales_demo_versions where bundle_sha256 = $1", [other.bundleSha256])).rows[0].n).toBe(1);
   });
+
+  it("DEV-196q: structure findings are checked before anything is written, then stored with the version (replay on re-run)", async () => {
+    const fresh = await buildPackage({ html: readFileSync(`${RIN}/index.html`, "utf8"), css: readFileSync(`${RIN}/style.css`, "utf8"), renders: { desktop_1440: await png(1440, 1200, 11), mobile_390: await png(390, 1200, 12) }, source: RIN });
+    const store = memoryStore();
+    await expect(importPackage(fresh, { client: serviceClient(), store, demoId: shop.demoId, structureFindings: { source: "observation_report", findings: [{ code: "PASS" }], siblingsCompared: 0 } })).rejects.toThrow("STRUCTURE_FINDINGS_INVALID");
+    expect((await db.query("select count(*)::int as n from public.sales_demo_versions where bundle_sha256 = $1", [fresh.bundleSha256])).rows[0].n).toBe(0);
+    expect(store.objects.size).toBe(0);
+    const findings = { source: "observation_report", findings: [{ code: "ASPECTS_UNKNOWN", aspects: ["transitions"] }], siblingsCompared: 0 };
+    const r = await importPackage(fresh, { client: serviceClient(), store, demoId: shop.demoId, structureFindings: findings });
+    const row = (await db.query("select findings, source, siblings_compared from public.sales_demo_structure_findings where version_id = $1", [r.versionId])).rows[0];
+    expect(row).toEqual({ findings: findings.findings, source: "observation_report", siblings_compared: 0 });
+    await expect(importPackage(fresh, { client: serviceClient(), store, demoId: shop.demoId, structureFindings: findings })).resolves.toMatchObject({ versionId: r.versionId, created: false });
+    // PR #265 review L1: what the database would refuse is refused before any write — different findings for the
+    // existing version, and a "sibling" that is this shop's own version
+    const objects = store.objects.size;
+    await expect(importPackage(fresh, { client: serviceClient(), store, demoId: shop.demoId, structureFindings: { ...findings, siblingsCompared: 3 } })).rejects.toThrow("STRUCTURE_FINDINGS_INVALID: STRUCTURE_FINDINGS_EXIST");
+    const other = await buildPackage({ html: readFileSync(`${RIN}/index.html`, "utf8"), css: readFileSync(`${RIN}/style.css`, "utf8"), renders: { desktop_1440: await png(1440, 1300, 13), mobile_390: await png(390, 1300, 14) }, source: RIN });
+    const own = { source: "observation_report", findings: [{ code: "SIBLINGS_SAME_SKELETON", sibling: r.versionId, similarity: 0.9 }], siblingsCompared: 1 };
+    await expect(importPackage(other, { client: serviceClient(), store, demoId: shop.demoId, structureFindings: own })).rejects.toThrow("STRUCTURE_FINDINGS_SIBLING_INVALID");
+    expect((await db.query("select count(*)::int as n from public.sales_demo_versions where bundle_sha256 = $1", [other.bundleSha256])).rows[0].n).toBe(0);
+    expect(store.objects.size).toBe(objects);
+    // the byte cap is well under the database's 16 KiB column cap
+    const big = { source: "observation_report", findings: Array.from({ length: 64 }, () => ({ code: "GENERIC_SKELETON", reasons: Array.from({ length: 8 }, () => `${"a".repeat(40)}:${"b".repeat(40)}`) })), siblingsCompared: 0 };
+    await expect(importPackage(other, { client: serviceClient(), store, demoId: shop.demoId, structureFindings: big })).rejects.toThrow("STRUCTURE_FINDINGS_INVALID");
+  });
 });
 
 const storage = await storageStatus();

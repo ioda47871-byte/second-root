@@ -267,7 +267,7 @@ describe("reviewDemoVersion (server action)", () => {
 
 const reviewVersion = (over: Partial<ReviewVersion> = {}): ReviewVersion => ({
   id: id(1), versionNo: 1, bundleSha256: h("1"), renders: [{ viewport: "desktop_1440", sha256: h("a") }, { viewport: "mobile_390", sha256: h("b") }],
-  approveBlockers: [], reviewBlockers: [], aiImages: [], ...over,
+  approveBlockers: [], reviewBlockers: [], aiImages: [], structure: { kind: "not_stored", lines: [], note: "構造の比較の結果は保存されていません" }, ...over,
 });
 
 describe("QualityReviewForm (markup)", () => {
@@ -283,6 +283,15 @@ describe("QualityReviewForm (markup)", () => {
     expect(html).toContain(SEND_STOP_ACKNOWLEDGEMENT);
     expect(html).toContain("7項目 0/7・PC–・SP–");
     expect(html).toContain("7 項目のうち 7 項目が未回答です。");
+  });
+  it("DEV-196q: the stored structure findings show beside items 3 and 4 only, as advice that never disables a choice", () => {
+    const structure = { kind: "stored" as const, lines: ["汎用 LP の骨格の印があります（参考）。"], note: "参考の警告で、品質承認を止めません。" };
+    const html = renderToStaticMarkup(<QualityReviewForm prospectId={PROSPECT} version={reviewVersion({ structure })} viewed={new Set()} />);
+    expect(html.match(/data-structure-advice="stored"/g)).toHaveLength(2);
+    for (const k of ["shop_specific_structure", "no_generic_lp_regression"]) expect(html).toMatch(new RegExp(`data-item="${k}"[^]*?data-structure-advice="stored"`));
+    expect(html).toContain("汎用 LP の骨格の印があります（参考）。");
+    expect(html.match(/type="radio"/g)).toHaveLength(14);
+    expect(html).not.toMatch(/type="radio"[^>]*disabled/);
   });
   it("each AI concept image gets its own unchecked confirmation with the fixed statement and the red badge", () => {
     const html = renderToStaticMarkup(

@@ -9654,10 +9654,11 @@
     {
       "id": "DEV-196p",
       "title": "copy.json の事実の行と創作の見出しの照合 (共有の前に必須)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
-        "DEV-196e-1"
+        "DEV-196d",
+        "DEV-199e"
       ],
       "attempts": 0,
       "last_failure": null,
@@ -9671,28 +9672,35 @@
         "tsc・eslint・check:secrets・build"
       ],
       "allowed_scope": [
-        "(承認の後に決める)"
+        "lib/sales/demo-version/copy-lines.ts (新、純粋)",
+        "lib/admin/demo-compare.ts・components/admin/demo/CompareTables.tsx (比較の頁の文の印と照合の表示)",
+        "lib/design-agent/quality-pipeline/copy-record.ts (norm を export するだけ。規則は変えない)",
+        "tests/unit/**・tests/integration/demo-copy-decision.test.ts",
+        ".ai/tasks.json・.ai/reviews/DEV-196pq.md"
       ],
       "forbidden_scope": [
         "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
-        ".github/workflows (DEV-196o は別の builder)",
+        ".github/workflows",
         "package.json・lockfile",
-        "progress.md (feature branch で編集しない)"
+        "progress.md (feature branch で編集しない)",
+        "scripts/sales/demo-version/* と架空の fixture (DEV-263a の並行 builder)"
       ],
       "human_approval_triggers": [
         "各 PR のレビューと merge (coordinator)",
         "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)",
         "DB / manifest の変更 (copy record の保存)"
       ],
-      "note": "DEV-196g (共有) の前に必須。"
+      "note": "Issue #263 (営業 MVP) の一部。copy record の保存と取り込みでの照合 (頁の見える文 = copy record の行、事実の行 = 事実パック) は DEV-199d / DEV-199e (#261 / #262) で既に入っている (sales_demo_copy_reviews.copy_record_text・facts_pack_text、sales_demo_version_copy_links、import の checkArtifactCopy)。この PR は残り: 管理画面の版の比較が、両方の版に保存された copy record から行を「事実 / 創作 / 印なし」に分け、保存された記録・事実パック・頁の文で server の照合 (checkArtifactCopy) を版ごとに再実行して符号を出す (DEV-196d-4 の『copy record が無いので創作を区別しない』の解消)。片方に記録が無い・読めないときは今までの事実だけの印 (創作とは言わない)。DB の変更なし。記録は .ai/reviews/DEV-196pq.md。PR A (draft)。 depends_on (PR #265 CI): DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した。copy record も findings も既存の import の経路 (lib/demo-version-package/import.ts) で保存し、アップロード API は使わないため。",
+      "branch": "feature/dev-196pq-share-prereqs"
     },
     {
       "id": "DEV-196q",
       "title": "構造の比較の結果 (structure findings) を保存する (共有の前に必須)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
-        "DEV-196e-1"
+        "DEV-196d",
+        "DEV-199e"
       ],
       "attempts": 0,
       "last_failure": null,
@@ -9706,20 +9714,28 @@
         "tsc・eslint・check:secrets・build"
       ],
       "allowed_scope": [
-        "(承認の後に決める)"
+        "supabase/migrations/20261114000000_sales_demo_structure_findings.sql (新、ローカルだけ。rollback は .ai/reviews/DEV-196pq.md)",
+        "lib/sales/demo-version/structure-findings.ts (新、純粋)・lib/sales/structure-findings/store.ts (新)",
+        "lib/demo-version-package/import.ts (structureFindings の任意の入力を検めて保存するだけ)",
+        "lib/sales/demo-version/admin-messages.ts・components/admin/demo/QualityReviewForm.tsx・app/admin/sales/demos/[prospectId]/page.tsx (項目 3・4 の横に参考として表示)",
+        "scripts/staging/lib.mjs (NO_DELETE_TABLES に新しい表) と tests/unit/staging/lib.test.ts の固定リスト",
+        "tests/**・.ai/tasks.json・.ai/reviews/DEV-196pq.md"
       ],
       "forbidden_scope": [
         "Staging / Production の migration の適用、hosted の Storage、Vercel の環境変数・DNS、実環境での有効化、WSL、画像生成、公開、実店舗への送信",
-        ".github/workflows (DEV-196o は別の builder)",
+        ".github/workflows",
         "package.json・lockfile",
-        "progress.md (feature branch で編集しない)"
+        "progress.md (feature branch で編集しない)",
+        "scripts/sales/demo-version/* と架空の fixture (DEV-263a の並行 builder)",
+        "lib/design-agent/structure/** の importer を増やすこと (隔離のテストの例外の追加は別の承認)"
       ],
       "human_approval_triggers": [
         "各 PR のレビューと merge (coordinator)",
         "承認された範囲の外の DB 変更・Protected Scope の仕様変更・権限の拡大 (止まって報告)",
         "DB の変更 (findings の保存)"
       ],
-      "note": "DEV-196g (共有) の前に必須。"
+      "note": "Issue #263 (営業 MVP) の一部。sales_demo_structure_findings (版ごとに 1 行、insert のみ、形は quality.ts の StructureFindingInput と同じで server と DB の両方が検める、sibling は他店の版だけ、管理者は RLS で読む、どの guard も読まない) と、品質の判定の項目 3・4 の横の参考の表示 (止めない。保存されていない・読めないときはそう書き、『警告なし』とは言わない)。findings の計算 (構造記述子と成功例・他店の承認版との類似) はこの PR では行わない: 構造記述子の module は隔離 (tests/unit/design-agent/structure/structure.test.ts の importer の固定リスト) で、server からの計算は新しい importer = 別の承認。今は import の任意の入力 structureFindings (source = observation_report) で保存できるだけで、それを作る CLI / worker の配線は未。ローカル DB だけ。PR A (draft)。 depends_on (PR #265 CI): DEV-196e-1 (アップロード API) から DEV-196d (比較・品質の判定の画面) と DEV-199e (copy record の保存と import の経路) に直した。copy record も findings も既存の import の経路 (lib/demo-version-package/import.ts) で保存し、アップロード API は使わないため。",
+      "branch": "feature/dev-196pq-share-prereqs"
     },
     {
       "id": "DEV-196r",
