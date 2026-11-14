@@ -13,6 +13,12 @@ import styles from "./demo.module.css";
 
 export type DemoFromFactsTarget = "no_demo" | "legacy" | "facts";
 
+// A missing optional field is intentionally absent, never silently filled with a claim.
+const OPTIONAL_FACT_FIELDS = [
+  ["ward", "区"], ["hours", "営業時間"], ["closed_days", "定休日"],
+  ["access", "アクセス"], ["phone", "電話番号"], ["workshop", "ワークショップ"],
+] as const;
+
 const ACTION_TEXT: Record<string, string> = {
   create: "この候補にはまだデモがありません。この事実からデモの事実を作り、事実を登録します。",
   replace_legacy: "今のデモ（React のデモ）の内容を、この事実から作った内容に置き換え、事実を登録します。React のデモの表示も変わります。",
@@ -113,6 +119,12 @@ export default function DemoFromFacts({ prospectId, target, enabled }: { prospec
                       {preview.identity.packName}／{preview.identity.packAddress}
                     </dd>
                   </dl>
+                  {OPTIONAL_FACT_FIELDS.some(([key]) => !preview.facts.some((f) => f.key === key)) && (
+                    <p className={styles.note} role="status" data-optional-facts-missing="">
+                      未確認のため登録しない項目：{OPTIONAL_FACT_FIELDS.filter(([key]) => !preview.facts.some((f) => f.key === key)).map(([, label]) => label).join("、")}。
+                      この項目の内容は作りません。営業時間が未確認の場合、文章の品質監査は引き続き保留になります。
+                    </p>
+                  )}
                   {preview.identity.mismatch && (
                     <>
                       <p className={styles.alert} role="alert" style={{ margin: "8px 0 0" }}>
