@@ -3,7 +3,7 @@
  * from exactly those bytes. Pure (sha256 only): used by the local CLIs (./local-inputs.ts re-exports it) and by the
  * owner's facts registration (lib/sales/facts-store.ts, the admin screen).
  *
- *   - demoContentFromFactsBytes: FactsPack (strict) → every key mapped, none twice → demoContentFromFacts.
+ *   - demoContentFromFactsBytes: FactsPack (strict) → every key mapped, none twice → demoContentFromFacts.\n *     Issue #275: optional unverified fields are omitted, while name/category/address/description stay mandatory.
  *   - assertDemoContentFromFacts: the demo's sales_demos.content must hold the sha256 of exactly these bytes
  *     (content.facts_pack_sha256) and equal the content derived from them, compared as canonical JSON (jsonb does not
  *     keep key order). A 輪 demo (content.facts_pack = RIN_SHOP_ID) is refused: its photo packages are ai_demo_internal.

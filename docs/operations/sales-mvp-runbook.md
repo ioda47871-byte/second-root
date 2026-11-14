@@ -157,6 +157,7 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 6. `20261115000100_sales_test_recipient_guard.sql` (DEV-263g: DB 側のテスト宛先の guard。B-2)
 7. `20261116000000_sales_facts_demo_onboarding.sql` (DEV-263h: facts pack からデモの事実を作る + 登録。B-2。戻す SQL は本文の先頭)
 8. `20261116000100_sales_test_email_reserved_fallback.sql` (DEV-263h: テスト宛先の guard の予備の判定が実在の非 ASCII のドメインを拒否しないように)
+9. `20261117000000_sales_optional_facts_onboarding.sql` (DEV-263k: 未確認の任意事実は省略。必須の4項目は変更なし。本番適用は別承認)
 
 - Staging で先に当て、`scripts/staging/` の照合を通してから Production。
 - 当てた直後の挙動は前と同じ (旗が off、スイッチが false なので、版は出ず React のデモのまま)。
@@ -247,6 +248,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off (「版を取り込む」も止まる)。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
+   - `20261117000000`: `20261116000000` の `sales_derive_facts_demo_content` 関数定義をそのまま `create or replace` して戻す。保存された事実やデモを勝手に削除しない。**先に新しい省略形式の登録済みデモがないか監査し、ある場合は人が対応を決める。**
    - `20261116000100`: 本文の先頭の Rollback の注記 (`sales_test_email_reserved` を 20261115000100 の定義に戻す)。`.ai/reviews/DEV-263h.md` にも同じもの。
    - `20261116000000`: 本文の先頭の Rollback の注記 (3 つの関数を drop。作ったデモの内容と登録した facts は残る。消すかは人が判断する)。
    - `20261115000100`: 戻す SQL は `.ai/reviews/DEV-263g.md` (送信の門を 20261111000000 の定義に戻し、判定の関数とスイッチの表を drop)。

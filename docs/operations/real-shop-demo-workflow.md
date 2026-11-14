@@ -41,7 +41,7 @@
 
 | key | 何か |
 |---|---|
-| `name` `category` `ward` `address` `hours` `closed_days` `access` `phone` `description` `workshop` | 1 つずつ、全部が必要 |
+| `name` `category` `address` `description` | 1 つずつ、すべて必要。店名・業種・住所・確認済みの紹介文 |\n| `ward` `hours` `closed_days` `access` `phone` `workshop` | 確認できた場合のみ。未確認ならキーを**省略**する |
 | `service_1` … `service_999` | メニュー・サービス (番号の順に並ぶ) |
 | `statement_1` … | 店の言葉 (番号の順) |
 
@@ -56,7 +56,7 @@
 ```
 
 - 値は 400 文字まで、**前後に空白を付けない** (付いていれば登録は拒否する)。メールアドレスを値に入れない。
-- 未対応の key・同じ key が 2 つ・足りない key は拒否される (`TRUSTED_FACTS_UNMAPPED_KEY` / `_DUPLICATE_KEY` / `_INCOMPLETE`)。写せない事実は、facts pack に入れない (頁にも出さない)。
+- **未確認の営業時間・定休日・アクセス・電話・ワークショップ・区は `unknown` や空欄の事実で埋めず、キーごと省略する。** その情報をサイトで確定事項として表示しない。\n- この変更は事実の保存・デモ作成を可能にするが、**文章監査の `facts_missing_hours` は引き続き HOLD**。正式な送信には、営業時間を確認するか、別途レビュー済みの安全な承認ルールが必要。門を無断で緩めない。\n- 未対応の key・同じ key が 2 つ・必須 key が足りなければ拒否される (`TRUSTED_FACTS_UNMAPPED_KEY` / `_DUPLICATE_KEY` / `_INCOMPLETE`)。写せない事実は、facts pack に入れない (頁にも出さない)。
 - `source_id` はオーナーの確認の出どころ (手元のメモ) を指す番号。出どころの本文はこの JSON に入れない。
 - 書いたら、オーナーに値を 1 つずつ見てもらう。**この JSON のバイトがそのまま登録される** (sha256 で照合)。後で 1 バイトでも変えると別の facts になる。
 
