@@ -71,16 +71,31 @@ describe("the database derivation (sales_derive_facts_demo_content)", () => {
   const derive = async (text: string) => (await db.query("select public.sales_derive_facts_demo_content($1) as c", [text])).rows[0].c as Record<string, unknown>;
 
   it("is exactly the server's derivation (demoContentWithFactsSha) for the fictional packs", async () => {
-    for (const text of [fictionalPack(), TAMAKI, fictionalPack({ facts: BASE_FACTS.filter(([k]) => !k.startsWith("service_") && !k.startsWith("statement_")) })])
+    for (const text of [fictionalPack(), TAMAKI, fictionalPack({ facts: BASE_FACTS.filter(([k]) => !k.startsWith("service_") && !k.startsWith("statement_")) }), fictionalPack({ facts: BASE_FACTS.filter(([k]) => !["ward", "hours", "closed_days", "access", "phone", "workshop"].includes(k)) })])
       expect(await derive(text)).toEqual(demoContentWithFactsSha(new TextEncoder().encode(text)));
     expect((await derive(fictionalPack())).menu_items).toEqual(["一番目の品", "二番目の品", "十番目の品"]);
   });
 
-  it("refuses what the server refuses (unmapped, twice, missing, extra field, malformed, untrimmed)", async () => {
+  it("accepts a sparse facts pack in the admin onboarding path without fabricating hours or contact details", async () => {
+    const optional = new Set(["ward", "hours", "closed_days", "access", "phone", "workshop"]);
+    const sparse = fictionalPack({ facts: BASE_FACTS.filter(([k]) => !optional.has(k)) });
+    const expected = demoContentWithFactsSha(new TextEncoder().encode(sparse));
+    expect(await derive(sparse)).toEqual(expected);
+    for (const key of optional) expect(expected).not.toHaveProperty(key);
+    const s = await shop();
+    await createAs(admin, s.prospectId, sparse);
+    expect((await demoRow(s.prospectId)).content).toEqual(expected);
+    expect((await storeRows(s.prospectId))).toHaveLength(1);
+    // Replacing the bytes changes the identity hash; no auto-fill and no fallback to old values.
+    expect((await createAs(admin, s.prospectId, sparse)).replayed).toBe(true);
+    expect((await demoRow(s.prospectId)).content).not.toHaveProperty("hours");
+  });
+
+  it("refuses what the server refuses (unmapped, twice, missing required, extra field, malformed, untrimmed)", async () => {
     const code = (text: string) => refusal(derive(text));
     expect(await code(fictionalPack({ facts: [...BASE_FACTS, ["price", "100円"]] }))).toBe("facts_pack_unmapped_key");
     expect(await code(fictionalPack({ facts: [...BASE_FACTS, ["hours", "9:00"]] }))).toBe("facts_pack_duplicate_key");
-    expect(await code(fictionalPack({ facts: BASE_FACTS.filter(([k]) => k !== "workshop") }))).toBe("facts_pack_incomplete");
+    expect(await code(fictionalPack({ facts: BASE_FACTS.filter(([k]) => k !== "name") }))).toBe("facts_pack_incomplete");
     expect(await code(fictionalPack({ extra: { note: "x" } }))).toBe("invalid_facts_pack");
     expect(await code("{")).toBe("invalid_facts_pack");
     // PR #271 M1: the server FactsPack rules — unsafe text, fact / source ids, at most 200 facts, 400 characters (code points, as zod counts)
