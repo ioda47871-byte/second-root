@@ -65,6 +65,7 @@
 1. `second-root-design-director` スキルの手順で方向を決める。成功例 (`docs/design/success-cases-index.md`・`success-principles-v1.md`) を見て、店に固有の Hero と構成を選ぶ。Identity Lock: 店の事実を作らない。
 2. `comp/index.html`・`comp/style.css` を B方式で書く (script・外の URL・Web フォントなし、写真の枠を置かない)。
 3. `comp/copy.json` (`comp_copy_v1`) に頁のすべての言葉を記録する。`lane` は **`real_shop_proposal`**。事実は `claim_type: fact` (facts pack の値そのもの)、見出しなどの提案は `proposal_pending_review` (`docs/design/comp-lane.md` §1)。創作 (`creative_expression`) は実店舗では使えない。
+   - **人間による自然さの確認**: [`docs/design/real-shop-natural-copy-guideline-v1.md`](../design/real-shop-natural-copy-guideline-v1.md) を読み、抽象的なコピーの反復、事実にない売り文句、店の公式発言と誤認される文章がないことを確認する。自動監査やオーナーの承認を代替しない。
 4. 頁の検査と描画 (PNG はリポジトリの外へ):
 
    ```bash
