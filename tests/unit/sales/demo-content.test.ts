@@ -29,6 +29,17 @@ describe("toDemoView", () => {
     });
   });
 
+  it("does not invent optional contact and schedule details for sparse verified content", () => {
+    const view = toDemoView("baked_goods_v1", {
+      name: "架空の焼菓子店", category: "baked_goods", address: "愛知県名古屋市中区架空町1-2",
+      description: "焼菓子を扱っています。", menu_items: ["架空のお菓子"],
+    });
+    expect(view).toMatchObject({
+      hours: null, closedDays: null, access: null, phone: null, ward: null, description: "焼菓子を扱っています。",
+    });
+    expect(view?.menuItems).toEqual(["架空のお菓子"]);
+  });
+
   it("never shows an email address, even inside another field", () => {
     const view = toDemoView("cafe_v1", { name: "カフェ", category: "cafe", description: "ご予約は info@cafe.example.com まで" });
     expect(view?.description).toBeNull();
