@@ -248,7 +248,7 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
 2. DB の共有スイッチを false: `update public.sales_demo_share_settings set versioned_sharing_enabled = false;`
 3. 品質の審査の書き込みを止める: `SALES_DEMO_QUALITY_REVIEW_ENABLED` を off (「版を取り込む」も止まる)。版の画面ごと止める: `SALES_DEMO_VERSIONS_ENABLED` を off。
 4. 🛑 承認: migration を戻す (最後の手段、新しい順に):
-   - `20261117000000`: `20261116000000` の `sales_derive_facts_demo_content` 関数定義をそのまま `create or replace` して戻す。保存された事実やデモを勝手に削除しない。**先に新しい省略形式の登録済みデモがないか監査し、ある場合は人が対応を決める。**
+   - `20261117000000`: **B-7aの監査と明示的承認の後にのみ**、`20261116000000` の関数定義へ戻す。省略形式の登録済みデモがあればロールバックしない。事実・デモは削除しない。
    - `20261116000100`: 本文の先頭の Rollback の注記 (`sales_test_email_reserved` を 20261115000100 の定義に戻す)。`.ai/reviews/DEV-263h.md` にも同じもの。
    - `20261116000000`: 本文の先頭の Rollback の注記 (3 つの関数を drop。作ったデモの内容と登録した facts は残る。消すかは人が判断する)。
    - `20261115000100`: 戻す SQL は `.ai/reviews/DEV-263g.md` (送信の門を 20261111000000 の定義に戻し、判定の関数とスイッチの表を drop)。
@@ -258,3 +258,110 @@ update public.sales_demo_share_settings set versioned_sharing_enabled = true;   
    - `20261113000000`: forward-only。戻す SQL は `.ai/reviews/DEV-199e.md`。
    - `20261111000000`: 戻す手順は `.ai/reviews/DEV-196c.md` (1 transaction で関数を前の定義に戻し、表と列を drop)。
    - 送信済みの記録 (`sales_outreach_approvals` など) は消さない。
+
+### B-7a. DEV-263k のみの手動 rollback 詳細（実行禁止：別途オーナー承認が必要）
+
+この節は手順の記録であり、**このPRでは実行しない**。特にStaging / Productionに適用する場合、オーナーによる対象環境・実行SQL・監査結果・復旧判断の個別承認が先に必要。ローカルでも他人と共有するDBの初期化・resetは行わない。
+
+1. **対象DBで事前に読み取り専用監査**する。旧関数は10個の単一キーをすべて必須とするので、新形式で少なくとも1個欠けたデモが現存すれば機能を戻せない。以下は現在のデモ行に対する最低限の点検であり、履歴のfacts packやバックアップも別途調査する。**省略形式が1件でもあれば停止し、人が取り扱いを決める**。データを消して帳尻を合わせない。
+
+```sql
+select version from supabase_migrations.schema_migrations
+where version in ('20261116000000', '20261117000000') order by version;
+
+select d.id, d.prospect_id, d.content->>'facts_pack' as shop_id,
+       d.content->>'facts_pack_sha256' as facts_sha256
+from public.sales_demos d
+where d.content ? 'facts_pack_sha256'
+  and not (d.content ?& array[
+    'name', 'category', 'ward', 'address', 'hours', 'closed_days',
+    'access', 'phone', 'description', 'workshop'
+  ]);
+```
+
+2. **監査と承認を終えて、20261117000000が実際に適用済みの場合だけ**、以下の一つのトランザクションで元の関数を復元し、migration履歴の当該版だけを戻す。関数本体は `20261116000000_sales_facts_demo_onboarding.sql` の定義から、先頭の `create function` だけを `create or replace function` にしたもの。関数の削除やテーブルのtruncateはしない。
+
+```sql
+begin;
+create or replace function public.sales_derive_facts_demo_content(p_facts_pack text)
+returns jsonb
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_pack jsonb;
+  f jsonb;
+  v_key text;
+  v_seen text[] := '{}';
+  v_single jsonb := '{}'::jsonb;
+  k text;
+  c_single constant text[] := array['name', 'category', 'ward', 'address', 'hours', 'closed_days', 'access', 'phone', 'description', 'workshop'];
+begin
+  if p_facts_pack is null or octet_length(p_facts_pack) not between 2 and 1048576 then
+    raise exception 'invalid_facts_pack' using errcode = '22023';
+  end if;
+  begin
+    v_pack := p_facts_pack::jsonb;
+  exception when others then
+    raise exception 'invalid_facts_pack' using errcode = '22023';
+  end;
+  if jsonb_typeof(v_pack) is distinct from 'object'
+     or exists (select 1 from jsonb_object_keys(v_pack) x where x not in ('schema', 'shop_id', 'facts'))
+     or v_pack->>'schema' is distinct from 'shop_facts_pack_v1'
+     or jsonb_typeof(v_pack->'shop_id') is distinct from 'string' or (v_pack->>'shop_id') !~ '^[a-z0-9][a-z0-9_-]{1,40}$'
+     or jsonb_typeof(v_pack->'facts') is distinct from 'array' or coalesce(jsonb_array_length(v_pack->'facts'), 0) not between 1 and 200 then
+    raise exception 'invalid_facts_pack' using errcode = '22023';
+  end if;
+  for f in select e.value from jsonb_array_elements(v_pack->'facts') e loop
+    if jsonb_typeof(f) is distinct from 'object'
+       or exists (select 1 from jsonb_object_keys(f) x where x not in ('id', 'key', 'value', 'source_id'))
+       or jsonb_typeof(f->'id') is distinct from 'string' or jsonb_typeof(f->'key') is distinct from 'string'
+       or jsonb_typeof(f->'value') is distinct from 'string' or jsonb_typeof(f->'source_id') is distinct from 'string'
+       or (f->>'id') !~ '^F[0-9]{1,3}$' or (f->>'source_id') !~ '^S[0-9]{1,3}$'
+       or (f->>'key') !~ '^[a-z][a-z0-9_]{1,40}$'
+       -- FactsPack's max(400) counts characters (code points), as char_length does
+       or char_length(f->>'value') not between 1 and 400 then
+      raise exception 'invalid_facts_pack' using errcode = '22023';
+    end if;
+    -- FactsPack's unsafeText (lib/design-agent/quality-pipeline/facts-pack.ts): control characters, <<< / >>>, a tag
+    -- opening (JavaScript's \s, case-insensitive [a-z]; NUL cannot be in a text value)
+    if (f->>'value') ~ '[\x01-\x09\x0b-\x1f\x7f]|<<<|>>>|<[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*/?[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[a-zA-Z!]' then
+      raise exception 'facts_pack_unsafe_text' using errcode = '22023';
+    end if;
+    if (f->>'value') ~ '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+       or (f->>'value') ~ '[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]$' then
+      raise exception 'facts_pack_value_untrimmed' using errcode = '22023';
+    end if;
+    v_key := f->>'key';
+    if v_key = any (v_seen) then
+      raise exception 'facts_pack_duplicate_key' using errcode = '22023';
+    end if;
+    v_seen := v_seen || v_key;
+    if v_key = any (c_single) then
+      v_single := v_single || jsonb_build_object(v_key, f->>'value');
+    elsif v_key !~ '^(service|statement)_[1-9][0-9]{0,2}$' then
+      raise exception 'facts_pack_unmapped_key' using errcode = '22023';
+    end if;
+  end loop;
+  foreach k in array c_single loop
+    if not v_single ? k then
+      raise exception 'facts_pack_incomplete' using errcode = '22023';
+    end if;
+  end loop;
+  return v_single || jsonb_build_object(
+    'menu_items', coalesce((select jsonb_agg(e.value->'value' order by substring(e.value->>'key' from 9)::integer)
+                              from jsonb_array_elements(v_pack->'facts') e where e.value->>'key' ~ '^service_[1-9][0-9]{0,2}$'), '[]'::jsonb),
+    'statements', coalesce((select jsonb_agg(e.value->'value' order by substring(e.value->>'key' from 11)::integer)
+                              from jsonb_array_elements(v_pack->'facts') e where e.value->>'key' ~ '^statement_[1-9][0-9]{0,2}$'), '[]'::jsonb),
+    'facts_pack', v_pack->>'shop_id',
+    'facts_pack_sha256', encode(sha256(convert_to(p_facts_pack, 'UTF8')), 'hex'));
+end;
+$$;
+
+delete from supabase_migrations.schema_migrations
+where version = '20261117000000';
+commit;
+```
+
+3. **事後確認**: `pg_get_functiondef('public.sales_derive_facts_demo_content(text)'::regprocedure)` で `c_single` の必須検査に戻ったこと、関数のEXECUTE権限が公開されていないこと、`20261117000000` の履歴が消え `20261116000000` が残ることを確認する。既存の登録済みfactsやデモ、送信済み記録は一切削除しない。migration履歴の手動更新が許されない環境ではSQLをそのまま実行せず、別の承認済みforward修復migrationを設計する。
