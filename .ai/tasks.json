@@ -10539,11 +10539,11 @@
         "Protected Scope: explicit decision that minimum 4 verified facts are acceptable for demo creation even with other absent fields; no authorization to send",
         "Any hosted Staging/Production migration, rollback, deployment, outreach, or develop/main merge"
       ],
-      "attempts": 2,
-      "last_failure": "Fresh Review R2 on 389b2e93: INCOMPLETE (C0/H0/M0/L4); code/docs corrections now being made on feature. Owner Protected Scope decision pending.",
-      "blocked_reason": "Missing explicit owner Protected Scope decision and a new Fresh Review PASS on updated head; no hosted deployment approval.",
+      "attempts": 3,
+      "last_failure": "R3 Fresh Review INCOMPLETE on ae232f21 (C0/H0/M0/L2): reviewer could not independently query GitHub CI; follow-up minor test assertion and review evidence record needed. GitHub run 43785760982 verified success separately on that head.",
+      "blocked_reason": "Protected Scope owner decision APPROVED 2026-11-16 (10→4 for demo intake only, PR #277 comment 6908926087); current-head CI + new independent Fresh Review PASS and evidence record remain pending. Hosted migration, send, and develop/main merge are not approved.",
       "branch": "feature/dev-263k-optional-real-shop-facts",
-      "note": "L1-L4 addressed on feature branch, CI passed on earlier 389b2e93 HEAD; all later commits require new CI and independent Fresh Review. Issue #275, PR #277."
+      "note": "Owner expressly approved minimum four verified facts for demo creation only (name/category/address/description); optional six omitted when unverified. Does not authorize sending, altering hours HOLD, hosted migration, or merging. R3 C0/H0/M0/L2; L2 test adjusted; CI success on prior ae232f21, new head CI/review pending."
     }
   ]
 }
