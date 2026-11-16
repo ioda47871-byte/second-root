@@ -1,6 +1,6 @@
 /**
  * Issue #139 / #263: an OFFLINE adapter for an already produced, photo-free B-route comp.
- * It reuses the existing comp-lane, comp-copy and v2 packager, rather than implementing another validator.
+ * It reuses the existing comp-copy, comp-lane and v2 packager, rather than implementing another validator.
  *
  * node scripts/sales/demo-version/prepare-offline.mjs \
  *   --facts /private/shop/facts-pack.json --comp /private/shop/comp --out /private/runs/new-run
@@ -145,8 +145,9 @@ export function prepareOffline({ factsPath, compDir, outDir }, runStep = runRepo
   const save = () => { report.elapsed_ms = Date.now() - started; writeFileSync(join(out, "status.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 }); };
   save();
   const steps = [
-    ["render", ["--dir", staged, "--facts", facts, "--out", join(out, "renders")]],
+    // comp-lane examines a show_owner review against copy-review.json; audit first.
     ["copy", ["--audit", staged, "--facts", facts]],
+    ["render", ["--dir", staged, "--facts", facts, "--out", join(out, "renders")]],
     ["visual", ["--check-review", staged, "--facts", facts]],
     ["package", ["--out", join(out, "package"), "--copy", staged, "--facts", facts]],
   ];
@@ -156,7 +157,12 @@ export function prepareOffline({ factsPath, compDir, outDir }, runStep = runRepo
       const stepStarted = Date.now();
       const result = runStep(step, args);
       checkUnchanged();
-      const code = stepCode(step, result);
+      let code = stepCode(step, result);
+      // checkReviewFile validates the schema even for revise/drop; only show_owner proceeds.
+      if (!code && step === "visual") {
+        const verdict = JSON.parse(checkedFile(join(staged, "review.json")).toString("utf8")).verdict;
+        if (verdict !== "show_owner") code = "VISUAL_NOT_READY_FOR_OWNER";
+      }
       report.steps.push({ step, outcome: code ? "stopped" : "ok", duration_ms: Date.now() - stepStarted, ...(code ? { code } : {}),
         ...(step === "copy" ? { copy_step: result.output?.step ?? null, findings: (Array.isArray(result.output?.codes) ? result.output.codes : []).filter((x) => typeof x === "string").slice(0, 40) } : {}),
       });
