@@ -20,7 +20,7 @@ function fixture() {
   writeFileSync(join(compDir, "index.html"), "<html><body>架空の店舗</body></html>");
   writeFileSync(join(compDir, "style.css"), "body { margin: 0; }");
   writeFileSync(join(compDir, "copy.json"), JSON.stringify({ schema: "comp_copy_v1", shop_id: "fictional-adapter", facts_sha256: sha(fact), items: [] }));
-  writeFileSync(join(compDir, "review.json"), "{}");
+  writeFileSync(join(compDir, "review.json"), JSON.stringify({ verdict: "show_owner" }));
   return { root, compDir, factsPath, outDir: join(root, "out") };
 }
 const ok = (step) => ({ exit: 0, output: step === "render" ? { status: "OK" }
@@ -34,9 +34,9 @@ test("reuses existing four stages in order, stages copy without overwriting orig
   assert.equal(report.status, "package_prepared_owner_review_required");
   assert.equal(report.owner_approval, "required");
   assert.equal(report.external_send, "disabled");
-  assert.deepEqual(seen.map((x) => x.step), ["render", "copy", "visual", "package"]);
+  assert.deepEqual(seen.map((x) => x.step), ["copy", "render", "visual", "package"]);
   assert.equal(JSON.parse(readFileSync(join(f.compDir, "copy.json"), "utf8")).shop_id, "fictional-adapter");
-  assert.equal(readFileSync(join(f.outDir, "comp", "review.json"), "utf8"), "{}");
+  assert.equal(JSON.parse(readFileSync(join(f.outDir, "comp", "review.json"), "utf8")).verdict, "show_owner");
   assert.equal(JSON.parse(readFileSync(join(f.outDir, "status.json"), "utf8")).package_sha256, "f".repeat(64));
   assert.ok(seen[3].args.includes(join(f.outDir, "comp")));
 });
@@ -46,27 +46,39 @@ test("copy HOLD stops before visual review or packaging and retains hold code", 
   const report = prepareOffline(f, (step) => { seen.push(step); return step === "copy"
     ? { exit: 1, output: { step: "stop_hold", mayShowOwner: false, codes: ["COPY_INFORMATION_MISSING"] } }
     : ok(step); });
-  assert.deepEqual(seen, ["render", "copy"]);
+  assert.deepEqual(seen, ["copy"]);
   assert.equal(report.code, "COPY_STOP_HOLD");
-  assert.deepEqual(report.steps[1].findings, ["COPY_INFORMATION_MISSING"]);
+  assert.deepEqual(report.steps[0].findings, ["COPY_INFORMATION_MISSING"]);
   assert.equal(report.package_sha256, null);
 });
 
 test("missing visual review never packages", () => {
   const f = fixture(), seen = [];
   const report = prepareOffline(f, (step) => { seen.push(step); return step === "visual" ? { exit: 1, output: { ok: false, codes: ["REVIEW_MISSING"] } } : ok(step); });
-  assert.deepEqual(seen, ["render", "copy", "visual"]);
+  assert.deepEqual(seen, ["copy", "render", "visual"]);
   assert.equal(report.code, "VISUAL_REVIEW_STOP");
 });
 
 test("a changed original facts file is refused before the next step", () => {
   const f = fixture();
   const report = prepareOffline(f, (step) => {
-    if (step === "render") writeFileSync(f.factsPath, "changed");
+    if (step === "copy") writeFileSync(f.factsPath, "changed");
     return ok(step);
   });
   assert.equal(report.code, "INPUT_MUTATED");
   assert.equal(report.steps.length, 1);
+});
+
+test("review verdict revise/drop stops before packaging even when schema checks pass", () => {
+  for (const verdict of ["revise", "drop"]) {
+    const f = fixture();
+    writeFileSync(join(f.compDir, "review.json"), JSON.stringify({ verdict }));
+    const seen = [];
+    const report = prepareOffline(f, (step) => { seen.push(step); return ok(step); });
+    assert.deepEqual(seen, ["copy", "render", "visual"]);
+    assert.equal(report.code, "VISUAL_NOT_READY_FOR_OWNER");
+    assert.equal(report.package_sha256, null);
+  }
 });
 
 test("mismatched facts hash or shop id is refused before executing scripts", () => {
