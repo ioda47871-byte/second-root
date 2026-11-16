@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import DemoFromFacts from "@/components/admin/demo/DemoFromFacts";
+import DemoFromFacts, { OptionalFactsNotice } from "@/components/admin/demo/DemoFromFacts";
 import { onboardingDemoContent } from "@/lib/demo-version-package/facts-content";
 import { HIDDEN_EMAIL_LABEL, QUALITY_REVIEW_DISABLED_TEXT } from "@/lib/sales/demo-version/admin-messages";
 import { BASE_FACTS, fictionalPack } from "@/tests/support/fictional-facts-pack";
@@ -200,6 +200,28 @@ describe("server actions: flag first, then the admin", () => {
 });
 
 describe("DemoFromFacts panel", () => {
+  it("lists omitted optional fields, but does not imply an hours HOLD when only ward is absent", () => {
+    const facts = BASE_FACTS.filter(([key]) => key !== "ward").map(([key]) => ({ key }));
+    const markup = renderToStaticMarkup(<OptionalFactsNotice facts={facts} />);
+    expect(markup).toContain("data-optional-facts-missing");
+    expect(markup).toContain("区");
+    expect(markup).toContain("推測して作りません");
+    expect(markup).not.toContain("文章の品質監査は引き続き保留");
+    expect(markup).not.toContain("登録されていない任意項目：営業時間");
+  });
+
+  it("reports an hours HOLD only when hours are missing from the facts pack", () => {
+    const facts = BASE_FACTS.filter(([key]) => key !== "hours").map(([key]) => ({ key }));
+    const markup = renderToStaticMarkup(<OptionalFactsNotice facts={facts} />);
+    expect(markup).toContain("data-optional-facts-missing");
+    expect(markup).toContain("登録されていない任意項目：営業時間");
+    expect(markup).toContain("営業時間が facts pack にないため、文章の品質監査は引き続き保留になります");
+  });
+
+  it("shows no optional-facts warning when every optional fact is present", () => {
+    expect(renderToStaticMarkup(<OptionalFactsNotice facts={BASE_FACTS.map(([key]) => ({ key }))} />)).toBe("");
+  });
+
   it("shows the form only when enabled, with the target's explanation", () => {
     const on = renderToStaticMarkup(<DemoFromFacts prospectId={PROSPECT} target="no_demo" enabled />);
     expect(on).toContain('data-demo-from-facts="no_demo"');
