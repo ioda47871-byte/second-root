@@ -75,6 +75,7 @@ ${withHours ? '<section id="hours"><p>10:00〜17:00</p></section>' : ""}</main><
     const verified = make(true);
     expect(verified.review.findings.map((f) => f.rule)).toEqual(["real_shop_needs_owner_approval"]);
     expect(nextCopyStep(verified.review)).toBe("owner_review");
+    expect(copyGateSendBlockers(verified.review, verified.files, null)).toEqual(["OWNER_APPROVAL_MISSING"]);
     expect(copyGateSendBlockers(verified.review, verified.files, verified.approval)).toEqual([]);
   });
 
