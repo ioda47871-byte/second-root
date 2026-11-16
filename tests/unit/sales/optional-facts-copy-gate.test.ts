@@ -24,47 +24,58 @@ describe("optional facts are NOT permission to send unverified opening hours", (
     );
   });
 
-  it("keeps the actual copy send gate closed for missing hours even with an owner approval record", () => {
-    // Local synthetic fixture only. This is intentionally the real_shop_proposal lane,
-    // so a fictional-research-only guard cannot accidentally make the assertion pass.
-    const shopId = "proposal-gate-fixture";
-    const facts = [
-      fact("F1", "name", "架空の焼菓子店"),
-      fact("F2", "category", "焼菓子"),
-      fact("F3", "address", "架空市架空区架空町"),
-      fact("F4", "description", "架空の焼菓子を扱います。"),
-    ];
-    const factsPack = JSON.stringify({ schema: "shop_facts_pack_v1", shop_id: shopId, facts });
-    const factsSha = createHash("sha256").update(factsPack).digest("hex");
-    const items = [
-      { id: "name-line", text: facts[0]!.value, claim_type: "fact", source_fact_ids: ["F1"], owner_review_needed: false },
-      { id: "about-line", text: facts[3]!.value, claim_type: "fact", source_fact_ids: ["F4"], owner_review_needed: false },
-      { id: "location-line", text: facts[2]!.value, claim_type: "fact", source_fact_ids: ["F3"], owner_review_needed: false },
-    ];
-    const copyRecord = JSON.stringify({ schema: "comp_copy_v1", shop_id: shopId, facts_sha256: factsSha, lane: "real_shop_proposal", items });
-    const pageHtml = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head>
+  it("rejects only missing hours at the real-shop copy send gate; verified hours are an exact passing control", () => {
+    // Synthetic shop in the real_shop_proposal lane. The test MUST not pass only
+    // because the fictional research lane is never sendable.
+    const make = (withHours: boolean) => {
+      const shopId = "proposal-gate-fixture";
+      const facts = [
+        fact("F1", "name", "架空の焼菓子店"),
+        fact("F2", "category", "焼菓子"),
+        fact("F3", "address", "架空市架空区架空町"),
+        fact("F4", "description", "架空の焼菓子を扱います。"),
+        ...(withHours ? [fact("F5", "hours", "10:00〜17:00")] : []),
+      ];
+      const factsPack = JSON.stringify({ schema: "shop_facts_pack_v1", shop_id: shopId, facts });
+      const factsSha = createHash("sha256").update(factsPack).digest("hex");
+      const items = [
+        { id: "name-line", text: facts[0]!.value, claim_type: "fact", source_fact_ids: ["F1"], owner_review_needed: false },
+        { id: "about-line", text: facts[3]!.value, claim_type: "fact", source_fact_ids: ["F4"], owner_review_needed: false },
+        { id: "location-line", text: facts[2]!.value, claim_type: "fact", source_fact_ids: ["F3"], owner_review_needed: false },
+        ...(withHours ? [{ id: "hours-line", text: "10:00〜17:00", claim_type: "fact", source_fact_ids: ["F5"], owner_review_needed: false }] : []),
+      ];
+      const copyRecord = JSON.stringify({ schema: "comp_copy_v1", shop_id: shopId, facts_sha256: factsSha, lane: "real_shop_proposal", items });
+      const pageHtml = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head>
 <body><main><section id="hero"><h1>架空の焼菓子店</h1></section>
 <section id="about"><p>架空の焼菓子を扱います。</p></section>
-<section id="location"><p>架空市架空区架空町</p></section></main></body></html>`;
-    const pageCss = "body { margin: 0; }";
-    const files = { factsPack, copyRecord, pageHtml, pageCss };
-    const review = reviewCopyQuality(files);
-    expect(review.base_checks).toEqual({ ok: true, codes: [] });
-    expect(review.findings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "COPY_INFORMATION_MISSING", rule: "facts_missing_hours", severity: "hold" }),
-    ]));
-    expect(nextCopyStep(review)).toBe("stop_hold");
-
-    // Even if an owner-approval record were supplied, the verified-hour HOLD blocks the copy send gate.
-    const forgedApproval = {
-      shop_id: review.shop_id,
-      facts_sha256: review.facts_sha256,
-      copy_sha256: review.copy_sha256,
-      page_html_sha256: review.page_html_sha256,
-      page_css_sha256: review.page_css_sha256,
-      decision: "approve" as const,
+<section id="location"><p>架空市架空区架空町</p></section>
+${withHours ? '<section id="hours"><p>10:00〜17:00</p></section>' : ""}</main></body></html>`;
+      const files = { factsPack, copyRecord, pageHtml, pageCss: "body { margin: 0; }" };
+      const review = reviewCopyQuality(files);
+      const approval = {
+        shop_id: review.shop_id,
+        facts_sha256: review.facts_sha256,
+        copy_sha256: review.copy_sha256,
+        page_html_sha256: review.page_html_sha256,
+        page_css_sha256: review.page_css_sha256,
+        decision: "approve" as const,
+      };
+      expect(review.lane).toBe("real_shop_proposal");
+      expect(review.base_checks).toEqual({ ok: true, codes: [] });
+      return { files, review, approval };
     };
-    expect(copyGateSendBlockers(review, files, forgedApproval)).toContain("REVIEW_NOT_PASSED");
+
+    const missing = make(false);
+    expect(missing.review.findings
+      .filter((f) => (f.severity === "hold" || f.severity === "fail") && f.code !== "COPY_APPROVAL_MISSING")
+      .map((f) => f.rule)).toEqual(["facts_missing_hours"]);
+    expect(nextCopyStep(missing.review)).toBe("stop_hold");
+    expect(copyGateSendBlockers(missing.review, missing.files, missing.approval)).toEqual(["REVIEW_NOT_PASSED"]);
+
+    const verified = make(true);
+    expect(verified.review.findings.map((f) => f.rule)).toEqual(["real_shop_needs_owner_approval"]);
+    expect(nextCopyStep(verified.review)).toBe("owner_review");
+    expect(copyGateSendBlockers(verified.review, verified.files, verified.approval)).toEqual([]);
   });
 
   it("does not claim missing hours when a trusted hour fact actually exists", () => {
