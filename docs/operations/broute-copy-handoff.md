@@ -14,7 +14,7 @@
 
 ## 既存phase2fデザイン生成器への入力（追加）
 
-`scripts/sales/demo-version/prepare-design-input.ts` は、成功例の原理を参照した既存の`art_direction_set_v0`（各方向がC1〜C7審査を通過）から、既存の`phase2f` **v2**デザイン指示文とSHA pinを自動で作る。3方向の中から1方向を明示選択するが、固定のLPレイアウトやテンプレートを生成しない。
+`scripts/sales/demo-version/prepare-design-input.ts` は、成功例の原理を参照した既存の`art_direction_set_v0`（各方向がC1〜C7審査を通過）から、既存の`phase2f` **v2**に渡す`direction.json`と`references.json`を作る。プロンプト本文やSHA pinは生成しない。3方向の中から1方向を明示選択するが、固定のLPレイアウトやテンプレートを生成しない。
 
 ```bash
 npx tsx scripts/sales/demo-version/prepare-design-input.ts \
@@ -24,11 +24,21 @@ npx tsx scripts/sales/demo-version/prepare-design-input.ts \
   --out "$HOME/second-root-runs/fictional-bakery-input"
 ```
 
-出力は`direction.json`・`references.json`（既存のオーナー許可済みmanifestに由来）・`prompt.txt`・`pin.json`。**参照画像は元の許可済みmanifestに実在する場合のみ候補**であり、方向の文章にCP番号が書いてあるだけでは素材を利用しない。
+出力は`direction.json`・`references.json`（既存のオーナー許可済みmanifestに由来）・入力SHAを記録した`pin.json`。**参照画像は元の許可済みmanifestに実在する場合のみ候補**であり、方向の文章にCP番号が書いてあるだけでは素材を利用しない。
 
-現在の通常生成には`scripts/design-artifact/phase2f-design.ts`という**承認台帳・prompt hash・commit pinを要求する実Codexの単一入口**がある。本PRはそれを実行せず、その既存入口が受け取る方向・参照・pinを揃えるまで。新しいprompt v3、常駐worker、実Codexを有効にしない。
+**プロンプトSHAを作るときは、以下の既存の隔離済みCLIをオフライン・pin表示モードで手動実行する。** 新アダプターから直接import・自動起動はしない。
 
-最終的に3方向の各案を実際に生成する段階では、モデル呼び出しの回数・承認と独立視覚評価が必須。これは`prompt_sha256`が異なることだけではサイトの視覚的な多様性や成功品質を保証しない。
+```bash
+npx tsx scripts/design-artifact/phase2f-design.ts --print-pin \
+  --route B --prompt-version v2 \
+  --facts "$HOME/second-root-shops/fictional-bakery/facts-pack.json" \
+  --direction "$HOME/second-root-runs/fictional-bakery-input/direction.json" \
+  --references "$HOME/second-root-runs/fictional-bakery-input/references.json"
+```
+
+実Codexに進むときはこのCLIの別入口が**オーナー個別承認・prompt hash・commit pin**を要求する。本PRはそれを呼ばず、方向・参照を受け渡すまで。新しいprompt v3、常駐worker、実Codexを有効にしない。
+
+最終的に3方向の各案を実際に生成する段階では、モデル呼び出しの回数・承認と独立視覚評価が必須。方向の構造が異なるだけでは生成サイトの視覚的な多様性や成功品質を保証しない。
 
 ## オフラインの実行例
 
