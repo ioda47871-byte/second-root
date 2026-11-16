@@ -7,7 +7,7 @@
  *   --direction-id d1 --out /private/new-run \
  *   [--references design-library/phase2f/references/success-references-v1.json]
  *
- * The existing phase2f-design.ts is the sole real-call entry, and requires a
+ * The previously isolated, separately approved real-call entry requires a
  * separate pinned human approval before an external model may be invoked.
  */
 import { createHash } from "node:crypto";
