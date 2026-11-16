@@ -1,5 +1,12 @@
 # Progress
 
+## 2026-11-16 — DEV-263k / PR #277 R4 PASSと残Low対応
+
+- R4 Fresh Review: `634438b658afd3830d81b79bdef9262f6935468a` の独立コード審査が **PASS C0/H0/M0/L2**。同一SHAのGitHub Actions CI Run `43815976366` は **completed/success、全10ジョブ成功**とGitHub connectorで独立照合。Claudeの手元の`in_progress`スナップショットは時点の違いであり、CI失敗ではない。
+- R4 Low L1: `.ai/reviews/DEV-263k.md` のローカル絶対パスを匿名プレースホルダに変更、R1-R3 INCOMPLETEとR4 PASSを区別して保存。L2: `DemoFromFacts` の任意項目欠落通知を、営業時間がfacts packに無い場合だけ営業時間HOLDを説明する形に変更、3ケースをcomponent単体で検証するテストを追加。
+- **R4より後のソース変更があるため、新しいPR HEADのCI成功と新規独立Fresh Reviewが未達**。オーナー承認は必須4項目化の方針だけ。develop/main mergeやStaging/Production migration、実送信、公開の承認ではない。実行済みではない。
+- レビュー/CIの履歴は `.ai/reviews/DEV-263k.md`。未完了の条件は `.ai/blockers.md` を参照。
+
 ## 2026-11-16 — DEV-263k / PR #277 Owner approval & Fresh Review R3
 
 - オーナーはProtected Scopeの**必須4項目化だけを明示承認**（PR #277 comment `6908926087`）。送信HOLDやowner copy approvalは不変。Staging/Production DB migration・rollback、公開、営業送信、feature→develop/main mergeはこの承認に含まれない。
