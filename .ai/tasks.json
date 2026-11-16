@@ -10504,6 +10504,46 @@
       "last_failure": null,
       "branch": "feature/dev-263i-hosted-import",
       "note": "記録は .ai/reviews/DEV-263i.md。develop 558f9cb1 から作り、PR #271 (DEV-263h) の merge (aadcc6cd) を merge した。PR #271 の delta Low (lib/sales/facts-onboarding.ts の near(): 短い値の包含を一致にしない) もここで直した。DEV-196e-1 の worker の経路は残る。Issue #263"
+    },
+    {
+      "id": "DEV-263k",
+      "title": "Optional verified real-shop facts (Issue #275 / PR #277)",
+      "status": "blocked",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-263h"
+      ],
+      "purpose": "Permit creation of an unsendable local demo from verified name/category/address/description while omitting unverified optional fields; never fabricate facts or weaken missing-hours copy HOLD.",
+      "acceptance_criteria": [
+        "Required 4 keys are enforced by SQL and TypeScript; optional 6 keys omitted byte-identically without placeholders.",
+        "Both copy review and the actual send gate remain fail-closed with unverified hours.",
+        "CI including throwaway-DB integration is green and independent Fresh Review PASS C/H/M=0 on identical head.",
+        "Protected-scope decision recorded by owner before feature-to-develop merge; any hosted migration requires separate approval."
+      ],
+      "required_tests": [
+        "CI: static, unit, integration against isolated Supabase, build, e2e, shop-css",
+        "Independent Fresh Review on final head and commit-pinned evidence",
+        "Rollback SQL preconditions and stored-facts guard reviewed; DO NOT execute on hosted DB for this PR"
+      ],
+      "allowed_scope": [
+        "Optional facts TS and SQL derivation; local tests",
+        "Real-shop-demo workflow, rollback runbook, AI handoff records and independent review evidence"
+      ],
+      "forbidden_scope": [
+        "Staging/Production migration execution; destructive local db reset on shared stack",
+        "Degrading facts_missing_hours HOLD, bypassing approval/send gates or inventing shop facts",
+        "Sending outreach, public hosting of unapproved real-shop drafts or changes to SR-001",
+        "Automated feature-to-develop/main merge before explicit Protected Scope decision and Fresh Review PASS"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope: explicit decision that minimum 4 verified facts are acceptable for demo creation even with other absent fields; no authorization to send",
+        "Any hosted Staging/Production migration, rollback, deployment, outreach, or develop/main merge"
+      ],
+      "attempts": 2,
+      "last_failure": "Fresh Review R2 on 389b2e93: INCOMPLETE (C0/H0/M0/L4); code/docs corrections now being made on feature. Owner Protected Scope decision pending.",
+      "blocked_reason": "Missing explicit owner Protected Scope decision and a new Fresh Review PASS on updated head; no hosted deployment approval.",
+      "branch": "feature/dev-263k-optional-real-shop-facts",
+      "note": "L1-L4 addressed on feature branch, CI passed on earlier 389b2e93 HEAD; all later commits require new CI and independent Fresh Review. Issue #275, PR #277."
     }
   ]
 }
