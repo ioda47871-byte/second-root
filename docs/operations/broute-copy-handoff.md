@@ -12,6 +12,24 @@
 4. **私有のcompとして書き出す**：`scripts/sales/demo-version/from-prototype.ts`が`index.html`/`style.css`/`copy.json`を私有の新ディレクトリ`comp/`へ書く。`status.json`にはprospect ID（任意）、facts SHA、direction-set SHA、選んだ方向ID、HTML/CSS/copy SHA、コピー分類件数、`sendable:false`を保存。
 5. **従来の審査へ引き渡す**：次に目視で1440/390全ページを評価し、既存の`comp-copy`・`comp-lane`・`package-local`（PR #278のadapter）へ渡す。品質不十分・文章HOLDなら停止。**このPRだけでv2パッケージが承認されたことにはならない。**
 
+## 既存phase2fデザイン生成器への入力（追加）
+
+`scripts/sales/demo-version/prepare-design-input.ts` は、成功例の原理を参照した既存の`art_direction_set_v0`（各方向がC1〜C7審査を通過）から、既存の`phase2f` **v2**デザイン指示文とSHA pinを自動で作る。3方向の中から1方向を明示選択するが、固定のLPレイアウトやテンプレートを生成しない。
+
+```bash
+npx tsx scripts/sales/demo-version/prepare-design-input.ts \
+  --facts "$HOME/second-root-shops/fictional-bakery/facts-pack.json" \
+  --directions "$HOME/second-root-shops/fictional-bakery/direction-set.json" \
+  --direction-id direction-a \
+  --out "$HOME/second-root-runs/fictional-bakery-input"
+```
+
+出力は`direction.json`・`references.json`（既存のオーナー許可済みmanifestに由来）・`prompt.txt`・`pin.json`。**参照画像は元の許可済みmanifestに実在する場合のみ候補**であり、方向の文章にCP番号が書いてあるだけでは素材を利用しない。
+
+現在の通常生成には`scripts/design-artifact/phase2f-design.ts`という**承認台帳・prompt hash・commit pinを要求する実Codexの単一入口**がある。本PRはそれを実行せず、その既存入口が受け取る方向・参照・pinを揃えるまで。新しいprompt v3、常駐worker、実Codexを有効にしない。
+
+最終的に3方向の各案を実際に生成する段階では、モデル呼び出しの回数・承認と独立視覚評価が必須。これは`prompt_sha256`が異なることだけではサイトの視覚的な多様性や成功品質を保証しない。
+
 ## オフラインの実行例
 
 依存関係（`npm ci`）を用意した開発用チェックアウトで、架空の店の私有データを指定する。
