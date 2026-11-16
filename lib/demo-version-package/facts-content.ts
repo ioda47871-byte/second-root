@@ -75,7 +75,7 @@ export function assertDemoContentFromFacts(content: unknown, factsPack: Bytes): 
 
 /**
  * DEV-263h: the demo content a shop's demo is CREATED from by the owner's onboarding step (lib/sales/facts-onboarding.ts):
- * demoContentWithFactsSha (strict: the schema, every key mapped, none twice, none missing) and, in addition, every
+ * demoContentWithFactsSha (strict: the schema, every key mapped, no duplicates, four required keys present; unverified optional keys omitted) and, in addition, every
  * value exactly as written — FactsPack trims while the database copies the bytes (sales_derive_facts_demo_content), so a
  * value with surrounding whitespace is refused instead of being derived two ways. 輪 is refused (ai_demo_internal).
  */
