@@ -20,16 +20,16 @@ node scripts/sales/demo-version/prepare-offline.mjs \
 
 既存の各工程を再実装せず、そのまま利用する：
 
-1. `comp-lane.ts` のPC1440/SP390描画・安全・表示文字チェック（出力先 `renders/`）。
-2. `comp-copy.ts --audit` の文章監査。元のカンプへ書き込まず、私有出力先 `comp/` に限定したコピーへ監査結果を書き込む。HOLD・REVISE・FAILは停止。
-3. `comp-lane.ts --check-review --facts` の既存の視覚レビュー検査。レビューがない場合は停止。機械的なPASSを美観合格とは扱わない。
+1. `comp-copy.ts --audit` の文章監査。元のカンプへ書き込まず、私有出力先 `comp/` に限定したコピーへ監査結果を書き込む。HOLD・REVISE・FAILは停止。**描画レーンが`show_owner`のときcopy監査済みを要求するため、必ず先に実行する。**
+2. `comp-lane.ts` のPC1440/SP390描画・安全・表示文字チェック（出力先 `renders/`）。
+3. `comp-lane.ts --check-review --facts` の既存の視覚レビュー検査。レビューがない場合、および`review.json`の判定が`revise`や`drop`の場合は停止。機械的なPASSを美観合格とは扱わない。
 4. `package-local.ts --copy --facts` のv2パッケージ生成と再検証（出力先 `package/`）。写真・外部送信・DBアクセスなし。
 
 開始前に `shop_id` と factsのバイト列SHAが `copy.json` と一致することを検査する。入力ファイルのSHAを各工程の前後に再照合し、原本の改変・別バージョンの混入を拒否する。シンボリックリンク、未知の素材ファイル、出力の上書きも拒否する。
 
 私有の `status.json` は実行ID・facts SHA・各入力ファイルSHA・工程ごとの経過時間・停止理由・package SHAを保持する。標準出力はステータスとハッシュのみで、店舗固有文言や実店舗連絡先を出力しない。成功時も `package_prepared_owner_review_required` であり、営業送信できる意味ではない。
 
-テスト：`node --test tests/node/sales-demo-prep.test.mjs`。既存Vitest unit suiteからも `tests/unit/sales/offline-demo-prep.test.ts` が実行する。これらは**制御ロジックのモックテスト**であり、本物のChromium/DB E2Eを通った証拠ではない。
+テスト：`node --test tests/node/sales-demo-prep.test.mjs`（9テスト）。既存Vitest unit suiteからも `tests/unit/sales/offline-demo-prep.test.ts` が実行する。これらは**制御ロジックのモックテスト**であり、本物のChromium/DB E2Eを通った証拠ではない。
 
 ## 接続監査：すでにあるものとない矢印
 
