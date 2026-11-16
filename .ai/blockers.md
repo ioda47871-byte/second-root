@@ -3,7 +3,7 @@
 ### DEV-263k / PR #277 — Protected Scope・Fresh Review（2026-11-16、未解除）
 
 - **Protected Scope明示承認済み（2026-11-16）**: オーナーは必須4項目化（`name/category/address/description`）を明示的に承認。任意6項目は未確認なら省略し推測値・unknown・空欄を事実登録しない。承認の対象は**デモ作成の入力条件だけ**で、`facts_missing_hours` のcopy監査HOLD・文章/送信の承認ゲートは変更しない。証跡: PR #277 comment `6908926087`。**本番migration/rollback・営業送信・develop/main mergeは未承認**。
-- **独立Fresh Review未合格**: R1/R2/R3はすべて`INCOMPLETE`。R3はHEAD `ae232f21`、C0/H0/M0/L2（理由: Claude内でGitHub CIを参照不可・当時のProtected Scope記録未反映）。別経路で同HEADのCI Run `43785760982` の全ジョブsuccessを確認済み。R3 L2についてオーナー未承認時のsend blockerを追加検証。**最新変更HEADで再度CIと独立Fresh Review PASSを確認し、レビュー証跡を保存するまでmerge禁止**。
+- **R4独立コードレビューPASS、最新HEAD未検証**: R4 reviewed HEAD `634438b6` は **PASS C0/H0/M0/L2**。GitHub Actions Run `43815976366` は**同一SHAで全10ジョブsuccess**を別経路照合。Low 2件（レビュー記録のローカル絶対パス、営業時間以外が欠けた場合のHOLD表示）を後続コミットで修正し、表示の回帰テストを追加。**新HEADは再度CI成功と独立Fresh Review PASSが必要**。`.ai/reviews/DEV-263k.md` にR4と過去のINCOMPLETEを区別して記録した。オーナーの必須4項目化承認はmerge自体の承認ではないため、develop/mainマージは未実行。
 - **hostedの独立承認待ち**: `20261117000000` migrationのStaging/Production適用・rollback、deploy、実店舗の公開・営業送信はいずれも未承認/未実施。B-7a rollbackは仕様記録のみ、実行していない。
 
 > 人間の判断・操作が必要な事項と、技術的に止まっている事項を記録する。
