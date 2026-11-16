@@ -1,0 +1,48 @@
+# DEV-139 P0-2b — 店舗固有のB-route生成結果を営業用文章・デモ審査につなぐ
+
+**状態**: コード実装（ローカル／オフライン）。**実Codex/Claudeによる新規デザイン制作、候補DB接続、承認済みプレビューの管理画面表示は未完成。** 関連: Issue #139 / #263、前工程のDraft PR #278。
+
+## 追加した接続
+
+既存の`phase2f`と`art_direction_set_v0`で、店舗固有の３方向の中から選んだ**オリジナルのB-route HTML/CSS**を受け取る。架空店・ローカルでの利用を前提に、以下を順序固定で行う。
+
+1. **factを固定**：既存の`shop_facts_pack_v1`をバイト単位SHA256で特定。元ファイルを更新しない。実店舗は既存`sales_demo_facts_packs`でオーナー登録済みの同一内容でなければ、後段のimport/送信はできない。**source_idだけでは実在性や確認済みの証拠にならない**。
+2. **店舗らしさの前提**：既存`scripts/design-artifact/direction-set.ts`の検査をそのまま呼び、店・facts SHA・異なる3方向の構造・成功例参照の入力が`READY_FOR_COMPS`か調べる。通っても生成HTMLが方向に忠実という証明にはならない。
+3. **生成結果を文章台帳に変換**：`lib/sales/b-route/derive-copy.ts`が、既存のサーバー`checkArtifactHtml`で静的な安全・表示文字を確認。テキストがfacts packの原文・許された全文/文単位に一致すれば`fact`（出典のF番号付き）、それ以外は`proposal_pending_review`、架空の品質研究レーンだけ`creative_expression`。**曖昧なfact帰属、未対応ラベル、数字や営業時間等の根拠不明な主張は停止**。既存`checkArtifactCopy`が最終判定し、検査ルールを複製しない。
+4. **私有のcompとして書き出す**：`scripts/sales/demo-version/from-prototype.ts`が`index.html`/`style.css`/`copy.json`を私有の新ディレクトリ`comp/`へ書く。`status.json`にはprospect ID（任意）、facts SHA、direction-set SHA、選んだ方向ID、HTML/CSS/copy SHA、コピー分類件数、`sendable:false`を保存。
+5. **従来の審査へ引き渡す**：次に目視で1440/390全ページを評価し、既存の`comp-copy`・`comp-lane`・`package-local`（PR #278のadapter）へ渡す。品質不十分・文章HOLDなら停止。**このPRだけでv2パッケージが承認されたことにはならない。**
+
+## オフラインの実行例
+
+依存関係（`npm ci`）を用意した開発用チェックアウトで、架空の店の私有データを指定する。
+
+```bash
+npx tsx scripts/sales/demo-version/from-prototype.ts \
+  --facts "$HOME/second-root-shops/fictional-bakery/facts-pack.json" \
+  --prototype "$HOME/second-root-shops/fictional-bakery/generated-prototype" \
+  --directions "$HOME/second-root-shops/fictional-bakery/direction-set.json" \
+  --direction-id direction-a \
+  --lane quality_research_fictional \
+  --out "$HOME/second-root-runs/fictional-bakery-first"
+```
+
+入力の`generated-prototype`には、実際にデザイン生成機構で作られた`index.html`・`style.css`を置く。これらはサンプルテンプレを店名だけ変更したものではないことを、別途ビジュアル審査する。`out`は存在しないリポジトリ**外**ディレクトリとし、パスのリンクを拒否する。実店舗レーンの入力も公開リポジトリ外だけ。
+
+次段（PR #278）で`comp/`を検査する。いきなり`show_owner`の`review.json`を機械生成してはならない。実際のPC/SP全ページを独立確認したレビューが必要。
+
+```bash
+# 実際のビジュアルレビューを行った後でのみ:
+node scripts/sales/demo-version/prepare-offline.mjs \
+  --facts "$HOME/second-root-shops/fictional-bakery/facts-pack.json" \
+  --comp "$HOME/second-root-runs/fictional-bakery-first/comp" \
+  --out "$HOME/second-root-runs/fictional-bakery-reviewed"
+```
+
+既存ローカルSupabase環境での版import/管理画面確認は`docs/operations/sales-mvp-runbook.md`を使い、**登録済みfacts packの同一SHA**で縦断E2Eを証明するまで完了扱いしない。`real_shop_proposal`は新しく作った文章をすべてオーナー提案として扱い、無承認の送信を許可しない。
+
+## テストと限界
+
+- `tests/unit/sales/b-route-derive-copy.test.ts`：架空のパン屋・カフェ・焼菓子店の3種と、事実混入・営業時間・ラベル/安全規則・実店舗レーンを検査。
+- 機械的な構造差の証明は、成功例と同等の**美観**・コピーの自然さ・候補情報の**事実確認**を保証しない。機械PASSのみで`owner_approval`を付けず、成功例DBへ登録しない。
+- **今回未接続**：候補prospect ID→オーナー登録済みfacts取得、既存の実Codex呼び出しポートの限定承認付き稼働、デザインの自動方向選択、新生成ページをv2→DB→管理画面まで完全に通すローカルE2E。これらは次の小PRで行う。
+- 禁止：Harissy個別修正の再開、実店舗個別facts/HTMLの公開repo保存、承認されないCodex・画像生成・WSL worker/timer起動、本番DB、公開、Instagram/メール自動送信。
