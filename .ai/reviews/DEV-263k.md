@@ -1,6 +1,6 @@
 # DEV-263k / PR #277 — Independent Fresh Review record
 
-Latest independently reviewed code status: **PASS on R4's pinned commit `634438b658afd3830d81b79bdef9262f6935468a` (C0/H0/M0/L2)**. GitHub CI for that same reviewed commit: **completed/success**, run **`43815976366`**, all ten jobs succeeded. **DO NOT MERGE yet:** post-R4 UI and documentation changes require CI and an independent review of their resulting commit; separate merge authorization is not included in the owner's scope approval.
+**Latest code verdict: PASS**, independent Fresh Review **R5** on pinned code commit `930b64719a608c5d97da860efc23b172c58935b0`, **Critical 0 / High 0 / Medium 0 / Low 2**. GitHub Actions for that same code SHA: run **`43834953181` completed/success, all ten jobs succeeded**. This update is **review evidence only**, not a source change. The owner approved the 10→4 intake change but **did not authorize a develop/main merge**. Hosted migrations, deploys, and outreach remain separately prohibited.
 
 ## Review history
 
@@ -10,6 +10,7 @@ Latest independently reviewed code status: **PASS on R4's pinned commit `634438b
 | R2 | `389b2e9308a35f259b4d10cd47d97b23b7e57311` | INCOMPLETE | C0 H0 M0 L4 | Claude could not inspect CI or external runner files; fixes committed later |
 | R3 | `ae232f21cd5c6f8c40b2a8595654229acc9aa254` | INCOMPLETE | C0 H0 M0 L2 | CI unavailable to Claude; review entry not yet committed; one owner-approval-negative test omitted |
 | R4 | `634438b658afd3830d81b79bdef9262f6935468a` | PASS (independent code review) | C0 H0 M0 L2 | External GitHub CI subsequently independently verified success; two Low items addressed after R4 in later commits |
+| R5 | `930b64719a608c5d97da860efc23b172c58935b0` | **PASS (independent code review)** | **C0 H0 M0 L2** | GitHub CI run `43834953181` verified completed/success; two new non-blocking Low test-coverage suggestions deferred |
 
 R3 reviewer: independent local Claude Code `2.1.295`, read-only instructions. Worktree and report retained only under `<private-review-dir>/R3/` (not copied into the repository). Runner reported `npm ci` exit 0 and relevant unit tests exit 0; review subprocess exited 0. R3's conclusion remains INCOMPLETE, not PASS.
 
@@ -28,6 +29,16 @@ R3 reviewer: independent local Claude Code `2.1.295`, read-only instructions. Wo
 - GitHub Actions **run `43815976366`** for the *R4 reviewed SHA* was independently checked after it completed: **success**, all ten jobs success (build, static, unit 1/2 + 2/2 + aggregate, shop-css 1/2 + 2/2, integration with disposable Supabase, e2e, e2e-sales). The Claude review itself saw an older `in_progress` snapshot; that is not a failed CI result.
 - **Post-review code edits changed the PR SHA**; obtain both successful CI and another independent code review on the exact final commit before treating the PR as merge-ready. R4's PASS is not transferable to later code changes.
 
+## Independent R5 PASS + external CI check (matching code SHA)
+
+- Pinned reviewed code HEAD: `930b64719a608c5d97da860efc23b172c58935b0`; base `360a04d97c7c1d2d09e1177c2e2f9be50a64324c`. Fresh independent Claude reviewer verdict: **PASS, C0/H0/M0/L2**. The review is retained in the owner's private local R5 review directory; not copied to the repo.
+- Independent runner evidence in that review: `npm ci` exit 0, bounded 5-file unit run **271/271 passed**, exit 0. Reviewer did not independently run Vitest or DB integration because local tool permissions prevented it.
+- GitHub connector separately confirmed Actions **run `43834953181` for the exact R5 code SHA** completed **success**; ten jobs successful: static, build, unit shards (1/2 and 2/2) and aggregate, shop-css shards (1/2 and 2/2), integration (isolated CI Supabase), e2e, e2e-sales. Reviewer saw an earlier `in_progress` snapshot: not a failed CI.
+- **R5 Low 1 (deferred, non-blocking)**: the ward-only optional-fields unit test uses weak substring negatives; future tightening suggested (`任意項目：区。`, `not.toContain("営業時間")`). No production defect identified by reviewer.
+- **R5 Low 2 (deferred, non-blocking)**: three tests cover `OptionalFactsNotice` itself, but no full preview-state integration of the component. Reviewer inspected the JSX wiring and explicitly judged both Lows non-blocking.
+- **Stop the serial Low-fix/re-review cycle here**: no changes to UI/TS/SQL/tests are made solely for R5 Lows; revisit as a separate quality task only if useful. R5 PASS is not relabeled as CI PASS—the two verdicts are separately supported.
+- This evidence-only documentation commit follows the reviewed code commit; it **does not modify executable code**. Verify that PR diff from R5 code commit consists solely of this evidence file. The owner previously approved *the limited feature specification* (10→4) but **not this PR's merge**.
+
 ## Protected Scope owner decision (2026-11-16)
 
 The owner explicitly approved reducing required **facts pack intake for demo creation only** from 10 to 4 keys: `name`, `category`, `address`, `description`; the other six become optional and are omitted when unverified (no fabricated placeholders). Evidence: PR #277 conversation comment `6908926087` recording the user's explicit confirmation.
@@ -36,4 +47,4 @@ The owner did **not** approve weakening `facts_missing_hours` HOLD, waiving owne
 
 ## Completion gate
 
-A new independent reviewer must issue **PASS** (C/H/M=0) against the **final updated code HEAD**; R4 already passed on its specifically pinned earlier commit. Validate all CI jobs and the actual reviewed SHA via GitHub metadata; record independent review and verified findings here. Adding/changing this evidence-only file after PASS does not authorize code changes or merge. Until then status remains INCOMPLETE; no hosted DB writes, migration, deploy, send or merge.
+The most recent **executable code HEAD** has an independent **R5 PASS (C/H/M=0)** and a same-code-SHA verified **CI success**, both recorded above. This follow-up commit records evidence only: it does not grant merge permission, deploy anything, change hosted DB or authorize sales. **PR #277 remains open and unmerged pending explicit approval for develop integration and final branch-policy checks**. Any future executable code modification must be separately reviewed and CI-verified.
