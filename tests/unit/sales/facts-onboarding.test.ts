@@ -42,10 +42,24 @@ describe("onboardingDemoContent (strict derivation)", () => {
     expect(onboardingDemoContent(new Uint8Array(tamaki))).toMatchObject(demoContentFromFacts(JSON.parse(tamaki.toString("utf8"))));
   });
 
-  it("refuses an unmapped key, a key twice, a missing key, an extra field, malformed JSON, untrimmed values and 輪", () => {
+  it("omits unverified optional facts without changing the full-fixture derivation", () => {
+    const optional = new Set(["ward", "hours", "closed_days", "access", "phone", "workshop"]);
+    const sparse = fictionalPack({ facts: BASE.filter(([k]) => !optional.has(k)) });
+    const parsed = onboardingDemoContent(enc(sparse));
+    for (const key of optional) expect(parsed).not.toHaveProperty(key);
+    expect(parsed).toMatchObject({ name: "架空の店 試験", address: "架空市架空区試験町1-2-3", description: "動作確認用の架空の店です。実在しません。" });
+    expect(parsed.menu_items).toEqual(["一番目の品", "二番目の品", "十番目の品"]);
+    expect(parsed.facts_pack_sha256).toEqual(demoContentWithFactsSha(enc(sparse)).facts_pack_sha256);
+    expect(onboardingDemoContent(enc(fictionalPack()))).toHaveProperty("hours", "10:00〜18:00");
+    expect(onboardingDemoContent(enc(fictionalPack()))).toHaveProperty("workshop", "架空の講座");
+    for (const key of ["name", "category", "address", "description"])
+      expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: BASE.filter(([k]) => k !== key) }))))).toBe("TRUSTED_FACTS_INCOMPLETE");
+  });
+
+  it("refuses an unmapped key, a key twice, a missing required key, an extra field, malformed JSON, untrimmed values and 輪", () => {
     expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: [...BASE, ["menu_price", "500円"]] }))))).toBe("TRUSTED_FACTS_UNMAPPED_KEY");
     expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: [...BASE, ["hours", "9:00〜17:00"]] }))))).toBe("TRUSTED_FACTS_DUPLICATE_KEY");
-    expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: BASE.filter(([k]) => k !== "phone") }))))).toBe("TRUSTED_FACTS_INCOMPLETE");
+    expect(code(() => onboardingDemoContent(enc(fictionalPack({ facts: BASE.filter(([k]) => k !== "name") }))))).toBe("TRUSTED_FACTS_INCOMPLETE");
     expect(code(() => onboardingDemoContent(enc(fictionalPack({ extra: { note: "x" } }))))).toBe("TRUSTED_FACTS_INVALID");
     expect(code(() => onboardingDemoContent(enc("{")))).toBe("TRUSTED_FACTS_INVALID");
     for (const v of [" 前に空白", "後ろに空白\u3000", "\u00a0nbsp"])

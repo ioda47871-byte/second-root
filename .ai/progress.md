@@ -1,5 +1,27 @@
 # Progress
 
+## 2026-11-16 — DEV-263k / PR #277 R4 PASSと残Low対応
+
+- R4 Fresh Review: `634438b658afd3830d81b79bdef9262f6935468a` の独立コード審査が **PASS C0/H0/M0/L2**。同一SHAのGitHub Actions CI Run `43815976366` は **completed/success、全10ジョブ成功**とGitHub connectorで独立照合。Claudeの手元の`in_progress`スナップショットは時点の違いであり、CI失敗ではない。
+- R4 Low L1: `.ai/reviews/DEV-263k.md` のローカル絶対パスを匿名プレースホルダに変更、R1-R3 INCOMPLETEとR4 PASSを区別して保存。L2: `DemoFromFacts` の任意項目欠落通知を、営業時間がfacts packに無い場合だけ営業時間HOLDを説明する形に変更、3ケースをcomponent単体で検証するテストを追加。
+- **R4より後のソース変更があるため、新しいPR HEADのCI成功と新規独立Fresh Reviewが未達**。オーナー承認は必須4項目化の方針だけ。develop/main mergeやStaging/Production migration、実送信、公開の承認ではない。実行済みではない。
+- レビュー/CIの履歴は `.ai/reviews/DEV-263k.md`。未完了の条件は `.ai/blockers.md` を参照。
+
+## 2026-11-16 — DEV-263k / PR #277 Owner approval & Fresh Review R3
+
+- オーナーはProtected Scopeの**必須4項目化だけを明示承認**（PR #277 comment `6908926087`）。送信HOLDやowner copy approvalは不変。Staging/Production DB migration・rollback、公開、営業送信、feature→develop/main mergeはこの承認に含まれない。
+- Fresh Review R3はHEAD `ae232f21cd5c6f8c40b2a8595654229acc9aa254`、**INCOMPLETE C0/H0/M0/L2**。R3報告はCLIテスト証跡の251/251 passedを読めたが、Claudeの権限の制限からGitHub CIを独自に取得できなかった。
+- GitHub connectorを使い、**R3と同じHEADのCI Run `43785760982` がcompleted/success、全job成功**（unit 1/2・2/2、integration、static、shop-css 1/2・2/2、build、e2e-sales、e2e、unit総括）を外部照合。ClaudeがアクセスできないこととCI失敗は異なる。
+- R3 L2の「owner copy approvalが無いと送信不可」assertを追加。AI task/blocker記録は承認済みに更新。**この後のHEADに対してCI成功と新しい独立Fresh Review PASSが必要**。過去CIやR3 INCOMPLETEをPASSへ書き換えない。
+- rollback SQLはrunbook文書の記載のみ。DBへの適用・検証は実施していない。
+
+## 2026-11-16 — DEV-263k / PR #277 再レビューR2と残課題
+
+- PR #277（base `develop`、Issue #275）はDB側の必須4キー化・未確認任意6キーの省略。**非送信・実店舗未承認**。旧R1 `1397a6c1`: INCOMPLETE C0/H0/M1/L4。R2 `389b2e93`: INCOMPLETE C0/H0/M0/L4。
+- R1 M1とL1〜L4は修正してGitHub CI Run 43739104456 がHEAD `389b2e93` で全ジョブ成功（throwaway local Supabase integration含む）。R2追加L1〜L4に対し: rollbackのトランザクション内ロックと欠損facts・migration判定、missing hoursのcopy-gate厳密な陰陽対照、古いコードコメント、`.ai`管理記録をfeatureに追加。
+- **最新コミットのCI・Fresh Reviewは未確認**。新しい独立Fresh Reviewは本体の管理ポリシーを尊重し、worktreeの外のテスト/CI証跡の読み取りを拒否されたら `INCOMPLETE` とする。読めないことと実行失敗は区別し、リモートHEAD・CIはGitHub APIで別照合する。
+- 次: 新HEADのCIを検証し、レビュー修正が正しいか第三者Fresh Review。オーナーにProtected Scope（10→4、送信品質を緩めない）を明示確認するまでdevelopへマージしない。Staging/Productionへのmigration適用、実送信、承認前の公開は別途承認が必須。
+
 > 新しい session はまずここと `.ai/tasks.json`・`.ai/blockers.md` を読む（手順: `docs/AI_WORKFLOW.md` §2）。
 > push のたびに「現在地」を更新する。
 

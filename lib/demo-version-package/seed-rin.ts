@@ -66,7 +66,7 @@ export function rinDemoContent(pack: FactsPack): Record<string, unknown> {
 
 /**
  * DEV-263a: the demo content from a fictional shop's facts pack: every fact, under the keys the version page reads (the
- * derivation 輪 has always used, for any pack with these keys; a missing key throws FACT_MISSING). Pure.
+ * derivation 輪 has always used; missing required name/category/address/description throws FACT_MISSING, while other single keys may be omitted). Pure.
  */
 export function demoContentFromFacts(pack: FactsPack): Record<string, unknown> {
   if (pack.schema !== "shop_facts_pack_v1") throw new Error("FACTS_PACK_SCHEMA");
@@ -76,19 +76,26 @@ export function demoContentFromFacts(pack: FactsPack): Record<string, unknown> {
     return f.value;
   };
   const many = (prefix: string) => pack.facts.filter((f) => f.key.startsWith(prefix)).sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true })).map((f) => f.value);
+  // Issue #275: absence of an unverified fact is not a fact. Never invent a placeholder value.
+  // Keep the four identifying/offering fields required. Missing optional fields are omitted,
+  // NOT set to "unknown", "", or null, so the exact facts JSON remains the sole source of truth.
+  const optional = (key: string) => {
+    const value = pack.facts.find((x) => x.key === key)?.value;
+    return value === undefined ? {} : { [key]: value };
+  };
   return {
     name: v("name"),
     category: v("category"),
-    ward: v("ward"),
+    ...optional("ward"),
     address: v("address"),
-    hours: v("hours"),
-    closed_days: v("closed_days"),
-    access: v("access"),
-    phone: v("phone"),
+    ...optional("hours"),
+    ...optional("closed_days"),
+    ...optional("access"),
+    ...optional("phone"),
     description: v("description"),
     menu_items: many("service_"),
     statements: many("statement_"),
-    workshop: v("workshop"),
+    ...optional("workshop"),
     facts_pack: pack.shop_id,
   };
 }

@@ -13,6 +13,26 @@ import styles from "./demo.module.css";
 
 export type DemoFromFactsTarget = "no_demo" | "legacy" | "facts";
 
+// A missing optional field is intentionally absent, never silently filled with a claim.
+const OPTIONAL_FACT_FIELDS = [
+  ["ward", "区"], ["hours", "営業時間"], ["closed_days", "定休日"],
+  ["access", "アクセス"], ["phone", "電話番号"], ["workshop", "ワークショップ"],
+] as const;
+
+/** Displays absent optional keys without claiming a reason for their absence. */
+export function OptionalFactsNotice({ facts }: { facts: readonly { key: string }[] }) {
+  const missing = OPTIONAL_FACT_FIELDS.filter(([key]) => !facts.some((f) => f.key === key));
+  if (!missing.length) return null;
+  const hoursMissing = missing.some(([key]) => key === "hours");
+  return (
+    <p className={styles.note} role="status" data-optional-facts-missing="">
+      facts pack に登録されていない任意項目：{missing.map(([, label]) => label).join("、")}。
+      これらの内容は推測して作りません。
+      {hoursMissing && "営業時間が facts pack にないため、文章の品質監査は引き続き保留になります。"}
+    </p>
+  );
+}
+
 const ACTION_TEXT: Record<string, string> = {
   create: "この候補にはまだデモがありません。この事実からデモの事実を作り、事実を登録します。",
   replace_legacy: "今のデモ（React のデモ）の内容を、この事実から作った内容に置き換え、事実を登録します。React のデモの表示も変わります。",
@@ -113,6 +133,7 @@ export default function DemoFromFacts({ prospectId, target, enabled }: { prospec
                       {preview.identity.packName}／{preview.identity.packAddress}
                     </dd>
                   </dl>
+                  <OptionalFactsNotice facts={preview.facts} />
                   {preview.identity.mismatch && (
                     <>
                       <p className={styles.alert} role="alert" style={{ margin: "8px 0 0" }}>

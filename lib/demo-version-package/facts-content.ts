@@ -4,6 +4,7 @@
  * owner's facts registration (lib/sales/facts-store.ts, the admin screen).
  *
  *   - demoContentFromFactsBytes: FactsPack (strict) → every key mapped, none twice → demoContentFromFacts.
+ *     Issue #275: optional unverified fields are omitted, while name/category/address/description stay mandatory.
  *   - assertDemoContentFromFacts: the demo's sales_demos.content must hold the sha256 of exactly these bytes
  *     (content.facts_pack_sha256) and equal the content derived from them, compared as canonical JSON (jsonb does not
  *     keep key order). A 輪 demo (content.facts_pack = RIN_SHOP_ID) is refused: its photo packages are ai_demo_internal.
@@ -74,7 +75,7 @@ export function assertDemoContentFromFacts(content: unknown, factsPack: Bytes): 
 
 /**
  * DEV-263h: the demo content a shop's demo is CREATED from by the owner's onboarding step (lib/sales/facts-onboarding.ts):
- * demoContentWithFactsSha (strict: the schema, every key mapped, none twice, none missing) and, in addition, every
+ * demoContentWithFactsSha (strict: the schema, every key mapped, no duplicates, four required keys present; unverified optional keys omitted) and, in addition, every
  * value exactly as written — FactsPack trims while the database copies the bytes (sales_derive_facts_demo_content), so a
  * value with surrounding whitespace is refused instead of being derived two ways. 輪 is refused (ai_demo_internal).
  */
