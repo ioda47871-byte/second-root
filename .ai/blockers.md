@@ -1,5 +1,11 @@
 # Blockers
 
+### DEV-263k / PR #277 — Protected Scope・Fresh Review（2026-11-16、未解除）
+
+- **オーナーの明示判断待ち**: 実店舗デモ用facts packの必須キーを10個から `name/category/address/description` の4個へ緩和してよいか。任意6項目は未確認なら省略する（推測値・unknown・空欄を事実登録しない）。これは**デモ作成の入力条件のみ**の変更で、`facts_missing_hours` のcopy監査HOLDや文章・送信の承認条件は緩めない。ユーザーの「次に進もう」はこのProtected Scopeの明示承認とは扱わない。
+- **独立Fresh Review未合格**: 旧HEAD `1397a6c1` と修正後HEAD `389b2e93` は両方 `INCOMPLETE`（R2: C0/H0/M0/L4）。R2のLowをfeatureに修正中。新しい最終HEADについてFresh Review PASS・CI success・独立証拠保存が必要。GitHub上のPRレビュー登録は独立Claudeのローカル結果と別。
+- **hostedの独立承認待ち**: `20261117000000` migrationのStaging/Production適用・rollback、deploy、実店舗の公開・営業送信はいずれも未承認/未実施。B-7a rollbackは仕様記録のみ、実行していない。
+
 > 人間の判断・操作が必要な事項と、技術的に止まっている事項を記録する。
 > 解除されたら「解除済み」に移し、解除日と対応を書く。Secret の値は書かない。
 
