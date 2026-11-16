@@ -10539,11 +10539,11 @@
         "Protected Scope: explicit decision that minimum 4 verified facts are acceptable for demo creation even with other absent fields; no authorization to send",
         "Any hosted Staging/Production migration, rollback, deployment, outreach, or develop/main merge"
       ],
-      "attempts": 3,
-      "last_failure": "R3 Fresh Review INCOMPLETE on ae232f21 (C0/H0/M0/L2): reviewer could not independently query GitHub CI; follow-up minor test assertion and review evidence record needed. GitHub run 43785760982 verified success separately on that head.",
-      "blocked_reason": "Protected Scope owner decision APPROVED 2026-11-16 (10→4 for demo intake only, PR #277 comment 6908926087); current-head CI + new independent Fresh Review PASS and evidence record remain pending. Hosted migration, send, and develop/main merge are not approved.",
+      "attempts": 4,
+      "last_failure": "No latest-head failure yet. R4 independent code review PASS on 634438b6 (C0/H0/M0/L2), same-head CI run 43815976366 completed success. Two Lows have since been addressed on feature; new HEAD CI + independent review remain pending.",
+      "blocked_reason": "Owner approved 10→4 for draft demo creation only (PR comment 6908926087). Post-R4 fix HEAD still needs full CI + independent Fresh Review PASS. Explicit merge authorization not included; hosted migration/publication/outreach remain unapproved.",
       "branch": "feature/dev-263k-optional-real-shop-facts",
-      "note": "Owner expressly approved minimum four verified facts for demo creation only (name/category/address/description); optional six omitted when unverified. Does not authorize sending, altering hours HOLD, hosted migration, or merging. R3 C0/H0/M0/L2; L2 test adjusted; CI success on prior ae232f21, new head CI/review pending."
+      "note": "R4 PASS on 634438b6, CI run 43815976366 all jobs passed. L1 privacy in review log and L2 optional-fields notice condition+tests fixed after R4; recorded in .ai/reviews/DEV-263k.md. Need final-head CI and review; keep feature unmerged."
     }
   ]
 }
