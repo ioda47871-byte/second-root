@@ -1,6 +1,6 @@
 /**
  * Offline only. Reads shop-specific verified direction inputs and prepares the
- * existing phase2f v2 design prompt + SHA pin. NO model invocation, no approval.
+ * existing phase2f v2 direction files. NO model invocation or prompt construction.
  *
  * npx tsx scripts/sales/demo-version/prepare-design-input.ts \
  *   --facts /private/facts.json --directions /private/directions.json \
@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep, join } from "node:path";
-import { buildBRouteGenerationPrompt, BRoutePromptStop } from "../../../lib/sales/b-route/generation-prompt";
+import { buildBRouteGenerationInput, BRoutePromptStop } from "../../../lib/sales/b-route/generation-prompt";
 import { runDirectionSetCheck } from "../../design-artifact/direction-set";
 
 const REPO = resolve(__dirname, "../../..");
@@ -40,11 +40,11 @@ export function prepareBRouteDesignInput(opts: {
   const fb = file(factsPath), db = file(directionsPath), rb = file(refsPath);
   const gate = runDirectionSetCheck(directionsPath, factsPath);
   if (gate.status !== "READY_FOR_COMPS") throw new Stop("DIRECTION_SET_HOLD");
-  const result = buildBRouteGenerationPrompt({
+  const result = buildBRouteGenerationInput({
     facts: JSON.parse(fb.toString("utf8")), directionSet: JSON.parse(db.toString("utf8")),
     directionId: opts.directionId, referenceManifest: JSON.parse(rb.toString("utf8")),
   });
-  // Input must not change after the prompt is built and before any output is written.
+  // Input must not change after selecting the direction and before output is written.
   if (hash(file(factsPath)) !== hash(fb) || hash(file(directionsPath)) !== hash(db) || hash(file(refsPath)) !== hash(rb))
     throw new Stop("INPUT_MUTATED");
   mkdirSync(outDir, { mode: 0o700 });
@@ -52,18 +52,16 @@ export function prepareBRouteDesignInput(opts: {
     writeFileSync(join(outDir, name), data, { mode: 0o600, flag: "wx" });
   write("direction.json", `${JSON.stringify(result.direction, null, 2)}\n`);
   write("references.json", `${JSON.stringify(result.references, null, 2)}\n`);
-  write("prompt.txt", result.prompt);
   const record = {
     schema: "sales_broute_design_input_v1",
-    stage: "awaiting_explicit_generator_call_approval",
+    stage: "direction_ready_for_existing_prompt_pin",
     shop_id: JSON.parse(fb.toString("utf8")).shop_id,
     facts_sha256: hash(fb),
     direction_set_sha256: hash(db),
     direction_id: opts.directionId,
     references_manifest_sha256: hash(rb),
     prompt_version: result.prompt_version,
-    prompt_sha256: result.prompt_sha256,
-    prompt_chars: result.prompt_chars,
+    prompt_pin_required: true,
     reference_count: result.reference_count,
     reference_mode: gate.reference_mode,
     design_generated: false,
@@ -84,7 +82,7 @@ if (require.main === module) {
   try {
     const status = prepareBRouteDesignInput({ factsPath, directionsPath, directionId, outDir,
       ...(a("--references") ? { referencesPath: a("--references") } : {}) });
-    process.stdout.write(`${JSON.stringify({ stage: status.stage, facts_sha256: status.facts_sha256, prompt_sha256: status.prompt_sha256, prompt_chars: status.prompt_chars, sendable: false })}\n`);
+    process.stdout.write(`${JSON.stringify({ stage: status.stage, facts_sha256: status.facts_sha256, prompt_pin_required: true, sendable: false })}\n`);
   } catch (e) {
     process.stdout.write(`${JSON.stringify({ status: "blocked", code: e instanceof Stop || e instanceof BRoutePromptStop ? e.code : "INPUT_OR_EXECUTION_FAILED" })}\n`);
     process.exit(1);
