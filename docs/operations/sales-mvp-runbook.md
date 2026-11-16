@@ -279,10 +279,50 @@ where d.content ? 'facts_pack_sha256'
   ]);
 ```
 
-2. **監査と承認を終えて、20261117000000が実際に適用済みの場合だけ**、以下の一つのトランザクションで元の関数を復元し、migration履歴の当該版だけを戻す。関数本体は `20261116000000_sales_facts_demo_onboarding.sql` の定義から、先頭の `create function` だけを `create or replace function` にしたもの。関数の削除やテーブルのtruncateはしない。
+2. **別途のオーナー承認と移行計画を確定した場合のみ**、以下の一つのトランザクションで元の関数を復元し、migration履歴の当該版だけを戻す。`LOCK TABLE ... IN SHARE MODE` により処理中のデモ・facts書込をブロックしてから、そのトランザクション内で履歴と省略項目の有無を再検査する（事前監査だけに依存しない）。該当データがあれば `raise exception` で全体を取り消す。旧関数本体は `20261116000000_sales_facts_demo_onboarding.sql` から、先頭の `create function` だけを `create or replace function` にしたもの。**DB操作はこのPRでは実行しない**。
 
 ```sql
 begin;
+-- Do not allow concurrent onboarding/demo mutations between the guards and restoration.
+-- SHARE conflicts with INSERT/UPDATE/DELETE ROW EXCLUSIVE locks, until COMMIT.
+lock table public.sales_demos, public.sales_demo_facts_packs,
+           supabase_migrations.schema_migrations in share mode;
+
+do $rollback_guard$
+begin
+  if not exists (select 1 from supabase_migrations.schema_migrations where version = '20261116000000')
+     or not exists (select 1 from supabase_migrations.schema_migrations where version = '20261117000000') then
+    raise exception 'optional_facts_rollback_missing_applied_migration';
+  end if;
+
+  if exists (
+    select 1 from public.sales_demos d
+    where d.content ? 'facts_pack_sha256'
+      and not (d.content ?& array[
+        'name', 'category', 'ward', 'address', 'hours', 'closed_days',
+        'access', 'phone', 'description', 'workshop'
+      ])
+  ) then
+    raise exception 'optional_facts_rollback_sparse_demo_exists';
+  end if;
+
+  -- Append-only history matters too: a demo can be overwritten while its old
+  -- facts bytes remain registered. Never strand those packs behind the old gate.
+  if exists (
+    select 1 from public.sales_demo_facts_packs f
+    where exists (
+      select 1 from unnest(array[
+        'name', 'category', 'ward', 'address', 'hours', 'closed_days',
+        'access', 'phone', 'description', 'workshop'
+      ]::text[]) k(key)
+      where not ((f.facts_pack_text::jsonb->'facts') @> jsonb_build_array(jsonb_build_object('key', k.key)))
+    )
+  ) then
+    raise exception 'optional_facts_rollback_sparse_stored_pack_exists';
+  end if;
+end
+$rollback_guard$;
+
 create or replace function public.sales_derive_facts_demo_content(p_facts_pack text)
 returns jsonb
 language plpgsql
@@ -363,5 +403,7 @@ delete from supabase_migrations.schema_migrations
 where version = '20261117000000';
 commit;
 ```
+
+**再適用注意**: リポジトリ内の `20261117000000_sales_optional_facts_onboarding.sql` を残したまま migration履歴だけ消すと、次の `db push` 等で再適用されうる。実行前に別途承認されたリポジトリ側のrevert / forward migration方針と運用停止範囲を確定する。履歴の手動変更が許されない環境では、履歴を消さず承認済みのforward復旧migrationを設計する。
 
 3. **事後確認**: `pg_get_functiondef('public.sales_derive_facts_demo_content(text)'::regprocedure)` で `c_single` の必須検査に戻ったこと、関数のEXECUTE権限が公開されていないこと、`20261117000000` の履歴が消え `20261116000000` が残ることを確認する。既存の登録済みfactsやデモ、送信済み記録は一切削除しない。migration履歴の手動更新が許されない環境ではSQLをそのまま実行せず、別の承認済みforward修復migrationを設計する。
