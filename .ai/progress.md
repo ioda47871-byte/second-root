@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-11-16 — DEV-263k / PR #277 Owner approval & Fresh Review R3
+
+- オーナーはProtected Scopeの**必須4項目化だけを明示承認**（PR #277 comment `6908926087`）。送信HOLDやowner copy approvalは不変。Staging/Production DB migration・rollback、公開、営業送信、feature→develop/main mergeはこの承認に含まれない。
+- Fresh Review R3はHEAD `ae232f21cd5c6f8c40b2a8595654229acc9aa254`、**INCOMPLETE C0/H0/M0/L2**。R3報告はCLIテスト証跡の251/251 passedを読めたが、Claudeの権限の制限からGitHub CIを独自に取得できなかった。
+- GitHub connectorを使い、**R3と同じHEADのCI Run `43785760982` がcompleted/success、全job成功**（unit 1/2・2/2、integration、static、shop-css 1/2・2/2、build、e2e-sales、e2e、unit総括）を外部照合。ClaudeがアクセスできないこととCI失敗は異なる。
+- R3 L2の「owner copy approvalが無いと送信不可」assertを追加。AI task/blocker記録は承認済みに更新。**この後のHEADに対してCI成功と新しい独立Fresh Review PASSが必要**。過去CIやR3 INCOMPLETEをPASSへ書き換えない。
+- rollback SQLはrunbook文書の記載のみ。DBへの適用・検証は実施していない。
+
 ## 2026-11-16 — DEV-263k / PR #277 再レビューR2と残課題
 
 - PR #277（base `develop`、Issue #275）はDB側の必須4キー化・未確認任意6キーの省略。**非送信・実店舗未承認**。旧R1 `1397a6c1`: INCOMPLETE C0/H0/M1/L4。R2 `389b2e93`: INCOMPLETE C0/H0/M0/L4。
