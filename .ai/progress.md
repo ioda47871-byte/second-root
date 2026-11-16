@@ -1,5 +1,12 @@
 # Progress
 
+## 2026-11-16 — DEV-263k / PR #277 再レビューR2と残課題
+
+- PR #277（base `develop`、Issue #275）はDB側の必須4キー化・未確認任意6キーの省略。**非送信・実店舗未承認**。旧R1 `1397a6c1`: INCOMPLETE C0/H0/M1/L4。R2 `389b2e93`: INCOMPLETE C0/H0/M0/L4。
+- R1 M1とL1〜L4は修正してGitHub CI Run 43739104456 がHEAD `389b2e93` で全ジョブ成功（throwaway local Supabase integration含む）。R2追加L1〜L4に対し: rollbackのトランザクション内ロックと欠損facts・migration判定、missing hoursのcopy-gate厳密な陰陽対照、古いコードコメント、`.ai`管理記録をfeatureに追加。
+- **最新コミットのCI・Fresh Reviewは未確認**。新しい独立Fresh Reviewは本体の管理ポリシーを尊重し、worktreeの外のテスト/CI証跡の読み取りを拒否されたら `INCOMPLETE` とする。読めないことと実行失敗は区別し、リモートHEAD・CIはGitHub APIで別照合する。
+- 次: 新HEADのCIを検証し、レビュー修正が正しいか第三者Fresh Review。オーナーにProtected Scope（10→4、送信品質を緩めない）を明示確認するまでdevelopへマージしない。Staging/Productionへのmigration適用、実送信、承認前の公開は別途承認が必須。
+
 > 新しい session はまずここと `.ai/tasks.json`・`.ai/blockers.md` を読む（手順: `docs/AI_WORKFLOW.md` §2）。
 > push のたびに「現在地」を更新する。
 
