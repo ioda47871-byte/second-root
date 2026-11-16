@@ -66,7 +66,7 @@ export function rinDemoContent(pack: FactsPack): Record<string, unknown> {
 
 /**
  * DEV-263a: the demo content from a fictional shop's facts pack: every fact, under the keys the version page reads (the
- * derivation 輪 has always used, for any pack with these keys; a missing key throws FACT_MISSING). Pure.
+ * derivation 輪 has always used; missing required name/category/address/description throws FACT_MISSING, while other single keys may be omitted). Pure.
  */
 export function demoContentFromFacts(pack: FactsPack): Record<string, unknown> {
   if (pack.schema !== "shop_facts_pack_v1") throw new Error("FACTS_PACK_SCHEMA");
