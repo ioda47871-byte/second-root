@@ -1,0 +1,209 @@
+/* ほし窯 d2-v1 — fidelity C (experimental_fidelity, research only, not a production page, not a success case).
+   Updated after the independent review of PR #287 to follow the comp comps/d2-hearth-floor-v2 (same HTML and copy bytes;
+   the photo boards' HTML is unchanged, the ph-mouth board is smaller and inset in the arch). Earlier from comps/d2-hearth-floor: the hero keeps the comp's art-led vw stage; below it
+   the PC sections are re-laid on a 12-column grid with heights from their content, so 1024 and 768 hold as well.
+   The comp's notes follow.
+   ---
+   ほし窯 d2-hearth-floor — full-page comp (B-route, research only, not a production page).
+   The whole page is one oven floor seen from above: the mouth's arch at the top, then the floor from the back (by the
+   fire) to the door. The ground cools without a seam, 焦げ茶 → 焼き色 → 小麦色 → 粉の白 → 生成り; no section is cut by a line.
+   Photos are placeholder boards (role and proportion only). SP (≤600) is laid out first; PC (≥601) re-places it in vw.
+   v2 (after the independent review of v1): the mouth's photo board is inset in the arch, with the oven's cavity and its
+   receding courses drawn around it, so the hero holds before a photo arrives (the board stays the ph-mouth slot, a
+   deliberate reading of image_slots "full": the arch frames the view into the oven); the heat rings fade out above the
+   fire instead of being cut by the floor above; the scoring cuts sit between the letters; the floor labels differ by place;
+   the flour shows the same two flours at changing proportions. */
+:root {
+  --char: #120b07;
+  --char-2: #1b120c;
+  --deep: #2c1b11;
+  --bake: #8a4f26;
+  --crust: #e9b872;
+  --wheat: #dcc08e;
+  --flour: #f3eee5;
+  --kinari: #ece2cd;
+  --cream: #f3dfba;
+  --ink: #2b1a10;
+  --mincho: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "IPAMincho", serif;
+  --gothic: "Zen Kaku Gothic New", "Noto Sans CJK JP", "IPAGothic", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--kinari); }
+body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.8; letter-spacing: .04em; }
+.page { position: relative; overflow: hidden; }
+section { position: relative; }
+h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* photo placeholders: role and proportion only */
+.photo {
+  width: 100%; height: 100%;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 240, 220, .07) 0 1px, transparent 1px 12px),
+    linear-gradient(160deg, var(--tone, #6d5440), #3a2a1e);
+  box-shadow: inset 0 0 0 1px rgba(255, 230, 200, .16);
+}
+.board { position: relative; overflow: hidden; }
+.ph { margin-top: 10px; font-size: 12px; letter-spacing: .08em; line-height: 1.5; }
+.mark { font-size: 12px; letter-spacing: .4em; line-height: 1.4; padding-left: 10px; border-left: 2px solid currentColor; }
+.item { font-family: var(--mincho); line-height: 1.1; white-space: nowrap; }
+
+/* ---------- SP (≤600) ---------- */
+
+/* mouth: the arch of the oven mouth, the name set in its stones */
+.mouth { height: 153.85vw; z-index: 3; background: radial-gradient(ellipse 60vw 70vw at 54vw 80vw, rgba(154, 69, 24, .3), transparent 70%), linear-gradient(var(--char), var(--char-2)); color: var(--cream); }
+.sign { position: absolute; left: 5.13vw; top: 4.1vw; z-index: 4; }
+.name-full { font-size: 13px; font-weight: 400; letter-spacing: .3em; white-space: nowrap; }
+.kind { font-family: Georgia, serif; font-size: 12px; letter-spacing: .4em; color: #b8915f; }
+.plaque { display: none; }
+.fig-mouth { position: absolute; left: 29.49vw; top: 73.08vw; width: 48.72vw; z-index: 1; }
+.board-mouth { aspect-ratio: 190 / 315; border-radius: 50% 50% 0 0 / 30.16% 30.16% 0 0; --tone: #4a2a18; }
+.ph-mouth { position: absolute; top: 100%; left: 0; margin-top: 12px; color: #c9a77a; white-space: nowrap; }
+.arch { position: absolute; z-index: 2; pointer-events: none; overflow: visible; }
+.masonry { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.masonry path { fill: none; stroke: rgba(240, 200, 160, .07); stroke-width: 1; }
+.inside { position: absolute; z-index: 0; pointer-events: none; }
+.inside-pc { display: none; }
+.inside-sp { left: 0; top: 0; width: 100%; height: 153.85vw; }
+.courses path { fill: none; stroke: #c2622a; stroke-width: 2; }
+.courses path:nth-child(1) { opacity: .3; }
+.courses path:nth-child(2) { opacity: .45; }
+.courses path:nth-child(3) { opacity: .6; }
+.arch-pc { display: none; }
+.arch-sp { left: 0; top: 0; width: 100%; height: 153.85vw; }
+.stones path, .stones rect { stroke: var(--char); stroke-width: 2.5; }
+.arch-name { font-family: var(--mincho); fill: var(--cream); text-anchor: middle; dominant-baseline: central; }
+.arch-sp .arch-name { font-size: 36px; }
+
+/* deep: the back of the floor, by the fire — the two loaves the oven bakes */
+.deep { z-index: 2; padding: 20vw 0 16vw; background: linear-gradient(var(--char-2), var(--deep)); color: var(--cream); }
+.mark-deep { margin: 0 5.13vw 6vw; color: #b98e5e; width: fit-content; }
+.fig-loaf { width: 76.92vw; margin-left: 5.13vw; transform: rotate(-2deg); }
+.board-loaf { aspect-ratio: 600 / 500; --tone: #7a5236; }
+.ph-loaf { color: #b98e5e; }
+.item-inaka { position: relative; z-index: 2; margin: 3vw 0 0 16vw; font-size: 11.28vw; color: var(--crust); }
+.deep-fact { margin: 8vw 5.13vw 0; font-family: var(--mincho); font-size: 5.64vw; line-height: 1.7; }
+.baguette { position: relative; display: flex; align-items: center; justify-content: center; width: 89.74vw; height: 20.5vw; margin: 10vw 0 0 5.13vw; border: 2px solid var(--crust); border-radius: 999px; transform: rotate(-4deg); }
+.coupe { position: absolute; inset: 0; width: 100%; height: 100%; }
+.coupe line { stroke: var(--crust); stroke-width: 3; stroke-linecap: round; opacity: .45; vector-effect: non-scaling-stroke; }
+.coupe .end { opacity: .7; }
+.item-baguette { position: relative; font-size: 7.69vw; letter-spacing: .4em; padding-left: .4em; color: var(--cream); }
+
+/* fire: where the wood is put in, with the heat spreading over the floor */
+.fire { z-index: 1; padding: 30vw 5.13vw 84vw; background: linear-gradient(var(--deep), var(--bake)); color: #fbe6c4; }
+.heat { position: absolute; left: -3vw; top: 31vw; width: 153.85vw; height: 153.85vw; }
+.rings circle { fill: none; stroke: #f0a060; stroke-width: 2; }
+.rings circle:nth-child(1) { opacity: .7; }
+.rings circle:nth-child(2) { opacity: .55; }
+.rings circle:nth-child(3) { opacity: .42; }
+.rings circle:nth-child(4) { opacity: .3; }
+.rings circle:nth-child(5) { opacity: .2; }
+.rings circle:nth-child(6) { opacity: .12; }
+.logs circle:not(.core):not(.ring) { fill: #2a170d; stroke: #e57a2e; stroke-width: 3; }
+.logs .ring { fill: none; stroke: #a8562a; stroke-width: 1.5; }
+.logs .crack { stroke: #e57a2e; stroke-width: 2; }
+.mark-fire { position: relative; z-index: 2; width: fit-content; margin-bottom: 6vw; color: #f6c48f; border-left: 0; padding: 6px 0 0; border-top: 2px solid currentColor; letter-spacing: .5em; }
+.fire-fact { position: relative; z-index: 2; width: 76.92vw; font-family: var(--mincho); font-size: 8.72vw; line-height: 1.5; }
+
+/* door: outside the oven door, the shop-front shelf — the other three breads, never on a grid */
+.door { padding: 16vw 5.13vw 14vw; background: linear-gradient(var(--bake) 0, #c99a5e 14vw, var(--wheat) 100%); color: var(--ink); }
+.mark-door { width: fit-content; margin-bottom: 6vw; color: #3b2214; border-left: 0; padding: 4px 12px 4px 14px; font-size: 13px; background: repeating-linear-gradient(178deg, rgba(90, 52, 24, .1) 0 1px, transparent 1px 6px), #c99d62; transform: rotate(-2deg); box-shadow: 0 4px 8px rgba(90, 52, 24, .2); }
+.door-fact { font-family: var(--mincho); font-size: 5.13vw; line-height: 1.95; }
+.shelf { display: flex; flex-direction: column; gap: 3vw; margin-top: 10vw; }
+.plank { display: none; }
+.shelf .item { width: fit-content; padding: 2.5vw 5vw; color: #3b2214; background: repeating-linear-gradient(178deg, rgba(90, 52, 24, .1) 0 1px, transparent 1px 7px), #c99d62; border-radius: 3px; box-shadow: 0 8px 14px rgba(90, 52, 24, .22); }
+.item-kurumi { font-size: 12.3vw; transform: rotate(-3deg); }
+.item-shio { align-self: flex-end; font-size: 10.26vw; transform: rotate(4deg); }
+.item-danish { margin-left: 6vw; font-size: 7.69vw; line-height: 1.35; white-space: normal; transform: rotate(-1.5deg); }
+
+/* flour: beside the door, the two flours */
+.flour { padding: 22vw 5.13vw 24vw; background: linear-gradient(var(--wheat), var(--flour)); color: #3a2416; }
+.dust { position: absolute; right: -8vw; top: 8vw; width: 56vw; height: 56vw; }
+.mark-flour { position: relative; z-index: 1; width: fit-content; color: #a98d63; border-left: 0; padding: 0; font-family: var(--mincho); font-size: 40px; letter-spacing: 0; line-height: 1; }
+.mix { position: relative; z-index: 1; display: block; width: 100%; height: auto; aspect-ratio: 640 / 120; margin-top: 8vw; }
+.flour-fact { position: relative; z-index: 1; margin-top: 22vw; font-family: var(--mincho); font-size: 7.69vw; line-height: 1.6; }
+
+/* visit: out of the door, to the visitor's hands */
+.visit { padding: 14vw 5.13vw 12vw; background: linear-gradient(var(--flour), var(--kinari)); color: var(--ink); }
+.mark-visit { width: fit-content; margin: 0 auto 4vw; color: #7a5a36; border-left: 0; padding: 6px 0 0 .4em; border-top: 1px solid currentColor; }
+.doorway { position: relative; width: 89.74vw; height: 105vw; }
+.door-line { position: absolute; inset: 0; width: 100%; height: 100%; }
+.door-line path { fill: none; stroke: #3a2416; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.door-line .inner { stroke-width: 1; opacity: .45; }
+.info dt { font-size: 12px; letter-spacing: .3em; color: #6b5038; }
+.info dd { font-size: 16px; line-height: 1.6; }
+.info-door { position: absolute; left: 11%; right: 11%; top: 40%; display: grid; gap: 6vw; }
+.info-door .i-hours dd { font-family: var(--mincho); font-size: 6.15vw; line-height: 1.4; }
+.info-door .i-closed dd { font-family: var(--mincho); font-size: 5.64vw; }
+.visit-side { margin-top: 10vw; }
+.visit-name { font-family: var(--mincho); font-weight: 400; font-size: 20px; letter-spacing: .12em; }
+.info-side { margin-top: 5vw; }
+.info-side div { border-top: 1px solid #3a2416; padding: 10px 0; }
+.info-side .i-tel dd { font-size: 7.69vw; font-weight: 700; letter-spacing: .04em; }
+.fictional { margin-top: 8vw; font-size: 12px; color: #6b5038; }
+
+/* ---------- PC (≥601): the same floor, re-placed on the 1440 grid in vw (1px of 1440 = .0694vw) ---------- */
+@media (min-width: 601px) {
+  .mouth { height: 65.28vw; background: radial-gradient(ellipse 40vw 34vw at 62.5vw 36vw, rgba(154, 69, 24, .3), transparent 70%), linear-gradient(var(--char), var(--char-2)); }
+  .sign { left: 5.56vw; top: 3.89vw; }
+  .name-full { max-width: 18.75vw; font-family: var(--mincho); font-size: clamp(18px, 2.36vw, 36px); letter-spacing: .14em; line-height: 1.4; white-space: normal; }
+  .kind { font-size: clamp(13px, 1.25vw, 19px); font-style: italic; margin-top: 1.11vw; }
+  .plaque { display: block; position: absolute; left: 5.56vw; bottom: 4.17vw; width: 20.14vw; z-index: 4; }
+  .plaque div { border-top: 1px solid rgba(232, 210, 172, .25); padding: 8px 0 9px; }
+  .plaque dt { font-size: 12px; letter-spacing: .3em; color: #b8915f; }
+  .plaque dd { font-size: clamp(13px, 1.11vw, 17px); line-height: 1.6; }
+  .fig-mouth { left: 46.53vw; top: 29.86vw; width: 31.94vw; }
+  .board-mouth { aspect-ratio: 460 / 510; border-radius: 50% 50% 0 0 / 45.1% 45.1% 0 0; }
+  .arch-sp, .inside-sp { display: none; }
+  .inside-pc { display: block; left: 27.08vw; top: 1.39vw; width: 70.83vw; height: 63.89vw; }
+  .arch-pc { display: block; left: 27.08vw; top: 1.39vw; width: 70.83vw; height: 63.89vw; }
+  .arch-pc .arch-name { font-size: 78px; }
+
+  /* fidelity C: below the hero the sections are laid out on a 12-column grid and take their height from their
+     content; the drawings (heat rings, planks, dust, door line) are layers over that flow, scaled with the width */
+  .deep, .door, .flour, .visit { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 1.67vw; align-items: start; }
+  .deep { height: auto; padding: 5.56vw 5.56vw 9.72vw; }
+  .mark-deep { grid-column: 1 / 4; grid-row: 1; margin: 0 0 3.47vw; }
+  .fig-loaf { grid-column: 1 / 7; grid-row: 2; width: auto; margin: 0 0 0 2.78vw; transform: rotate(-3deg); }
+  .deep-fact { grid-column: 8 / 13; grid-row: 2; align-self: center; margin: 0; font-size: clamp(20px, 2.78vw, 44px); line-height: 1.6; }
+  .item-inaka { grid-column: 4 / 13; grid-row: 3; margin: -6.25vw 0 0 0; z-index: 3; font-size: 6.67vw; }
+  .baguette { grid-column: 6 / 13; grid-row: 4; width: auto; height: 9.03vw; margin: 4.17vw 0 0 0; transform: rotate(-5deg); }
+  .item-baguette { font-size: 4.17vw; letter-spacing: .5em; padding-left: .5em; }
+
+  .fire { min-height: 59.72vw; padding: 17.36vw 5.56vw 20.83vw; }
+  /* v2: the rings start above the fire; they fade out before the floor above, so no edge is drawn at the boundary */
+  .heat { left: 29.17vw; top: -11.81vw; width: 83.33vw; height: 83.33vw; -webkit-mask-image: linear-gradient(transparent 0, transparent 14.5%, #000 32%); mask-image: linear-gradient(transparent 0, transparent 14.5%, #000 32%); }
+  .mark-fire { position: absolute; left: 66.67vw; top: 43.75vw; margin: 0; transform: translateX(-50%); padding-left: .5em; }
+  .fire-fact { width: 40.28vw; margin-left: 2.78vw; font-size: 4.17vw; line-height: 1.45; }
+
+  .door { padding: 6.94vw 5.56vw 8.33vw; background: linear-gradient(var(--bake) 0, #c99a5e 11%, var(--wheat) 100%); }
+  .mark-door { grid-column: 1 / 4; grid-row: 1; margin: 0 0 3.47vw; }
+  .door-fact { grid-column: 1 / 5; grid-row: 2; margin-left: 2.78vw; font-size: clamp(16px, 1.81vw, 28px); }
+  .shelf { grid-column: 6 / 13; grid-row: 1 / 3; position: relative; display: block; aspect-ratio: 760 / 598; margin: -1.39vw 0 0; }
+  .shelf > * { position: absolute; }
+  .plank { display: block; border-radius: 4px; background: repeating-linear-gradient(178deg, rgba(90, 52, 24, .1) 0 1px, transparent 1px 8px), #c99d62; box-shadow: 0 1.2vw 2vw rgba(90, 52, 24, .22); }
+  .plank-a { left: 0; top: 15.5%; width: 125%; height: 25.9%; transform: rotate(-2.5deg); }
+  .plank-b { left: 10.9%; top: 67.2%; width: 117%; height: 25.9%; transform: rotate(2deg); }
+  .shelf .item { padding: 0; background: none; box-shadow: none; color: #3b2214; }
+  .item-kurumi { left: 4.1%; top: 19%; font-size: 5.83vw; transform: rotate(-4deg); }
+  .item-shio { left: 65%; top: 5.2%; font-size: 4.17vw; transform: rotate(6deg); }
+  .item-danish { left: 16%; top: 74.1%; width: max-content; margin: 0; font-size: 3.19vw; white-space: nowrap; transform: rotate(-1.5deg); }
+
+  .flour { padding: 9.72vw 5.56vw 8.33vw; }
+  .mark-flour { grid-column: 1 / 3; grid-row: 1; font-size: clamp(32px, 4.17vw, 64px); }
+  .flour-fact { grid-column: 2 / 8; grid-row: 2; margin: 2.78vw 0 0 2.78vw; font-size: 3.33vw; }
+  .mix { grid-column: 2 / 8; grid-row: 3; width: auto; margin: 3.47vw 0 0 2.78vw; }
+  .dust { position: relative; grid-column: 9 / 13; grid-row: 1 / 3; right: auto; top: auto; width: 100%; height: auto; aspect-ratio: 1; margin-top: -4.86vw; }
+
+  .visit { padding: 4.17vw 5.56vw 0; }
+  .mark-visit { grid-column: 1 / 7; grid-row: 1; justify-self: center; margin: 0 0 2.08vw 2.78vw; }
+  .doorway { grid-column: 1 / 7; grid-row: 2; width: auto; height: auto; aspect-ratio: 640 / 760; margin-left: 2.78vw; }
+  .info-door { top: 44%; gap: 2.5vw; }
+  .info-door .i-hours dd { font-size: clamp(16px, 3.06vw, 46px); line-height: 1.35; }
+  .info-door .i-closed dd { font-size: clamp(15px, 2.22vw, 34px); }
+  .visit-side { grid-column: 8 / 13; grid-row: 2; align-self: center; margin: 0 0 6vw; }
+  .visit-name { font-size: clamp(18px, 2.22vw, 34px); }
+  .info-side { margin-top: 2.08vw; }
+  .info-side dd { font-size: clamp(15px, 1.39vw, 21px); }
+  .info-side .i-tel dd { font-size: clamp(22px, 2.78vw, 42px); }
+  .fictional { margin-top: 3.47vw; }
+}
