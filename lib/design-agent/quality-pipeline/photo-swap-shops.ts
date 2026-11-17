@@ -190,7 +190,7 @@ export const SWAP_SHOP_SPECS = {
       { key: "mobile", media: "(max-width: 600px)", viewports: ["mobile_390", "mobile_600"] },
     ],
     edgeViewports: EDGE_VIEWPORTS,
-    // the oven mouth's board is nearly square at ≥601 (760/800) and tall at ≤600 (300/488); the loaf keeps 1.2 in both.
+    // the oven mouth's board is nearly square at ≥601 (460/510) and tall at ≤600 (190/315); the loaf keeps 1.2 in both.
     // The SP photo (when given) serves the SP range only
     spViewports: ["mobile_390", "mobile_600"],
     structure: {
@@ -203,7 +203,7 @@ export const SWAP_SHOP_SPECS = {
       ],
     },
     swapCss: HOSHIGAMA_SWAP_CSS,
-    // the loaf is 1.2 at every width and the oven mouth 0.95 at every PC width: identical crops share one file
+    // the loaf is 1.2 at every width and the oven mouth 0.9 at every PC width: identical crops share one file
     shareIdenticalCrops: true,
     // NOT approved (DEV-139): the swap refuses ai_generated_demo pictures for ほし窯 (AI_DEMO_NOT_ALLOWED). The owner's
     // approval of the prompt text and of one run would set this true and pin aiDemoPromptSha256 (the run sheet's diff).

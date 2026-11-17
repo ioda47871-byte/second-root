@@ -9,7 +9,7 @@
  *
  * Covered: the spec (pages, breakpoints, edges, SP viewports, the exact placeholder triples, the CSS), the transform,
  * the swap end to end with mock photos (rights, 2× at the range edges, focal box, overflow, PC 1440 / SP 390 renders),
- * the upscale situation of the 2140 px oven-mouth photo against the existing 2× rule, the draft prompt pins, and the
+ * the upscale situation of the 1370 px oven-mouth photo against the existing 2× rule, the draft prompt pins, and the
  * bundle writer and intake (refusing without an approval; working with the stub).
  */
 import { createHash } from "node:crypto";
@@ -164,37 +164,37 @@ describe("ほし窯's draft prompt: pinned, NOT approved", () => {
     for (const p of HOSHIGAMA_PHOTOS) expect(DRAFT).toContain(`${p.photo_id} (${p.aspect}): `), expect(DRAFT).toContain(`inside ${boxText(p.focal_box)})`);
     // ph-loaf: the swap's own request for the slot (one shape for every viewport)
     expect(requestFor(slot("ph-loaf"), { edges: EDGE_MAP.get("ph-loaf")! })).toMatchObject({ ok: true, aspect: "4:3", min_width_px: photo("ph-loaf").target.width, min_height_px: photo("ph-loaf").target.height });
-    // the oven mouth: no single shape keeps its subject in both boards well (3:4 keeps 79% at PC) → a PC and an SP photo
-    expect(requestFor(slot("ph-mouth"), { edges: EDGE_MAP.get("ph-mouth")! })).toMatchObject({ ok: true, aspect: "3:4", worst_kept_area: 0.789 });
+    // the oven mouth: one 3:4 photo would keep only 80% of itself at PC → the brief asks for a PC and an SP photo
+    expect(requestFor(slot("ph-mouth"), { edges: EDGE_MAP.get("ph-mouth")! })).toMatchObject({ ok: true, aspect: "3:4", worst_kept_area: 0.803 });
     const exact = (id: string) => ({ width: photo(id).target.width, height: photo(id).target.height, focal_box: photo(id).focal_box });
     expect(planSlot(slot("ph-mouth"), { pc: exact("ph-mouth-pc"), sp: exact("ph-mouth-sp") }, { spViewports: SPEC.spViewports, edges: EDGE_MAP.get("ph-mouth")! })).toMatchObject({ ok: true, codes: [] });
     expect(planSlot(slot("ph-loaf"), { pc: exact("ph-loaf") }, { spViewports: SPEC.spViewports, edges: EDGE_MAP.get("ph-loaf")! })).toMatchObject({ ok: true, codes: [] });
-    // 10 px less on the oven mouth's PC photo is below 2× at the 1920 edge (1067 px tall → 2134)
-    const small = { ...exact("ph-mouth-pc"), width: 2130, height: 2130 };
+    // 20 px less on the oven mouth's PC photo is below 2× at the 1920 edge (680 px tall → 1360)
+    const small = { ...exact("ph-mouth-pc"), width: 1350, height: 1350 };
     expect(planSlot(slot("ph-mouth"), { pc: small, sp: exact("ph-mouth-sp") }, { spViewports: SPEC.spViewports, edges: EDGE_MAP.get("ph-mouth")! }).codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
   });
 });
 
-describe("the upscale situation of the 2140 px oven-mouth photo (the existing 2× rule, not loosened)", () => {
+describe("the upscale situation of the 1370 px oven-mouth photo (the existing 2× rule, not loosened)", () => {
   const pc = photo("ph-mouth-pc");
   it("ほし窯's max is an explicit per-shop value left at the existing 2×; upscaleFactor's default is unchanged", () => {
     expect(HOSHIGAMA_MAX_UPSCALE).toBe(MAX_UPSCALE);
     expect(MAX_UPSCALE).toBe(2);
     expect(upscaleFactor({ width: 1024, height: 1024 }, pc)).toBe(upscaleFactor({ width: 1024, height: 1024 }, pc, MAX_UPSCALE));
   });
-  it("a 1024² picture would need 2.09× (refused); a 1536² picture needs 1.394× (allowed); 2:3 1024×1536 reaches the SP photo", () => {
-    expect(upscaleFactor({ width: 1024, height: 1024 }, pc, HOSHIGAMA_MAX_UPSCALE)).toBeNull();
-    expect(upscaleFactor({ width: 1024, height: 1024 }, pc, 2.1)).toBe(2.09);
-    expect(upscaleFactor({ width: 1536, height: 1536 }, pc, HOSHIGAMA_MAX_UPSCALE)).toBe(1.394);
+  it("a 1536² picture needs no enlargement, a 1024² one 1.338× (within 2×), a 640² one 2.141× (refused); 1024×1536 reaches the SP photo", () => {
+    expect(upscaleFactor({ width: 1536, height: 1536 }, pc, HOSHIGAMA_MAX_UPSCALE)).toBe(1);
+    expect(upscaleFactor({ width: 1024, height: 1024 }, pc, HOSHIGAMA_MAX_UPSCALE)).toBe(1.338);
+    expect(upscaleFactor({ width: 640, height: 640 }, pc, HOSHIGAMA_MAX_UPSCALE)).toBeNull();
     expect(upscaleFactor({ width: 1024, height: 1536 }, photo("ph-mouth-sp"), HOSHIGAMA_MAX_UPSCALE)).toBe(1);
     expect(upscaleFactor({ width: 1536, height: 1024 }, photo("ph-loaf"), HOSHIGAMA_MAX_UPSCALE)).toBe(1.283);
   });
-  it("the swap's density rule: a 2048² picture (1024² at 2×) is 1.92× at 1920 — only with an owner scale exception (≥1.5)", () => {
-    const at2048 = { width: 2048, height: 2048, focal_box: pc.focal_box };
-    const sp = { width: 1010, height: 1515, focal_box: photo("ph-mouth-sp").focal_box };
+  it("the swap's density rule: a 1280² picture is 1.88× at 1920 — only with an owner scale exception (≥1.5)", () => {
+    const at1280 = { width: 1280, height: 1280, focal_box: pc.focal_box };
+    const sp = { width: 650, height: 975, focal_box: photo("ph-mouth-sp").focal_box };
     const opts = { spViewports: SPEC.spViewports, edges: EDGE_MAP.get("ph-mouth")! };
-    expect(planSlot(slot("ph-mouth"), { pc: at2048, sp }, opts).codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
-    expect(planSlot(slot("ph-mouth"), { pc: at2048, sp, scale_exception: { scale: 1.9, reason: "test", decided_by: "owner" } }, opts)).toMatchObject({ ok: true });
+    expect(planSlot(slot("ph-mouth"), { pc: at1280, sp }, opts).codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
+    expect(planSlot(slot("ph-mouth"), { pc: at1280, sp, scale_exception: { scale: 1.85, reason: "test", decided_by: "owner" } }, opts)).toMatchObject({ ok: true });
   });
 });
 
@@ -237,20 +237,20 @@ describe("the bundle writer and the intake: refused without the owner's approval
     expect(readdirSync(join(p, ".intake", "photos"))).toEqual([]);
   });
   it("with the stub: 3 pictures in, the oven-mouth PC and the loaf enlarged (lanczos3, ≤2×), rights ai_generated_demo", async () => {
-    const { dir, manifest } = await write(await stubBatch([[1536, 1536], [1024, 1536], [1536, 1024]]));
+    const { dir, manifest } = await write(await stubBatch([[1024, 1024], [1024, 1536], [1536, 1024]]));
     expect(manifest).toMatchObject({ status: "complete", shop: "bakery", page: "d2-v1", public_web: false, prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, run_prompt_sha256: HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 });
     expect(manifest.photos.map((x) => [x.photo_id, x.meets_target_2x])).toEqual([["ph-mouth-pc", false], ["ph-mouth-sp", true], ["ph-loaf", false]]);
     const p = pipeline("ok");
     const res = await intake(dir, p);
     if (!res.ok) throw new Error(res.codes.join(","));
-    expect(res.provenance.map((x) => [x.photo_id, x.upscale?.factor ?? null, x.width, x.height])).toEqual([["ph-mouth-pc", 1.394, 2141, 2141], ["ph-mouth-sp", null, 1024, 1536], ["ph-loaf", 1.283, 1971, 1314]]);
+    expect(res.provenance.map((x) => [x.photo_id, x.upscale?.factor ?? null, x.width, x.height])).toEqual([["ph-mouth-pc", 1.338, 1370, 1370], ["ph-mouth-sp", null, 1024, 1536], ["ph-loaf", 1.283, 1971, 1314]]);
     const slots = (res.manifest as { slots: Array<{ slot_id: string; pc: { rights: Record<string, unknown> }; sp?: unknown }> }).slots;
     expect(slots.map((s) => [s.slot_id, Boolean(s.sp)])).toEqual([["ph-mouth", true], ["ph-loaf", false]]);
     expect(slots[0]!.pc.rights).toMatchObject({ source_kind: "ai_generated_demo", allowed_uses: { public_web: false }, depicts_real_shop: false, ai_provenance: { prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, approval_id: STUB_RUN_APPROVAL_ID, demo_only: true } });
   });
-  it("a 1024² oven-mouth picture: UPSCALE_EXCEEDS_MAX (2.09× > 2×); a picture not on the upscale list: BELOW_TARGET", async () => {
-    const { dir } = await write(await stubBatch([[1024, 1024], [1024, 1536], [1536, 1024]]));
-    expect(await intake(dir, pipeline("1024"))).toEqual({ ok: false, codes: ["UPSCALE_EXCEEDS_MAX:ph-mouth-pc"] });
+  it("a 640² oven-mouth picture: UPSCALE_EXCEEDS_MAX (2.14× > 2×); a picture not on the upscale list: BELOW_TARGET", async () => {
+    const { dir } = await write(await stubBatch([[640, 640], [1024, 1536], [1536, 1024]]));
+    expect(await intake(dir, pipeline("640"))).toEqual({ ok: false, codes: ["UPSCALE_EXCEEDS_MAX:ph-mouth-pc"] });
     const { dir: d2 } = await write(await stubBatch([[1536, 1536], [1024, 1536], [1536, 1024]]));
     expect(await intake(d2, pipeline("nolist"), { approval: { ...STUB_APPROVAL, upscale_allowed: ["ph-mouth-pc"] } })).toEqual({ ok: false, codes: ["BELOW_TARGET:ph-loaf"] });
   });
@@ -337,7 +337,8 @@ describe("ほし窯 swap E2E with MOCK photos: rights → crop (2× at the edges
     expect(Object.keys(crops["ph-mouth/tablet"]!.density_by_viewport)).toContain("tablet_1199");
     expect(Object.keys(crops["ph-mouth/mobile"]!.density_by_viewport)).toContain("mobile_600");
     const mouthSp = await sharp(join(out, "page", "photos", "ph-mouth-mobile.png")).metadata();
-    expect(Math.abs(mouthSp.width! / mouthSp.height! - 300 / 488)).toBeLessThan(0.01);
+    const sp390 = slot("ph-mouth").variants.find((v) => v.viewport === "mobile_390")!;
+    expect(Math.abs(mouthSp.width! / mouthSp.height! - sp390.width_px / sp390.height_px)).toBeLessThan(0.01);
     expect(res.summary).toMatchObject({ shop: "bakery", page_dir: PAGE, source_hashes: { html: INV.html_sha256, css: INV.css_sha256, copy: INV.copy_sha256 } });
     expect(readFileSync(join(out, "page", "style.css"), "utf8").endsWith(HOSHIGAMA_SWAP_CSS)).toBe(true);
 
@@ -394,7 +395,7 @@ describe("ほし窯 swap E2E with MOCK photos: rights → crop (2× at the edges
     const pcOnly = planSlot(slot("ph-mouth"), { pc: { ...photo("ph-mouth-pc").target, focal_box: box("ph-mouth-pc") } }, { spViewports: SPEC.spViewports, edges: EDGE_MAP.get("ph-mouth")! });
     expect(pcOnly).toMatchObject({ ok: true, needs_sp_photo: false });
     const out = outDir();
-    const small = [{ ...s[0]!, pc: { rights: await mock("h-bad-mouth-small", 2048, 2048, 7), focal_box: box("ph-mouth-pc") } }, s[1]!];
+    const small = [{ ...s[0]!, pc: { rights: await mock("h-bad-mouth-small", 1280, 1280, 7), focal_box: box("ph-mouth-pc") } }, s[1]!];
     expect(codesOf(await run(small, out))).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
     nothingLeft(out);
   });

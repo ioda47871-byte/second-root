@@ -26,12 +26,12 @@ import { cropReaches } from "./tsugute-ai-photos";
 /** the draft prompt text, by repository path (read by the tests and, after an approval, by the run's caller; never written) */
 export const HOSHIGAMA_PROMPT_FILE = "docs/design/hoshigama-ai-photo-prompt.txt";
 /** the DRAFT bytes (UTF-8): SHA-256, byte count and String.length. NOT approved. */
-export const HOSHIGAMA_PROMPT_DRAFT_SHA256 = "9b6fc53842eca4b88ee52778f3e3d3c65c3c884b372930c88703f08336d5ea83";
-export const HOSHIGAMA_PROMPT_DRAFT_BYTES = 2017;
-export const HOSHIGAMA_PROMPT_DRAFT_CHARS = 1998;
+export const HOSHIGAMA_PROMPT_DRAFT_SHA256 = "b394bb9f97088855641d52802b30eaf01a73efa515679b1bbc3d7297b3babe0a";
+export const HOSHIGAMA_PROMPT_DRAFT_BYTES = 2007;
+export const HOSHIGAMA_PROMPT_DRAFT_CHARS = 1988;
 /** the run prompt the draft would give (buildHoshigamaRunPromptCandidate): its pins, NOT approved */
-export const HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 = "13aee65811d621bf365f445297e98ba159445ffc8b8cd504fa8c4b511d4884e6";
-export const HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS = 2678;
+export const HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 = "a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1";
+export const HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS = 2668;
 
 export const HOSHIGAMA_PHOTOS_MAX_IMAGES = 3;
 /**
@@ -50,7 +50,7 @@ export type HoshigamaPhoto = {
   /** which photo of the slot: the PC photo (every range, or ≥601 when an SP photo is given) or the SP photo (≤600) */
   use: "pc" | "sp";
   aspect: HoshigamaAspect;
-  /** the 2× target of the brief §3 (the slot's boxes at its range edges, photo-slot-edges-d2-v1.json; rounded up to 10) */
+  /** the 2× target of the brief §3 (the slot's boxes at its range edges, photo-slot-edges-d2-v1.json; rounded up, as the brief states it) */
   target: { width: number; height: number };
   /** the 1.5× floor (only with an owner scale exception in the swap); recorded for the owner's size decision */
   floor: { width: number; height: number };
@@ -61,9 +61,9 @@ export type HoshigamaPhoto = {
 };
 
 export const HOSHIGAMA_PHOTOS: readonly HoshigamaPhoto[] = [
-  { photo_id: "ph-mouth-pc", slot_id: "ph-mouth", use: "pc", aspect: "1:1", target: { width: 2140, height: 2140 }, floor: { width: 1610, height: 1610 }, focal_box: { x: 0.25, y: 0.45, w: 0.5, h: 0.4 }, prompt_sha256: "080c5bc48a8cfa4dc04ba589b4766dd9cc3358bbfd556579a2ce23c2df14c468" },
-  { photo_id: "ph-mouth-sp", slot_id: "ph-mouth", use: "sp", aspect: "2:3", target: { width: 1010, height: 1515 }, floor: { width: 760, height: 1140 }, focal_box: { x: 0.2, y: 0.42, w: 0.6, h: 0.46 }, prompt_sha256: "b4956f7fa31bedc948cb0267c13c5fb5dce50d2cfa06ea1b4fd48ab82b5103ad" },
-  { photo_id: "ph-loaf", slot_id: "ph-loaf", use: "pc", aspect: "4:3", target: { width: 1750, height: 1313 }, floor: { width: 1310, height: 983 }, focal_box: { x: 0.22, y: 0.2, w: 0.5, h: 0.6 }, prompt_sha256: "5d5e6fbb6d44a970a031afd72ea0ff74d3a8be988a98ce59667971e9a6456f99" },
+  { photo_id: "ph-mouth-pc", slot_id: "ph-mouth", use: "pc", aspect: "1:1", target: { width: 1370, height: 1370 }, floor: { width: 1020, height: 1020 }, focal_box: { x: 0.25, y: 0.48, w: 0.5, h: 0.4 }, prompt_sha256: "4df1be15702f92b2e2686b214bd752a4204aec584116a00860b82907e28faf66" },
+  { photo_id: "ph-mouth-sp", slot_id: "ph-mouth", use: "sp", aspect: "2:3", target: { width: 650, height: 975 }, floor: { width: 490, height: 735 }, focal_box: { x: 0.2, y: 0.42, w: 0.6, h: 0.46 }, prompt_sha256: "b4956f7fa31bedc948cb0267c13c5fb5dce50d2cfa06ea1b4fd48ab82b5103ad" },
+  { photo_id: "ph-loaf", slot_id: "ph-loaf", use: "pc", aspect: "4:3", target: { width: 1750, height: 1313 }, floor: { width: 1310, height: 983 }, focal_box: { x: 0.18, y: 0.2, w: 0.5, h: 0.6 }, prompt_sha256: "b1261248a0fff67e566ddf4feeac7c087bddfa8057b309032e39cffbc13d0f87" },
 ];
 
 /**

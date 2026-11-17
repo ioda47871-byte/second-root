@@ -10,7 +10,7 @@ not illustrated.
 
 ph-mouth-pc (1:1): Eye-level view straight into the mouth of a wood-fired masonry bread oven during the morning firing.
 Split logs burn directly on the stone oven floor toward the back; flames curl along the inside of the dome. The near floor
-is bare stone, empty. No bread, no trays, no tools. The fire sits low and central (inside x 0.25-0.75, y 0.45-0.85);
+is bare stone, empty. No bread, no trays, no tools. The fire sits low and central (inside x 0.25-0.75, y 0.48-0.88);
 the upper corners are the dark dome and may be cut off. The oven's outer arch is outside the frame or only at the very corners.
 
 ph-mouth-sp (2:3): The same oven, the same fire, the same log arrangement and flame direction as ph-mouth-pc, framed
@@ -18,5 +18,5 @@ vertically. Fire low and central (inside x 0.2-0.8, y 0.42-0.88).
 
 ph-loaf (4:3): Top-down (90 degrees) still life of one large round country loaf, freshly baked, its scoring opened by the
 bake, uneven deep crust colour, a light dusting of flour, on a dark stone surface with a little scattered flour. Nothing else:
-no board, cloth, paper, knife or label. Loaf slightly left of and below centre (inside x 0.22-0.72, y 0.2-0.8); keep the
+no board, cloth, paper, knife or label. Loaf slightly left of centre (inside x 0.18-0.68, y 0.2-0.8); keep the
 lower right dark and quiet. Low warm light from the top edge of the frame; short shadows falling downward. Not cut open.
