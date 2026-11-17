@@ -12,7 +12,7 @@
  * that direction. The output is NOT an approved or sendable demo.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { deriveBRouteCopy, BRouteCopyStop, type BRouteLane } from "../../../lib/sales/b-route/derive-copy";
 import { runDirectionSetCheck } from "../../design-artifact/direction-set";
@@ -20,28 +20,41 @@ import { runDirectionSetCheck } from "../../design-artifact/direction-set";
 const REPO = resolve(__dirname, "../../..");
 const SHA = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-class InputStop extends Error { constructor(readonly code: string) { super(code); } }
-function inside(root: string, dest: string): boolean {
+export class InputStop extends Error { constructor(readonly code: string) { super(code); } }
+export function inside(root: string, dest: string): boolean {
   const rel = relative(root, dest);
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 function checkedFile(path: string, max: number): Buffer {
   const full = resolve(path);
-  const st = lstatSync(full);
+  let st;
+  try { st = lstatSync(full); } catch { throw new InputStop("INPUT_FILE_INVALID"); }
   if (!st.isFile() || st.isSymbolicLink() || realpathSync(full) !== full || st.size > max)
     throw new InputStop("INPUT_FILE_INVALID");
   return readFileSync(full);
 }
+/**
+ * The output must be a NEW directory outside the public repo, also when its parent is reached through a symlink.
+ * `repoRoot` is a parameter only so the guard can be tested against a throwaway tree; the CLI always uses REPO.
+ */
+export function checkPrivateOutputDir(outDir: string, repoRoot: string = REPO): void {
+  let exists = true;
+  try { lstatSync(outDir); } catch { exists = false; } // a dangling symlink also "exists"
+  if (exists) throw new InputStop("OUTPUT_EXISTS");
+  let parent: string;
+  try { parent = realpathSync(dirname(outDir)); } catch { throw new InputStop("OUTPUT_PARENT_MISSING"); }
+  if (inside(repoRoot, outDir) || inside(realpathSync(repoRoot), parent)) throw new InputStop("OUTPUT_IN_REPO");
+}
 export function stagePrototype(o: {
   factsPath: string; prototypeDir: string; directionsPath: string; directionId: string;
   lane: BRouteLane; outDir: string; prospectId?: string;
-}) {
+}, testHooks: { afterValidation?: () => void } = {}) {
   const factsPath = resolve(o.factsPath), protoDir = resolve(o.prototypeDir);
   const directionsPath = resolve(o.directionsPath), outDir = resolve(o.outDir);
-  if (existsSync(outDir)) throw new InputStop("OUTPUT_EXISTS");
-  if (inside(REPO, outDir) || inside(REPO, realpathSync(dirname(outDir))))
-    throw new InputStop("OUTPUT_IN_REPO");
-  if (!lstatSync(protoDir).isDirectory() || realpathSync(protoDir) !== protoDir)
+  checkPrivateOutputDir(outDir);
+  let protoStat;
+  try { protoStat = lstatSync(protoDir); } catch { throw new InputStop("PROTOTYPE_DIR_UNSAFE"); }
+  if (!protoStat.isDirectory() || realpathSync(protoDir) !== protoDir)
     throw new InputStop("PROTOTYPE_DIR_UNSAFE");
   if (o.prospectId && !uuid.test(o.prospectId)) throw new InputStop("PROSPECT_ID_INVALID");
   if (o.lane === "real_shop_proposal" && [factsPath, protoDir, directionsPath].some((p) => inside(REPO, p)))
@@ -62,6 +75,7 @@ export function stagePrototype(o: {
     factsBytes, html: htmlBytes.toString("utf8"), css: cssBytes.toString("utf8"), lane: o.lane,
   });
 
+  testHooks.afterValidation?.();
   // Do not allow the input source to change between validation and staging.
   if (SHA(checkedFile(factsPath, 1024 * 1024)) !== SHA(factsBytes) ||
       SHA(checkedFile(join(protoDir, "index.html"), 384 * 1024)) !== SHA(htmlBytes) ||

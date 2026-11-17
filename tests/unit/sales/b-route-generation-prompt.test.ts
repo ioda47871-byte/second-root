@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildBRouteGenerationInput, BRoutePromptStop } from "@/lib/sales/b-route/generation-prompt";
+import { buildBRouteGenerationInput, BRoutePromptStop, V2_DIRECTION_ID } from "@/lib/sales/b-route/generation-prompt";
 import { runDirectionSetCheck } from "../../../scripts/design-artifact/direction-set";
 
 const BASE = "design-library/research/quality-pipeline/poc/bicycle";
@@ -44,5 +44,23 @@ describe("B-route design preparation preserves the isolated model-call entry", (
       .toThrowError(BRoutePromptStop);
     expect(() => buildBRouteGenerationInput({ facts, directionSet: set, directionId: "d1-wheel-hub", referenceManifest: { ...(refs as object), owner_scope: null } }))
       .toThrowError(BRoutePromptStop);
+  });
+  it("stops a direction id the v2 open-direction schema would refuse (direction-set allows 3 chars, v2 needs 4+)", () => {
+    const short = JSON.parse(JSON.stringify(set)) as typeof set;
+    short.directions[0]!.id = "d1x";
+    let code = "";
+    try {
+      buildBRouteGenerationInput({ facts, directionSet: short, directionId: "d1x", referenceManifest: refs });
+    } catch (e) {
+      code = e instanceof BRoutePromptStop ? e.code : "other";
+    }
+    expect(code).toBe("DIRECTION_ID_NOT_V2");
+    const ok = JSON.parse(JSON.stringify(set)) as typeof set;
+    ok.directions[0]!.id = "d1xy";
+    expect(buildBRouteGenerationInput({ facts, directionSet: ok, directionId: "d1xy", referenceManifest: refs }).direction.direction_id).toBe("d1xy");
+  });
+  it("keeps the copied v2 direction_id rule identical to the protected schema (read as text, not imported)", () => {
+    const source = readFileSync("lib/design-agent/phase2f/open-direction.ts", "utf8");
+    expect(source).toContain(`direction_id: z.string().regex(${V2_DIRECTION_ID.toString()})`);
   });
 });

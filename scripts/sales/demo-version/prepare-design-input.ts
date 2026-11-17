@@ -11,7 +11,7 @@
  * separate pinned human approval before an external model may be invoked.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep, join } from "node:path";
 import { buildBRouteGenerationInput, BRoutePromptStop } from "../../../lib/sales/b-route/generation-prompt";
 import { runDirectionSetCheck } from "../../design-artifact/direction-set";
@@ -19,24 +19,38 @@ import { runDirectionSetCheck } from "../../design-artifact/direction-set";
 const REPO = resolve(__dirname, "../../..");
 const defaultReferences = resolve(REPO, "design-library/phase2f/references/success-references-v1.json");
 const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-class Stop extends Error { constructor(readonly code: string) { super(code); } }
-const inside = (root: string, dest: string) => {
+export class Stop extends Error { constructor(readonly code: string) { super(code); } }
+export const inside = (root: string, dest: string) => {
   const x = relative(root, dest);
   return x === "" || (x !== ".." && !x.startsWith(`..${sep}`) && !isAbsolute(x));
 };
 function file(p: string, max = 1024 * 1024): Buffer {
-  const path = resolve(p), stat = lstatSync(path);
+  const path = resolve(p);
+  let stat;
+  try { stat = lstatSync(path); } catch { throw new Stop("INPUT_FILE_UNSAFE"); }
   if (!stat.isFile() || stat.isSymbolicLink() || realpathSync(path) !== path || stat.size > max) throw new Stop("INPUT_FILE_UNSAFE");
   return readFileSync(path);
 }
 
+/**
+ * The output must be a NEW directory outside the public repo, also when its parent is reached through a symlink.
+ * `repoRoot` is a parameter only so the guard can be tested against a throwaway tree; the CLI always uses REPO.
+ */
+export function checkPrivateOutputDir(outDir: string, repoRoot: string = REPO): void {
+  let exists = true;
+  try { lstatSync(outDir); } catch { exists = false; } // a dangling symlink also "exists"
+  if (exists) throw new Stop("OUTPUT_EXISTS");
+  let parent: string;
+  try { parent = realpathSync(dirname(outDir)); } catch { throw new Stop("OUTPUT_PARENT_MISSING"); }
+  if (inside(repoRoot, outDir) || inside(realpathSync(repoRoot), parent)) throw new Stop("OUTPUT_IN_REPO");
+}
+
 export function prepareBRouteDesignInput(opts: {
   factsPath: string; directionsPath: string; directionId: string; outDir: string; referencesPath?: string;
-}) {
+}, testHooks: { afterValidation?: () => void } = {}) {
   const factsPath = resolve(opts.factsPath), directionsPath = resolve(opts.directionsPath),
     refsPath = resolve(opts.referencesPath ?? defaultReferences), outDir = resolve(opts.outDir);
-  if (existsSync(outDir)) throw new Stop("OUTPUT_EXISTS");
-  if (inside(REPO, outDir) || inside(REPO, realpathSync(dirname(outDir)))) throw new Stop("OUTPUT_IN_REPO");
+  checkPrivateOutputDir(outDir);
   const fb = file(factsPath), db = file(directionsPath), rb = file(refsPath);
   const gate = runDirectionSetCheck(directionsPath, factsPath);
   if (gate.status !== "READY_FOR_COMPS") throw new Stop("DIRECTION_SET_HOLD");
@@ -44,6 +58,7 @@ export function prepareBRouteDesignInput(opts: {
     facts: JSON.parse(fb.toString("utf8")), directionSet: JSON.parse(db.toString("utf8")),
     directionId: opts.directionId, referenceManifest: JSON.parse(rb.toString("utf8")),
   });
+  testHooks.afterValidation?.();
   // Input must not change after selecting the direction and before output is written.
   if (hash(file(factsPath)) !== hash(fb) || hash(file(directionsPath)) !== hash(db) || hash(file(refsPath)) !== hash(rb))
     throw new Stop("INPUT_MUTATED");

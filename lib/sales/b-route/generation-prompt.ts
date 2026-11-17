@@ -17,6 +17,14 @@ export class BRoutePromptStop extends Error {
   }
 }
 
+/**
+ * The v2 open-direction `direction_id` rule, copied (not imported: the phase2f prompt modules stay isolated) from
+ * `OpenDirection.direction_id` (the Phase 2f open-direction schema). The direction-set schema allows 3-char
+ * ids that v2 refuses, so such an id is stopped here instead of failing later in the protected CLI. A unit test
+ * reads that file as text and fails if the two drift.
+ */
+export const V2_DIRECTION_ID = /^[a-z0-9][a-z0-9-]{3,60}$/;
+
 type Reference = {
   id: string;
   case_id: string;
@@ -73,6 +81,7 @@ export function buildBRouteGenerationInput(input: {
     throw new BRoutePromptStop("SHOP_ID_MISMATCH");
   const selected = set.data.directions.find((d) => d.id === input.directionId);
   if (!selected) throw new BRoutePromptStop("DIRECTION_UNKNOWN");
+  if (!V2_DIRECTION_ID.test(selected.id)) throw new BRoutePromptStop("DIRECTION_ID_NOT_V2");
   const motif = set.data.motif.candidates.find((m) => m.id === selected.motif_focus);
   if (!motif) throw new BRoutePromptStop("MOTIF_UNKNOWN");
 

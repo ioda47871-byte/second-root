@@ -7,9 +7,12 @@
  * Pure: no network, model, file system, database, template, approval or send action.
  */
 import { createHash } from "node:crypto";
+import type { DefaultTreeAdapterTypes } from "parse5";
 import { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
 import { CopyRecord, LABELS_BY_KEY, factParts, norm, isFictionalShop } from "@/lib/design-agent/quality-pipeline/copy-record";
-import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
+import { boundedParse } from "@/lib/sales/demo-version/bounded-parse";
+import { OpBudget } from "@/lib/sales/demo-version/budget";
+import { checkArtifactHtml, trimAsciiWs } from "@/lib/sales/demo-version/html-safety";
 import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
 
 export type BRouteLane = "quality_research_fictional" | "real_shop_proposal";
@@ -70,16 +73,35 @@ export function deriveBRouteCopy(input: {
     if (matches.length) factMatches.set(key, matches);
   }
 
-  // These are the only free-standing labels allowed by the existing copy-record
-  // contract. Bind them to a fact actually displayed on the same page.
-  const labelToFact = new Map<string, typeof facts.facts[number]>();
+  // These are the only free-standing labels allowed by the existing copy-record contract. A label is bound to a
+  // fact ONLY when the parse tree shows them side by side (see adjacentValue); a label merely somewhere on the same
+  // page as a fact of its key is never promoted to a verified fact line.
+  type Fact = typeof facts.facts[number];
+  const labelBindings = new Map<string, { text: string; facts: Fact[] }>();
   const allLabels = new Set(Object.values(LABELS_BY_KEY).flat());
-  for (const [key, text] of uniqueTexts) {
-    if (!allLabels.has(text) || factMatches.has(key)) continue;
-    const sources = facts.facts.filter((f) => (LABELS_BY_KEY[f.key] ?? []).includes(text) &&
-      [...factMatches.values()].some((ms) => ms.some((m) => m.id === f.id)));
-    if (sources.length !== 1) throw new BRouteCopyStop("LABEL_WITHOUT_UNIQUE_DISPLAYED_FACT");
-    labelToFact.set(key, sources[0]!);
+  const labelKeys = [...uniqueTexts].filter(([key, text]) => allLabels.has(text) && !factMatches.has(key)).map(([key]) => key);
+  if (labelKeys.length) {
+    const parsedTree = boundedParse(input.html, new OpBudget());
+    if (!parsedTree.ok) throw new BRouteCopyStop("ARTIFACT_HTML_UNSAFE", [parsedTree.code]);
+    const occurrences = labelOccurrences(parsedTree.document, new Set(labelKeys));
+    for (const key of labelKeys) {
+      const label = uniqueTexts.get(key)!;
+      const nodes = occurrences.get(key) ?? [];
+      // a label only in an attribute (alt, title ...) has no neighbour in the tree
+      if (!nodes.length) throw new BRouteCopyStop("LABEL_NOT_ADJACENT_TO_FACT");
+      let bound: { text: string; facts: Fact[] } | undefined;
+      for (const node of nodes) {
+        const value = adjacentValue(node, key);
+        const valueKey = value === undefined ? "" : norm(value);
+        const sources = (factMatches.get(valueKey) ?? []).filter((f) => (LABELS_BY_KEY[f.key] ?? []).includes(label));
+        if (!sources.length) throw new BRouteCopyStop("LABEL_NOT_ADJACENT_TO_FACT");
+        // the record holds one item per label: every occurrence must introduce the same displayed fact
+        if (bound && (norm(bound.text) !== valueKey || bound.facts.map((f) => f.id).join() !== sources.map((f) => f.id).join()))
+          throw new BRouteCopyStop("LABEL_BINDING_AMBIGUOUS");
+        bound = { text: uniqueTexts.get(valueKey)!, facts: sources };
+      }
+      labelBindings.set(key, bound!);
+    }
   }
 
   const items: CopyRecord["items"] = [];
@@ -97,9 +119,11 @@ export function deriveBRouteCopy(input: {
       add({ text, claim_type: "fact", source_fact_ids: factsFor.map((f) => f.id), owner_review_needed: false });
       continue;
     }
-    if (labelToFact.has(key)) {
-      const f = labelToFact.get(key)!;
-      add({ text: f.value, label: text, claim_type: "fact", source_fact_ids: [f.id], owner_review_needed: false });
+    const binding = labelBindings.get(key);
+    if (binding) {
+      // the displayed (matched) text, not the whole fact value: the page may show only part of the fact
+      if (binding.facts.length > 8) throw new BRouteCopyStop("FACT_SOURCES_OVER_LIMIT");
+      add({ text: binding.text, label: text, claim_type: "fact", source_fact_ids: binding.facts.map((f) => f.id), owner_review_needed: false });
       continue;
     }
     add({ text, claim_type: input.lane === "quality_research_fictional" ? "creative_expression" : "proposal_pending_review",
@@ -125,4 +149,89 @@ export function deriveBRouteCopy(input: {
     },
     hashes: { facts_sha256: sha(input.factsBytes), html_sha256: sha(input.html), css_sha256: sha(input.css) },
   };
+}
+
+type Node = DefaultTreeAdapterTypes.Node;
+type ParentNode = DefaultTreeAdapterTypes.ParentNode;
+type Element = DefaultTreeAdapterTypes.Element;
+const isElement = (n: Node): n is Element => "tagName" in n;
+const visible = (t: string) => trimAsciiWs(t).trim();
+
+/** Children to walk, including <template> content (as the HTML safety check walks it). */
+function children(n: Node): Node[] {
+  const out: Node[] = "childNodes" in n ? [...(n as ParentNode).childNodes] : [];
+  if (isElement(n) && n.tagName === "template") out.push(...(n as DefaultTreeAdapterTypes.Template).content.childNodes);
+  return out;
+}
+
+/** The text a reader sees in a node: its text nodes, in document order, joined (iterative: no stack overflow). */
+function textOf(n: Node): string {
+  let out = "";
+  const stack: Node[] = [n];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (x.nodeName === "#text") out += (x as DefaultTreeAdapterTypes.TextNode).value;
+    else stack.push(...children(x).reverse());
+  }
+  return out;
+}
+
+/** Every text node whose visible text is one of the label keys. */
+function labelOccurrences(doc: Node, keys: ReadonlySet<string>): Map<string, Node[]> {
+  const out = new Map<string, Node[]>();
+  const stack: Node[] = [doc];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (x.nodeName === "#text") {
+      const key = norm(visible((x as DefaultTreeAdapterTypes.TextNode).value));
+      if (keys.has(key)) out.set(key, [...(out.get(key) ?? []), x]);
+      continue;
+    }
+    stack.push(...children(x).reverse());
+  }
+  return out;
+}
+
+/**
+ * The next sibling that shows something. Whitespace, comments and <br>/<wbr> are skipped; any other element counts,
+ * even an empty one (a CSS shape between the label and what follows breaks the adjacency).
+ */
+function nextShownSibling(n: Node): Node | undefined {
+  const parent = (n as DefaultTreeAdapterTypes.ChildNode).parentNode as ParentNode | null;
+  if (!parent) return undefined;
+  const sibs = parent.childNodes;
+  for (let i = sibs.indexOf(n as DefaultTreeAdapterTypes.ChildNode) + 1; i < sibs.length; i++) {
+    const s = sibs[i]!;
+    if (s.nodeName === "#comment") continue;
+    if (isElement(s)) {
+      if (s.tagName === "br" || s.tagName === "wbr") continue;
+      return s;
+    }
+    if (visible(textOf(s))) return s;
+  }
+  return undefined;
+}
+
+/**
+ * The text the parse tree shows right beside a label text node, or undefined. The label's carrier is the highest
+ * element (below <body>) whose whole text is the label (<dt><span>営業時間</span></dt> → the dt). Then:
+ *   dt → the immediately following dd; th → the immediately following td (same row);
+ *   any other carrier → its immediately following shown sibling (an element, or a text node in the same parent).
+ * Anything else (a dd further down, a value in another section) is not adjacent.
+ */
+function adjacentValue(textNode: Node, key: string): string | undefined {
+  let carrier: Node = textNode;
+  for (;;) {
+    const parent = (carrier as DefaultTreeAdapterTypes.ChildNode).parentNode as Node | null;
+    if (!parent || !isElement(parent) || ["body", "html", "head"].includes(parent.tagName)) break;
+    if (norm(visible(textOf(parent))) !== key) break;
+    carrier = parent;
+  }
+  const next = nextShownSibling(carrier);
+  if (!next) return undefined;
+  const tag = isElement(carrier) ? carrier.tagName : "";
+  if (tag === "dt" && !(isElement(next) && next.tagName === "dd")) return undefined;
+  if (tag === "th" && !(isElement(next) && next.tagName === "td")) return undefined;
+  if (isElement(next) && (next.tagName === "dt" || next.tagName === "th")) return undefined;
+  return visible(textOf(next));
 }

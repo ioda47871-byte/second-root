@@ -105,4 +105,62 @@ describe("B-route sales comp: no factual promotion from a generated design", () 
     const factsBytes = pack("another-shop", [fact("F1", "name", "サンプル茶房")]);
     expect(() => deriveBRouteCopy({ factsBytes, html: page("サンプル茶房", "いろいろ", "いろいろ", "rail"), css, lane: "quality_research_fictional" })).toThrowError(BRouteCopyStop);
   });
+
+  describe("a label binds to a fact only when the parse tree shows them adjacent (review M1, L1)", () => {
+    const hoursFacts = () => pack("actual-like-test-shop", [
+      fact("F1", "name", "サンプル茶房"),
+      fact("F2", "category", "cafe"),
+      fact("F3", "address", "仮想市一区 二番"),
+      fact("F5", "hours", "10:00〜19:00"),
+      fact("F6", "closed_days", "月曜"),
+    ]);
+    const withBlock = (block: string) =>
+      page("サンプル茶房", "サンプルの一席", "街の途中にある一席", "rail").replace("<h2>ご案内</h2><p>サンプルの一席</p>", block);
+    const stopCode = (html: string) => {
+      try {
+        deriveBRouteCopy({ factsBytes: hoursFacts(), html, css, lane: "real_shop_proposal" });
+      } catch (e) {
+        return e instanceof BRouteCopyStop ? e.code : "other";
+      }
+      return "passed";
+    };
+
+    it("stops swapped dt/dd pairs instead of recording them as verified facts", () => {
+      expect(stopCode(withBlock("<dl><dt>営業時間</dt><dd>月曜</dd><dt>定休日</dt><dd>10:00〜19:00</dd></dl>")))
+        .toBe("LABEL_NOT_ADJACENT_TO_FACT");
+    });
+
+    it("stops a label whose matching fact is shown elsewhere on the page, not beside it", () => {
+      expect(stopCode(withBlock("<h2>営業時間</h2><p>月曜</p><p>10:00〜19:00</p>"))).toBe("LABEL_NOT_ADJACENT_TO_FACT");
+      expect(stopCode(withBlock("<dl><dt>営業時間</dt><dt>定休日</dt><dd>10:00〜19:00</dd></dl>"))).toBe("LABEL_NOT_ADJACENT_TO_FACT");
+    });
+
+    it("stops a label used twice for two different values", () => {
+      expect(stopCode(withBlock("<dl><dt>営業時間</dt><dd>10:00〜19:00</dd></dl><dl><dt>営業時間</dt><dd>月曜</dd></dl>")))
+        .toMatch(/^LABEL_(NOT_ADJACENT_TO_FACT|BINDING_AMBIGUOUS)$/);
+    });
+
+    it.each([
+      ["dt/dd pair", "<dl><dt>営業時間</dt><dd>10:00〜19:00</dd><dt>定休日</dt><dd>月曜</dd></dl>"],
+      ["th/td in one row", "<table><tbody><tr><th>営業時間</th><td>10:00〜19:00</td></tr><tr><th>定休日</th><td>月曜</td></tr></tbody></table>"],
+      ["same parent element", "<p>営業時間<span>10:00〜19:00</span></p><p><span>定休日</span><span>月曜</span></p>"],
+      ["immediate next sibling", "<h3>営業時間</h3><p>10:00〜19:00</p><h3>定休日</h3><p>月曜</p>"],
+    ])("binds an adjacent %s and the result passes the copy check", (_name, block) => {
+      const factsBytes = hoursFacts();
+      const html = withBlock(block);
+      const d = deriveBRouteCopy({ factsBytes, html, css, lane: "real_shop_proposal" });
+      expect(d.record.items.find((i) => i.label === "営業時間")).toMatchObject({ text: "10:00〜19:00", claim_type: "fact", source_fact_ids: ["F5"] });
+      expect(d.record.items.find((i) => i.label === "定休日")).toMatchObject({ text: "月曜", claim_type: "fact", source_fact_ids: ["F6"] });
+      const extracted = checkArtifactHtml(html, css, new Set());
+      expect(checkArtifactCopy({
+        texts: extracted.texts, copyRecord: d.record, shopId: "actual-like-test-shop",
+        factsSha256: d.record.facts_sha256, facts: JSON.parse(factsBytes.toString("utf8")).facts,
+      }).ok).toBe(true);
+    });
+
+    it("records the displayed part of a fact, not the whole fact value (L1)", () => {
+      const d = deriveBRouteCopy({ factsBytes: hoursFacts(), html: withBlock("<dl><dt>所在地</dt><dd>仮想市一区</dd></dl>"), css, lane: "real_shop_proposal" });
+      expect(d.record.items.find((i) => i.label === "所在地")).toMatchObject({ text: "仮想市一区", claim_type: "fact", source_fact_ids: ["F3"] });
+    });
+  });
 });
