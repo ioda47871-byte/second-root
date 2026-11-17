@@ -169,6 +169,8 @@ if (require.main === module) {
       directionId: args["--direction-id"]!, outDir: args["--out"]!,
     });
     process.stdout.write(JSON.stringify(status) + "\n");
+    // A photo-enhanced lane without any planned photo slots is a HOLD, not a successful preparatory step.
+    if (status.stage === "PHOTO_SLOTS_REQUIRED") process.exitCode = 1;
   } catch (e) {
     process.stdout.write(JSON.stringify({ status: "refused", code: e instanceof VisualFirstStop ? e.code : "INPUT_ERROR", sendable: false }) + "\n");
     process.exit(2);
