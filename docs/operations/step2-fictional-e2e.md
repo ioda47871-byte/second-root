@@ -151,6 +151,6 @@ node scripts/sales/demo-version/prepare-offline.mjs --facts "$RUN/shop/facts-pac
 登録の `address` はスキーマが名古屋の住所を要求するため仮の住所 `SENDABLE_REGISTRY_ADDRESS` で、facts の「架空市架空区架空町二丁目3-5」と一致しない。
 PR #280 の同一性の検査で `PROSPECT_FACTS_IDENTITY_HOLD` になる。検査を緩めるか、架空店の登録住所の扱いを決めるかはオーナーの判断が要る。
 
-→ Stage 0 (A-4) で、検査を緩めずに登録側で解いた計画：[`s0-local-db-seed.md`](s0-local-db-seed.md)（登録行を facts から導く架空のパン屋 こむぎ灯。環 は HOLD のまま）。
+→ Stage 0 (A-4) で、検査を緩めずに登録側で解いた計画：[`s0-local-db-seed.md`](s0-local-db-seed.md)（登録行を facts から導く Stage 0 の架空パン屋。環 は HOLD のまま）。
 
 関連：`docs/operations/offline-b-route-adapter.md`、`docs/operations/broute-copy-handoff.md`、`docs/operations/verified-generation-facts.md`。

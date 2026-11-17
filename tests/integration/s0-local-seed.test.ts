@@ -4,13 +4,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { factsPackSha256 } from "@/lib/demo-version-package/facts-content";
 import {
-  assertS0WriteAllowed, cleanupS0Seed, S0_FACTS_PATH, S0_PROSPECT_ID, S0_SEED_FLAG, S0_SEED_TABLES, S0_SHOP_ID, S0SeedError, s0SeedPlan, seedS0Shop, type S0SeedRecord,
+  assertS0WriteAllowed, cleanupS0Seed, S0_FACTS_PATH, S0_PROSPECT_ID, S0_SEED_FLAG, S0_SEED_TABLES, S0SeedError, s0SeedPlan, seedS0Shop, type S0SeedRecord,
 } from "@/lib/demo-version-package/seed-s0";
 import { SENDABLE_FACTS_PATH, seedSendableShop } from "@/lib/demo-version-package/seed-sendable";
 import { loadVerifiedGenerationFacts } from "@/lib/sales/b-route/verified-generation-facts";
-import { createUser, db, makeAdmin, nameFactsInContent, registerFacts, resetSalesData, setFactsCliRegistration, signedInClient } from "./helpers";
+import { setLocalTestRecipients } from "../support/local-test-recipients";
+import { approve, createUser, db, makeAdmin, nameFactsInContent, registerFacts, resetSalesData, setFactsCliRegistration, signedInClient } from "./helpers";
 
-// DEV-139 Stage 0 (A-4): the local seed of the fictional bakery こむぎ灯 (scripts/sales/demo-version/s0-local-seed.ts,
+// DEV-139 Stage 0 (A-4): the local seed of the Stage 0 fictional bakery (S0_FACTS_PATH) (scripts/sales/demo-version/s0-local-seed.ts,
 // docs/operations/s0-local-db-seed.md) on CI's OWN throwaway local stack — never an owner's database. Proves: the seed
 // writes exactly the planned rows; PR #280's read (loadVerifiedGenerationFacts, under a signed-in admin's session,
 // the identity check unchanged) succeeds for it; the HOLD cases (stale SHA, DNC, exclusion, expired, identity
@@ -21,6 +22,8 @@ const REPO = resolve(__dirname, "../..");
 const S0 = new Uint8Array(readFileSync(resolve(REPO, S0_FACTS_PATH)));
 const TAMAKI = new Uint8Array(readFileSync(resolve(REPO, SENDABLE_FACTS_PATH)));
 const S0_SHA = factsPackSha256(S0);
+const S0_SHOP_ID = (JSON.parse(Buffer.from(S0).toString("utf8")) as { shop_id: string }).shop_id;
+const cliSwitch = async () => (await db.query("select operator_cli_enabled as on from public.sales_facts_registration_settings where id")).rows[0].on as boolean;
 
 let admin: SupabaseClient;
 let outsider: SupabaseClient;
@@ -69,12 +72,16 @@ beforeEach(async () => {
   await db.query(
     "truncate public.sales_demo_copy_owner_decisions, public.sales_demo_version_copy_links, public.sales_demo_copy_facts_checks, public.sales_demo_facts_packs, public.sales_demo_copy_reviews, public.sales_demo_quality_reviews, public.sales_demo_version_files, public.sales_demo_versions, public.sales_outreach_approvals, public.sales_outreach_draft_edits, public.sales_exclusions, public.sales_outreaches, public.sales_demos, public.sales_sources, public.sales_prospects, public.sales_agent_runs cascade",
   );
-  // the owner's local switch the seed needs (the doc's step); off again after the file (setup file)
-  await setFactsCliRegistration(true);
+  // the seed turns the facts CLI switch on and off itself, inside its transaction (L2); it must find the
+  // test-recipient switch OFF (L3: the setup file turns it on for every integration file)
+  await setFactsCliRegistration(false);
+  await setLocalTestRecipients(false);
 });
 afterAll(async () => {
   await setFactsCliRegistration(false);
   await resetSalesData();
+  // the setup file's state for the rest of the file's teardown
+  await setLocalTestRecipients(true);
 });
 
 describe("seed: exactly the planned fictional rows, on a local stack only", () => {
@@ -91,7 +98,7 @@ describe("seed: exactly the planned fictional rows, on a local stack only", () =
     expect(await counts(null)).toEqual(ones);
     const rec = first.record;
     const p = (await db.query("select * from public.sales_prospects where id = $1", [S0_PROSPECT_ID])).rows[0];
-    expect(p).toMatchObject({ name: plan.prospect.name, address: plan.prospect.address, normalized_name: plan.prospect.normalized_name, normalized_address: plan.prospect.normalized_address, ward: "昭和区", category: "bakery", public_email: plan.prospect.public_email, recommended_channel: "email", do_not_contact: false });
+    expect(p).toMatchObject({ name: plan.prospect.name, address: plan.prospect.address, normalized_name: plan.prospect.normalized_name, normalized_address: plan.prospect.normalized_address, ward: plan.prospect.ward, category: "bakery", public_email: plan.prospect.public_email, recommended_channel: "email", do_not_contact: false });
     expect((await db.query("select id, field, value, source_type from public.sales_sources where prospect_id = $1", [S0_PROSPECT_ID])).rows).toEqual([{ id: rec.rows.sales_sources[0], field: "email", value: plan.prospect.public_email, source_type: "official_contact" }]);
     const d = (await db.query("select id, content, template, expires_at, disabled_at from public.sales_demos where prospect_id = $1", [S0_PROSPECT_ID])).rows[0];
     expect(d).toMatchObject({ id: rec.rows.sales_demos[0], template: "bakery_v1", expires_at: null, disabled_at: null });
@@ -102,15 +109,42 @@ describe("seed: exactly the planned fictional rows, on a local stack only", () =
     expect((await db.query("select id, kind, channel, status, sent_at from public.sales_outreaches where prospect_id = $1", [S0_PROSPECT_ID])).rows).toEqual([{ id: rec.rows.sales_outreaches[0], kind: "initial", channel: "email", status: "drafted", sent_at: null }]);
     // nothing sendable was created: no approval
     expect((await db.query("select count(*)::int as n from public.sales_outreach_approvals where prospect_id = $1", [S0_PROSPECT_ID])).rows[0].n).toBe(0);
+    // L2: the facts CLI switch was on only inside the transaction
+    expect(await cliSwitch()).toBe(false);
     const again = await seed();
     expect(again).toEqual({ record: rec, created: false });
     expect(await counts(null)).toEqual(ones);
   });
 
-  it("refuses while the owner's facts CLI switch is off, or for an unknown admin, writing nothing", async () => {
-    await setFactsCliRegistration(false);
-    expect(await stopCode(seed())).toBe("S0_SWITCH_FACTS_CLI_OFF");
+  it("L3: send approval stays refused for the seeded fictional shop (test-recipient switch off)", async () => {
+    const { record } = await seed();
+    const r = await approve(admin, record.rows.sales_outreaches[0]);
+    expect(r.error?.message).toContain("test_recipient_fictional_shop");
+    expect((await db.query("select count(*)::int as n from public.sales_outreach_approvals where prospect_id = $1", [S0_PROSPECT_ID])).rows[0].n).toBe(0);
+  });
+
+  it("L3: refuses, writing nothing, while the owner's test-recipient switch is on", async () => {
+    await setLocalTestRecipients(true);
+    expect(await stopCode(seed())).toBe("S0_LOCAL_TEST_RECIPIENTS_ON");
+    expect(await counts(null)).toEqual(zeros);
+  });
+
+  it("L2/L4: a failure mid-seed (after the prospect, source and switch change) rolls everything back, the switch included", async () => {
+    // another prospect already carries the S0 shop id: the onboarding step refuses after the first inserts
+    const tamaki = await withClient((c) => seedSendableShop(c, TAMAKI));
+    await db.query("update public.sales_demos set content = content || jsonb_build_object('facts_pack', $2::text) where id = $1", [tamaki.demoId, S0_SHOP_ID]);
+    const before = await counts(null);
+    expect(await stopCode(seed())).toBe("facts_onboarding_shop_other_prospect");
+    expect(await counts(S0_PROSPECT_ID)).toEqual(zeros);
+    expect(await counts(null)).toEqual(before);
+    expect(await cliSwitch()).toBe(false);
+    // with the switch on beforehand, the rollback restores on
     await setFactsCliRegistration(true);
+    expect(await stopCode(seed())).toBe("facts_onboarding_shop_other_prospect");
+    expect(await cliSwitch()).toBe(true);
+  });
+
+  it("refuses an unknown admin, writing nothing", async () => {
     expect(await stopCode(withClient((c) => seedS0Shop(c, { factsPack: S0, adminId: "13900000-5e00-4d00-8a00-0000000000ee" })))).toBe("S0_ADMIN_NOT_FOUND");
     expect(await counts(null)).toEqual(zeros);
   });
@@ -156,7 +190,7 @@ describe("PR #280's read (loadVerifiedGenerationFacts) on the seeded rows", () =
 
   it("HOLD: identity mismatch — a registry address one character off, and 環's placeholder registry address", async () => {
     await seed();
-    await db.query("update public.sales_prospects set address = '名古屋市昭和区架空町二丁目8-2' where id = $1", [S0_PROSPECT_ID]);
+    await db.query("update public.sales_prospects set address = address || '2' where id = $1", [S0_PROSPECT_ID]);
     expect(await stopCode(read())).toBe("PROSPECT_FACTS_IDENTITY_HOLD");
     // 環 (the existing sendable seed) with its facts registered: its address cannot be a registry address, so it HOLDs
     const tamaki = await withClient((c) => seedSendableShop(c, TAMAKI));
@@ -219,12 +253,53 @@ describe("cleanup: exactly the recorded rows", () => {
     expect(await counts(null)).toEqual(before);
   });
 
+  it("L4: refuses rows a later import / admin flow made unless asked, then removes them too (FKs enforced)", async () => {
+    const { record } = await seed();
+    await db.query("insert into public.sales_prospect_insights (prospect_id, kind, body, source, written_by) values ($1, 'selection_rationale', '架空の店の確認用のメモ', 'owner', $2)", [S0_PROSPECT_ID, adminId]);
+    const before = await counts(null);
+    try {
+      await cleanup(record);
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toMatchObject({ code: "S0_CLEANUP_IMPORTED_ROWS", detail: { sales_prospect_insights: 1 } });
+    }
+    expect(await counts(null)).toEqual(before);
+    expect(await cleanup(record, true)).toEqual({ deleted: { ...ones, sales_prospect_insights: 1 }, storagePrefixesLeft: [] });
+    expect((await db.query("select count(*)::int as n from public.sales_prospect_insights where prospect_id = $1", [S0_PROSPECT_ID])).rows[0].n).toBe(0);
+    expect(await counts(null)).toEqual(zeros);
+  });
+
+  it("L1: refuses a reference from a table outside the seed and import tables (pg_constraint), deleting nothing", async () => {
+    const { record } = await seed();
+    // sales_ig_threads.prospect_id (on delete set null): a cascade would silently rewrite it, so it refuses instead
+    await db.query(
+      "insert into public.sales_ig_threads (ig_account_id, igsid, prospect_id, match_status) values ('900000000000001', '900000000000002', $1, 'matched')",
+      [S0_PROSPECT_ID],
+    );
+    try {
+      await cleanup(record);
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toMatchObject({ code: "S0_CLEANUP_UNKNOWN_REFERENCES", detail: { "sales_ig_threads.prospect_id": 1 } });
+    }
+    expect(await counts(S0_PROSPECT_ID)).toEqual(ones);
+    await db.query("delete from public.sales_ig_threads where prospect_id = $1", [S0_PROSPECT_ID]);
+    expect((await cleanup(record)).deleted).toEqual(ones);
+  });
+
   it("refuses a tampered record or a prospect that is no longer the seed, rolling back every delete", async () => {
     const { record } = await seed();
     const tampered: S0SeedRecord = { ...record, rows: { ...record.rows, sales_outreaches: ["13900000-5e00-4d00-8a00-0000000000ee"] } };
     expect(await stopCode(cleanup(tampered))).toBe("S0_CLEANUP_UNRECORDED_ROWS");
     expect(await stopCode(cleanup({ ...record, prospect_id: "5e2d0a63-7c1b-4f0e-9a6d-263a00000001" }))).toBe("S0_RECORD_INVALID");
-    await db.query("update public.sales_prospects set address = '名古屋市昭和区架空町二丁目8-2' where id = $1", [S0_PROSPECT_ID]);
+    // another shape: the demo id swapped for another fictional shop's demo — refused, and that shop is untouched
+    const tamaki = await withClient((c) => seedSendableShop(c, TAMAKI));
+    const tamakiBefore = await counts(tamaki.prospectId);
+    expect(await stopCode(cleanup({ ...record, rows: { ...record.rows, sales_demos: [tamaki.demoId] } }))).toBe("S0_CLEANUP_UNRECORDED_ROWS");
+    expect(await counts(tamaki.prospectId)).toEqual(tamakiBefore);
+    // and a record of other facts (shop id or SHA) is refused before any query
+    expect(await stopCode(cleanup({ ...record, facts_sha256: "0".repeat(64) }))).toBe("S0_RECORD_FACTS_MISMATCH");
+    await db.query("update public.sales_prospects set address = address || '2' where id = $1", [S0_PROSPECT_ID]);
     expect(await stopCode(cleanup(record))).toBe("S0_CLEANUP_PROSPECT_NOT_SEED");
     expect(await counts(S0_PROSPECT_ID)).toEqual(ones);
   });

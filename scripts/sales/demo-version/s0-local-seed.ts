@@ -1,5 +1,5 @@
 /**
- * DEV-139 Stage 0 (A-4): the LOCAL database seed of the fictional bakery こむぎ灯 and its cleanup.
+ * DEV-139 Stage 0 (A-4): the LOCAL database seed of the Stage 0 fictional bakery (S0_FACTS_PATH) and its cleanup.
  * docs/operations/s0-local-db-seed.md. Never run against a hosted database; never run without the owner's approval.
  *
  *   npx tsx scripts/sales/demo-version/s0-local-seed.ts plan
@@ -15,13 +15,13 @@
  * localhost) and runs PR #280's loadVerifiedGenerationFacts under the admin's own session (RLS intact); OK only when the
  * returned SHA is the committed pack's. Prints ids, hashes and codes only — never a key or a password.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { LocalInputError, readCommittedFacts, factsPackSha256 } from "../../../lib/demo-version-package/local-inputs";
 import {
-  assertS0LocalApiUrl, assertS0RecordPath, assertS0WriteAllowed, cleanupS0Seed, parseS0SeedRecord, S0_FACTS_PATH, S0_PROSPECT_ID, S0SeedError, s0SeedPlan, seedS0Shop,
+  assertS0LocalApiUrl, assertS0RecordPath, assertS0WriteAllowed, precheckS0RecordFile, writeS0RecordFile, cleanupS0Seed, parseS0SeedRecord, S0_FACTS_PATH, S0_PROSPECT_ID, S0SeedError, s0SeedPlan, seedS0Shop,
 } from "../../../lib/demo-version-package/seed-s0";
 
 const REPO = resolve(__dirname, "../../..");
@@ -50,7 +50,9 @@ async function main(): Promise<number> {
     process.stderr.write(USAGE);
     return 2;
   }
-  // the committed facts-path edition of こむぎ灯 (the seed may run before the pack is on develop)
+  // seed / cleanup: the flag, a local stack and the record path are checked first, before anything is read or connected
+  const write = cmd === "seed" || cmd === "cleanup" ? { config: assertS0WriteAllowed(process.argv, process.env), recordPath: assertS0RecordPath(REPO, arg("--record")) } : null;
+  // the committed facts pack of the Stage 0 fictional bakery (the seed may run before the pack is on develop)
   const facts = readCommittedFacts(REPO, S0_FACTS_PATH, { requireBase: false });
   if (cmd === "plan") {
     out({ status: "OK", plan: s0SeedPlan(facts) });
@@ -89,20 +91,27 @@ async function main(): Promise<number> {
     }
   }
   // seed / cleanup: the flag and a local stack, checked before any connection
-  const config = assertS0WriteAllowed(process.argv, process.env);
-  const recordPath = assertS0RecordPath(REPO, arg("--record"));
+  const { config, recordPath } = write!;
   if (cmd === "seed") {
     const adminId = arg("--admin");
     if (!adminId || !UUID.test(adminId)) {
       process.stderr.write(USAGE);
       return 2;
     }
+    precheckS0RecordFile(recordPath);
     const db = new pg.Client(config);
     await db.connect();
     try {
       const r = await seedS0Shop(db, { factsPack: facts, adminId });
-      writeFileSync(recordPath, `${JSON.stringify(r.record, null, 2)}\n`, { mode: 0o600 });
-      out({ status: "OK", created: r.created, record: r.record });
+      let file: string;
+      try {
+        file = writeS0RecordFile(recordPath, r.record);
+      } catch (e) {
+        // the rows exist: print their ids so they are never lost
+        out({ status: "FAIL", code: e instanceof S0SeedError ? e.code : "S0_RECORD_FILE_WRITE_FAILED", created: r.created, record: r.record });
+        return 1;
+      }
+      out({ status: "OK", created: r.created, record: r.record, record_file: file });
       return 0;
     } finally {
       await db.end();

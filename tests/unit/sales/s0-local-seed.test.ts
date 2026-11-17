@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { factsPackSha256 } from "@/lib/demo-version-package/facts-content";
 import {
-  assertS0LocalApiUrl, assertS0RecordPath, assertS0WriteAllowed, parseS0SeedRecord, S0_FACTS_PATH, S0_PROSPECT_ID, S0_SEED_FLAG, S0_SEED_TABLES, S0_SHOP_ID, s0RegistryRow, s0SeedPlan,
+  assertS0LocalApiUrl, assertS0RecordPath, assertS0WriteAllowed, parseS0SeedRecord, precheckS0RecordFile, S0_FACTS_PATH, S0_PROSPECT_ID, S0_SEED_FLAG, S0_SEED_TABLES, s0RegistryRow, s0SeedPlan, writeS0RecordFile,
 } from "@/lib/demo-version-package/seed-s0";
 import { SENDABLE_FACTS_PATH, SENDABLE_REGISTRY_ADDRESS, sendableSeedContent } from "@/lib/demo-version-package/seed-sendable";
 import { loadVerifiedGenerationFacts } from "@/lib/sales/b-route/verified-generation-facts";
@@ -17,12 +17,13 @@ import { loadVerifiedGenerationFacts } from "@/lib/sales/b-route/verified-genera
 const REPO = resolve(__dirname, "../../..");
 const S0 = readFileSync(join(REPO, S0_FACTS_PATH));
 const TAMAKI = readFileSync(join(REPO, SENDABLE_FACTS_PATH));
-const THREE_METHODS = readFileSync(join(REPO, "design-library/research/three-methods/facts-pack.json"));
 const LOCAL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const tmp = mkdtempSync(join(tmpdir(), "s0-seed-unit-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
 const factsOf = (b: Uint8Array) => JSON.parse(Buffer.from(b).toString("utf8")) as { shop_id: string; facts: { id: string; key: string; value: string; source_id: string }[] };
+const S0_SHOP_ID = factsOf(S0).shop_id;
+const fact = (key: string) => factsOf(S0).facts.find((f) => f.key === key)!.value;
 const withFact = (key: string, value: string) => {
   const p = factsOf(S0);
   p.facts.find((f) => f.key === key)!.value = value;
@@ -93,22 +94,24 @@ describe("the guard of seed / cleanup (before any connection)", () => {
 });
 
 describe("the registry row is derived from the facts (the address mismatch fixed on the registry side)", () => {
-  it("the S0 pack is the three-methods こむぎ灯 pack with only menu_item_N renamed service_N (same shop, same values)", () => {
-    expect(S0.toString("utf8")).toBe(THREE_METHODS.toString("utf8").replaceAll('"key": "menu_item_', '"key": "service_'));
-    expect(factsOf(S0).shop_id).toBe(S0_SHOP_ID);
-    // the three-methods pack itself cannot enter the facts path (menu_item_ is unmapped there and in the database)
-    expect(() => s0RegistryRow(THREE_METHODS)).toThrow("TRUSTED_FACTS_UNMAPPED_KEY");
+  it("the S0 pack is a fictional bakery in the facts path's keys (service_ / statement_ only, no menu_item_)", () => {
+    expect(S0_SHOP_ID).toMatch(/^fictional-/);
+    expect(factsOf(S0).facts.some((f) => f.key.startsWith("menu_item_"))).toBe(false);
+    // a menu_item_ pack never enters the facts path (unmapped there and in the database)
+    const p = factsOf(S0);
+    p.facts.push({ id: "F199", key: "menu_item_1", value: "架空の品", source_id: "S1" });
+    expect(() => s0RegistryRow(Buffer.from(JSON.stringify(p)))).toThrow("TRUSTED_FACTS_UNMAPPED_KEY");
   });
   it("name and address are the facts' values byte for byte, and satisfy the registry's Nagoya constraint", () => {
     const row = s0RegistryRow(S0);
     const facts = new Map(factsOf(S0).facts.map((f) => [f.key, f.value]));
     expect(row.name).toBe(facts.get("name"));
     expect(row.address).toBe(facts.get("address"));
-    expect(row).toMatchObject({ id: S0_PROSPECT_ID, name: "架空パン工房 こむぎ灯", address: "名古屋市昭和区架空町二丁目8-1", normalized_address: "愛知県名古屋市昭和区架空町2-8-1", category: "bakery", ward: "昭和区" });
+    expect(row).toMatchObject({ id: S0_PROSPECT_ID, shop_id: S0_SHOP_ID, name: fact("name"), address: fact("address"), category: "bakery" });
     // sales_prospects_nagoya: normalized_address like '愛知県名古屋市%' and address like '%名古屋市%'
     expect(row.normalized_address.startsWith("愛知県名古屋市") && row.address.includes("名古屋市")).toBe(true);
     // only reserved example.com contact data
-    expect(row.public_email.endsWith("@komugi-s0.example.com") && row.website_domain === "komugi-s0.example.com").toBe(true);
+    expect(row.public_email.endsWith("@s0-bakery.example.com") && row.website_domain === "s0-bakery.example.com").toBe(true);
   });
   it("refuses, before any write, a pack the registry could not hold exactly", () => {
     expect(() => s0RegistryRow(withFact("address", "架空市架空区架空町二丁目8-1"))).toThrow("S0_FACTS_ADDRESS_NOT_NAGOYA");
@@ -158,7 +161,7 @@ describe("PR #280's exact identity check, on the planned rows (the check itself 
     const tamakiProspect = { id: S0_PROSPECT_ID, name: "架空自転車修理 環", address: SENDABLE_REGISTRY_ADDRESS, normalized_name: "架空自転車修理 環", normalized_address: SENDABLE_REGISTRY_ADDRESS, website_domain: "tamaki-demo.example.com", public_email: "info@tamaki-demo.example.com" };
     await expect(loadVerifiedGenerationFacts(plannedClient(tamakiProspect, TAMAKI, sendableSeedContent(TAMAKI)), S0_PROSPECT_ID)).rejects.toMatchObject({ code: "PROSPECT_FACTS_IDENTITY_HOLD" });
     const plan = s0SeedPlan(S0);
-    const off = { ...plan.prospect, address: "名古屋市昭和区架空町二丁目8-2" };
+    const off = { ...plan.prospect, address: `${plan.prospect.address}2` };
     await expect(loadVerifiedGenerationFacts(plannedClient(off, S0, plan.demo.content), S0_PROSPECT_ID)).rejects.toMatchObject({ code: "PROSPECT_FACTS_IDENTITY_HOLD" });
     const normalizedOnly = { ...plan.prospect, address: plan.prospect.normalized_address };
     await expect(loadVerifiedGenerationFacts(plannedClient(normalizedOnly, S0, plan.demo.content), S0_PROSPECT_ID)).rejects.toMatchObject({ code: "PROSPECT_FACTS_IDENTITY_HOLD" });
@@ -182,6 +185,23 @@ describe("the seed record (the cleanup's only input)", () => {
     expect(bad({ rows: { ...ok.rows, sales_demos: ["x' or 1=1 --"] } })).toThrow("S0_RECORD_INVALID");
     expect(bad({ rows: { ...ok.rows, sales_exclusions: ["13900000-5e00-4d00-8a00-0000000000a9"] } })).toThrow("S0_RECORD_INVALID");
     expect(bad({ schema: "other" })).toThrow("S0_RECORD_INVALID");
+    expect(bad({ shop_id: "real-shop" })).toThrow("S0_RECORD_INVALID");
+    expect(bad({ extra: 1 })).toThrow("S0_RECORD_INVALID");
+    expect(bad({ rows: { ...ok.rows, sales_outreaches: [] } })).toThrow("S0_RECORD_INVALID");
     expect(() => parseS0SeedRecord(null)).toThrow("S0_RECORD_INVALID");
+  });
+  it("is created exclusively and never overwritten by a different record (L5)", () => {
+    const path = join(tmp, "rec-wx.json");
+    precheckS0RecordFile(path);
+    expect(writeS0RecordFile(path, ok as never)).toBe("written");
+    expect(writeS0RecordFile(path, ok as never)).toBe("unchanged");
+    const other = { ...ok, rows: { ...ok.rows, sales_outreaches: ["13900000-5e00-4d00-8a00-0000000000b9"] } };
+    expect(() => writeS0RecordFile(path, other as never)).toThrow("S0_RECORD_FILE_DIFFERS");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(ok);
+    const foreign = join(tmp, "foreign.json");
+    writeFileSync(foreign, '{"not": "a record"}');
+    expect(() => precheckS0RecordFile(foreign)).toThrow("S0_RECORD_FILE_NOT_S0");
+    expect(() => writeS0RecordFile(foreign, ok as never)).toThrow("S0_RECORD_FILE_NOT_S0");
+    expect(readFileSync(foreign, "utf8")).toBe('{"not": "a record"}');
   });
 });

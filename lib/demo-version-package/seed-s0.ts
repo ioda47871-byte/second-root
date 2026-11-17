@@ -1,29 +1,29 @@
 /**
- * DEV-139 Stage 0 (A-4): the LOCAL database seed for the fictional bakery こむぎ灯 — the one fictional shop whose
- * registry row can equal its facts pack EXACTLY, so PR #280's identity check (loadVerifiedGenerationFacts:
- * prospect name / address === the facts pack's name / address) passes without being loosened.
+ * DEV-139 Stage 0 (A-4): the LOCAL database seed for the Stage 0 fictional bakery (S0_FACTS_PATH, made by A-2) — a
+ * fictional shop whose registry row can equal its facts pack EXACTLY, so PR #280's identity check
+ * (loadVerifiedGenerationFacts: prospect name / address === the facts pack's name / address) passes without being
+ * loosened.
  *
- * Why this shop and not 環: the registry schema requires a Nagoya address (sales_prospects_nagoya: normalized_address
- * like '愛知県名古屋市%' and address like '%名古屋市%'). 環's facts say 「架空市架空区…」, which the registry can never
- * hold, so 環's seed (seed-sendable.ts) uses a placeholder address and #280 HOLDs it with PROSPECT_FACTS_IDENTITY_HOLD.
- * こむぎ灯's facts address 「名古屋市昭和区架空町二丁目8-1」 is a fictional town in the Nagoya format, so the registry row
- * here is DERIVED from the facts (s0RegistryRow): name and address are the facts' values byte for byte. The committed
- * pack S0_FACTS_PATH is the facts-path edition of design-library/research/three-methods/facts-pack.json — the same
- * shop, the same values and ids, with menu_item_N renamed service_N (the facts path maps only service_ / statement_
- * keys; menu_item_ is facts_pack_unmapped_key in the database). The three-methods pack and every hash pinned to it are
- * unchanged.
+ * Why not 環: the registry schema requires a Nagoya address (sales_prospects_nagoya: normalized_address like
+ * '愛知県名古屋市%' and address like '%名古屋市%'). 環's facts say 「架空市架空区…」, which the registry can never hold, so
+ * 環's seed (seed-sendable.ts) uses a placeholder address and #280 HOLDs it with PROSPECT_FACTS_IDENTITY_HOLD. The S0
+ * bakery's facts carry a fictional town in the Nagoya format and service_N keys (the facts path maps only service_ /
+ * statement_ keys), so the registry row here is DERIVED from the facts (s0RegistryRow): name and address are the facts'
+ * values byte for byte. The shop id is the pack's own (a `fictional-` id); nothing about the shop is hard-coded here.
  *
  * What is written (one transaction, the database owner's local connection — assertLocalDbUrl — only):
  *   sales_prospects 1 · sales_sources 1 (the example.com email's first-party source) · sales_demos 1 and
- *   sales_demo_facts_packs 1 (both by the existing onboarding step sales_onboard_facts_demo, 'operator_cli': needs the
- *   owner's local switch sales_facts_registration_settings.operator_cli_enabled and an admin in sales_admins) ·
- *   sales_outreaches 1 (an unsent initial email draft, so the today card exists). Nothing is sent, published or
- *   generated; no auth user is created (the admin must already exist).
+ *   sales_demo_facts_packs 1 (both by the existing onboarding step sales_onboard_facts_demo, 'operator_cli', with an
+ *   admin in sales_admins; the owner's switch sales_facts_registration_settings.operator_cli_enabled is turned on
+ *   INSIDE the transaction for that step and off again before commit, so a rollback restores it) · sales_outreaches 1
+ *   (an unsent initial email draft, so the today card exists). Refused while the owner's test-recipient switch
+ *   (sales_local_test_settings.local_test_recipients_enabled) is on, so the database keeps refusing every send approval
+ *   of this fictional shop. Nothing is sent, published or generated; no auth user is created.
  *
  * Every inserted id goes into an S0SeedRecord. cleanupS0Seed deletes exactly the recorded rows (and, only when asked,
  * the rows a later local import / admin review created under the same prospect), then proves nothing is left.
  */
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type pg from "pg";
 import { demoContentFromFactsBytes, demoContentWithFactsSha, factsPackSha256 } from "./facts-content";
@@ -39,16 +39,16 @@ export class S0SeedError extends Error {
 
 /** The explicit flag every writing sub-command (seed / cleanup) requires. */
 export const S0_SEED_FLAG = "--owner-approved-local-seed";
-export const S0_SHOP_ID = "fictional-bakery-komugi";
-/** The committed facts-path edition of the fictional bakery こむぎ灯. */
-export const S0_FACTS_PATH = "design-library/research/quality-pipeline/poc/s0-komugi/facts-pack.json";
+/** The committed facts pack of the Stage 0 fictional bakery (A-2's; the same bytes on both branches). */
+export const S0_FACTS_PATH = "design-library/research/quality-pipeline/poc/bakery/facts-pack.json";
 /** The fixed id of the fictional prospect (only this seed creates a prospect with this id). */
 export const S0_PROSPECT_ID = "13900000-5e00-4d00-8a00-000000000001";
-export const S0_DOMAIN = "komugi-s0.example.com";
+export const S0_DOMAIN = "s0-bakery.example.com";
 export const S0_EMAIL = `info@${S0_DOMAIN}`;
 export const S0_SITE = `https://${S0_DOMAIN}/`;
 export const S0_DRAFT = { subject: "ホームページのご提案", body: "はじめまして。ホームページのご提案用に、貴店のデモページを作りました。（架空の店の確認用の下書き。送信しない）" } as const;
 const CATEGORIES = new Set(["bakery", "baked_goods", "cafe"]);
+const FICTIONAL_SHOP = /^fictional-[a-z0-9_-]{1,30}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The tables the seed writes, in insert order, with the row count each gets. */
@@ -111,8 +111,39 @@ export function assertS0RecordPath(repo: string, path: string | undefined, cwd: 
 }
 const join2 = (realDir: string, abs: string) => resolve(realDir, relative(dirname(abs), abs));
 
+/** Before seeding (no connection yet): an existing record file must be an S0 record (a re-run), never anything else. */
+export function precheckS0RecordFile(path: string): void {
+  if (!existsSync(path)) return;
+  try {
+    parseS0SeedRecord(JSON.parse(readFileSync(path, "utf8")));
+  } catch {
+    throw new S0SeedError("S0_RECORD_FILE_NOT_S0");
+  }
+}
+
+/**
+ * Writes the record (PR #284 L5): a new file is created exclusively ('wx', mode 0600); an existing file is left as it
+ * is only when it already holds exactly this record, and is never overwritten otherwise (S0_RECORD_FILE_DIFFERS).
+ */
+export function writeS0RecordFile(path: string, rec: S0SeedRecord): "written" | "unchanged" {
+  const text = `${JSON.stringify(rec, null, 2)}\n`;
+  if (existsSync(path)) {
+    let cur: S0SeedRecord;
+    try {
+      cur = parseS0SeedRecord(JSON.parse(readFileSync(path, "utf8")));
+    } catch {
+      throw new S0SeedError("S0_RECORD_FILE_NOT_S0");
+    }
+    if (JSON.stringify(cur) !== JSON.stringify(parseS0SeedRecord(rec))) throw new S0SeedError("S0_RECORD_FILE_DIFFERS");
+    return "unchanged";
+  }
+  writeFileSync(path, text, { flag: "wx", mode: 0o600 });
+  return "written";
+}
+
 export type S0RegistryRow = {
   id: string;
+  shop_id: string;
   name: string;
   normalized_name: string;
   address: string;
@@ -134,7 +165,9 @@ export type S0RegistryRow = {
  */
 export function s0RegistryRow(factsPack: Uint8Array): S0RegistryRow {
   const content = demoContentFromFactsBytes(factsPack);
-  if (content.facts_pack !== S0_SHOP_ID) throw new S0SeedError("S0_FACTS_NOT_S0_SHOP");
+  // only a fictional shop, and never 環 / 輪 (their facts address is not a registry address anyway)
+  if (typeof content.facts_pack !== "string" || !FICTIONAL_SHOP.test(content.facts_pack) || content.facts_pack.startsWith("fictional-bicycle-repair-"))
+    throw new S0SeedError("S0_FACTS_NOT_S0_SHOP");
   const name = String(content.name);
   const address = String(content.address);
   const category = String(content.category);
@@ -145,7 +178,7 @@ export function s0RegistryRow(factsPack: Uint8Array): S0RegistryRow {
   if (!CATEGORIES.has(category)) throw new S0SeedError("S0_FACTS_CATEGORY_UNSUPPORTED");
   const ward = typeof content.ward === "string" && content.ward.length <= 20 ? content.ward : null;
   return {
-    id: S0_PROSPECT_ID, name, normalized_name: normalizeName(name), address, normalized_address, ward, category,
+    id: S0_PROSPECT_ID, shop_id: content.facts_pack, name, normalized_name: normalizeName(name), address, normalized_address, ward, category,
     website_status: "present", website_url: S0_SITE, website_domain: S0_DOMAIN, public_email: S0_EMAIL, recommended_channel: "email",
   };
 }
@@ -153,11 +186,13 @@ export function s0RegistryRow(factsPack: Uint8Array): S0RegistryRow {
 /** What the seed would write, without a connection (the `plan` sub-command and the doc). Pure. */
 export function s0SeedPlan(factsPack: Uint8Array) {
   const row = s0RegistryRow(factsPack);
+  const { shop_id, ...prospect } = row;
   return {
-    prospect: row,
+    shop_id,
+    prospect: { ...prospect },
     source: { prospect_id: row.id, field: "email", value: S0_EMAIL, source_url: `${S0_SITE}contact`, source_type: "official_contact" },
     demo: { prospect_id: row.id, template: `${row.category}_v1`, expires_at: null, disabled_at: null, content: demoContentWithFactsSha(factsPack) },
-    facts_pack: { prospect_id: row.id, shop_id: S0_SHOP_ID, facts_sha256: factsPackSha256(factsPack), recorded_via: "operator_cli" },
+    facts_pack: { prospect_id: row.id, shop_id, facts_sha256: factsPackSha256(factsPack), recorded_via: "operator_cli" },
     outreach: { prospect_id: row.id, kind: "initial", channel: "email", status: "drafted", ...S0_DRAFT },
     counts: Object.fromEntries(S0_SEED_TABLES.map((t) => [t, 1])) as Record<S0SeedTable, number>,
   };
@@ -167,7 +202,8 @@ export function s0SeedPlan(factsPack: Uint8Array) {
 export function parseS0SeedRecord(raw: unknown): S0SeedRecord {
   const r = raw as S0SeedRecord;
   const ok =
-    r && typeof r === "object" && r.schema === "s0_local_seed_record_v1" && r.prospect_id === S0_PROSPECT_ID && r.shop_id === S0_SHOP_ID &&
+    r && typeof r === "object" && r.schema === "s0_local_seed_record_v1" && r.prospect_id === S0_PROSPECT_ID && typeof r.shop_id === "string" && FICTIONAL_SHOP.test(r.shop_id) &&
+    Object.keys(r).length === 5 &&
     typeof r.facts_sha256 === "string" && /^[0-9a-f]{64}$/.test(r.facts_sha256) && r.rows && typeof r.rows === "object" &&
     Object.keys(r.rows).length === S0_SEED_TABLES.length &&
     S0_SEED_TABLES.every((t) => Array.isArray(r.rows[t]) && r.rows[t].length === 1 && r.rows[t].every((id) => typeof id === "string" && UUID.test(id))) &&
@@ -203,24 +239,28 @@ async function existingSeed(db: pg.ClientBase, plan: ReturnType<typeof s0SeedPla
 
 function record(plan: ReturnType<typeof s0SeedPlan>, ids: Record<Exclude<S0SeedTable, "sales_prospects">, string>): S0SeedRecord {
   return {
-    schema: "s0_local_seed_record_v1", prospect_id: S0_PROSPECT_ID, shop_id: S0_SHOP_ID, facts_sha256: plan.facts_pack.facts_sha256,
+    schema: "s0_local_seed_record_v1", prospect_id: S0_PROSPECT_ID, shop_id: plan.shop_id, facts_sha256: plan.facts_pack.facts_sha256,
     rows: { sales_prospects: [S0_PROSPECT_ID], sales_sources: [ids.sales_sources], sales_demos: [ids.sales_demos], sales_demo_facts_packs: [ids.sales_demo_facts_packs], sales_outreaches: [ids.sales_outreaches] },
   };
 }
 
 /**
- * Creates (or finds) the fictional こむぎ灯 prospect, its email source, its demo + stored facts (the existing onboarding
- * step) and an unsent draft, in ONE transaction on this owner connection. Idempotent: a second run returns the same ids
+ * Creates (or finds) the S0 fictional prospect, its email source, its demo + stored facts (the existing onboarding step)
+ * and an unsent draft, in ONE transaction on this owner connection. Idempotent: a second run returns the same ids
  * (created: false); a row with the fixed id that is not exactly the seed is refused (S0_SEED_ID_TAKEN).
+ *
+ * The owner's facts CLI switch is set on inside the transaction just for the onboarding step and off before commit
+ * (PR #284 L2): a failure anywhere rolls the switch back with the rows. Refused while the test-recipient switch is on
+ * (PR #284 L3), so "send approval refused" holds for this fictional shop.
  */
 export async function seedS0Shop(db: pg.ClientBase, a: { factsPack: Uint8Array; adminId: string }): Promise<{ record: S0SeedRecord; created: boolean }> {
   if (!UUID.test(a.adminId)) throw new S0SeedError("S0_ADMIN_INVALID");
   const plan = s0SeedPlan(a.factsPack);
+  const tr = await db.query("select local_test_recipients_enabled from public.sales_local_test_settings where id");
+  if (tr.rows[0]?.local_test_recipients_enabled !== false) throw new S0SeedError("S0_LOCAL_TEST_RECIPIENTS_ON");
   const found = await existingSeed(db, plan);
   if (found) return { record: found, created: false };
-  // read-only preconditions, so a refusal names the owner's missing step (the database re-checks both)
-  const sw = await db.query("select operator_cli_enabled from public.sales_facts_registration_settings where id");
-  if (sw.rows[0]?.operator_cli_enabled !== true) throw new S0SeedError("S0_SWITCH_FACTS_CLI_OFF");
+  // a read-only precondition, so a refusal names the missing step (the database re-checks it)
   if (!(await db.query("select 1 from public.sales_admins where user_id = $1", [a.adminId])).rows[0]) throw new S0SeedError("S0_ADMIN_NOT_FOUND");
   const p = plan.prospect;
   await db.query("begin");
@@ -236,7 +276,9 @@ export async function seedS0Shop(db: pg.ClientBase, a: { factsPack: Uint8Array; 
       [p.id, plan.source.value, plan.source.source_url],
     );
     const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(a.factsPack);
+    await db.query("update public.sales_facts_registration_settings set operator_cli_enabled = true where id");
     const ob = await db.query("select public.sales_onboard_facts_demo($1::uuid, $2::text, false, $3::uuid, 'operator_cli') as r", [p.id, text, a.adminId]);
+    await db.query("update public.sales_facts_registration_settings set operator_cli_enabled = false where id");
     const r = ob.rows[0].r as { demo_id: string; facts_pack_id: string; facts_sha256: string; demo_created: boolean };
     if (!r.demo_created || r.facts_sha256 !== plan.facts_pack.facts_sha256) throw new S0SeedError("S0_ONBOARDING_UNEXPECTED");
     const o = await db.query(
@@ -251,7 +293,7 @@ export async function seedS0Shop(db: pg.ClientBase, a: { factsPack: Uint8Array; 
   }
 }
 
-/** Rows a later local import / admin flow may create under the prospect (never by the seed), with how to count them. */
+/** Rows a later local import / admin flow may create under the prospect (never by the seed), in delete order. */
 const IMPORTED: readonly [string, string][] = [
   ["sales_outreach_draft_edits", "outreach_id in (select id from public.sales_outreaches where prospect_id = $1)"],
   ["sales_outreach_approvals", "prospect_id = $1"],
@@ -288,19 +330,60 @@ async function countAll(db: pg.ClientBase, rec: S0SeedRecord): Promise<{ importe
   return { imported, unrecorded };
 }
 
+/** Append-only tables (a user trigger refuses every delete); their user triggers are off only around their own delete. */
+const APPEND_ONLY = new Set([
+  "sales_demo_facts_packs", "sales_demo_images", "sales_demo_versions", "sales_demo_version_files", "sales_demo_quality_reviews",
+  "sales_demo_copy_reviews", "sales_demo_copy_facts_checks", "sales_demo_version_copy_links", "sales_demo_copy_owner_decisions", "sales_demo_structure_findings",
+]);
+
+type ForeignKey = { table: string; column: string; ref: S0SeedTable };
+const ident = (s: string) => {
+  if (!/^[a-z_][a-z0-9_]*$/.test(s)) throw new S0SeedError("S0_CLEANUP_FK_UNCOUNTABLE");
+  return s;
+};
+/** Every foreign key in the database that references one of the five seed tables (pg_constraint). */
+async function foreignKeysToSeedTables(db: pg.ClientBase): Promise<ForeignKey[]> {
+  const r = await db.query(
+    `select n.nspname as nsp, t.relname as tbl, a.attname as col, rt.relname as ref, array_length(c.conkey, 1) as cols
+       from pg_constraint c
+       join pg_class t on t.oid = c.conrelid join pg_namespace n on n.oid = t.relnamespace
+       join pg_class rt on rt.oid = c.confrelid join pg_namespace rn on rn.oid = rt.relnamespace
+       join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+      where c.contype = 'f' and rn.nspname = 'public' and rt.relname = any($1::text[])
+      order by 2, 3`,
+    [S0_SEED_TABLES],
+  );
+  // a multi-column key, or one from outside public, is not counted here: refuse rather than assume
+  if (r.rows.some((x) => x.nsp !== "public" || x.cols !== 1)) throw new S0SeedError("S0_CLEANUP_FK_UNCOUNTABLE");
+  return r.rows.map((x) => ({ table: ident(String(x.tbl)), column: ident(String(x.col)), ref: x.ref as S0SeedTable }));
+}
+/** Rows referencing the seeded ids through each foreign key ("table.column" → count), except the keys `skip` accepts. */
+async function referencing(db: pg.ClientBase, fks: ForeignKey[], ids: Record<S0SeedTable, string[]>, skip: (fk: ForeignKey) => boolean): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const fk of fks) {
+    if (skip(fk)) continue;
+    const n = (await db.query(`select count(*)::int as n from public.${fk.table} where ${fk.column} = any($1::uuid[])`, [ids[fk.ref]])).rows[0].n as number;
+    if (n > 0) out[`${fk.table}.${fk.column}`] = n;
+  }
+  return out;
+}
+
 /**
  * Deletes exactly the recorded rows (each delete must hit exactly one row of this prospect) in one transaction as the
- * database owner, triggers off for the deletes only (the facts store and the review tables are append-only by
- * trigger), then — triggers back on — proves no row of the prospect is left in any table. Refuses, writing nothing,
- * when the prospect is not the seed any more, or when other rows exist under it: rows a local import / admin review made
- * (S0_CLEANUP_IMPORTED_ROWS, unless includeImported) or seed-table rows not in the record (S0_CLEANUP_UNRECORDED_ROWS,
- * always). Returns the deleted counts per table and the storage prefixes of imported versions (their files are not
- * removed here).
+ * database owner. Foreign keys stay enforced throughout (PR #284 L1): only the user triggers of the append-only table
+ * being emptied are disabled, around that one delete. Before deleting, every foreign key in the database that references
+ * the five seed tables (pg_constraint, so tables such as sales_ig_threads are covered) is counted: a reference from
+ * anywhere but the seed tables and the known import tables refuses (S0_CLEANUP_UNKNOWN_REFERENCES). After deleting, the
+ * same foreign keys must find nothing and no row of the prospect may be left, before commit.
+ * Refuses, writing nothing, when the prospect is not the seed any more, or when other rows exist under it: rows a local
+ * import / admin review made (S0_CLEANUP_IMPORTED_ROWS, unless includeImported) or seed-table rows not in the record
+ * (S0_CLEANUP_UNRECORDED_ROWS, always). Returns the deleted counts per table and the storage prefixes of imported
+ * versions (their files are not removed here).
  */
 export async function cleanupS0Seed(db: pg.ClientBase, raw: unknown, o: { factsPack: Uint8Array; includeImported?: boolean }): Promise<{ deleted: Record<string, number>; storagePrefixesLeft: string[] }> {
   const rec = parseS0SeedRecord(raw);
   const row = s0RegistryRow(o.factsPack);
-  if (factsPackSha256(o.factsPack) !== rec.facts_sha256) throw new S0SeedError("S0_RECORD_FACTS_MISMATCH");
+  if (factsPackSha256(o.factsPack) !== rec.facts_sha256 || row.shop_id !== rec.shop_id) throw new S0SeedError("S0_RECORD_FACTS_MISMATCH");
   await db.query("begin");
   try {
     const p = await db.query("select 1 from public.sales_prospects where id = $1 and name = $2 and address = $3 and public_email = $4 for update", [rec.prospect_id, row.name, row.address, S0_EMAIL]);
@@ -308,30 +391,44 @@ export async function cleanupS0Seed(db: pg.ClientBase, raw: unknown, o: { factsP
     const before = await countAll(db, rec);
     if (Object.keys(before.unrecorded).length) throw new S0SeedError("S0_CLEANUP_UNRECORDED_ROWS", before.unrecorded);
     if (Object.keys(before.imported).length && !o.includeImported) throw new S0SeedError("S0_CLEANUP_IMPORTED_ROWS", before.imported);
+    const fks = await foreignKeysToSeedTables(db);
+    const known = new Set<string>([...S0_SEED_TABLES, ...IMPORTED.map(([t]) => t)]);
+    const unknown = await referencing(db, fks, rec.rows, (fk) => known.has(fk.table));
+    if (Object.keys(unknown).length) throw new S0SeedError("S0_CLEANUP_UNKNOWN_REFERENCES", unknown);
     const prefixes = (await db.query(
       "select v.storage_prefix from public.sales_demo_versions v join public.sales_demos d on d.id = v.demo_id where d.prospect_id = $1 order by v.storage_prefix",
       [rec.prospect_id],
     )).rows.map((r) => String(r.storage_prefix));
-    await db.query("set local session_replication_role = replica");
+    /** One delete; an append-only table's user triggers are off for this statement only (its FK triggers stay on). */
+    const del = async (table: string, sql: string, params: unknown[]) => {
+      const off = APPEND_ONLY.has(table);
+      if (off) await db.query(`alter table public.${ident(table)} disable trigger user`);
+      const n = (await db.query(sql, params)).rowCount ?? 0;
+      if (off) await db.query(`alter table public.${ident(table)} enable trigger user`);
+      return n;
+    };
     const deleted: Record<string, number> = {};
     for (const [t, where] of IMPORTED) {
       if (!before.imported[t]) continue;
-      deleted[t] = (await db.query(`delete from public.${t} where ${where}`, [rec.prospect_id])).rowCount ?? 0;
+      // the demo's pin on an imported version is released first (sales_demos keeps its triggers; no send is open by now)
+      if (t === "sales_demo_versions") await db.query("update public.sales_demos set approved_version_id = null where prospect_id = $1 and approved_version_id is not null", [rec.prospect_id]);
+      deleted[t] = await del(t, `delete from public.${t} where ${where}`, [rec.prospect_id]);
       if (deleted[t] !== before.imported[t]) throw new S0SeedError("S0_CLEANUP_COUNT_MISMATCH");
     }
     for (const t of ["sales_outreaches", "sales_demo_facts_packs", "sales_demos", "sales_sources"] as const) {
-      const n = (await db.query(`delete from public.${t} where id = $1 and prospect_id = $2`, [rec.rows[t][0], rec.prospect_id])).rowCount ?? 0;
+      const n = await del(t, `delete from public.${t} where id = $1 and prospect_id = $2`, [rec.rows[t][0], rec.prospect_id]);
       if (n !== 1) throw new S0SeedError("S0_CLEANUP_ROW_MISSING");
       deleted[t] = n;
     }
-    const n = (await db.query("delete from public.sales_prospects where id = $1", [rec.prospect_id])).rowCount ?? 0;
+    const n = await del("sales_prospects", "delete from public.sales_prospects where id = $1", [rec.prospect_id]);
     if (n !== 1) throw new S0SeedError("S0_CLEANUP_ROW_MISSING");
     deleted.sales_prospects = n;
-    await db.query("set local session_replication_role = origin");
-    // nothing of the prospect is left anywhere (seed tables and import tables)
+    // nothing references the deleted ids through any foreign key, and nothing of the prospect is left
+    const refsLeft = await referencing(db, fks, rec.rows, () => false);
     const left = await countAll(db, { ...rec, rows: Object.fromEntries(S0_SEED_TABLES.map((t) => [t, []])) as unknown as S0SeedRecord["rows"] });
     const prospectLeft = (await db.query("select count(*)::int as n from public.sales_prospects where id = $1", [rec.prospect_id])).rows[0].n as number;
-    if (Object.keys(left.imported).length || Object.keys(left.unrecorded).length || prospectLeft !== 0) throw new S0SeedError("S0_CLEANUP_ROWS_LEFT");
+    if (Object.keys(refsLeft).length || Object.keys(left.imported).length || Object.keys(left.unrecorded).length || prospectLeft !== 0)
+      throw new S0SeedError("S0_CLEANUP_ROWS_LEFT");
     await db.query("commit");
     return { deleted, storagePrefixesLeft: prefixes };
   } catch (e) {

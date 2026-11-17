@@ -1,11 +1,11 @@
 {
   "schema": "shop_facts_pack_v1",
-  "shop_id": "fictional-bakery-komugi",
+  "shop_id": "fictional-bakery-hoshigama",
   "facts": [
     {
       "id": "F1",
       "key": "name",
-      "value": "架空パン工房 こむぎ灯",
+      "value": "架空パン店 ほし窯",
       "source_id": "S1"
     },
     {
@@ -17,85 +17,91 @@
     {
       "id": "F3",
       "key": "ward",
-      "value": "昭和区",
+      "value": "瑞穂区",
       "source_id": "S1"
     },
     {
       "id": "F4",
       "key": "address",
-      "value": "名古屋市昭和区架空町二丁目8-1",
+      "value": "名古屋市瑞穂区架空町四丁目2-6",
       "source_id": "S1"
     },
     {
       "id": "F5",
       "key": "hours",
-      "value": "7:30〜17:00（売り切れ次第終了）",
+      "value": "7:00〜16:00（売り切れ次第終了）",
       "source_id": "S1"
     },
     {
       "id": "F6",
       "key": "closed_days",
-      "value": "月曜・火曜",
+      "value": "日曜・月曜",
       "source_id": "S1"
     },
     {
       "id": "F7",
       "key": "access",
-      "value": "架空線架空駅 2番出口から徒歩3分",
+      "value": "架空線架空駅 1番出口から徒歩6分",
       "source_id": "S1"
     },
     {
       "id": "F8",
       "key": "phone",
-      "value": "052-000-0418",
+      "value": "000-0000-0631",
       "source_id": "S1"
     },
     {
       "id": "F9",
       "key": "description",
-      "value": "比較研究用の架空のパン屋です。実在の店舗ではありません。石窯で焼く田舎パンと、朝いちばんの塩バターパンを、小さな店で焼いています。",
+      "value": "比較研究用の架空のパン屋です。実在の店舗ではありません。薪の石窯で田舎パンを焼き、焼き上がった順に店先の棚へ並べています。",
       "source_id": "S1"
     },
     {
       "id": "F10",
       "key": "statement_1",
-      "value": "毎朝5時から石窯に火を入れています",
+      "value": "毎朝4時半に石窯へ薪をくべます",
       "source_id": "S1"
     },
     {
       "id": "F11",
       "key": "statement_2",
-      "value": "粉は季節で配合を変えています",
+      "value": "粉は二種類を、季節で割合を変えて合わせます",
       "source_id": "S1"
     },
     {
       "id": "F12",
-      "key": "service_1",
-      "value": "架空カンパーニュ",
+      "key": "statement_3",
+      "value": "石窯で焼くのは田舎パンとバゲットです",
       "source_id": "S1"
     },
     {
       "id": "F13",
-      "key": "service_2",
-      "value": "架空塩バターパン",
+      "key": "service_1",
+      "value": "架空田舎パン",
       "source_id": "S1"
     },
     {
       "id": "F14",
-      "key": "service_3",
-      "value": "架空くるみレーズン",
+      "key": "service_2",
+      "value": "架空バゲット",
       "source_id": "S1"
     },
     {
       "id": "F15",
-      "key": "service_4",
-      "value": "架空あんバター",
+      "key": "service_3",
+      "value": "架空塩パン",
       "source_id": "S1"
     },
     {
       "id": "F16",
+      "key": "service_4",
+      "value": "架空くるみパン",
+      "source_id": "S1"
+    },
+    {
+      "id": "F17",
       "key": "service_5",
-      "value": "架空季節のタルティーヌ",
+      "value": "架空季節のフルーツデニッシュ",
       "source_id": "S1"
     }
   ]
