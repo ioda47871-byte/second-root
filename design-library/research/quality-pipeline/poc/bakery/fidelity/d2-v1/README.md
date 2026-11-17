@@ -39,5 +39,8 @@
 
 - 写真はすべて仮の板。写真の生成・取得は別の承認が要る (指示書の草案は未承認)。
 - この容器には明朝体が無く、明朝体の指定は IPAGothic などで描かれている。
-- 写真の差し替え (`photo-swap-shops.ts`) に ほし窯 は入れていない (差し替えの道具は店ごとの承認と一緒に足す)。
+- 写真の差し替え (`photo-swap-shops.ts`) には DEV-139 で研究用として入れた (`aiDemoAllowed: false`: 権利を確かめた写真だけ、AI のデモ画像は拒否)。
+  AI 写真の生成・取り込みはオーナーの承認の後 (`docs/operations/hoshigama-one-time-run-sheet.md`、未承認)。
+- この版の HTML は文を `<wbr>` で割っているので、サーバーの文章の検査 (`checkArtifactCopy`) が断片を読み、文章入りの v2 の包みは
+  `UNVERIFIED_COPY` で止まる (写真なしのカンプも同じ。検査は緩めない。`docs/operations/step2-fictional-e2e.md` の輪と同じ)。
 - 自己批評の残り (Hero の左の面が静か、床を真上から見る読みが札に頼る、など) はカンプの `review.json` の `remaining`。

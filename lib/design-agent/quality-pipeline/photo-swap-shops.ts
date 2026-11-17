@@ -14,6 +14,11 @@
  * Adding a shop here makes its research page swappable OFFLINE with rights-checked photos. It is not an approval to
  * generate pictures for it: the image auto-run takes only scripts/sales-design-worker/autorun-shops.ts's shops (and
  * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run (つぐ手 and 輪 only).
+ *
+ * DEV-139: ほし窯 (bakery, a FICTIONAL bakery, research page d2-v1) is here so that its page is swappable offline with
+ * rights-checked photos (aiDemoAllowed: false, no prompt pin: nothing about its AI photos is approved). It is in neither
+ * AUTORUN_SHOPS nor IMAGE_AUTORUN_SHOPS; docs/operations/hoshigama-one-time-run-sheet.md lists the exact changes an
+ * owner approval would make (not approved).
  */
 import { BICYCLE_PROMPT_SHA256 } from "./bicycle-ai-photos";
 import { EDGE_VIEWPORTS, type EdgeViewport, type PlanViewport } from "./photo-slots";
@@ -69,6 +74,13 @@ export type SwapShopSpec = {
    * this prompt SHA-256 (the owner-approved text), else AI_DEMO_PROMPT_NOT_APPROVED. 輪: the approved core text.
    */
   aiDemoPromptSha256?: string;
+  /**
+   * DEV-139: when two ranges of a slot get the very same crop (same source photo, same rectangle) — ほし窯's boards keep
+   * one shape across ranges, so its crops coincide — the later range uses the earlier range's file instead of a second,
+   * byte-identical file (the demo version package refuses duplicate photos: sales_demo_images.sha256 is unique). Off
+   * (absent) for つぐ手 and 輪, whose output is unchanged.
+   */
+  shareIdenticalCrops?: true;
 };
 
 /** つぐ手's CSS addition, byte for byte as DEV-166 wrote it. */
@@ -85,6 +97,18 @@ export const TSUGUTE_SWAP_CSS = `
  */
 export const BICYCLE_SWAP_CSS = `
 /* DEV-189: private photo swap (this copy only; the repository page is unchanged) */
+.photo { position: relative; overflow: hidden; }
+.photo > picture { position: absolute; inset: 0; display: block; }
+.photo > picture > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
+`;
+
+/**
+ * ほし窯's CSS addition (DEV-139). Like 輪's: the .photo (width/height 100% of the .board, not positioned) becomes the
+ * picture's containing block; the .board keeps its overflow clip, so the oven mouth's arch (its border-radius) still
+ * cuts the picture. Nothing else of the board changes.
+ */
+export const HOSHIGAMA_SWAP_CSS = `
+/* DEV-139: private photo swap (this copy only; the repository page is unchanged) */
 .photo { position: relative; overflow: hidden; }
 .photo > picture { position: absolute; inset: 0; display: block; }
 .photo > picture > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
@@ -147,6 +171,43 @@ export const SWAP_SHOP_SPECS = {
     // approved run (rights unchanged: demo only, never a public site, full provenance; the intake checks the prompt pins)
     aiDemoAllowed: true,
     aiDemoPromptSha256: BICYCLE_PROMPT_SHA256,
+  },
+  // DEV-139: ほし窯 (fictional bakery) d2-v1 — research only. NOT an approval of AI photos for it (see the file comment).
+  bakery: {
+    shop: "bakery",
+    pages: ["d2-v1"],
+    renders: [
+      { viewport: "desktop_1440", width: 1440, height: 900 },
+      { viewport: "mobile_390", width: 390, height: 844 },
+    ],
+    // the pinned d2-v1 CSS has two ranges: SP ≤600 (laid out first) and PC ≥601 (`@media (min-width: 601px)`, every
+    // board sized in vw, its shape unchanged from 601 to 1920). The PC range is cut into two crop files at 1199 (the
+    // measured edge, EDGE_VIEWPORTS) only so that the copy keeps the swap's three files per slot (desktop / tablet /
+    // mobile, which the demo version package expects); both PC files are cut to the same board shape.
+    ranges: [
+      { key: "desktop", media: null, viewports: ["desktop_1440", "desktop_1920"] },
+      { key: "tablet", media: "(max-width: 1199px)", viewports: ["tablet_1024", "tablet_768", "tablet_1199"] },
+      { key: "mobile", media: "(max-width: 600px)", viewports: ["mobile_390", "mobile_600"] },
+    ],
+    edgeViewports: EDGE_VIEWPORTS,
+    // the oven mouth's board is nearly square at ≥601 (760/800) and tall at ≤600 (300/488); the loaf keeps 1.2 in both.
+    // The SP photo (when given) serves the SP range only
+    spViewports: ["mobile_390", "mobile_600"],
+    structure: {
+      kind: "board_before_caption",
+      // the page's markup, exactly: the container on its own line, the board on the next, the caption on the line after
+      // (the line break and indent before the caption belong to the caption's triple entry, and go with the caption)
+      triples: [
+        { container: '<div class="fig fig-mouth">\n    ', board: '<div class="board board-mouth">', caption: '\n    <p class="ph ph-mouth">' },
+        { container: '<div class="fig fig-loaf">\n    ', board: '<div class="board board-loaf">', caption: '\n    <p class="ph ph-loaf">' },
+      ],
+    },
+    swapCss: HOSHIGAMA_SWAP_CSS,
+    // the loaf is 1.2 at every width and the oven mouth 0.95 at every PC width: identical crops share one file
+    shareIdenticalCrops: true,
+    // NOT approved (DEV-139): the swap refuses ai_generated_demo pictures for ほし窯 (AI_DEMO_NOT_ALLOWED). The owner's
+    // approval of the prompt text and of one run would set this true and pin aiDemoPromptSha256 (the run sheet's diff).
+    aiDemoAllowed: false,
   },
 } as const satisfies Record<string, SwapShopSpec>;
 

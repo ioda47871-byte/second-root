@@ -5,8 +5,10 @@
 
 > **状態:** 承認されたものは何も無い。写真の方向・枚数・寸法・§6 のプロンプトの草案は、どれもオーナーの確認の前である。
 > 画像の生成・取得・有料素材・外部 API は行っていない (生成した画像は **0枚**)。生成には、輪と同じく、プロンプト全文の承認と
-> 1回限りの実生成の承認が別々に要る (`docs/design/bicycle-ai-photo-brief.md` §5・§7)。ほし窯は `photo-swap-shops.ts`・
-> `AUTORUN_SHOPS`・root の `IMAGE_AUTORUN_SHOPS` のどれにも入っていない。
+> 1回限りの実生成の承認が別々に要る (`docs/design/bicycle-ai-photo-brief.md` §5・§7)。ほし窯は `AUTORUN_SHOPS`・root の
+> `IMAGE_AUTORUN_SHOPS` のどちらにも入っていない。DEV-139 (写真の流れ) で `photo-swap-shops.ts` には**研究用 (`aiDemoAllowed: false`、
+> プロンプトの pin なし)** として入れた: 差し替えは権利を確かめた写真 (テストではモック) だけを取り、AI のデモ画像は拒否する。
+> 承認の後に変える所 (と、変える前の今の状態) は `docs/operations/hoshigama-one-time-run-sheet.md` (未承認)。
 
 - ほし窯は架空の店である (`poc/bakery/facts-pack.json`)。写真は**デモ用のイメージ**で、実在の店・商品・人・窯ではない。
   看板・文字・ロゴ・値札・包装・人の顔を写さない。店の住所・営業・品揃えの事実を写真で足さない。
@@ -62,7 +64,7 @@
 
 - **寸法の注意:** ph-mouth (PC) の 2140px は、よくある生成の最大の寸法 (正方形 1024 や 1536) では届かない。
   1024 なら約 2.09倍、1536 なら約 1.39倍の補間が要る。輪で認められた補間 (作業台の PC の1枚だけ、2倍まで、lanczos3) は輪だけの決定で、
-  ほし窯には**まだ何も認められていない**。1.5倍の下限 (1605×1605、オーナーの例外の記録が要る) にするか、補間を認めるかは、オーナーが決める。
+  ほし窯には**まだ何も認められていない**。1.5倍の下限 (1610×1610 (1601 を 10 単位に切り上げ)、オーナーの例外の記録が要る) にするか、補間を認めるかは、オーナーが決める。
 - ph-loaf の 1750px も、生成の寸法によっては補間が要る。同じくオーナーが決める。
 
 ## 4. 枠ごとの構図 (事実だけに基づく)
@@ -107,8 +109,9 @@ MOCK・スタブの写真では1つも合格にしない。
 ## 6. プロンプトの草案 — **draft, not approved** (草案、未承認)
 
 > **DRAFT (未承認)。この節の文は承認に持っていく前の下書きである。この文で画像を生成しない。道具を呼ばない。**
-> 承認に持っていくときは、輪と同じく別のファイル (例 `docs/design/hoshigama-ai-photo-prompt.txt`) に本文を固定し、SHA-256・バイト数・文字数を記録する。
-> この草案のバイトは承認の対象ではない。
+> DEV-139 (写真の流れ): 下のコードブロックを `docs/design/hoshigama-ai-photo-prompt.txt` に、頭に 3 行の「DRAFT (未承認)」を付けて**草案のまま**固定した
+> (SHA-256 `9b6fc53842eca4b88ee52778f3e3d3c65c3c884b372930c88703f08336d5ea83`・2017 バイト・1998 文字。写真ごとの SHA-256 と、
+> この本文から組む実行プロンプトの SHA-256 は `lib/design-agent/quality-pipeline/hoshigama-ai-photos.ts`)。これは**承認に持っていく対象の記録**であり、承認ではない。
 
 ```
 COMMON: Demo images for a FICTIONAL bakery's research web page. Not a real shop, oven, product or person.
@@ -137,5 +140,6 @@ lower right dark and quiet. Low warm light from the top edge of the frame; short
 2. 枚数 (§3 の推奨3枚か代案2枚か) と、ph-mouth (PC)・ph-loaf の寸法 (補間を認めるか、1.5倍の下限か)。
 3. §6 の本文を別のファイルに固定し、プロンプト全文の承認を受ける (輪の DEV-191 と同じ)。
 4. 1回限りの実生成の承認 (輪の DEV-192 と同じ: 1ジョブ・呼び出しの回数・やり直しなし・期限・承認 ID の使い切り)。
-   ほし窯を `photo-swap-shops.ts`・`AUTORUN_SHOPS`・`IMAGE_AUTORUN_SHOPS` に入れるのは、その承認と一緒に行う。
+   ほし窯の差し替えで AI のデモ画像を許すこと (`photo-swap-shops.ts` の `aiDemoAllowed`・`aiDemoPromptSha256`) と、`AUTORUN_SHOPS`・
+   `IMAGE_AUTORUN_SHOPS` に入れることは、その承認と一緒に行う (差分は `docs/operations/hoshigama-one-time-run-sheet.md`)。
 5. 実生成のあと、§5 の表をオーナーが埋める。写真・manifest・権利の記録は私有の成果物のままで、リポジトリに入れない (`docs/design/photo-intake.md` §3)。

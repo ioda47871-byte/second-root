@@ -8,6 +8,8 @@
  * rights-cleared photo, then draws it at the shop's render widths (PC 1440 and SP 390; 輪 also tablet 768) (JavaScript off, every request outside the copy refused).
  * The repository page is not changed. Nothing is written inside the repository.
  *
+ * DEV-139: and ほし窯 (bakery, a FICTIONAL bakery, page d2-v1; research only, no AI demo pictures until the owner approves).
+ *
  * DEV-189: this file is the COMMON part. What is fixed per shop (the CSS breakpoint ranges and their edges, where the
  * SP photo is used, the placeholder's HTML structure, the CSS added to the copy, whether AI demo pictures are taken)
  * lives in lib/design-agent/quality-pipeline/photo-swap-shops.ts. The ranges named below are つぐ手's.
@@ -518,6 +520,8 @@ async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, tr
   const crops: Record<string, unknown> = {};
   for (const { slot, entry, plan, photos } of plans) {
     const names = {} as Record<SwapRangeKey, string>;
+    // DEV-139 (spec.shareIdenticalCrops): the file already cut for an earlier range of this slot, by source and rectangle
+    const cut = new Map<string, { name: string; range: SwapRangeKey }>();
     let size = { width: 0, height: 0 };
     for (const r of spec.ranges) {
       const lead = plan.byViewport[r.viewports[0]!];
@@ -540,12 +544,17 @@ async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, tr
         // the decoder's message is not passed on: codes only
         return { ok: false, refusals: [{ slot_id: slot.slot_id, photo: src.which, codes: ["PHOTO_DECODE_FAILED"] }] };
       }
-      const name = `photos/${slot.slot_id}-${r.key}.${ext}`;
-      files[name] = buf;
+      const key = `${src.which}:${rect.left},${rect.top},${rect.width},${rect.height}`;
+      const same = spec.shareIdenticalCrops ? cut.get(key) : undefined;
+      const name = same ? same.name : `photos/${slot.slot_id}-${r.key}.${ext}`;
+      if (!same) {
+        files[name] = buf;
+        cut.set(key, { name, range: r.key });
+      }
       names[r.key] = name;
       if (r.key === "desktop") size = { width: rect.width, height: rect.height };
       const checked = Object.fromEntries(r.viewports.map((v) => [v, plan.byViewport[v]?.crop.ok ? (plan.byViewport[v]!.crop as { density: number }).density : null]));
-      crops[`${slot.slot_id}/${r.key}`] = { source: lead.source, asset_id: src.record.asset_id, rect, density: lead.crop.density, density_by_viewport: checked, scale_basis: lead.crop.scale_basis, exception_applied: lead.crop.exception_applied, kept_area: lead.kept_area };
+      crops[`${slot.slot_id}/${r.key}`] = { source: lead.source, asset_id: src.record.asset_id, rect, density: lead.crop.density, density_by_viewport: checked, scale_basis: lead.crop.scale_basis, exception_applied: lead.crop.exception_applied, kept_area: lead.kept_area, ...(same ? { same_file_as: same.range } : {}) };
     }
     slotsOut.push({ slot, alt: entry.alt ?? slot.role, files: names, size });
   }
