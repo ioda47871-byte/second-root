@@ -158,6 +158,30 @@ describe("B-route sales comp: no factual promotion from a generated design", () 
       }).ok).toBe(true);
     });
 
+    it.each([
+      ["a hidden dd between dt and the shown dd", "<dl><dt>営業時間</dt><dd hidden>10:00〜19:00</dd><dd>月曜</dd></dl>"],
+      ["an aria-hidden dd between dt and the shown dd", '<dl><dt>営業時間</dt><dd aria-hidden="true">10:00〜19:00</dd><dd>月曜</dd></dl>'],
+      ["a value whose matching text is hidden inside it", "<dl><dt>営業時間</dt><dd><span hidden>10:00〜19:00</span></dd></dl><p>月曜</p>"],
+      ["a hidden label", "<div hidden><h3>営業時間</h3><p>10:00〜19:00</p></div>"],
+    ])("stops %s (review round 2 M2)", (_name, block) => {
+      expect(stopCode(withBlock(block))).toBe("LABEL_NOT_ADJACENT_TO_FACT");
+    });
+
+    it("keeps the owner's review on every label binding, never on exact fact text alone (review round 2 L5)", () => {
+      const factsBytes = hoursFacts();
+      const html = withBlock("<dl><dt>営業時間</dt><dd>10:00〜19:00</dd><dt>定休日</dt><dd>月曜</dd></dl>");
+      const d = deriveBRouteCopy({ factsBytes, html, css, lane: "real_shop_proposal" });
+      const labelled = d.record.items.filter((i) => i.label);
+      expect(labelled).toHaveLength(2);
+      for (const i of labelled) expect(i).toMatchObject({ claim_type: "fact", owner_review_needed: true });
+      expect(d.record.items.find((i) => i.text === "サンプル茶房" && !i.label)).toMatchObject({ claim_type: "fact", owner_review_needed: false });
+      const extracted = checkArtifactHtml(html, css, new Set());
+      expect(checkArtifactCopy({
+        texts: extracted.texts, copyRecord: d.record, shopId: "actual-like-test-shop",
+        factsSha256: d.record.facts_sha256, facts: JSON.parse(factsBytes.toString("utf8")).facts,
+      }).ok).toBe(true);
+    });
+
     it("records the displayed part of a fact, not the whole fact value (L1)", () => {
       const d = deriveBRouteCopy({ factsBytes: hoursFacts(), html: withBlock("<dl><dt>所在地</dt><dd>仮想市一区</dd></dl>"), css, lane: "real_shop_proposal" });
       expect(d.record.items.find((i) => i.label === "所在地")).toMatchObject({ text: "仮想市一区", claim_type: "fact", source_fact_ids: ["F3"] });

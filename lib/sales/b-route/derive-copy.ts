@@ -123,7 +123,10 @@ export function deriveBRouteCopy(input: {
     if (binding) {
       // the displayed (matched) text, not the whole fact value: the page may show only part of the fact
       if (binding.facts.length > 8) throw new BRouteCopyStop("FACT_SOURCES_OVER_LIMIT");
-      add({ text: binding.text, label: text, claim_type: "fact", source_fact_ids: binding.facts.map((f) => f.id), owner_review_needed: false });
+      // review round 2 L5: CSS (display:none by class, order, grid placement, off-screen, row-reverse ...) can still
+      // hide or reorder a label/value pair the HTML shows side by side, and HTML-only parsing cannot settle that. A
+      // label binding is therefore never a clean "no review" fact: the visual review and the owner check it.
+      add({ text: binding.text, label: text, claim_type: "fact", source_fact_ids: binding.facts.map((f) => f.id), owner_review_needed: true });
       continue;
     }
     add({ text, claim_type: input.lane === "quality_research_fictional" ? "creative_expression" : "proposal_pending_review",
@@ -192,9 +195,36 @@ function labelOccurrences(doc: Node, keys: ReadonlySet<string>): Map<string, Nod
   return out;
 }
 
+/** `hidden` (any value) or aria-hidden="true": the element and everything in it are not shown (review round 2 M2). */
+function hiddenElement(n: Node): boolean {
+  if (!isElement(n)) return false;
+  return n.attrs.some((a) => a.name === "hidden" || (a.name === "aria-hidden" && trimAsciiWs(a.value).toLowerCase() === "true"));
+}
+
+/** True when the node or an ancestor is hidden, or it lives in <template> content (never rendered). */
+function hiddenOrInHidden(n: Node): boolean {
+  for (let x: Node | null = n; x; x = (x as DefaultTreeAdapterTypes.ChildNode).parentNode as Node | null) {
+    if (x.nodeName === "#document") return false;
+    if (x.nodeName === "#document-fragment") return true; // template content
+    if (hiddenElement(x)) return true;
+  }
+  return true; // detached: not shown
+}
+
+/** True when the node or anything inside it is hidden (its text would include words the reader does not see). */
+function containsHidden(n: Node): boolean {
+  const stack: Node[] = [n];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (hiddenElement(x)) return true;
+    stack.push(...children(x));
+  }
+  return false;
+}
+
 /**
- * The next sibling that shows something. Whitespace, comments and <br>/<wbr> are skipped; any other element counts,
- * even an empty one (a CSS shape between the label and what follows breaks the adjacency).
+ * The next sibling that shows something. Whitespace, comments, <br>/<wbr> and hidden elements are skipped; any
+ * other element counts, even an empty one (a CSS shape between the label and what follows breaks the adjacency).
  */
 function nextShownSibling(n: Node): Node | undefined {
   const parent = (n as DefaultTreeAdapterTypes.ChildNode).parentNode as ParentNode | null;
@@ -204,7 +234,7 @@ function nextShownSibling(n: Node): Node | undefined {
     const s = sibs[i]!;
     if (s.nodeName === "#comment") continue;
     if (isElement(s)) {
-      if (s.tagName === "br" || s.tagName === "wbr") continue;
+      if (s.tagName === "br" || s.tagName === "wbr" || hiddenElement(s)) continue;
       return s;
     }
     if (visible(textOf(s))) return s;
@@ -217,9 +247,13 @@ function nextShownSibling(n: Node): Node | undefined {
  * element (below <body>) whose whole text is the label (<dt><span>営業時間</span></dt> → the dt). Then:
  *   dt → the immediately following dd; th → the immediately following td (same row);
  *   any other carrier → its immediately following shown sibling (an element, or a text node in the same parent).
- * Anything else (a dd further down, a value in another section) is not adjacent.
+ * Anything else (a dd further down, a value in another section) is not adjacent. Hidden elements (`hidden`,
+ * aria-hidden="true", <template> content) are not shown: a hidden label or a value with hidden parts never binds.
+ * CSS can still hide or reorder what the HTML shows side by side, so every binding keeps the owner's review.
  */
 function adjacentValue(textNode: Node, key: string): string | undefined {
+  // a hidden label introduces nothing the reader sees
+  if (hiddenOrInHidden(textNode)) return undefined;
   let carrier: Node = textNode;
   for (;;) {
     const parent = (carrier as DefaultTreeAdapterTypes.ChildNode).parentNode as Node | null;
@@ -233,5 +267,7 @@ function adjacentValue(textNode: Node, key: string): string | undefined {
   if (tag === "dt" && !(isElement(next) && next.tagName === "dd")) return undefined;
   if (tag === "th" && !(isElement(next) && next.tagName === "td")) return undefined;
   if (isElement(next) && (next.tagName === "dt" || next.tagName === "th")) return undefined;
+  // a value with hidden parts shows other words than its text: never bind it
+  if (containsHidden(next)) return undefined;
   return visible(textOf(next));
 }
