@@ -1,0 +1,497 @@
+{
+  "schema": "copy_quality_review_v1",
+  "auditor_version": "copy_quality_rules_v1",
+  "shop_id": "fictional-bakery-hoshigama",
+  "lane": "quality_research_fictional",
+  "facts_sha256": "d46adc81bee7b7096e47f57091d88df348ac37cf389d7cce071a76f634fcf715",
+  "facts_content_sha256": "1aab9c6612591c866bdc5fae39488aa8cf4c393ca9a306927230e96bd7bb1f7c",
+  "copy_sha256": "ec9c1d6b24623176315e805c3fda2f7c181dbc9d7269c6e645b0975cca9140f8",
+  "page_html_sha256": "454be930b549033c7a4983dee3e38c5fa856632d1aac56e63c3c9fa215b27204",
+  "page_css_sha256": "7f385570462e3b9aec167aea60d808ce4677480ec0377aab45c747c052296aff",
+  "round": 0,
+  "previous_copy_sha256": null,
+  "revision_findings": [],
+  "base_checks": {
+    "ok": true,
+    "codes": []
+  },
+  "sections": [
+    {
+      "section_id": "mouth",
+      "index": 0,
+      "entries": [
+        {
+          "position": {
+            "section": 0,
+            "entry": 0
+          },
+          "role": "heading",
+          "kind": "fact",
+          "text": "架空パン店 ほし窯",
+          "copy_item_id": "name-full"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "bakery",
+          "copy_item_id": "kind"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 2
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "時間",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 3
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "7:00〜16:00（売り切れ次第終了）",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 4
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "定休",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 5
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "日曜・月曜",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 6
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "所在地",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 7
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "名古屋市瑞穂区架空町四丁目2-6",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 8
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "電話",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 9
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "000-0000-0631",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 10
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜石窯の口",
+          "copy_item_id": "ph-mouth"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 11
+          },
+          "role": "decoration",
+          "kind": "decoration",
+          "text": "ほし窯",
+          "copy_item_id": "name"
+        },
+        {
+          "position": {
+            "section": 0,
+            "entry": 12
+          },
+          "role": "decoration",
+          "kind": "decoration",
+          "text": "ほし窯",
+          "copy_item_id": "name"
+        }
+      ]
+    },
+    {
+      "section_id": "deep",
+      "index": 1,
+      "entries": [
+        {
+          "position": {
+            "section": 1,
+            "entry": 0
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "窯の奥",
+          "copy_item_id": "mk-deep"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "写真｜田舎パン",
+          "copy_item_id": "ph-loaf"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 2
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空田舎パン",
+          "copy_item_id": "p-inaka"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 3
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "石窯で焼くのは田舎パンとバゲットです",
+          "copy_item_id": "deep"
+        },
+        {
+          "position": {
+            "section": 1,
+            "entry": 4
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空バゲット",
+          "copy_item_id": "p-baguette"
+        }
+      ]
+    },
+    {
+      "section_id": "fire",
+      "index": 2,
+      "entries": [
+        {
+          "position": {
+            "section": 2,
+            "entry": 0
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "薪の火",
+          "copy_item_id": "mk-fire"
+        },
+        {
+          "position": {
+            "section": 2,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "毎朝4時半に石窯へ薪をくべます",
+          "copy_item_id": "fire"
+        }
+      ]
+    },
+    {
+      "section_id": "door",
+      "index": 3,
+      "entries": [
+        {
+          "position": {
+            "section": 3,
+            "entry": 0
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "店先の棚",
+          "copy_item_id": "mk-door"
+        },
+        {
+          "position": {
+            "section": 3,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "薪の石窯で田舎パンを焼き、焼き上がった順に店先の棚へ並べています。",
+          "copy_item_id": "door"
+        },
+        {
+          "position": {
+            "section": 3,
+            "entry": 2
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空くるみパン",
+          "copy_item_id": "p-kurumi"
+        },
+        {
+          "position": {
+            "section": 3,
+            "entry": 3
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空塩パン",
+          "copy_item_id": "p-shio"
+        },
+        {
+          "position": {
+            "section": 3,
+            "entry": 4
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空季節のフルーツデニッシュ",
+          "copy_item_id": "p-danish"
+        }
+      ]
+    },
+    {
+      "section_id": "flour",
+      "index": 4,
+      "entries": [
+        {
+          "position": {
+            "section": 4,
+            "entry": 0
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "粉",
+          "copy_item_id": "mk-flour"
+        },
+        {
+          "position": {
+            "section": 4,
+            "entry": 1
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "粉は二種類を、季節で割合を変えて合わせます",
+          "copy_item_id": "flour"
+        }
+      ]
+    },
+    {
+      "section_id": "visit",
+      "index": 5,
+      "entries": [
+        {
+          "position": {
+            "section": 5,
+            "entry": 0
+          },
+          "role": "body",
+          "kind": "prose",
+          "text": "扉の外",
+          "copy_item_id": "mk-visit"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 1
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "時間",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 2
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "7:00〜16:00（売り切れ次第終了）",
+          "copy_item_id": "hours"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 3
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "定休",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 4
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "日曜・月曜",
+          "copy_item_id": "closed"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 5
+          },
+          "role": "heading",
+          "kind": "fact",
+          "text": "架空パン店 ほし窯",
+          "copy_item_id": "name-full"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 6
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "所在地",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 7
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "名古屋市瑞穂区架空町四丁目2-6",
+          "copy_item_id": "address"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 8
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "道順",
+          "copy_item_id": "access"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 9
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "架空線架空駅 1番出口から徒歩6分",
+          "copy_item_id": "access"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 10
+          },
+          "role": "label",
+          "kind": "label",
+          "text": "電話",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 11
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "000-0000-0631",
+          "copy_item_id": "phone"
+        },
+        {
+          "position": {
+            "section": 5,
+            "entry": 12
+          },
+          "role": "body",
+          "kind": "fact",
+          "text": "比較研究用の架空のパン屋です。実在の店舗ではありません。",
+          "copy_item_id": "fictional"
+        }
+      ]
+    }
+  ],
+  "axes": {
+    "natural_japanese": {
+      "score": 5,
+      "evidence": [
+        "no plain/polite mixing, comma fragments or repeated exclamation in the prose",
+        "no repeated line shape"
+      ]
+    },
+    "shop_specificity": {
+      "score": 5,
+      "evidence": [
+        "3 of 3 prose lines that name something carry a term from the shop's own facts",
+        "no swappable line with a generic phrase"
+      ]
+    },
+    "usefulness": {
+      "score": 5,
+      "evidence": [
+        "5 of 5 non-hero sections carry a fact or label",
+        "offering, hours and location are on the page"
+      ]
+    },
+    "restraint_consistency": {
+      "score": 5,
+      "evidence": [
+        "slogan-shaped non-hero headline lines: 0 of 0",
+        "no line shape repeats in three sections",
+        "hero slogan lines (allowed): 0"
+      ]
+    },
+    "fact_correctness": {
+      "score": 5,
+      "evidence": [
+        "facts pack, HTML and copy record checks pass",
+        "prose lines with a claim sign the facts do not hold: 0"
+      ]
+    }
+  },
+  "findings": [],
+  "verdict": "approve_candidate",
+  "unresolved": []
+}
