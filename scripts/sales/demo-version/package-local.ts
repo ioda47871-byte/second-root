@@ -58,14 +58,22 @@ import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib
 import { buildPackage, insideRepo, PackageError, swapCopyInput, writePackage } from "../../../lib/demo-version-package/package";
 import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
 
-const arg = (k: string) => {
-  const i = process.argv.indexOf(k);
-  return i > 0 ? process.argv[i + 1] : undefined;
-};
 const REPO = resolve(__dirname, "../../..");
 const DEFAULT_SOURCE = "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9";
 
-async function main(): Promise<number> {
+/**
+ * DEV-139 (PR #288 review M1): the programmatic entry. `seams` is for in-process tests only (the CLI below passes none):
+ * `aiDemoSpecFor` stands in for the frozen swap specs (photo-swap-shops.ts) when the photos' image records are built,
+ * `write` / `writeErr` capture what the CLI prints.
+ */
+export type PackageLocalSeams = { aiDemoSpecFor?: Parameters<typeof prepareSwap>[0]["aiDemoSpecFor"]; write?: (s: string) => void; writeErr?: (s: string) => void };
+export async function main(argv: string[], seams: PackageLocalSeams = {}): Promise<number> {
+  const arg = (k: string) => {
+    const i = argv.indexOf(k);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const out_ = seams.write ?? ((s: string) => void process.stdout.write(s));
+  const err_ = seams.writeErr ?? ((s: string) => void process.stderr.write(s));
   const out = arg("--out");
   const page = arg("--page");
   const rightsPath = arg("--rights");
@@ -78,7 +86,7 @@ async function main(): Promise<number> {
   const copyDir = arg("--copy");
   const factsArg = arg("--facts");
   if (!out || (copyDir ? !factsArg || page || arg("--source") : factsArg && !page) || (page && arg("--source")) || (page && (!rightsPath || !originalsDir || !depictionPath)) || (!page && (rightsPath || originalsDir || depictionPath || arg("--summary") || compareDir))) {
-    process.stderr.write(
+    err_(
       "usage: package-local.ts --out <dir outside the repository> [--source <comp dir>] [--png-out <dir>]\n" +
         "       package-local.ts --out <dir> --copy <comp dir> --facts <facts-pack.json> [--png-out <dir>]\n" +
         "       package-local.ts --out <dir> --page <swap>/page --rights <rights.private.json> --originals <photo dir> --depiction-confirmation <file> [--facts <facts-pack.json>] [--summary <swap-summary.json>] [--compare-renders <dir>] [--png-out <dir>]\n",
@@ -86,7 +94,7 @@ async function main(): Promise<number> {
     return 2;
   }
   if (insideRepo(out) || (pngOut && insideRepo(pngOut))) {
-    process.stderr.write("refused: write the package outside the repository\n");
+    err_("refused: write the package outside the repository\n");
     return 2;
   }
   try {
@@ -117,6 +125,7 @@ async function main(): Promise<number> {
         originals: readOriginals(originalsDir!),
         forbiddenSha256: forbiddenHashes(REPO),
         now: new Date().toISOString().slice(0, 10),
+        ...(seams.aiDemoSpecFor ? { aiDemoSpecFor: seams.aiDemoSpecFor } : {}),
       });
       html = swap.html;
       css = swap.css;
@@ -139,7 +148,7 @@ async function main(): Promise<number> {
       await browser.close();
     }
     if (renders.desktop_1440.blocked || renders.mobile_390.blocked) {
-      process.stderr.write("refused: the page tried outside requests\n");
+      err_("refused: the page tried outside requests\n");
       return 1;
     }
     const compare: Record<string, PixelDiff> = {};
@@ -186,7 +195,7 @@ async function main(): Promise<number> {
       validatorCommit: commit,
     });
     writePackage(out, pkg);
-    process.stdout.write(
+    out_(
       `${JSON.stringify(
         {
           status: "OK",
@@ -211,15 +220,15 @@ async function main(): Promise<number> {
     return 0;
   } catch (e) {
     if (e instanceof LocalInputError) {
-      process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
+      out_(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
       return 1;
     }
     if (e instanceof PackageError || e instanceof SwapInputError || e instanceof PhotoError || e instanceof SwapRightsError) {
-      process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code, details: e.details })}\n`);
+      out_(`${JSON.stringify({ status: "FAIL", code: e.code, details: e.details })}\n`);
       return 1;
     }
     throw e;
   }
 }
 
-main().then((code) => process.exit(code));
+if (require.main === module) main(process.argv.slice(2)).then((code) => process.exit(code));

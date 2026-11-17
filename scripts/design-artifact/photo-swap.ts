@@ -149,6 +149,11 @@ export type SwapOptions = {
   browser?: Browser;
   /** tests only: a stand-in for transformHtml, to prove a late failure leaves no --out */
   transform?: typeof transformHtml;
+  /**
+   * DEV-139 (PR #288 review M1), tests only: the shop's spec to use instead of the frozen SWAP_SHOP_SPECS entry (e.g. the
+   * state an owner approval would write). In-process callers only; the CLI (main) never passes it.
+   */
+  spec?: SwapShopSpec;
 };
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -386,7 +391,8 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
   const manifest = m.data;
   const outCode = checkOut(opts.out);
   if (outCode) refusals.push({ codes: [outCode] });
-  const spec = swapShopSpec(manifest.shop);
+  const spec = opts.spec ?? swapShopSpec(manifest.shop);
+  if (spec.shop !== manifest.shop) return { ok: false, refusals: [...refusals, { codes: ["SPEC_OF_ANOTHER_SHOP"] }] };
   const page = loadInventory(manifest.shop, opts.pageDir);
   if (!page.ok) return { ok: false, refusals: [...refusals, { codes: [page.code] }] };
   const { inv, edges, dir } = page;

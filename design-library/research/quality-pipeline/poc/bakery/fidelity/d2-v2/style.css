@@ -185,7 +185,7 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .plank-b { left: 10.9%; top: 67.2%; width: 117%; height: 25.9%; transform: rotate(2deg); }
   .shelf .item { padding: 0; background: none; box-shadow: none; color: #3b2214; }
   .item-kurumi { left: 4.1%; top: 19%; font-size: 5.83vw; transform: rotate(-4deg); }
-  .item-shio { left: 65%; top: 5.2%; font-size: 4.17vw; transform: rotate(6deg); }
+  .item-shio { left: 65%; top: -3%; font-size: 4.17vw; transform: rotate(6deg); } /* DEV-139 (PR #288): fully above the tilted plank, not across its edge */
   .item-danish { left: 16%; top: 74.1%; width: max-content; margin: 0; font-size: 3.19vw; white-space: nowrap; transform: rotate(-1.5deg); }
 
   .flour { padding: 9.72vw 5.56vw 8.33vw; }

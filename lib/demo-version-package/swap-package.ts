@@ -17,7 +17,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-rights";
 import { convertPhoto, photoUrlMap, provePhotoUrlRewrite, rewriteCssPhotoUrls, rewriteHtmlPhotoUrls, SWAP_PHOTO_URL, type ConvertedPhoto, type RewriteProof } from "./photos";
-import { buildSwapImages, type PackageImage, type SwapImages } from "./swap-rights";
+import { buildSwapImages, type PackageImage, type SwapImages, type SwapImagesInput } from "./swap-rights";
 
 export { PhotoError } from "./photos";
 export { SwapRightsError } from "./swap-rights";
@@ -99,7 +99,7 @@ export type PreparedSwap = {
  * The swap's copy (`page`), its rights file and summary, and the run's originals → the stored copy. Every photo the
  * copy holds must be referenced by its HTML or CSS, and every reference must be a photo it holds.
  */
-export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictions: unknown; summary: unknown; originals: readonly Uint8Array[]; forbiddenSha256: ReadonlySet<string>; now: string; photoLimit?: number }): Promise<PreparedSwap> {
+export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictions: unknown; summary: unknown; originals: readonly Uint8Array[]; forbiddenSha256: ReadonlySet<string>; now: string; photoLimit?: number; aiDemoSpecFor?: SwapImagesInput["aiDemoSpecFor"] }): Promise<PreparedSwap> {
   const map = photoUrlMap(o.page.photos.keys());
   // only <img src> / srcset, <source srcset> and CSS url() values are rewritten; a photos/ anywhere else is refused
   const h = rewriteHtmlPhotoUrls(o.page.html, map);
@@ -128,6 +128,7 @@ export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictio
     originals: o.originals,
     forbiddenSha256: o.forbiddenSha256,
     now: o.now,
+    ...(o.aiDemoSpecFor ? { aiDemoSpecFor: o.aiDemoSpecFor } : {}),
   });
   return { html, css, photos, images: built.images, sources: built.sources, conversions, proof };
 }

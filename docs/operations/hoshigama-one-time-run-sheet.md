@@ -166,7 +166,7 @@
 `package-local.ts --page … --facts …` は、写真の確かめ (権利・元の写真・描写の確認) をそのまま行い、文章を足して v2 にする。文章の記録は差し替えの
 copy.json で、差し替えが外した 写真｜ の札 2 つだけが写真の alt (石窯の口・田舎パン) になる。審査は既存の監査をその page に round 0 で掛ける。
 
-d2-v2 は文を `<wbr>` で割っていたため、サーバーの文章の検査 (`checkArtifactCopy`、`checkArtifactHtml` の文字の断片を読む) が
+d2-v1 (前の版) は文を `<wbr>` で割っていたため、サーバーの文章の検査 (`checkArtifactCopy`、`checkArtifactHtml` の文字の断片を読む) が
 `UNVERIFIED_COPY`・`JOINED_TEXT_LOOKS_LIKE_FACT` で止めた (写真なしのカンプも同じ)。検査は緩めず、`<wbr>` の無い版を作った:
 カンプ `comps/d2-hearth-floor-v4` と C ページ `fidelity/d2-v2` (折り返しは CSS の箱の幅で句の切れ目に合わせる。写真の枠は d2-v2 と同じ寸法)。
 差し替えの spec は d2-v2 を指す。テストは**コミットされた d2-v2** で、v2 (文章 + 写真、facts の SHA・権利・送信不可) が通ることを確かめる。

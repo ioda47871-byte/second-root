@@ -114,7 +114,22 @@ export const HOSHIGAMA_SWAP_CSS = `
 .photo > picture > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
 `;
 
-export const SWAP_SHOP_SPECS = {
+/** Freezes a spec and everything in it (arrays, triples, ranges), so nothing can change a shop's approval at run time. */
+function deepFreeze<T>(o: T): T {
+  if (o && typeof o === "object" && !Object.isFrozen(o)) {
+    Object.freeze(o);
+    for (const v of Object.values(o as Record<string, unknown>)) deepFreeze(v);
+  }
+  return o;
+}
+
+/**
+ * DEV-139 (PR #288 review M1): frozen. A shop's AI demo approval (aiDemoAllowed, aiDemoPromptSha256) is what is written
+ * here and nothing else: no module can set it at run time. Tests that show the path after an approval hand an explicit
+ * spec to the in-process seams (photo-swap.ts SwapOptions.spec, swap-rights / swap-package aiDemoSpecFor,
+ * package-local.ts main's seams); the CLIs never take one.
+ */
+export const SWAP_SHOP_SPECS = deepFreeze({
   tsugute: {
     shop: "tsugute",
     pages: ["d1-v3", "d1-v10"],
@@ -209,7 +224,7 @@ export const SWAP_SHOP_SPECS = {
     // approval of the prompt text and of one run would set this true and pin aiDemoPromptSha256 (the run sheet's diff).
     aiDemoAllowed: false,
   },
-} as const satisfies Record<string, SwapShopSpec>;
+} as const satisfies Record<string, SwapShopSpec>);
 
 export type SwapShopId = keyof typeof SWAP_SHOP_SPECS;
 export const SWAP_SHOP_IDS = Object.keys(SWAP_SHOP_SPECS) as [SwapShopId, ...SwapShopId[]];

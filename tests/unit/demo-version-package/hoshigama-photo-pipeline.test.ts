@@ -7,10 +7,10 @@
  *   (WebP, image records from the rights and the owner's depiction confirmation).
  *
  * No model, no image generation, no network, no database. The pictures are plain images with ai_generated_demo
- * provenance STUBS. Nothing here is an approval: the steps after the bundle use a STUB approval record and
- * simulateOwnerApproval() (in this process, or in the CLI's process through tests/support/
- * hoshigama-approved-package-local.ts) exactly where the owner's approval would change data; the repository keeps
- * aiDemoAllowed: false and HOSHIGAMA_APPROVAL null, and the plain CLI refuses (shown below).
+ * provenance STUBS. Nothing here is an approval: the steps after the bundle use a STUB approval record and an
+ * approved-state spec (tests/support/hoshigama-approval-stub.ts) handed EXPLICITLY to the in-process seams (swapPage's
+ * `spec`, package-local main's `aiDemoSpecFor`). The committed SWAP_SHOP_SPECS are frozen with aiDemoAllowed: false,
+ * HOSHIGAMA_APPROVAL stays null, and the real CLI (a separate process, no seams) refuses and writes nothing (shown below).
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -31,7 +31,8 @@ import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-r
 import { SWAP_SHOP_SPECS } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
 import { importHoshigamaAiPhotos } from "../../../scripts/design-artifact/hoshigama-ai-intake";
 import { swapPage } from "../../../scripts/design-artifact/photo-swap";
-import { simulateOwnerApproval, STUB_APPROVAL, STUB_RUN_APPROVAL_ID } from "../../support/hoshigama-approval-stub";
+import { main as packageLocal } from "../../../scripts/sales/demo-version/package-local";
+import { approvedBakerySpec, approvedSpecFor, STUB_APPROVAL, STUB_RUN_APPROVAL_ID } from "../../support/hoshigama-approval-stub";
 
 const REPO = resolve(__dirname, "../../..");
 const PAGE = "design-library/research/quality-pipeline/poc/bakery/fidelity/d2-v2";
@@ -84,7 +85,7 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
     if (root) rmSync(root, { recursive: true, force: true });
   });
   const manifest = () => JSON.parse(readFileSync(join(root, "swap-manifest.json"), "utf8")) as unknown;
-  const swap = (out: string) => swapPage({ pageDir: PAGE, manifest: manifest(), out, pipelineRoot: pipeline, now: "2026-11-17", forbiddenSha256: loadForbiddenSha256(REPO), browser });
+  const swap = (out: string, spec?: ReturnType<typeof approvedBakerySpec>) => swapPage({ pageDir: PAGE, manifest: manifest(), out, pipelineRoot: pipeline, now: "2026-11-17", forbiddenSha256: loadForbiddenSha256(REPO), browser, ...(spec ? { spec } : {}) });
 
   it("without the owner's approval the swap refuses the AI demo pictures (AI_DEMO_NOT_ALLOWED), nothing written", async () => {
     expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(false);
@@ -93,43 +94,67 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
     expect(readdirSync(root)).not.toContain("swap-refused");
   }, 60_000);
 
-  it("with the approval simulated: the swap renders PC 1440 and SP 390 with both photos", async () => {
-    const restore = simulateOwnerApproval();
-    try {
-      swapOut = join(root, "swap");
-      const res = await swap(swapOut);
-      if (!res.ok) throw new Error(JSON.stringify(res.refusals));
-      expect(res.renders.map((r) => [r.viewport, r.images_loaded, r.boards_intact, r.caption_text_left, r.horizontal_overflow])).toEqual([["desktop_1440", 2, 2, false, false], ["mobile_390", 2, 2, false, false]]);
-      const slots = res.summary.slots as Array<{ slot_id: string; photos: Array<{ which: string; source_kind: string }> }>;
-      expect(slots.flatMap((s) => s.photos.map((p) => [s.slot_id, p.which, p.source_kind]))).toEqual([["ph-mouth", "pc", "ai_generated_demo"], ["ph-mouth", "sp", "ai_generated_demo"], ["ph-loaf", "pc", "ai_generated_demo"]]);
-    } finally {
-      restore();
-    }
+  it("the committed specs are frozen: nothing can switch ほし窯's AI demo approval on at run time", () => {
+    expect(Object.isFrozen(SWAP_SHOP_SPECS)).toBe(true);
+    expect(Object.isFrozen(SWAP_SHOP_SPECS.bakery)).toBe(true);
+    expect(Object.isFrozen(SWAP_SHOP_SPECS.bakery.ranges)).toBe(true);
+    expect(() => {
+      (SWAP_SHOP_SPECS.bakery as { aiDemoAllowed: boolean }).aiDemoAllowed = true;
+    }).toThrow(TypeError);
     expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(false);
+    expect("aiDemoPromptSha256" in SWAP_SHOP_SPECS.bakery).toBe(false);
+  });
+
+  it("with an approved-state spec handed in (in-process only): the swap renders PC 1440 and SP 390 with both photos", async () => {
+    swapOut = join(root, "swap");
+    const res = await swap(swapOut, approvedBakerySpec());
+    if (!res.ok) throw new Error(JSON.stringify(res.refusals));
+    expect(res.renders.map((r) => [r.viewport, r.images_loaded, r.boards_intact, r.caption_text_left, r.horizontal_overflow])).toEqual([["desktop_1440", 2, 2, false, false], ["mobile_390", 2, 2, false, false]]);
+    const slots = res.summary.slots as Array<{ slot_id: string; photos: Array<{ which: string; source_kind: string }> }>;
+    expect(slots.flatMap((s) => s.photos.map((p) => [s.slot_id, p.which, p.source_kind]))).toEqual([["ph-mouth", "pc", "ai_generated_demo"], ["ph-mouth", "sp", "ai_generated_demo"], ["ph-loaf", "pc", "ai_generated_demo"]]);
+    expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(false);
+    // a spec of another shop is refused
+    const wrong = await swap(join(root, "swap-wrong"), { ...SWAP_SHOP_SPECS.bicycle } as unknown as ReturnType<typeof approvedBakerySpec>);
+    expect(wrong.ok ? [] : wrong.refusals.flatMap((r) => r.codes)).toEqual(["SPEC_OF_ANOTHER_SHOP"]);
   }, 120_000);
 
-  const APPROVED_CLI = "tests/support/hoshigama-approved-package-local.ts";
+  /** package-local's main in THIS process with the approved-state resolver (the only way to hand it one); its output captured */
+  const approved = async (argv: string[]) => {
+    let stdout = "";
+    let stderr = "";
+    const status = await packageLocal(argv, { aiDemoSpecFor: approvedSpecFor, write: (t) => void (stdout += t), writeErr: (t) => void (stderr += t) });
+    return { status, stdout, stderr };
+  };
   const args = (swapDir: string, out: string, facts = true) => ["--out", out, "--page", join(swapDir, "page"), "--rights", join(swapDir, "rights.private.json"), "--originals", join(pipeline, ".intake", "photos"), "--depiction-confirmation", depictionPath, ...(facts ? ["--facts", FACTS] : [])];
 
-  it("the committed d2-v2: the plain CLI refuses its photos (not approved); approved, the photos alone make a v1 package", () => {
-    const refused = node("scripts/sales/demo-version/package-local.ts", args(swapOut, join(root, "pkg-refused")));
-    expect(refused.status, refused.stderr).toBe(1);
-    expect(JSON.parse(refused.stdout)).toMatchObject({ status: "FAIL", code: "SUMMARY_NOT_RIN" });
-    expect(readdirSync(root)).not.toContain("pkg-refused");
+  it("a direct CLI run with ほし窯's photos (a separate process, no seams) refuses with SUMMARY_NOT_RIN and writes nothing", () => {
+    for (const [name, facts] of [["pkg-refused-v2", true], ["pkg-refused-v1", false]] as const) {
+      const refused = node("scripts/sales/demo-version/package-local.ts", args(swapOut, join(root, name), facts));
+      expect(refused.status, refused.stderr).toBe(1);
+      expect(JSON.parse(refused.stdout)).toMatchObject({ status: "FAIL", code: "SUMMARY_NOT_RIN" });
+      expect(readdirSync(root)).not.toContain(name);
+    }
+  }, 300_000);
+
+  it("in-process without the approved resolver: refused (SUMMARY_NOT_RIN); with it, the photos alone make a v1 package", async () => {
+    let printed = "";
+    expect(await packageLocal(args(swapOut, join(root, "pkg-noseam")), { write: (t) => void (printed += t), writeErr: () => {} })).toBe(1);
+    expect(JSON.parse(printed)).toMatchObject({ status: "FAIL", code: "SUMMARY_NOT_RIN" });
+    expect(readdirSync(root)).not.toContain("pkg-noseam");
     // the photos alone (no --facts): a v1 package, every photo check passed
-    const v1 = node(APPROVED_CLI, args(swapOut, join(root, "pkg-v1"), false));
+    const v1 = await approved(args(swapOut, join(root, "pkg-v1"), false));
     expect(v1.status, `${v1.stdout}\n${v1.stderr}`).toBe(0);
     const v1pkg = readPackage(join(root, "pkg-v1"));
     expect(v1pkg.format).toBe(PACKAGE_FORMAT);
     expect(v1pkg.images).toHaveLength(5);
   }, 300_000);
 
-  it("the committed d2-v2 (no <wbr>): the approved CLI writes a v2 package with copy AND photos, through the unchanged copy check", async () => {
+  it("the committed d2-v2 (no <wbr>): package-local (in-process, approved resolver) writes a v2 package with copy AND photos, through the unchanged copy check", async () => {
     // the page the swap copied is the committed one, byte for byte (no test-only variant)
     expect(readFileSync(join(swapOut, "page", "copy.json"))).toEqual(readFileSync(join(REPO, PAGE, "copy.json")));
     expect(readFileSync(join(REPO, PAGE, "index.html"), "utf8")).not.toContain("<wbr");
     const out = join(root, "pkg");
-    const r = node(APPROVED_CLI, args(swapOut, out));
+    const r = await approved(args(swapOut, out));
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     const printed = JSON.parse(r.stdout) as { status: string; format: string; source: string; photos: unknown[]; copy_files: Array<{ name: string; sha256: string }> };
     expect(printed).toMatchObject({ status: "OK", format: PACKAGE_FORMAT_COPY, source: "swap-copy" });

@@ -6,12 +6,12 @@
  *
  *  - STUB_APPROVAL: an approval record naming the DRAFT prompt's pins (as the owner's would, if the owner approved the
  *    draft unchanged), with the upscale list of the brief's proposal. Handed explicitly to the writer and the intake.
- *  - simulateOwnerApproval(): sets, in THIS process only, the two fields of ほし窯's swap spec the owner's approval would
- *    set (aiDemoAllowed true, aiDemoPromptSha256 the draft's SHA-256) and returns the function that restores them.
- *    The real CLIs never call it; tests/support/hoshigama-approved-package-local.ts runs package-local.ts after it.
+ *  - approvedBakerySpec() / approvedSpecFor: a NEW spec object with the two fields the owner's approval would set
+ *    (aiDemoAllowed true, aiDemoPromptSha256 the draft's SHA-256), handed explicitly to the in-process seams. The
+ *    committed SWAP_SHOP_SPECS are frozen; no CLI can take this spec.
  */
 import { HOSHIGAMA_PROMPT_DRAFT_BYTES, HOSHIGAMA_PROMPT_DRAFT_SHA256, HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS, HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256, type HoshigamaApproval } from "../../lib/design-agent/quality-pipeline/hoshigama-ai-photos";
-import { SWAP_SHOP_SPECS } from "../../lib/design-agent/quality-pipeline/photo-swap-shops";
+import { SWAP_SHOP_SPECS, type SwapShopSpec } from "../../lib/design-agent/quality-pipeline/photo-swap-shops";
 
 export const STUB_APPROVAL: HoshigamaApproval = {
   approval_record: "test-stub-hoshigama-approval",
@@ -33,14 +33,14 @@ export const STUB_APPROVAL: HoshigamaApproval = {
 };
 export const STUB_RUN_APPROVAL_ID = "test-stub-hoshigama-run-01";
 
-export function simulateOwnerApproval(): () => void {
-  const spec = SWAP_SHOP_SPECS.bakery as { aiDemoAllowed: boolean; aiDemoPromptSha256?: string };
-  const before = { aiDemoAllowed: spec.aiDemoAllowed, aiDemoPromptSha256: spec.aiDemoPromptSha256 };
-  spec.aiDemoAllowed = true;
-  spec.aiDemoPromptSha256 = HOSHIGAMA_PROMPT_DRAFT_SHA256;
-  return () => {
-    spec.aiDemoAllowed = before.aiDemoAllowed;
-    if (before.aiDemoPromptSha256 === undefined) delete spec.aiDemoPromptSha256;
-    else spec.aiDemoPromptSha256 = before.aiDemoPromptSha256;
-  };
+/**
+ * The spec ほし窯's swap would have after the owner's approval (aiDemoAllowed true, the draft's prompt SHA-256 pinned) —
+ * a NEW object; the committed SWAP_SHOP_SPECS are frozen and unchanged. Handed only to the in-process seams
+ * (swapPage's `spec`, prepareSwap / package-local main's `aiDemoSpecFor`).
+ */
+export function approvedBakerySpec(): SwapShopSpec {
+  return { ...SWAP_SHOP_SPECS.bakery, aiDemoAllowed: true, aiDemoPromptSha256: HOSHIGAMA_PROMPT_DRAFT_SHA256 };
 }
+/** the resolver for prepareSwap / package-local main: the approved ほし窯 spec, every other shop as committed */
+export const approvedSpecFor = (shop: string): SwapShopSpec | null =>
+  shop === "bakery" ? approvedBakerySpec() : Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, shop) ? SWAP_SHOP_SPECS[shop as keyof typeof SWAP_SHOP_SPECS] : null;

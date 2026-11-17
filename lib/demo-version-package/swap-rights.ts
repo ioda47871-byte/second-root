@@ -150,6 +150,11 @@ export type SwapImagesInput = {
   forbiddenSha256: ReadonlySet<string>;
   /** the check day (ISO date) */
   now: string;
+  /**
+   * DEV-139 (PR #288 review M1), tests only: resolves a shop's spec instead of the frozen SWAP_SHOP_SPECS (e.g. the state
+   * an owner approval would write). In-process callers only; package-local.ts's CLI run never passes it.
+   */
+  aiDemoSpecFor?: (shop: string) => SwapShopSpec | null;
 };
 
 export type SwapImages = {
@@ -177,7 +182,8 @@ export function buildSwapImages(i: SwapImagesInput): SwapImages {
   // prompt (photo-swap-shops.ts aiDemoAllowed + aiDemoPromptSha256): 輪 today, ほし窯 only once its approval sets both.
   // Any other shop is refused as before (the code keeps its DEV-196s name, when 輪 was the only such shop).
   const shop = summary.data.shop;
-  const spec: SwapShopSpec | null = Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, shop) ? SWAP_SHOP_SPECS[shop as keyof typeof SWAP_SHOP_SPECS] : null;
+  const committed = (s: string): SwapShopSpec | null => (Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, s) ? SWAP_SHOP_SPECS[s as keyof typeof SWAP_SHOP_SPECS] : null);
+  const spec: SwapShopSpec | null = (i.aiDemoSpecFor ?? committed)(shop);
   if (!spec || spec.shop !== shop || !spec.aiDemoAllowed || !spec.aiDemoPromptSha256) throw new SwapRightsError("SUMMARY_NOT_RIN", ["shop_not_ai_demo_approved"]);
   // the copy is the swap's own, unchanged
   if ((sha256Hex(new TextEncoder().encode(i.pageHtml))) !== summary.data.copy_hashes.html || (sha256Hex(new TextEncoder().encode(i.pageCss))) !== summary.data.copy_hashes.css) {
