@@ -1,0 +1,102 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-wagashi",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "架空菓庵",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "baked_goods",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "東区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "名古屋市東区テスト町一丁目2-3",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "9:00〜18:00（売り切れ次第終了）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "水曜・第2火曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "access",
+      "value": "テスト線テスト駅 1番出口から徒歩4分",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "phone",
+      "value": "052-000-0731",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "description",
+      "value": "比較用の架空の和菓子屋です。実在の店舗ではありません。季節の上生菓子と、毎朝炊く粒あんのどら焼きを、小さな店頭で一つずつお包みしています。",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "menu_item_1",
+      "value": "季節のテスト上生菓子",
+      "source_id": "S1"
+    },
+    {
+      "id": "F11",
+      "key": "menu_item_2",
+      "value": "テストどら焼き（粒あん）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F12",
+      "key": "menu_item_3",
+      "value": "テスト最中",
+      "source_id": "S1"
+    },
+    {
+      "id": "F13",
+      "key": "menu_item_4",
+      "value": "テスト栗きんとん（秋季）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F14",
+      "key": "menu_item_5",
+      "value": "テスト羊羹 一棹",
+      "source_id": "S1"
+    },
+    {
+      "id": "F15",
+      "key": "menu_item_6",
+      "value": "テスト豆大福",
+      "source_id": "S1"
+    },
+    {
+      "id": "F16",
+      "key": "menu_item_7",
+      "value": "テストわらび餅",
+      "source_id": "S1"
+    }
+  ]
+}

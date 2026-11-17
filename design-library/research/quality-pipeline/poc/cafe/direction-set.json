@@ -1,0 +1,583 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-cafe-nikai",
+  "facts_sha256": "36e090319c6ef400f9a0981ec2614bb2dde2dcab77ed73a1bd978912dd5e9c70",
+  "motif": {
+    "candidates": [
+      {
+        "id": "M1",
+        "what": "通りを見下ろす二階の窓",
+        "source": "space",
+        "fact_refs": [
+          "F1",
+          "F9",
+          "F4"
+        ],
+        "becomes_structure": "窓の内側から通りを見下ろす場面を入口にし、窓の外の通りを地図として広げて、窓に沿った席を駅にする"
+      },
+      {
+        "id": "M2",
+        "what": "ネルで一杯ずつ落ちるコーヒー",
+        "source": "process",
+        "fact_refs": [
+          "F9",
+          "F11",
+          "F13"
+        ],
+        "becomes_structure": "挽く→注ぐ→落ちる→カップの順を、中央の1本の筋を上から下へ落ちる読み順にする"
+      },
+      {
+        "id": "M3",
+        "what": "窓のカウンター六席",
+        "source": "object",
+        "fact_refs": [
+          "F10"
+        ],
+        "becomes_structure": "六つの席の区切りを見取り図の単位にし、窓側と内側を見開きで入れ替えながら席を1つずつ進む"
+      },
+      {
+        "id": "M4",
+        "what": "階段で二階へ上がる",
+        "source": "action",
+        "fact_refs": [
+          "F7",
+          "F4"
+        ],
+        "becomes_structure": "通りから階段を上がる道順を、地図の上の線として最後に窓の内側へ戻す"
+      },
+      {
+        "id": "M5",
+        "what": "朝8時から11時のトーストのセット",
+        "source": "time",
+        "fact_refs": [
+          "F12",
+          "F14"
+        ],
+        "becomes_structure": "朝の時間帯だけにある品を、区画の中の朝の位置として扱う"
+      }
+    ],
+    "chosen": "M1",
+    "why": "M1 は店名 (F1) と説明 (F9) と所在地の2階 (F4) の3つに出る、この店をほかの喫茶店から分ける空間の事実である。比べるために d2 は M2 (ネルで一杯ずつという工程)、d3 は M3 (六席という数の決まった物) を中心にする。M4 は d1 の終点、M5 は各方向の区画の中で使う。パン屋の方向案と同じ型 (時刻の軸・台の面・粉の見開き) は使わない"
+  },
+  "directions": [
+    {
+      "id": "c1-window-street",
+      "motif_focus": "M1",
+      "concept": "Hero は二階の窓の内側から通りを見下ろす場面 (F9)。窓の桟が画面を縦に区切り、窓の外は通りの線画、窓の内は窓辺のカウンター。以降は窓の外の通りを1枚の地図として広げ、通りに面した六席 (F10) の位置を駅にする。各駅にネルの珈琲・トーストのセット・品名を置き、通りから階段を上がる道順 (F7) が地図の上の線として最後の駅 (来店) に届く。",
+      "composition": {
+        "hero": "scene_led",
+        "flow": "map_of_stations"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "map_of_stations",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "free",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "diagram",
+            "overlap_collage",
+            "overlap_collage",
+            "single_column_text",
+            "diagram"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "overlap",
+            "overlap",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "window",
+          "motif_facet": "窓の桟ごしに通りを見下ろす場面、店名は窓ガラスの上段に掛かる",
+          "ground": "窓の内側の暗い木の色",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "窓から見下ろす通り",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "seats",
+          "motif_facet": "窓のカウンター六席を、通りの地図の上の6つの駅として並べる",
+          "ground": "通りの淡い灰",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "nel",
+          "motif_facet": "窓の左端の駅に、ネルドリップ珈琲と一杯ぶんずつ挽く豆",
+          "ground": "淡い灰",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "ネルで淹れる手元",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "morning",
+          "motif_facet": "朝の駅に、8時から11時のトーストのセットと厚切りトースト",
+          "ground": "朝の窓の薄い黄",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "厚切りトースト",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "sweets",
+          "motif_facet": "窓の右端の駅に、かためのプリンと季節のフルーツサンド",
+          "ground": "淡い灰",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "stairs",
+          "motif_facet": "通りから階段を上がって二階へ届く道順の線と、所在地・時間・定休・電話",
+          "ground": "窓の内側の木の色",
+          "layout": "diagram",
+          "image_slots": []
+        }
+      ],
+      "ending": "地図の上の道順の線が階段を上がって窓の内側へ戻り、そこで所在地と営業時間を示して、通りから窓辺の席へ着いた所で終わる",
+      "pc_plan": "1440 の Hero は窓枠を3本の縦の桟で区切り、外の通りを桟ごしに見せる。地図の区画は横長に広げ、六席の駅を窓に沿った横一線に並べ、駅の間を通りの線でつなぐ",
+      "sp_plan": {
+        "first_screen": "390×844 に窓の桟1本と、その左右に見える通りの一部、上段に店名を入れる",
+        "reorder": "六席の駅を横一線から縦一列に組み直し、上から窓の左端の席→右端の席の順に並べる。道順は最後の駅の直前に移す",
+        "overlaps": "PC で駅の札が通りの線に重なる所は、SP では札を線の右に出し、線を画面の左寄りに縦に通す"
+      },
+      "protect": [
+        "窓の内側から通りを見下ろす Hero",
+        "六席が通りに沿った駅になること"
+      ],
+      "references": [
+        {
+          "principle": "P8",
+          "case_id": "CP-026",
+          "use": "店の実際の空間と行き来から構造を始める姿勢だけを採る (案内帳の罫線・配色・写真は写さず、二階の窓と六席から始める)"
+        },
+        {
+          "principle": "P3",
+          "case_id": "CP-030",
+          "use": "街から店へ入る順で区画を連ねる考え方を、通りから階段を上がって窓辺の席へ着く順にする (相談票や時計の意匠は写さない)"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-001",
+          "reason": "同じ喫茶の業種で、巨大な店名と写真の面の組み方は写す危険が高いので使わない"
+        },
+        {
+          "case_id": "CP-020",
+          "reason": "同じ喫茶の業種のショーケースの格子は、窓の地図と混ざるので使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M1 (F1 の店名、F9 の通りを見下ろす窓辺、F4 の2階)。入れ替えテスト: 一階の路面店に替えると、窓から見下ろす場面も階段を上がる道順も成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は場面 (scene_led)、流れは駅の地図 (map_of_stations)。c2 の物と1本の軸、c3 の図と見開きの両方と型が違い、上端のナビと自由な読み順も兄弟と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は通りの地図の駅: 窓の場面 → 六席の地図 → ネルの駅 → 朝の駅 → 右端の駅。終点は階段を上がって窓の内側へ戻る道順"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は横一線の六席を縦一列にし、道順を最後の駅の直前へ移して、札を線の右に出す。PC の横長の地図の縮小ではない"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は窓の場面で、流れは帯でなく駅の地図。区画に grid_cards・split_copy_media が無く、P1・P3・P8 を挙げられる"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "通りの線と駅の札が読み順を作り、写真は窓から見下ろす通りの1枚を主にして、駅の写真は小さく添える"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新規の方向なので改良に当たらない。核 (窓の内側からの場面と、通りに沿った六席の駅) は protect に記した"
+        }
+      }
+    },
+    {
+      "id": "c2-nel-drop",
+      "motif_focus": "M2",
+      "concept": "Hero は画面の上端に吊るしたネルのフィルターの線画 (F9 ネルで一杯ずつ)。ページは中央の1本の筋で、コーヒーが一滴ずつ落ちる道として上から下へ読む。挽く (F11) → 注ぐ → 落ちる → カップの順に区画が筋の上に並び、筋の幅は下へ行くほど細くなる。カップに当たる区画で窓のカウンター六席 (F10) を受け止め、受け皿の位置に来店の情報を置く。",
+      "composition": {
+        "hero": "object_led",
+        "flow": "single_axis_scroll"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "none",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "overlap_collage",
+            "vertical_text",
+            "vertical_text",
+            "full_bleed_media",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "overlap",
+            "overlap",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "nel",
+          "motif_facet": "吊るしたネルの線画、布の下端から最初の一滴が落ち始める",
+          "ground": "生成りの布の色",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "grind",
+          "motif_facet": "一杯ぶんずつ、淹れる直前に挽く豆の粒が筋の起点に集まる",
+          "ground": "深い焙煎の茶",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "pour",
+          "motif_facet": "注ぐ湯の筋に沿って、ネルドリップ珈琲の品名を縦書きで",
+          "ground": "濃い茶",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "drops",
+          "motif_facet": "落ちる筋の途中に、トーストのセットと残りの品名を一滴ずつの間隔で縦に",
+          "ground": "淡い茶",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "cup",
+          "motif_facet": "筋が届くカップを真上から大きく見せ、縁の弧に窓のカウンター六席",
+          "ground": "白い磁器の色",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "真上から見たカップ",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "saucer",
+          "motif_facet": "カップの受け皿に、所在地・階段・時間・定休・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "筋がカップに届いて止まり、受け皿の位置に来店の情報を置いて、一杯が淹れ終わった所で終わる",
+      "pc_plan": "1440 の中央に1本の細い筋を通し、区画は筋の左右に振り分けず、筋の上に重ねて置く。筋の左右は広い余白にして、一滴を待つ間を見せる",
+      "sp_plan": {
+        "first_screen": "390×844 にネルの線画と店名、布の下から落ち始める筋の上端だけを置く",
+        "reorder": "筋を画面の中央から左の3分の1へ寄せ、品名は筋の右に縦書きから横書きに直して並べる",
+        "overlaps": "PC で筋が区画の文字に重なる所は、SP では文字の行間で筋を途切れさせ、文字に掛けない"
+      },
+      "protect": [
+        "上から下へ一滴ずつ落ちる1本の筋",
+        "カップで止まる終点"
+      ],
+      "references": [
+        {
+          "principle": "P2",
+          "case_id": "CP-017",
+          "use": "中心の大きな形の周りで物語と素材の札を読ませる考え方 (糸の輪・色・札の文言は写さず、吊るしたネルを中心の形にして下へ伸ばす)"
+        },
+        {
+          "principle": "P1",
+          "case_id": "CP-021",
+          "use": "作る手順をそのまま画面の読み順にする考え方を、挽く→注ぐ→落ちるの縦の順にする (左右のトレー・3語の見出しは写さない)"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-019",
+          "reason": "時間の3地点を並べる型は、一杯の工程より長い時間のための型なので使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M2 (F9 のネルで一杯ずつ、F11 の淹れる直前に挽く豆、F13 のネルドリップ珈琲)。入れ替えテスト: 機械で淹れる店に替えると、吊るしたネルも一滴ずつ落ちる筋も根拠が無い"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は物 (object_led)、流れは1本の軸 (single_axis_scroll)。c1 の場面と地図、c3 の図と見開きと型が違い、航法なし・縦の読み順・縦横混在の文字組で骨格も違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は一杯の工程: ネル → 挽く → 注ぐ → 落ちる → カップ。終点は筋がカップで止まった後の受け皿の来店の情報"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は筋を左の3分の1へ寄せ、縦書きの品名を横書きに直し、筋が文字に掛からないよう行間で途切れさせる"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "汎用の印はどれも無い (Hero は物、流れは軸、区画は図・重ね・縦書き・全面)。P1・P2・P5 に当たる"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "落ちる筋そのものが区画を貫く線で、縦書きの品名が筋に沿う。写真は真上から見たカップの1枚だけで、筋の終点の役にとどまる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "改良でなく最初の案。守る核として、一滴ずつ落ちる1本の筋とカップの終点を protect に置いた"
+        }
+      }
+    },
+    {
+      "id": "c3-six-seat-plan",
+      "motif_focus": "M3",
+      "concept": "Hero は窓のカウンター六席 (F10) を真上から見た見取り図で、六つの席の区切りが画面を横に6つに分ける。以降は見開きで、窓側 (席から見下ろす通りの側) と内側 (一杯ぶんずつ挽いて淹れる手元の側、F11) を交互に開き、見開きごとに席の印が1つずつ右へ進む。6つ目の席の見開きで来店の情報に出る。席の印は番号でなく見取り図の中の位置で示す。",
+      "composition": {
+        "hero": "diagram_led",
+        "flow": "alternating_spreads"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "alternating_spreads",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "z_pattern",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "overlap_collage",
+            "split_copy_media",
+            "full_bleed_media",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "sequence",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "plan",
+          "motif_facet": "六席のカウンターの見取り図、店名は窓の線の上に置く",
+          "ground": "窓辺の明るい白",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "window-side",
+          "motif_facet": "窓側の見開き: 通りを見下ろす席と、朝8時から11時のトーストのセット",
+          "ground": "窓の光の淡い青灰",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "窓側の席",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "counter-side",
+          "motif_facet": "内側の見開き: 淹れる直前に挽く豆と、ネルドリップ珈琲",
+          "ground": "カウンター内の濃い木の色",
+          "layout": "split_copy_media",
+          "image_slots": [
+            {
+              "role": "挽く手元",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "window-sweets",
+          "motif_facet": "窓の光の側に、かためのプリンと季節のフルーツサンド",
+          "ground": "淡い青灰",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "窓辺のプリン",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "place",
+          "motif_facet": "内側に戻る見開きで、商店街の二階という店の位置と木曜の定休",
+          "ground": "濃い木の色",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "sixth",
+          "motif_facet": "6つ目の席の見開き: 所在地・階段の道順・営業時間・電話",
+          "ground": "窓辺の明るい白",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "席の印が6つ目まで進んだ見開きで、窓側に所在地と営業時間、内側に階段の道順を置き、六席がすべて埋まった所で終わる",
+      "pc_plan": "1440 の Hero は六席を横一列の見取り図にし、以降の見開きは左右二面で窓側と内側を交互に入れ替える。左端の細い目次に六席の見取り図を縮めて置き、今の見開きの席に印を付ける",
+      "sp_plan": {
+        "first_screen": "390×844 に六席の見取り図を縦向きに回して置き、店名を窓の線に沿わせる",
+        "reorder": "見開きの左右を上下に積み、窓側→内側の順を保つ。目次は外し、各見開きの頭に六席の小さな図と印を付ける",
+        "overlaps": "PC の見開きをまたぐ品名は、SP では窓側の面の下端に寄せ、内側の面に掛けない"
+      },
+      "protect": [
+        "六席の見取り図が Hero と目次の両方に出ること",
+        "窓側と内側が交互に入れ替わること"
+      ],
+      "references": [
+        {
+          "principle": "P6",
+          "case_id": "CP-028",
+          "use": "決まった数の面を順に進む骨格と、SP で紙面の順序を組み直す方法 (8分割の座標・書体は写さず、六席の見開きの順にする)"
+        },
+        {
+          "principle": "P2",
+          "case_id": "CP-016",
+          "use": "物の関係 (支点と釣り合い) を情報の構造にする考え方を、窓側と内側の向かい合わせにする (モビールの形・金属の色は写さない)"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-030",
+          "reason": "通りから店へ入る順は c1 の地図で使うので、ここでは使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M3 (F10 の窓のカウンター六席)。入れ替えテスト: 席の数が決まっていない店に替えると、6つに分けた見取り図と6つ目で終わる見開きが成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は図 (diagram_led)、流れは見開き (alternating_spreads)。c1・c2 と Hero・流れが違い、横の目次と Z の読み順と連続の図像も兄弟と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は六席を進む見開き: 見取り図 → 窓側 → 内側 → 窓の光の側 → 内側の位置。終点は6つ目の席が埋まる見開き"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は見取り図を縦向きに回し、見開きを上下に積んで目次を各見開きの頭の小さな図に替える"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "split_copy_media は6区画中1つで、残りは図・重ね・全面・本文。Hero は図で汎用の型でない。P1・P2・P6 を満たす"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "見取り図の中の席の印が今いる場所を示し、写真は窓側と内側で役割 (光の側の品と手元) を分ける"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "改良の段ではない。核 (Hero と目次に出る六席の見取り図、窓側と内側の入れ替え) を protect に先に書いた"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "schema": "s0_generation_selection_v0",
+  "as_of": "2026-11-17",
+  "purpose": "DEV-139 Stage 0 A-2: 3つの架空店の方向案 (art_direction_set_v0、各3方向) のうち、生成実験に出す各店2方向 (計6) の記録。方向案のスキーマには選択の欄が無いので、この別ファイルに書く",
+  "pin": {
+    "route": "B_html_prototype",
+    "prompt_version": "v2",
+    "commands": "docs/operations/s0-three-shop-directions.md",
+    "note": "prompt_sha256 / prompt_chars は prepare-design-input → phase2f-design --print-pin (モデル呼び出しなし) の出力。参照画像は0件 (方向案が引ける成功例は principles-v1.json の閲覧済みの件だけで、承認済み参照の CP-003 は含まれない)"
+  },
+  "status": {
+    "design_generated": false,
+    "owner_approval": "required",
+    "sendable": false,
+    "note": "READY_FOR_COMPS は比べ始めてよいという意味だけで、品質の判定ではない。生成の実行には別の個別承認が要る"
+  },
+  "shops": [
+    {
+      "dir": "design-library/research/quality-pipeline/poc/bakery",
+      "kind": "パン屋",
+      "shop_id": "fictional-bakery-komugi",
+      "facts_sha256": "e63d925a1e1cdae46502d9e2a1fc2745eb69a47e65df7ba51fdd9036d04597c0",
+      "direction_set_sha256": "341ebf67a8d81e8d83adeaada195758bb9d194f174dfcdecfe264e80ef138632",
+      "selected": [
+        {
+          "direction_id": "d1-kiln-clock",
+          "composition": {
+            "hero": "diagram_led",
+            "flow": "single_axis_scroll"
+          },
+          "why": "店の事実に書かれた2つの時刻 (F10 の5時、F5 の営業時間) が骨格を決め、入れ替えテストにいちばん強い",
+          "prompt_sha256": "5bc7fdd1df57ad334c985212dddac36cd2cf8c56bb299719729e376ea0337bad",
+          "prompt_chars": 4871,
+          "reference_count": 0
+        },
+        {
+          "direction_id": "d2-hearth-floor",
+          "composition": {
+            "hero": "scene_led",
+            "flow": "one_continuous_surface"
+          },
+          "why": "d1 の時刻の軸と正反対の、区切りの無い1枚の面。5品 (F12–F16) を床に置くので品の見せ方を比べられる",
+          "prompt_sha256": "099b73e2033e48875a39ac5f3dfc69568c76d56fd84667008b6a95d90e3fddda",
+          "prompt_chars": 4833,
+          "reference_count": 0
+        }
+      ],
+      "not_selected": [
+        {
+          "direction_id": "d3-flour-crust",
+          "why": "F11 の1文と F9 の焼き色に頼る分、根拠が薄い。見開きの型は c3 (喫茶) でも使うので、6案の中で流れの型を重ねないために外す"
+        }
+      ]
+    },
+    {
+      "dir": "design-library/research/quality-pipeline/poc/cafe",
+      "kind": "喫茶",
+      "shop_id": "fictional-cafe-nikai",
+      "facts_sha256": "36e090319c6ef400f9a0981ec2614bb2dde2dcab77ed73a1bd978912dd5e9c70",
+      "direction_set_sha256": "3be9eb1541c5f8fbe4100b03c3a8e57742cd464d977613f0ed370029ae8fdce1",
+      "selected": [
+        {
+          "direction_id": "c1-window-street",
+          "composition": {
+            "hero": "scene_led",
+            "flow": "map_of_stations"
+          },
+          "why": "店名・説明・所在地の3つに出る「二階の窓」が中心 (選ばれた比喩 M1)。場面と駅の地図はパン屋の2案に無い組み合わせ",
+          "prompt_sha256": "89e23f6ba3e58fc4bee4bbf96b27edf773f11953f1d56b7f6b27686cc4d31d48",
+          "prompt_chars": 4888,
+          "reference_count": 0
+        },
+        {
+          "direction_id": "c2-nel-drop",
+          "composition": {
+            "hero": "object_led",
+            "flow": "single_axis_scroll"
+          },
+          "why": "F9・F11・F13 の工程が骨格。1本の軸はパン屋 d1 と同じ流れだが、Hero (物と図)・区画の型・遷移を変え、構造の近さを 0.6 未満に抑えた",
+          "prompt_sha256": "c25ac4d59707553acde3f9aac5fe6443261198047dd81295f489ddf6ac45cda5",
+          "prompt_chars": 4877,
+          "reference_count": 0
+        }
+      ],
+      "not_selected": [
+        {
+          "direction_id": "c3-six-seat-plan",
+          "why": "六席 (F10) は強い事実だが、見開きの型が外したパン屋 d3 と近い (8観点中4つが同じ)。生成の比較には c1・c2 を先に出す"
+        }
+      ]
+    },
+    {
+      "dir": "design-library/research/quality-pipeline/poc/wagashi",
+      "kind": "菓子店",
+      "shop_id": "fictional-wagashi",
+      "facts_sha256": "8abbddb5bae816123d99b4642697aea94bdd42ae1d2372b4ac86719daec2b10e",
+      "direction_set_sha256": "8b32bf8b94177b82709bac1ea32a7d9a93fe7085183dbc16f51265ff6430a0c7",
+      "selected": [
+        {
+          "direction_id": "w1-wrapping-sheet",
+          "composition": {
+            "hero": "object_led",
+            "flow": "one_continuous_surface"
+          },
+          "why": "表示できる事実が少ない (値に「テスト」を含むものは出さない) 中で、F9 の「一つずつお包み」という動作だけで構造が立つ (選ばれた比喩 M1)",
+          "prompt_sha256": "9930b72798625d2c095401dea338b538e0da36e6f382faafa1dc29a579afe3cd",
+          "prompt_chars": 4867,
+          "reference_count": 0
+        },
+        {
+          "direction_id": "w2-tsubu-stations",
+          "composition": {
+            "hero": "diagram_led",
+            "flow": "map_of_stations"
+          },
+          "why": "w1 の連続した紙と正反対の、点の散らばりと駅。F9 の記述を駅ごとに分けずに置けるか (事実を組み直さないか) を比べられる",
+          "prompt_sha256": "387b6ce4333f001a463e4d26c317e5e2f3999d15b86b84f45be526460c88b2d6",
+          "prompt_chars": 4864,
+          "reference_count": 0
+        }
+      ],
+      "not_selected": [
+        {
+          "direction_id": "w3-narrow-front",
+          "why": "単一の主写真に頼る場面の Hero で、B方式 (画像なし) では店頭の場面を線で描くしかなく、比喩が弱まりやすい"
+        }
+      ]
+    }
+  ]
+}
