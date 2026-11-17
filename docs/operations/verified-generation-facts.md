@@ -6,9 +6,10 @@
 
 実装: `lib/sales/b-route/verified-generation-facts.ts::loadVerifiedGenerationFacts(client, prospectId)`。
 
-- 入力は既存のサインイン済み管理者Supabase clientとUUID。**service role・環境変数・登録の代理操作を作らない**。DB RLSと既存認証を維持。
+- 入力は既存のサインイン済み管理者Supabase clientとUUID(呼ぶのは管理者を確認済みのサーバー経路だけ。service roleのclientを渡すとRLSを迂回するため渡さない)。**service role・環境変数・登録の代理操作を作らない**。DB RLSと既存認証を維持。
 - `sales_prospects`で候補の存在と`do_not_contact=false`を確認。未知・DNCは停止。
-- `sales_demos`の存在・本人prospect・非無効化状態を確認。
+- 管理者の除外リスト(`sales_exclusions`、既存顧客・取引先)を、送信の門`sales_prospect_excluded`と同じ4つの鍵(Instagram・サイトのドメイン・正規化した店名+住所・保存済みメールのdigest)で照合。一致、または一覧を読み切れない場合は`PROSPECT_EXCLUDED_OR_UNKNOWN`で停止(PR #280 review M1)。照合は既存の`lib/admin/today.ts`の`exclusionRowsFor`と`lib/sales/evidence.ts`の`matchExclusions`を再利用。
+- `sales_demos`の存在・本人prospect・非無効化・未失効(`expires_at`)を確認。
 - 既存`loadCurrentFactsPack`から最新の登録済みfactsを読む。空・DB不達なら停止。
 - packのSHA256・shop ID・demo IDを登録記録と照合し、既存`assertDemoContentFromFacts`を使って同じbytesから導出されたデモ内容であることを再検証。
 - 候補登録の店名・住所がpackと一致しない場合は無人生成せず`PROSPECT_FACTS_IDENTITY_HOLD`。管理画面で例外承認していた場合も再確認が必要（誤店舗への大量制作を防ぐ側の条件）。
@@ -18,7 +19,7 @@
 
 ## テスト
 
-`tests/unit/sales/verified-generation-facts.test.ts`：既存clientを模擬して、正常なfacts読込、DNCで早期停止、未登録、SHA不一致、別demoとの混線、デモの事実変更、候補名/住所の不一致、無効化/DB障害を検証する。
+`tests/unit/sales/verified-generation-facts.test.ts`：既存clientを模擬して、正常なfacts読込(問い合わせる列も検査)、DNC・DNC不明で早期停止、除外リストの一致・読めない場合の停止(デモを読む前)、未登録、SHA不一致、別demoとの混線、shop ID不一致、デモの事実変更、候補名/住所の不一致、無効化・失効、不正なID、DB障害を、停止コードまで検証する。
 
 この単体テストだけではローカルSupabase/RLSの統合は未検証。実行時は必ず管理者権限・行ポリシーが正しく働くことも確認する。
 

@@ -118,7 +118,7 @@ export function postgrestInList(values: string[]): string {
 }
 
 /** The exclusion rows that could match one card's keys, or null when the read failed or may be incomplete. */
-async function exclusionRowsFor(supabase: SupabaseClient, keys: ExclusionKeys): Promise<ExclusionRow[] | null> {
+export async function exclusionRowsFor(supabase: SupabaseClient, keys: ExclusionKeys): Promise<ExclusionRow[] | null> {
   const filters: string[] = [];
   if (keys.instagramHandle) filters.push(`instagram_handle.in.${postgrestInList([keys.instagramHandle])}`);
   if (keys.websiteDomain) filters.push(`website_domain.in.${postgrestInList([keys.websiteDomain])}`);
