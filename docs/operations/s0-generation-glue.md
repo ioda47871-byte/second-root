@@ -23,7 +23,7 @@ prepare-design-input → phase2f-design --print-pin → [phase2f-design 実呼�
 | 照合 | 止まるコード |
 | --- | --- |
 | design-input の `pin.json` が同じ facts バイト・同じ方向案・同じ方向 ID | `DESIGN_INPUT_MISMATCH` |
-| 設計呼び出しの `call.json` が succeeded・route B・kind design・`prompt_version` v2、`slot` が実在 | `GENERATION_NOT_SUCCEEDED` / `GENERATION_NOT_ROUTE_B` / `GENERATION_NOT_V2` / `GENERATION_RECORD_INVALID` |
+| 設計呼び出しの `call.json` が succeeded・route B・kind design・`prompt_version` v2 または v2.1（DEV-139）、`slot` が実在 | `GENERATION_NOT_SUCCEEDED` / `GENERATION_NOT_ROUTE_B` / `GENERATION_NOT_V2` / `GENERATION_RECORD_INVALID` |
 | 受領（receipt）の指示文 SHA が、オーナーが承認した `--expected-prompt-sha256` | `GENERATION_PROMPT_NOT_PINNED` |
 | `generation.json` の承認 ID・run ID・指示文 SHA が受領と同じ | `GENERATION_RECEIPT_MISMATCH` |
 | 包みの結果ファイルが done・route B で、使った呼び出しが受領と同じ（承認 ID・run ID・slot・指示文 SHA） | `DESIGN_PACKAGE_NOT_DONE` / `PACKAGE_RESULT_MISMATCH` |

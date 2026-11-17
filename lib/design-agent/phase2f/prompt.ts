@@ -88,11 +88,11 @@ export type PromptVariant =
    */
   | { version: "v3"; direction: OpenDirection; references: Reference[] }
   /**
-   * DEV-139 S0 A-2 (PR #283 review H1): PROPOSAL, not activated. v2 with its two wagashi-only lines (the address rule
-   * "show only 名古屋市東区" and "evoke the sweets") replaced by shop-neutral rules built from the facts
-   * (shopNeutralRules). Nothing else differs from v2. Built only when code passes this variant explicitly:
-   * promptVariantOf refuses "v2.1" with PROMPT_VERSION_NOT_ACTIVATED, so no command can run it. Activating it needs
-   * the owner's approval (docs/operations/s0-three-shop-directions.md).
+   * DEV-139 S0 A-2 (PR #283 review H1), ACTIVATED by DEV-139 (owner approval 2026-11-17): v2 with its two wagashi-only
+   * lines (the address rule "show only 名古屋市東区" and "evoke the sweets") replaced by shop-neutral rules built from the
+   * facts (shopNeutralRules: the address in full, what the shop is from its category, its products from service_N).
+   * Nothing else differs from v2. A facts pack these rules would contradict (a テスト address or product, a category
+   * the rules cannot name) is refused before any prompt exists (shopNeutralFactsStop).
    */
   | { version: "v2.1"; direction: OpenDirection; references: Reference[] };
 export const B_V11_RULES = [
@@ -111,20 +111,71 @@ export const V2_IMAGE_RULES = {
 } as const;
 
 /**
- * DEV-139 S0 A-2 (review H1): the v2.1 proposal's replacement for V2_FACT_RULES and V2_IMAGE_RULES, from the facts
- * themselves (fact ids only; the values are already quoted in the facts block). Pure.
+ * DEV-139: the prompt versions a command may select (`--prompt-version`; absent = v1). v3 is a proposal that exists in
+ * code only (PROMPT_VERSION_NOT_ACTIVATED from promptVariantOf); any other value is unknown (PROMPT_VERSION_UNKNOWN).
+ * The CLIs refuse both before anything else, with PROMPT_VERSION_NOT_ACTIVATED (review L1).
+ */
+export const ACTIVATED_PROMPT_VERSIONS = ["v1", "v1.1", "v2", "v2.1", "tm0"] as const;
+
+/**
+ * DEV-139 (review L2): what each category code means, for the v2.1 rule that says what the shop is. The codes are the
+ * ones the facts path and the seed accept (bakery / baked_goods / cafe). `baked_goods` covers Japanese and Western
+ * sweets alike, so the rule also points at the shop's own description and products, which say which.
+ */
+export const CATEGORY_KINDS: Readonly<Record<string, string>> = {
+  bakery: "a bakery (パン): bread",
+  baked_goods: "a confectioner (菓子): sweets, Japanese (和菓子) or Western (洋菓子)",
+  cafe: "a café (喫茶): coffee and light food",
+};
+/** The facts the v2.1 rules name as the shop's products: service_N (the facts path's key), or menu_item_N in older packs. */
+const PRODUCT_KEY = /^(?:service|menu_item)_\d+$/;
+const PLACEHOLDER = "テスト";
+
+export class ShopNeutralFactsError extends Error {
+  constructor(readonly code: "FACTS_ADDRESS_PLACEHOLDER" | "FACTS_PRODUCT_PLACEHOLDER" | "FACTS_CATEGORY_UNSUPPORTED") {
+    super(code);
+    this.name = "ShopNeutralFactsError";
+  }
+}
+
+/**
+ * DEV-139 (review L2): why the v2.1 rules cannot be written for these facts, or null. The rules say to show the
+ * address and the products as written and never to show a テスト value: a テスト address or product would make them
+ * contradict each other, so such a pack is refused rather than given a prompt that disagrees with itself. A category
+ * the rules cannot name (missing, or not in CATEGORY_KINDS) is refused too. Pure.
+ */
+export function shopNeutralFactsStop(facts: FactsPack): ShopNeutralFactsError["code"] | null {
+  const address = facts.facts.find((f) => f.key === "address");
+  if (address?.value.includes(PLACEHOLDER)) return "FACTS_ADDRESS_PLACEHOLDER";
+  if (facts.facts.some((f) => PRODUCT_KEY.test(f.key) && f.value.includes(PLACEHOLDER))) return "FACTS_PRODUCT_PLACEHOLDER";
+  const category = facts.facts.find((f) => f.key === "category");
+  if (!category || !Object.hasOwn(CATEGORY_KINDS, category.value)) return "FACTS_CATEGORY_UNSUPPORTED";
+  return null;
+}
+
+/**
+ * DEV-139 S0 A-2 (review H1, L2): the v2.1 replacement for V2_FACT_RULES and V2_IMAGE_RULES, from the facts themselves
+ * (fact ids; the values are already quoted in the facts block, except the meaning of the category code). Pure; throws
+ * ShopNeutralFactsError for a pack shopNeutralFactsStop refuses.
  */
 export function shopNeutralRules(facts: FactsPack, route: "B_html_prototype" | "C_hybrid"): string[] {
+  const stop = shopNeutralFactsStop(facts);
+  if (stop) throw new ShopNeutralFactsError(stop);
   const id = (key: string) => facts.facts.find((f) => f.key === key)?.id;
   const address = id("address");
-  const category = id("category");
+  const category = facts.facts.find((f) => f.key === "category")!;
+  const description = id("description");
+  const products = facts.facts.filter((f) => PRODUCT_KEY.test(f.key)).map((f) => f.id);
+  const named = [description ? `the description (fact ${description})` : null, products.length > 0 ? "the products" : null].filter(Boolean).join(" and ");
   return [
     "- The shop is fictional; keep the description's own words that say so. Show each fact's value exactly as written. Never show a value containing テスト as real content.",
     address ? `- Show the address exactly as fact ${address} gives it, in full, as plain text.` : "- The facts give no address: show none.",
+    `- What the shop is: fact ${category.id} is the category code ${JSON.stringify(category.value)}, which means ${CATEGORY_KINDS[category.value]}${named ? `; ${named} say exactly what it makes or serves` : ""}. The code itself is not text to show.`,
+    products.length > 0
+      ? `- The shop's products are facts ${products.join(", ")}: show them by these names, exactly as written. Name no other product, and give none a price, ingredient or feature the facts do not state.`
+      : "- The facts name no products: show none and invent none.",
     "- No order, booking or cart wording: the facts give no such route.",
-    route === "B_html_prototype"
-      ? `- Do not imitate a photograph with CSS or SVG; evoke what the facts name${category ? ` (the shop's kind is fact ${category})` : ""} with colour, shape, type and drawn forms.`
-      : V2_IMAGE_RULES.C_hybrid,
+    route === "B_html_prototype" ? "- Do not imitate a photograph with CSS or SVG; evoke what this shop makes, as the facts name it, with colour, shape, type and drawn forms." : V2_IMAGE_RULES.C_hybrid,
   ];
 }
 
@@ -153,14 +204,14 @@ export const COPY_V3_RULES = [
 /**
  * The variant the CLIs were asked for: `--prompt-version` (absent = v1) and an optional `--research` section file
  * (already read as JSON). The research section needs v1.1 and route B. Never reads a file itself.
+ * DEV-139: given the facts pack, a v2.1 request is also refused for facts its rules would contradict
+ * (shopNeutralFactsStop: FACTS_ADDRESS_PLACEHOLDER / FACTS_PRODUCT_PLACEHOLDER / FACTS_CATEGORY_UNSUPPORTED).
  */
-export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; version: string | undefined; research: unknown; direction?: unknown; references?: unknown; tmBrief?: unknown }): { ok: true; variant: PromptVariant } | { ok: false; code: string } {
+export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; version: string | undefined; research: unknown; direction?: unknown; references?: unknown; tmBrief?: unknown; facts?: FactsPack }): { ok: true; variant: PromptVariant } | { ok: false; code: string } {
   const version = o.version ?? "v1";
   // DEV-199f: the v3 proposal exists in code only; no command may select it until the owner approves activation
   if (version === "v3") return { ok: false, code: "PROMPT_VERSION_NOT_ACTIVATED" };
-  // DEV-139 S0 A-2: the v2.1 proposal (shop-neutral v2) exists in code only, like v3
-  if (version === "v2.1") return { ok: false, code: "PROMPT_VERSION_NOT_ACTIVATED" };
-  if (version !== "v1" && version !== "v1.1" && version !== "v2" && version !== "tm0") return { ok: false, code: "PROMPT_VERSION_UNKNOWN" };
+  if (!(ACTIVATED_PROMPT_VERSIONS as readonly string[]).includes(version)) return { ok: false, code: "PROMPT_VERSION_UNKNOWN" };
   // DEV-150: tm0 takes the three-method brief only (no research, no direction, no references, no DesignBrief); the
   // others never take it. Its shop and fact ids are checked against the facts pack where the prompt is built.
   if (version === "tm0") {
@@ -172,12 +223,15 @@ export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; ver
     return { ok: true, variant: { version: "tm0", brief: b.data } };
   }
   if (o.tmBrief !== undefined) return { ok: false, code: "TM_BRIEF_NEEDS_TM0" };
-  // DEV-124: v2 takes a direction and the reference manifest, never a research section; the others never take them
-  if (version === "v2") {
+  // DEV-124: v2 takes a direction and the reference manifest, never a research section; the others never take them.
+  // DEV-139: v2.1 takes exactly what v2 takes.
+  if (version === "v2" || version === "v2.1") {
     if (o.research !== undefined) return { ok: false, code: "RESEARCH_NEEDS_V1_1" };
     if (o.direction === undefined || o.references === undefined) return { ok: false, code: "DIRECTION_REQUIRED" };
     const r = resolveDirection(o.direction, o.references);
-    return r.ok ? { ok: true, variant: { version: "v2", direction: r.direction, references: r.references } } : r;
+    if (!r.ok) return r;
+    const stop = version === "v2.1" && o.facts !== undefined ? shopNeutralFactsStop(o.facts) : null;
+    return stop ? { ok: false, code: stop } : { ok: true, variant: { version, direction: r.direction, references: r.references } };
   }
   if (o.direction !== undefined || o.references !== undefined) return { ok: false, code: "DIRECTION_NEEDS_V2" };
   if (version === "v1") return o.research === undefined ? { ok: true, variant: { version: "v1" } } : { ok: false, code: "RESEARCH_NEEDS_V1_1" };

@@ -27,7 +27,10 @@
  *   approval is used (phase2f-live-cli.ts).
  *
  *   DEV-124: --prompt-version v2 --direction <direction.json> --references <manifest.json> (no --brief) builds the
- *   open-direction prompt. A real v2 run also takes --reference-dir <dir> holding the registered WebP files the
+ *   open-direction prompt. DEV-139 (owner approval 2026-11-17): --prompt-version v2.1 takes exactly the same inputs and
+ *   builds v2 with shop-neutral fact rules; facts it would contradict are refused by name (FACTS_ADDRESS_PLACEHOLDER,
+ *   FACTS_PRODUCT_PLACEHOLDER, FACTS_CATEGORY_UNSUPPORTED). Any version that is not activated (v3, or unknown) is
+ *   refused first with PROMPT_VERSION_NOT_ACTIVATED. A real v2 run also takes --reference-dir <dir> holding the registered WebP files the
  *   direction names (by their file name); each must have the manifest's SHA-256 (also in the prompt). They are cut
  *   into PNG sheets and attached as Codex image input. All of this happens before the approval is used.
  *
@@ -58,6 +61,18 @@ const MAX_ASSETS = 1;
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin"]);
 const VALUES = new Set(["--route", "--facts", "--brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--prompt-version", "--research", "--direction", "--references", "--reference-dir", "--tm-brief", "--expect-cli-version", "--previous-steps"]);
 
+/**
+ * DEV-199f review L4 / DEV-139 review L1: a `--prompt-version` that is not activated (the v3 proposal, or any unknown
+ * value), told by the prompt parser itself. Absent or without a value, it is left to the usage check.
+ */
+const notActivated = (argv: readonly string[]) =>
+  argv.some((a, i) => {
+    const v = argv[i + 1];
+    if (a !== "--prompt-version" || v === undefined || v.startsWith("--")) return false;
+    const c = promptVariantOf({ route: "B_html_prototype", version: v, research: undefined });
+    return !c.ok && (c.code === "PROMPT_VERSION_NOT_ACTIVATED" || c.code === "PROMPT_VERSION_UNKNOWN");
+  });
+
 const routeOf = (r: string | undefined): "B_html_prototype" | "C_hybrid" | null => (r === "B" ? "B_html_prototype" : r === "C" ? "C_hybrid" : null);
 
 const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
@@ -67,8 +82,8 @@ async function promptFor(args: Map<string, string>) {
   const route = routeOf(args.get("--route"));
   const factsPath = args.get("--facts");
   const briefPath = args.get("--brief");
-  // DEV-124: v2 has no brief; DEV-150: neither has tm0 (it takes --tm-brief); the others need one
-  const noBrief = args.get("--prompt-version") === "v2" || args.get("--prompt-version") === "tm0";
+  // DEV-124: v2 (and DEV-139: v2.1) has no brief; DEV-150: neither has tm0 (it takes --tm-brief); the others need one
+  const noBrief = ["v2", "v2.1", "tm0"].includes(args.get("--prompt-version") ?? "");
   if (!route || !factsPath || (noBrief ? briefPath !== undefined : !briefPath)) return null;
   const facts = FactsPack.safeParse(await readJson(factsPath));
   const brief = briefPath === undefined ? null : DesignBrief.safeParse(await readJson(briefPath));
@@ -84,7 +99,8 @@ async function promptFor(args: Map<string, string>) {
       return { route, refused: "INPUT_UNREADABLE" } as const;
     }
   }
-  const v = promptVariantOf({ route, version: args.get("--prompt-version"), research: await readJson(args.get("--research")), direction: await readJson(args.get("--direction")), references: await readJson(args.get("--references")), ...(tmBriefText === undefined ? {} : { tmBrief }) });
+  // DEV-139 (review L2): with the facts, so facts the v2.1 rules would contradict get no prompt (refused by name)
+  const v = promptVariantOf({ route, version: args.get("--prompt-version"), research: await readJson(args.get("--research")), direction: await readJson(args.get("--direction")), references: await readJson(args.get("--references")), ...(tmBriefText === undefined ? {} : { tmBrief }), facts: facts.data });
   if (!v.ok) return { route, refused: v.code } as const;
   let built;
   try {
@@ -102,7 +118,7 @@ async function promptFor(args: Map<string, string>) {
  * checked against the manifest's SHA-256, cut into one PNG sheet in a new private temporary directory.
  */
 async function referenceImages(variant: PromptVariant, dir: string | undefined): Promise<{ paths: string[]; record: object[]; tmp: string | null } | { code: string }> {
-  if (variant.version !== "v2" || variant.references.length === 0) return dir === undefined ? { paths: [], record: [], tmp: null } : { code: "USAGE" };
+  if ((variant.version !== "v2" && variant.version !== "v2.1") || variant.references.length === 0) return dir === undefined ? { paths: [], record: [], tmp: null } : { code: "USAGE" };
   if (dir === undefined) return { code: "REFERENCE_DIR_REQUIRED" };
   const out = await mkdtemp(join(tmpdir(), "sr-p2f-refs-"));
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
@@ -129,10 +145,11 @@ async function referenceImages(variant: PromptVariant, dir: string | undefined):
 }
 
 async function main(): Promise<number> {
-  // DEV-199f review L4: the v3 proposal is refused before anything else (any other flags, a direction or a malformed
-  // command line included), so it never reads as a usage error and nothing is read or written
+  // DEV-199f review L4 / DEV-139 review L1: a version that is not activated (the v3 proposal, or any unknown value) is
+  // refused before anything else (any other flags, a direction or a malformed command line included), so it never
+  // reads as a usage error and nothing is read or written
   const argv = process.argv.slice(2);
-  if (argv.some((a, i) => a === "--prompt-version" && argv[i + 1] === "v3")) return (say({ status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" }), 2);
+  if (notActivated(argv)) return (say({ status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" }), 2);
   const args = parseArgs(argv, FLAGS, VALUES);
   const p = args ? await promptFor(args).catch(() => null) : null;
   if (!args || !p) {
@@ -150,7 +167,7 @@ async function main(): Promise<number> {
       route: p.route,
       prompt_version: p.variant.version,
       research_section: research ? { section_id: research.section_id, case_ids: research.source.case_ids, owner_text_approval: research.owner_text_approval.status } : null,
-      ...(p.variant.version === "v2" ? { direction: { direction_id: p.variant.direction.direction_id, composition: p.variant.direction.composition }, references: p.variant.references.map((r) => ({ id: r.id, webp_sha256: r.webp_sha256 })) } : {}),
+      ...(p.variant.version === "v2" || p.variant.version === "v2.1" ? { direction: { direction_id: p.variant.direction.direction_id, composition: p.variant.direction.composition }, references: p.variant.references.map((r) => ({ id: r.id, webp_sha256: r.webp_sha256 })) } : {}),
       ...(p.variant.version === "tm0" ? { tm_brief_sha256: p.tmBriefSha256 } : {}),
       prompt_sha256: p.built.sha256,
       prompt_chars: p.built.chars,

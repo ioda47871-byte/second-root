@@ -1,46 +1,52 @@
 # DEV-139 Stage 0 A-2 — 架空3店の方向案（各3方向）と、生成実験に出す6案の prompt pin
 
-更新日：2026-11-17（第2版：PR #283 のレビュー H1・M1・L1〜L4、CI の2件、PR #284 の facts 経路の制約を反映）。
+更新日：2026-11-17（第3版：DEV-139 で prompt v2.1 を有効化し、6案の v2.1 の pin を CLI で出し直した。第2版：PR #283 のレビュー H1・M1・L1〜L4、CI の2件、PR #284 の facts 経路の制約を反映）。
 基準：`develop` の `88597749`。Issue #139 オーナー指示（2026-11-17）の A-2。
 **生成はしていない。成功例でもない。**モデル呼び出し・画像生成・ネットワーク・DB・worker/timer・公開・送信には触れていない。
 すべて `owner_approval: required`・`sendable: false`・`design_generated: false` のまま。
 
-## ブロッカー（H1）：承認済みの prompt v2 は店に依存しない形になっていない
+## ブロッカー（H1）と解消：prompt v2.1 を有効化した（DEV-139、オーナー承認 2026-11-17）
 
 `lib/design-agent/phase2f/prompt.ts` の v2 は、どの店の prompt にも菓子店のための2行を入れる：
 
 - `V2_FACT_RULES`：「for the address show only 名古屋市東区」（テストの値を隠すための規則）
 - `V2_IMAGE_RULES.B_html_prototype`：「evoke the sweets」
 
-パン屋（瑞穂区）と喫茶（千種区）の v2 の pin は、facts と食い違う指示をモデルに渡す。**この2店の v2 の pin は実行しない。**
-既存の版を調べた結果：
+パン屋（瑞穂区）と喫茶（千種区）の v2 の pin は、facts と食い違う指示をモデルに渡す。**この2店の v2 の pin は実行しない**（v2 自体は変えていない）。
 
 | 版 | 状態 | 店に依存しないか |
 | --- | --- | --- |
 | v1 / v1.1 | 有効 | 方向案でなく Design DNA の brief から組む。この経路（open direction）では使えない |
 | v2 | 有効 | **いいえ**（上の2行） |
+| **v2.1** | **有効（DEV-139）** | **はい**：v2 の上の2行だけを facts から組んだ規則（`shopNeutralRules`）に置き換えた |
 | tm0 | 有効 | three-methods の brief からだけ組む。この経路では使えない |
 | v3（DEV-199f） | **未有効** | **いいえ**：v2 の全文に copy 規則を足したもので、「show only 名古屋市東区」も繰り返す |
 
-どれも使えないので、**最小の修正を新しい版 v2.1 として提案した（未有効）**。v3 を足したときと同じ形である：
+v2.1 の規則（値は facts の欄にすでに引用されているので、id だけを書く）：
 
-- `PromptVariant` に `{ version: "v2.1"; direction; references }`。v2 と1か所だけ違う：`V2_FACT_RULES` と画像の規則の代わりに
-  `shopNeutralRules(facts, route)` を入れる。住所は「facts の address の id（例 F4）の値を省かずにそのまま」、画像の規則は
-  「facts の category の id が示すもの」を指す。値は facts の欄にすでに引用されているので、id だけを書く。address が無ければ「出さない」。
-- `promptVariantOf` は `"v2.1"` を `PROMPT_VERSION_NOT_ACTIVATED` で断る。`phase2f-design.ts` は `--print-pin --prompt-version v2.1` も断る（exit 2、
-  pin を出さない）。CLI・隔離テストの許可一覧は変えていない。
-- `tests/unit/design-agent/phase2f/prompt-v21.test.ts`：v2.1 は v2 からその2行を置き換えただけであること（3つの pack、route B と C）、
-  東区・sweets が入らないこと、address の無い facts、CLI と parser が断ること。
+- 住所：「facts の address の id（例 F4）の値を**省かずにそのまま**」。address が無ければ「出さない」。
+- 店の種類：category の id と**その code の意味**（`bakery` = パン、`cafe` = 喫茶、`baked_goods` = 菓子：和菓子または洋菓子）。どちらの菓子かは
+  その店の description と品の facts が言う（レビュー L2：菓子店を「焼菓子」へ向けない。店ごとの書き分けはしない）。code 自体は表示しない。
+- 品：`service_N`（古い pack では `menu_item_N`）の id を列挙し、その名前のとおりに出す。ほかの品・価格・材料・特徴は作らない。品が無ければ「出さない」。
+- 画像の規則（B）：写真を CSS や SVG でまねず、facts が名指すものを色・形・文字・線で。C は v2 と同じ。
+- **矛盾する facts は prompt を作らずに拒む**（レビュー L2）：address か品に「テスト」を含む（`FACTS_ADDRESS_PLACEHOLDER` / `FACTS_PRODUCT_PLACEHOLDER`。
+  「全部出せ」と「テストは出すな」がぶつかるため）、category が無いか上の3つ以外（`FACTS_CATEGORY_UNSUPPORTED`）。コミット済みの
+  `design-library/phase2f/wagashi-facts-pack.json`（所在地がテスト町）は v2.1 では拒まれる。その pack は v2 のまま（変えていない）。
 
-**有効化はオーナーの承認が要る。**それまで、今の承認済みの版で走らせてよいのは**菓子店 w1・w2 の v2 の pin だけ**である
-（facts の住所は「名古屋市東区架空町一丁目2-3」だが、v2 の規則で「名古屋市東区」までの表示になる。sweets の規則は菓子店には合う）。
+CLI：`phase2f-design`（`--print-pin` と実呼び出し）と `phase2f-steps --package` が `--prompt-version v2.1` を v2 と同じ入力（`--direction`・`--references`、
+brief なし）で受ける。`from-generation.mjs` は v2 と v2.1 の設計だけを受ける。**有効でない版（v3、未知の値）は、両 CLI とも何より先に
+`PROMPT_VERSION_NOT_ACTIVATED` で拒む**（`USAGE` にしない。レビュー L1。v9 も同じコードになった）。CLI・隔離テストの許可一覧は変えていない。
+
+テスト：`tests/unit/design-agent/phase2f/prompt-v21.test.ts`（v2 から2行を置き換えただけであること、住所・種類・品が facts の id から来ること、
+矛盾する facts を名前付きで拒むこと、CLI の pin、有効でない版のコード）、`prompt-unchanged.test.ts`（develop `5af70616` で取った v1 / v1.1 /
+v1.1+research / v2 / v3 / tm0 × route B・C × 5つの facts の 80 通りの SHA と文字数が変わらないこと）。
 
 ## 何をしたか
 
 1. 架空のパン屋・喫茶・菓子店の3店それぞれに、**facts 経路で通る版の facts**（下）と、その facts だけから作った
    `art_direction_set_v0`（3方向）を置いた。スキーマ・検査（`directions.length(3)`、C1〜C7）は変えていない。
 2. 3つとも C1〜C7 で `READY_FOR_COMPS`（`reference_mode: TEXT_ONLY_PROVISIONAL`）。**品質の判定ではない**。
-3. 各店から2方向（計6）を選び、既存の CLI で design input と v2 の prompt pin（`--print-pin`）を作り、同じ入力から v2.1 の候補の pin も組んだ。
+3. 各店から2方向（計6）を選び、既存の CLI で design input と v2 の prompt pin（`--print-pin`）を作った。v2.1 の有効化の後、同じ入力から v2.1 の pin も CLI で出した。
    選択はスキーマに欄が無いので `design-library/research/quality-pipeline/poc/s0-generation-selection.json` に書いた。
 
 ## 店と facts（facts 経路の版）
@@ -111,14 +117,19 @@ v2 の prompt に入る方向案は `concept`・`composition`・`research` だ�
 
 ## 選んだ6案と prompt pin
 
-| 店 | 方向 | v2 prompt SHA-256（承認済みの版） | 文字数 | v2 で実行してよいか | v2.1 候補 SHA-256（未有効） | 文字数 |
+| 店 | 方向 | v2 prompt SHA-256 | 文字数 | v2 で実行してよいか | **v2.1 prompt SHA-256（有効）** | 文字数 |
 | --- | --- | --- | --- | --- | --- | --- |
-| パン屋 | d1-kiln-clock | `9b0560e7f86b4911508e2b06f6ce99264700954d4c56335286c181725ae75189` | 4922 | いいえ（H1） | `b7c681b66557223d2bab4c75eb0c889673f2ce0d6dc562574852cd50ba80eabd` | 4932 |
-| パン屋 | d3-flour-crust | `bdf727ab562f0e8efdc626cb04094acc390e6e99543acbbd1e8c01b61383816e` | 4899 | いいえ（H1） | `3fd9bd00f44bf977c3f49c852484196be360a9c71377c2b44536adb76089d037` | 4909 |
-| 喫茶 | c1-window-street | `7ef511d73b4bad38c0d6270225154321f2312a31dbe053c401fde981f9c97da6` | 4908 | いいえ（H1） | `162f3eae45a872460baae375d0a539207dd6b3eb31839a09feedfe2058fa983c` | 4918 |
-| 喫茶 | c2-nel-drop | `e88f8d0cacff74f86024ca20c7385a17666ff67ba9a50bbb374cd67095b6c6ae` | 4869 | いいえ（H1） | `8b3544e5c96eff34c28f0da6617c230ff4ac7567260473a575d92eed76978c51` | 4879 |
-| 菓子店 | w1-wrapping-sheet | `e47c9478261e3d78635cd45f0f7fe22afaf082732a8befdf1bddbea54c9910f9` | 4806 | はい（住所は「名古屋市東区」までになる） | `9b4ac6163607e4b4d818d15b5548f67e02294a52d0d688ce271ff832e00f275a` | 4816 |
-| 菓子店 | w2-tsubu-stations | `0982133cb8dfe5be7be2800c380ac4097cdadb341ff399c460463924404f1f41` | 4785 | はい（同上） | `aaea5b88b79e3847ffe8a9c9e5682a069bf7e0ce28cdc8f3909382981f0d803f` | 4795 |
+| パン屋 | d1-kiln-clock | `9b0560e7f86b4911508e2b06f6ce99264700954d4c56335286c181725ae75189` | 4922 | いいえ（H1） | `b90951bc37070381c23e22e65aed11d34bf2deb318218a21e83c2815cbab31fe` | 5332 |
+| パン屋 | d3-flour-crust | `bdf727ab562f0e8efdc626cb04094acc390e6e99543acbbd1e8c01b61383816e` | 4899 | いいえ（H1） | `4e735dc6c2193b803f65cf5b2ab5b7d1db2a1b8876b9e41c815f4a5d496f7718` | 5309 |
+| 喫茶 | c1-window-street | `7ef511d73b4bad38c0d6270225154321f2312a31dbe053c401fde981f9c97da6` | 4908 | いいえ（H1） | `c9d80ad8bc883017d26ab6423a84b23d9361e2aa10829e61b4fc2f746ec22f77` | 5325 |
+| 喫茶 | c2-nel-drop | `e88f8d0cacff74f86024ca20c7385a17666ff67ba9a50bbb374cd67095b6c6ae` | 4869 | いいえ（H1） | `e9b6e39ee942b932662adbc61badfb0e5feb1df7dd0593108f464f6d6ce4bc58` | 5286 |
+| 菓子店 | w1-wrapping-sheet | `e47c9478261e3d78635cd45f0f7fe22afaf082732a8befdf1bddbea54c9910f9` | 4806 | はい（住所は「名古屋市東区」までになる） | `cb46674e7e594a33289e56ee9994e5de503316e7c76dcf00f418675c8b1f49cb` | 5271 |
+| 菓子店 | w2-tsubu-stations | `0982133cb8dfe5be7be2800c380ac4097cdadb341ff399c460463924404f1f41` | 4785 | はい（同上） | `391c3d969d6140b90f04a7ce82404e2e9859db3d69836b316a023054522af897` | 5250 |
+
+**6本とも v2.1 で実行できる（この PR が `develop` に merge された後）。**v2.1 の pin は、住所を省かずに出し、店の種類と品をその店の facts から
+言うので、パン屋・喫茶も facts と食い違わない。v2.1 の SHA は `prompt.ts`・facts・方向案・参照の manifest のバイトで決まり、commit には依らない。
+squash merge で commit が変わっても同じバイトなら同じ SHA になるはずだが、**merge 後の `develop` で走らせ直して確かめてから**承認に出す
+（`docs/operations/s0-first-generation.md` の 0.）。
 
 route `B_html_prototype`、参照画像は6本とも0件。**選び方（M1 で直した）**：画像を使わない B方式で比べるので、写真に頼る方向を同じ基準で外した。
 d2（場面の Hero、全面の写真の枠、寄せ集めの図像）と w3（店頭の場面と写真の枠）と c3（写真の枠3つ。見開きの型がパン屋 d3 と近く、8観点中**3つ**が同じ：
@@ -129,10 +140,9 @@ single_axis_scroll（d1・c2）・alternating_spreads（d3）・map_of_stations�
 9方向すべての組で最大 0.518（パン屋 d2 と喫茶 c1。d2 は選んでいない）、選んだ6案どうしの最大 0.468（c2 と w1）、閾値 0.6 未満。
 兄弟の組は C1〜C7 の C2 の検査が閾値で見ている。
 
-v2 の SHA は CLI が出したもので、v2.1 の SHA は同じ `direction.json` / `references.json` と facts から `buildDesignPrompt` で組んだもの
-（v2.1 を選べる CLI は無い）。同じ組み立てで v2 を組むと CLI の SHA と一致する。
-`tests/unit/design-agent/quality-pipeline/three-shop-directions.test.ts` が、一時ディレクトリで CLI を別プロセスで走らせて v2 の6本を、
-組み立てで v2.1 の6本を、記録どおりに再現することを確かめる。どの SHA も、この commit の `prompt.ts`・facts・方向案のバイトで決まる。
+v2 と v2.1 の SHA はどちらも CLI（`phase2f-design --print-pin`）が出したもので、同じ入力を `buildDesignPrompt` で組んでも一致する。
+`tests/unit/design-agent/quality-pipeline/three-shop-directions.test.ts` が、一時ディレクトリで CLI を別プロセスで走らせて v2 と v2.1 の
+6本ずつを記録どおりに再現し、組み立ての結果とも一致することを確かめる。どの SHA も `prompt.ts`・facts・方向案・参照の manifest のバイトで決まる。
 
 ## 実行したコマンド（リポジトリの外、`$RUN` は新しい空のディレクトリ）
 
@@ -148,22 +158,37 @@ for pair in bakery:d1-kiln-clock bakery:d3-flour-crust cafe:c1-window-street caf
   shop=${pair%%:*}; dir=${pair#*:}; out="$RUN/$shop-$dir"
   npx tsx scripts/sales/demo-version/prepare-design-input.ts --facts "$P/$shop/facts-pack.json" \
     --directions "$P/$shop/direction-set.json" --direction-id "$dir" --out "$out"
-  npx tsx scripts/design-artifact/phase2f-design.ts --print-pin --route B --prompt-version v2 \
-    --facts "$P/$shop/facts-pack.json" --direction "$out/direction.json" --references "$out/references.json"
+  for v in v2 v2.1; do   # v2.1 は DEV-139 で有効化
+    npx tsx scripts/design-artifact/phase2f-design.ts --print-pin --route B --prompt-version "$v" \
+      --facts "$P/$shop/facts-pack.json" --direction "$out/direction.json" --references "$out/references.json"
+  done
 done
-# v2.1（未有効）の候補の pin は CLI では組めない（--prompt-version v2.1 は refused）。単体テストが
-# buildDesignPrompt({ route: "B_html_prototype", facts, maxAssets: 1, variant: { version: "v2.1", direction, references } }) で組む。
 ```
 
 ## 実生成の承認に持っていくもの（未実施）
 
-- 実際の生成には、prompt SHA・文字数・この commit を pin した**個別の承認**が要る（オーナー指示 B：初回6回＋各案1回の再試行、最大12回、画像生成なし、が候補）。
-- パン屋・喫茶の4本は、**v2.1 の有効化の承認**（または別の店に依存しない版の承認）が先に要る。v2 のまま走らせない。
+- 実際の生成には、prompt SHA・文字数・merge 後の commit を pin した**個別の承認**が要る（オーナー指示 B：初回6回＋各案1回の再試行、最大12回、画像生成なし、が候補）。
+- 6本とも **v2.1 の pin** で出す（パン屋・喫茶の v2 の pin は使わない）。最初の1回（パン屋 d1-kiln-clock）の手順・止まる条件・元に戻し方は
+  `docs/operations/s0-first-generation.md`。
 - この文書は承認を与えない。
+
+## facts の版の取り違え（レビュー L4）
+
+菓子店の facts 経路の版（`poc/wagashi/facts-pack.json`）は、コミット済みの `design-library/phase2f/wagashi-facts-pack.json` と同じ
+`shop_id: fictional-wagashi` で、バイト（facts SHA）は違う。生成の経路で **shop_id だけを鍵にしているところは無い**ことを確かめた：
+
+- 方向案は facts SHA に結びつく（C1 `FACTS_SHA_MISMATCH`）。菓子店の版の方向案にコミット済みの pack を渡すと、`prepare-design-input` は
+  `DIRECTION_SET_HOLD` で止まる（単体テストあり）。
+- design input の `pin.json`、Design Artifact（`facts_pack_sha256`、intake が照合）、接着（`from-generation.mjs`）はどれも facts SHA を照合する。
+- prompt は facts の値を引用するので、承認が結びつく prompt SHA が facts のバイトに結びつく。台帳は承認 ID と plan ID が鍵で、店の ID を持たない。
+- v2.1 はコミット済みの pack（テスト町）を `FACTS_ADDRESS_PLACEHOLDER` で拒む。
+- 選択の記録（`s0-generation-selection.json`）は店ごとに facts SHA を持ち、単体テストがファイルのバイトと照合する。
+
+DB の seed（PR #284）はパン屋だけで、facts のパスと SHA を持つ。将来、菓子店の版を登録や seed に入れるときは、facts SHA で結ぶか別の id にする。
 
 ## 未解決・注意
 
-- **H1**（上）。v2.1 は提案で、有効化していない。
+- **H1**（上）は v2.1 の有効化で解消（merge 後）。v3 は未有効のまま。
 - **参照画像が0件**：方向案が引ける成功例は `principles-v1.json` の閲覧済みの20件だけで、承認済みの参照（CP-003-pc / sp）は `not_viewed` にある。
   6本とも文字の指示だけになる。CP-003 を渡すには検査か参照の扱いを変える判断が要る（緩めていない）。
 - 区画・SP・守る部分は prompt に入らない（L2）。生成物で守られたかは目視で確かめる。
@@ -174,8 +199,13 @@ done
 ## 追加・変更したファイル
 
 - `design-library/research/quality-pipeline/poc/{bakery,cafe,wagashi}/facts-pack.json`、`…/direction-set.json`、`…/poc/s0-generation-selection.json`
-- `lib/design-agent/phase2f/prompt.ts`：v2.1 の提案（`shopNeutralRules`、未有効。v1 / v1.1 / v2 / tm0 / v3 の出力は1バイトも変わらない）
+- `lib/design-agent/phase2f/prompt.ts`：v2.1（`shopNeutralRules`。DEV-139 で有効化、`shopNeutralFactsStop`・`ACTIVATED_PROMPT_VERSIONS` を追加。v1 / v1.1 / v2 / tm0 / v3 の出力は1バイトも変わらない）
 - `lib/sales/b-route/generation-prompt.ts`：`TRANSLATION_MARK` / `splitUse`（印の無い方向案は今までどおり）
 - `tests/unit/design-agent/quality-pipeline/three-shop-directions.test.ts`、`tests/unit/design-agent/phase2f/prompt-v21.test.ts`、
   `tests/unit/sales/b-route-generation-prompt.test.ts`（1件追加）
 - この文書
+- DEV-139（v2.1 の有効化）：`scripts/design-artifact/phase2f-design.ts`・`phase2f-steps.ts`（v2.1 を受け、有効でない版を
+  `PROMPT_VERSION_NOT_ACTIVATED` で先に拒む）、`scripts/sales/demo-version/from-generation.mjs`（v2.1 の設計も受ける）、
+  `tests/unit/design-agent/phase2f/prompt-unchanged.test.ts`（新規）・`prompt-v21.test.ts`、`tests/unit/design-agent/phase2f-live/steps.test.ts`、
+  `tests/unit/sales/s0-generation-glue.test.ts`、`three-shop-directions.test.ts`（v2.1 の pin を CLI で再現、L4）、
+  `docs/operations/s0-first-generation.md`（新規）、`docs/operations/s0-generation-glue.md`（1行）

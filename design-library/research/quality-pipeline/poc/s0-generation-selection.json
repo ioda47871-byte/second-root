@@ -7,13 +7,15 @@
       "id": "H1",
       "summary": "承認済みの prompt v2 には菓子店専用の2行 (住所は「名古屋市東区」だけを出す、「the sweets」を思わせる) が全店に入る。パン屋・喫茶の v2 の pin は facts と食い違う指示をモデルに渡すので実行しない。v3 (未有効) も同じ住所の行を含む。店に依存しない v2.1 を提案として追加した (未有効、有効化にはオーナーの承認が要る)",
       "safe_now": "菓子店 w1・w2 の v2 の pin だけ (住所は「名古屋市東区」までの表示になる)",
-      "proposal": "v2.1 (lib/design-agent/phase2f/prompt.ts の shopNeutralRules)"
+      "proposal": "v2.1 (lib/design-agent/phase2f/prompt.ts の shopNeutralRules)",
+      "status": "resolved_by_v2_1_activation",
+      "resolution": "DEV-139 (オーナー承認 2026-11-17): v2.1 を有効化した。CLI が --prompt-version v2.1 を受け、6案とも v2.1 の pin で実行できる (develop への merge 後。pin は merge 後に再確認する)。v2 の pin は変わらず、パン屋・喫茶の v2 の pin は引き続き実行しない"
     }
   ],
   "pin": {
     "route": "B_html_prototype",
     "commands": "docs/operations/s0-three-shop-directions.md",
-    "note": "v2 の pin は prepare-design-input → phase2f-design --print-pin (モデル呼び出しなし)。v2.1 は同じ direction.json / references.json から buildDesignPrompt で組んだ候補。参照画像は0件 (方向案が引ける成功例は principles-v1.json の閲覧済みの件だけで、承認済み参照の CP-003 は含まれない)。prompt に入るのは concept・composition・research だけで、sections・sp_plan・protect は入らない (SP の1画面目だけ concept に書いた)"
+    "note": "v2 の pin は prepare-design-input → phase2f-design --print-pin (モデル呼び出しなし)。v2.1 の pin も同じ direction.json / references.json から phase2f-design --print-pin --prompt-version v2.1 で出したもの (DEV-139 で有効化)。SHA は prompt.ts・facts・方向案・参照の manifest のバイトで決まり、commit には依らない (squash merge で commit が変わっても SHA は同じはずだが、merge 後に再確認する)。参照画像は0件 (方向案が引ける成功例は principles-v1.json の閲覧済みの件だけで、承認済み参照の CP-003 は含まれない)。prompt に入るのは concept・composition・research だけで、sections・sp_plan・protect は入らない (SP の1画面目だけ concept に書いた)"
   },
   "status": {
     "design_generated": false,
@@ -45,10 +47,10 @@
               "safe_to_run_under_current_version": false
             },
             "v2.1": {
-              "prompt_sha256": "b7c681b66557223d2bab4c75eb0c889673f2ce0d6dc562574852cd50ba80eabd",
-              "prompt_chars": 4932,
-              "built_by": "buildDesignPrompt variant v2.1 (no CLI can select it)",
-              "status": "candidate_requires_owner_approval_to_activate"
+              "prompt_sha256": "b90951bc37070381c23e22e65aed11d34bf2deb318218a21e83c2815cbab31fe",
+              "prompt_chars": 5332,
+              "built_by": "phase2f-design --print-pin --prompt-version v2.1",
+              "status": "activated_runnable_after_merge"
             }
           }
         },
@@ -68,10 +70,10 @@
               "safe_to_run_under_current_version": false
             },
             "v2.1": {
-              "prompt_sha256": "3fd9bd00f44bf977c3f49c852484196be360a9c71377c2b44536adb76089d037",
-              "prompt_chars": 4909,
-              "built_by": "buildDesignPrompt variant v2.1 (no CLI can select it)",
-              "status": "candidate_requires_owner_approval_to_activate"
+              "prompt_sha256": "4e735dc6c2193b803f65cf5b2ab5b7d1db2a1b8876b9e41c815f4a5d496f7718",
+              "prompt_chars": 5309,
+              "built_by": "phase2f-design --print-pin --prompt-version v2.1",
+              "status": "activated_runnable_after_merge"
             }
           }
         }
@@ -106,10 +108,10 @@
               "safe_to_run_under_current_version": false
             },
             "v2.1": {
-              "prompt_sha256": "162f3eae45a872460baae375d0a539207dd6b3eb31839a09feedfe2058fa983c",
-              "prompt_chars": 4918,
-              "built_by": "buildDesignPrompt variant v2.1 (no CLI can select it)",
-              "status": "candidate_requires_owner_approval_to_activate"
+              "prompt_sha256": "c9d80ad8bc883017d26ab6423a84b23d9361e2aa10829e61b4fc2f746ec22f77",
+              "prompt_chars": 5325,
+              "built_by": "phase2f-design --print-pin --prompt-version v2.1",
+              "status": "activated_runnable_after_merge"
             }
           }
         },
@@ -129,10 +131,10 @@
               "safe_to_run_under_current_version": false
             },
             "v2.1": {
-              "prompt_sha256": "8b3544e5c96eff34c28f0da6617c230ff4ac7567260473a575d92eed76978c51",
-              "prompt_chars": 4879,
-              "built_by": "buildDesignPrompt variant v2.1 (no CLI can select it)",
-              "status": "candidate_requires_owner_approval_to_activate"
+              "prompt_sha256": "e9b6e39ee942b932662adbc61badfb0e5feb1df7dd0593108f464f6d6ce4bc58",
+              "prompt_chars": 5286,
+              "built_by": "phase2f-design --print-pin --prompt-version v2.1",
+              "status": "activated_runnable_after_merge"
             }
           }
         }
@@ -167,10 +169,10 @@
               "safe_to_run_under_current_version": true
             },
             "v2.1": {
-              "prompt_sha256": "9b4ac6163607e4b4d818d15b5548f67e02294a52d0d688ce271ff832e00f275a",
-              "prompt_chars": 4816,
-              "built_by": "buildDesignPrompt variant v2.1 (no CLI can select it)",
-              "status": "candidate_requires_owner_approval_to_activate"
+              "prompt_sha256": "cb46674e7e594a33289e56ee9994e5de503316e7c76dcf00f418675c8b1f49cb",
+              "prompt_chars": 5271,
+              "built_by": "phase2f-design --print-pin --prompt-version v2.1",
+              "status": "activated_runnable_after_merge"
             }
           }
         },
@@ -190,10 +192,10 @@
               "safe_to_run_under_current_version": true
             },
             "v2.1": {
-              "prompt_sha256": "aaea5b88b79e3847ffe8a9c9e5682a069bf7e0ce28cdc8f3909382981f0d803f",
-              "prompt_chars": 4795,
-              "built_by": "buildDesignPrompt variant v2.1 (no CLI can select it)",
-              "status": "candidate_requires_owner_approval_to_activate"
+              "prompt_sha256": "391c3d969d6140b90f04a7ce82404e2e9859db3d69836b316a023054522af897",
+              "prompt_chars": 5250,
+              "built_by": "phase2f-design --print-pin --prompt-version v2.1",
+              "status": "activated_runnable_after_merge"
             }
           }
         }

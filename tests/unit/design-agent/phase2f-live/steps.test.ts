@@ -26,13 +26,16 @@ const META = { threadId: "00000000-0000-4000-8000-000000000000", cliVersion: "0.
 const clean = async () => ({ head: COMMIT, base: COMMIT, clean: true });
 let n = 0;
 
-function world() {
+// DEV-139: the facts-path edition of the same fictional confectioner (same shop id and fact ids, no テスト values)
+const WAGASHI_EDITION = "design-library/research/quality-pipeline/poc/wagashi/facts-pack.json";
+
+function world(facts: unknown = FACTS) {
   const base = mkdtempSync(join(tmpdir(), "dev117-steps-"));
   const state = join(base, "state");
   const runs = join(base, "runs");
   mkdirSync(runs);
   const factsPath = join(base, "facts.json");
-  writeFileSync(factsPath, JSON.stringify(FACTS));
+  writeFileSync(factsPath, JSON.stringify(facts));
   const briefPath = join(base, "brief.json");
   writeFileSync(briefPath, JSON.stringify(BRIEF));
   const ledger = openLedger(state);
@@ -45,7 +48,7 @@ function world() {
     return { status: r.status, out, stderr: r.stderr };
   };
   const design = async (route: "B_html_prototype" | "C_hybrid", ans: unknown, o: { meta?: typeof META; plan?: string; fail?: boolean; variant?: PromptVariant } = {}) => {
-    const built = buildDesignPrompt({ route, facts: FACTS as never, ...(o.variant?.version === "v2" ? {} : { brief: BRIEF as never }), maxAssets: 1, ...(o.variant ? { variant: o.variant } : {}) });
+    const built = buildDesignPrompt({ route, facts: facts as never, ...(o.variant?.version === "v2" || o.variant?.version === "v2.1" ? {} : { brief: BRIEF as never }), maxAssets: 1, ...(o.variant ? { variant: o.variant } : {}) });
     const outDir = join(runs, `design-${++n}`);
     const r = await runDesignCall(
       { route, prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: `fictional-design-${n}`, planId: o.plan ?? "plan-fictional-1", retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir },
@@ -417,10 +420,26 @@ describe("DEV-122: the prompt version is the same from the design step to packag
     expect(w.pkg("B", ["--brief", w.briefPath, "--design", d.outDir]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
   }, 120_000);
 
+  it("DEV-139: a v2.1 design packages only as v2.1 with the same direction and references; facts with a テスト address are refused by name", async () => {
+    const w = world(JSON.parse(readFileSync(resolve(REPO, WAGASHI_EDITION), "utf8")));
+    const r = resolveDirection(JSON.parse(readFileSync(resolve(REPO, DIR_A), "utf8")), JSON.parse(readFileSync(resolve(REPO, REFS), "utf8")));
+    if (!r.ok) throw new Error(r.code);
+    const d = await w.design("B_html_prototype", answer(), { variant: { version: "v2.1", direction: r.direction, references: r.references } });
+    const open = ["--design", d.outDir, "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS)];
+    expect(w.pkg("B", [...open, "--prompt-version", "v2.1"]).out).toMatchObject({ status: "done", record: { route: "B_html_prototype", verification_state: "render_pair_complete" } });
+    // packaged as v2, the rebuilt prompt is not the recorded one
+    expect(w.pkg("B", [...open, "--prompt-version", "v2"]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
+    // the committed pack (テスト address): the v2.1 rules would contradict it, so no prompt is rebuilt
+    const t = world(JSON.parse(readFileSync(resolve(REPO, "design-library/phase2f/wagashi-facts-pack.json"), "utf8")));
+    expect(t.pkg("B", ["--design", d.outDir, "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS), "--prompt-version", "v2.1"]).out).toMatchObject({ status: "refused", code: "FACTS_ADDRESS_PLACEHOLDER" });
+  }, 120_000);
+
   it("refuses an unknown version, research without v1.1, v1.1 on route C, and a version on route A", () => {
     const w = world();
     const d = join(w.runs, "none");
-    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v9"]).out).toMatchObject({ status: "refused", code: "PROMPT_VERSION_UNKNOWN" });
+    // DEV-139 review L1: a version that is not activated (unknown, or the v3 proposal) is refused by name, first
+    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v9"]).out).toMatchObject({ status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" });
+    expect(w.pkg("B", ["--design", d, "--prompt-version", "v3", "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS)]).out).toMatchObject({ status: "refused", code: "PROMPT_VERSION_NOT_ACTIVATED" });
     // DEV-124: v2 has no brief, and a direction needs v2
     expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v2", "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS)]).out).toMatchObject({ status: "refused", code: "USAGE" });
     expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS)]).out).toMatchObject({ status: "refused", code: "DIRECTION_NEEDS_V2" });
