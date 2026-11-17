@@ -26,7 +26,7 @@ import { cropReaches } from "./tsugute-ai-photos";
 /** the draft prompt text, by repository path (read by the tests and, after an approval, by the run's caller; never written) */
 export const HOSHIGAMA_PROMPT_FILE = "docs/design/hoshigama-ai-photo-prompt.txt";
 /** the DRAFT bytes (UTF-8): SHA-256, byte count and String.length. NOT approved. */
-export const HOSHIGAMA_PROMPT_DRAFT_SHA256 = "b394bb9f97088855641d52802b30eaf01a73efa515679b1bbc3d7297b3babe0a";
+export const HOSHIGAMA_PROMPT_DRAFT_SHA256 = "372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6";
 export const HOSHIGAMA_PROMPT_DRAFT_BYTES = 2007;
 export const HOSHIGAMA_PROMPT_DRAFT_CHARS = 1988;
 /** the run prompt the draft would give (buildHoshigamaRunPromptCandidate): its pins, NOT approved */
@@ -45,12 +45,12 @@ export type HoshigamaAspect = "1:1" | "2:3" | "4:3";
 export type HoshigamaPhoto = {
   /** the photo's id in the prompt (its paragraph heading) and its file name in the run bundle */
   photo_id: HoshigamaPhotoId;
-  /** the swap slot it fills (photo-slots-d2-v1.json) */
+  /** the swap slot it fills (photo-slots-d2-v2.json) */
   slot_id: "ph-mouth" | "ph-loaf";
   /** which photo of the slot: the PC photo (every range, or ≥601 when an SP photo is given) or the SP photo (≤600) */
   use: "pc" | "sp";
   aspect: HoshigamaAspect;
-  /** the 2× target of the brief §3 (the slot's boxes at its range edges, photo-slot-edges-d2-v1.json; rounded up, as the brief states it) */
+  /** the 2× target of the brief §3 (the slot's boxes at its range edges, photo-slot-edges-d2-v2.json; rounded up, as the brief states it) */
   target: { width: number; height: number };
   /** the 1.5× floor (only with an owner scale exception in the swap); recorded for the owner's size decision */
   floor: { width: number; height: number };
@@ -77,7 +77,7 @@ export type HoshigamaApproval = {
   decided_on: string;
   evidence: string;
   shop: "bakery";
-  page: "d2-v1";
+  page: "d2-v2";
   jobs: 1;
   max_image_calls: number;
   codex_runs: 1;
@@ -237,7 +237,7 @@ const Sha = z.string().regex(/^[0-9a-f]{64}$/);
 export const HoshigamaPhotosManifestSchema = z.strictObject({
   schema: z.literal("hoshigama_ai_photos_v0"),
   shop: z.literal("bakery"),
-  page: z.literal("d2-v1"),
+  page: z.literal("d2-v2"),
   demo_only: z.literal(true),
   public_web: z.literal(false),
   label: z.string(),

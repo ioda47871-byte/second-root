@@ -2,7 +2,7 @@
  * DEV-139: ほし窯 (bakery, a FICTIONAL bakery) — the whole photo path OFFLINE, ending in the real package CLI:
  *
  *   stub batch (3 plain PNGs made here) → bundle writer → intake (upscale ≤2×, lanczos3) → photo swap of the committed
- *   fidelity page d2-v1 (rights, crops, PC 1440 / SP 390 renders) → package-local.ts --page … --facts …
+ *   fidelity page d2-v2 (rights, crops, PC 1440 / SP 390 renders) → package-local.ts --page … --facts …
  *   → a sales_demo_version_package_v2 holding BOTH the copy (facts pack, copy record, copy review) AND the photos
  *   (WebP, image records from the rights and the owner's depiction confirmation).
  *
@@ -14,7 +14,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -34,7 +34,7 @@ import { swapPage } from "../../../scripts/design-artifact/photo-swap";
 import { simulateOwnerApproval, STUB_APPROVAL, STUB_RUN_APPROVAL_ID } from "../../support/hoshigama-approval-stub";
 
 const REPO = resolve(__dirname, "../../..");
-const PAGE = "design-library/research/quality-pipeline/poc/bakery/fidelity/d2-v1";
+const PAGE = "design-library/research/quality-pipeline/poc/bakery/fidelity/d2-v2";
 const FACTS = join(REPO, S0_FACTS_PATH);
 const sha = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
 const launch = () => chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
@@ -111,7 +111,7 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
   const APPROVED_CLI = "tests/support/hoshigama-approved-package-local.ts";
   const args = (swapDir: string, out: string, facts = true) => ["--out", out, "--page", join(swapDir, "page"), "--rights", join(swapDir, "rights.private.json"), "--originals", join(pipeline, ".intake", "photos"), "--depiction-confirmation", depictionPath, ...(facts ? ["--facts", FACTS] : [])];
 
-  it("the committed d2-v1: the plain CLI refuses its photos (not approved); approved, photos package (v1) but the copy is refused (<wbr>)", () => {
+  it("the committed d2-v2: the plain CLI refuses its photos (not approved); approved, the photos alone make a v1 package", () => {
     const refused = node("scripts/sales/demo-version/package-local.ts", args(swapOut, join(root, "pkg-refused")));
     expect(refused.status, refused.stderr).toBe(1);
     expect(JSON.parse(refused.stdout)).toMatchObject({ status: "FAIL", code: "SUMMARY_NOT_RIN" });
@@ -122,27 +122,14 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
     const v1pkg = readPackage(join(root, "pkg-v1"));
     expect(v1pkg.format).toBe(PACKAGE_FORMAT);
     expect(v1pkg.images).toHaveLength(5);
-    // with --facts: the existing server copy check reads d2-v1's text nodes as the <wbr> splits them ("7:00〜16:00" …) —
-    // the same refusal as the photo-less comp itself (docs/operations/step2-fictional-e2e.md: not loosened)
-    const v2 = node(APPROVED_CLI, args(swapOut, join(root, "pkg-v2-wbr")));
-    expect(v2.status).toBe(1);
-    expect(JSON.parse(v2.stdout)).toEqual({ status: "FAIL", code: "COPY_INVALID", details: ["COPY_CHECK_FAILED", "UNVERIFIED_COPY", "JOINED_TEXT_LOOKS_LIKE_FACT"] });
-    expect(readdirSync(root)).not.toContain("pkg-v2-wbr");
   }, 300_000);
 
-  it("a <wbr>-free variant of the same swapped page (test only): the approved CLI writes a v2 package with copy AND photos", async () => {
-    // TEST-ONLY variant: the swap's own output with every <wbr> taken out of its HTML and the summary's copy hash moved
-    // with it, standing in for a future <wbr>-free page version. Photos, rights, crops and copy record are the swap's.
-    const variant = join(root, "swap-nowbr");
-    cpSync(swapOut, variant, { recursive: true });
-    const html = readFileSync(join(variant, "page", "index.html"), "utf8").replace(/<wbr>/g, "");
-    writeFileSync(join(variant, "page", "index.html"), html);
-    const summary = JSON.parse(readFileSync(join(variant, "swap-summary.json"), "utf8")) as { copy_hashes: { html: string } };
-    summary.copy_hashes.html = sha(html);
-    writeFileSync(join(variant, "swap-summary.json"), JSON.stringify(summary));
-
+  it("the committed d2-v2 (no <wbr>): the approved CLI writes a v2 package with copy AND photos, through the unchanged copy check", async () => {
+    // the page the swap copied is the committed one, byte for byte (no test-only variant)
+    expect(readFileSync(join(swapOut, "page", "copy.json"))).toEqual(readFileSync(join(REPO, PAGE, "copy.json")));
+    expect(readFileSync(join(REPO, PAGE, "index.html"), "utf8")).not.toContain("<wbr");
     const out = join(root, "pkg");
-    const r = node(APPROVED_CLI, args(variant, out));
+    const r = node(APPROVED_CLI, args(swapOut, out));
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     const printed = JSON.parse(r.stdout) as { status: string; format: string; source: string; photos: unknown[]; copy_files: Array<{ name: string; sha256: string }> };
     expect(printed).toMatchObject({ status: "OK", format: PACKAGE_FORMAT_COPY, source: "swap-copy" });

@@ -16,7 +16,7 @@
  *    HOSHIGAMA_MAX_UPSCALE (= the existing 2×; sharp lanczos3; UPSCALE_EXCEEDS_MAX beyond), recording the original's size
  *    and SHA-256, the factor and the method.
  * Then copies the pictures (0600, never overwriting) into <pipeline>/.intake/photos/ as hoshigama-ai-<photo>.png and
- * writes a photo_swap_manifest_v0 for ほし窯 d2-v1 (2 slots; the oven mouth with its PC and SP photo) whose rights
+ * writes a photo_swap_manifest_v0 for ほし窯 d2-v2 (2 slots; the oven mouth with its PC and SP photo) whose rights
  * records are `ai_generated_demo`, demo only, public_web false, with the provenance (generator, model, date, prompt
  * SHA-256, approval id), plus <manifest-out>.provenance.json.
  *

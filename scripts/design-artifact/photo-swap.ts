@@ -8,7 +8,7 @@
  * rights-cleared photo, then draws it at the shop's render widths (PC 1440 and SP 390; 輪 also tablet 768) (JavaScript off, every request outside the copy refused).
  * The repository page is not changed. Nothing is written inside the repository.
  *
- * DEV-139: and ほし窯 (bakery, a FICTIONAL bakery, page d2-v1; research only, no AI demo pictures until the owner approves).
+ * DEV-139: and ほし窯 (bakery, a FICTIONAL bakery, page d2-v2; research only, no AI demo pictures until the owner approves).
  *
  * DEV-189: this file is the COMMON part. What is fixed per shop (the CSS breakpoint ranges and their edges, where the
  * SP photo is used, the placeholder's HTML structure, the CSS added to the copy, whether AI demo pictures are taken)

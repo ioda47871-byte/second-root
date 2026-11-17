@@ -1,4 +1,4 @@
-# ほし窯 d2-v1 の AI 写真 3 枚を 1 回だけ本生成する — 承認の前の準備シート（DEV-139）
+# ほし窯 d2-v2 の AI 写真 3 枚を 1 回だけ本生成する — 承認の前の準備シート（DEV-139）
 
 > **状態: 未承認 (NOT APPROVED)。** このシートは、オーナーが後で決めるための 1 枚。ここに書いた差分はどれも**入れていない**。
 > 画像の生成・取得・有料素材・外部 API は行っていない (生成した画像は **0 枚**)。DB は何も変えていない。
@@ -11,7 +11,7 @@
 
 | 段 | ファイル | 今の動き |
 |---|---|---|
-| 写真の差し替え | `lib/design-agent/quality-pipeline/photo-swap-shops.ts` の `bakery` | d2-v1 の 2 枠を、権利を確かめた写真で差し替えられる。**`aiDemoAllowed: false`・プロンプトの pin なし** → AI のデモ画像は `AI_DEMO_NOT_ALLOWED` で拒否 |
+| 写真の差し替え | `lib/design-agent/quality-pipeline/photo-swap-shops.ts` の `bakery` | d2-v2 の 2 枠を、権利を確かめた写真で差し替えられる。**`aiDemoAllowed: false`・プロンプトの pin なし** → AI のデモ画像は `AI_DEMO_NOT_ALLOWED` で拒否 |
 | 写真のデータ | `lib/design-agent/quality-pipeline/hoshigama-ai-photos.ts` | 3 枚の目標・下限・主役の箱・写真ごとのプロンプトの SHA-256。**`HOSHIGAMA_APPROVAL = null`**、`buildHoshigamaRunPrompt()` は `""` |
 | プロンプトの草案 | `docs/design/hoshigama-ai-photo-prompt.txt` | 指示書 §6 の草案をそのまま固定 (頭に「DRAFT (未承認)」3 行) |
 | run の束を書く | `lib/design-agent/design-image/hoshigama-photos.ts` | 承認の記録が無いので `PROMPT_NOT_APPROVED` で必ず拒否。worker の hook には繋いでいない |
@@ -25,19 +25,19 @@
 
 | # | 項目 | 案 (今の値) | 決定 |
 |---|---|---|---|
-| A1 | d2-v1 (またはカンプ) に写真を入れる価値があるか | オーナーはまだ d2-v1 もカンプも見ていない。成功例ではない | |
+| A1 | d2-v2 (またはカンプ) に写真を入れる価値があるか | オーナーはまだ d2-v2 もカンプも見ていない。成功例ではない | |
 | A2 | 枚数 | **3 枚** (ph-mouth-pc 1:1・ph-mouth-sp 2:3・ph-loaf 4:3)。代案 2 枚 (ph-mouth を 3:4 の 1 枚) は**別の本文と別の写真の一覧が要る** (今のコードは 3 枚だけを知っている) | |
-| A3 | プロンプトの本文 | `docs/design/hoshigama-ai-photo-prompt.txt` の全文: SHA-256 `b394bb9f97088855641d52802b30eaf01a73efa515679b1bbc3d7297b3babe0a`・2007 バイト・1988 文字。写真ごと (COMMON の段落 + その写真の段落、改行で連結): ph-mouth-pc `4df1be15…af66`、ph-mouth-sp `b4956f7f…03ad`、ph-loaf `b1261248…0f87` | |
+| A3 | プロンプトの本文 | `docs/design/hoshigama-ai-photo-prompt.txt` の全文: SHA-256 `372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6`・2007 バイト・1988 文字。写真ごと (COMMON の段落 + その写真の段落、改行で連結): ph-mouth-pc `4df1be15…af66`、ph-mouth-sp `b4956f7f…03ad`、ph-loaf `b1261248…0f87` | |
 | A4 | 実行プロンプト (本文を包む run の決まり) | `buildHoshigamaRunPromptCandidate` が組むもの: SHA-256 `a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1`・2668 文字。**本文か実行プロンプトのどちらかのバイトが変われば承認は失効** | |
 | A5 | 寸法と拡大 (下の §3) | 拡大を許す写真の一覧 (案: ph-mouth-pc と ph-loaf、どちらも 2 倍の内)。上限は既存の 2 倍のまま (超える道は無い) | |
-| A6 | 1 回限りの実生成の範囲 | **1 ジョブ・画像呼び出し最大 3 回・Codex 1 回・15 分・再試行なし・ほし窯 d2-v1 だけ**。承認 ID・job ID・期限はその時にオーナーが決める (コードに書かない) | |
+| A6 | 1 回限りの実生成の範囲 | **1 ジョブ・画像呼び出し最大 3 回・Codex 1 回・15 分・再試行なし・ほし窯 d2-v2 だけ**。承認 ID・job ID・期限はその時にオーナーが決める (コードに書かない) | |
 | A7 | コードの差分 (下の §4) | 承認と一緒に、レビュー付きの PR で入れる | |
 | A8 | ローカル DB の許可 (下の §5) | S0 の ほし窯 prospect に AI のデモ画像を許すローカル専用の patch と、取り込みの許可の 1 行 | |
-| A9 | 文章入りの v2 の包み (下の §6) | d2-v1 の `<wbr>` のため今は通らない。`<wbr>` の無い版を作るかどうか | |
+| A9 | 文章入りの v2 の包み (下の §6) | d2-v2 (`<wbr>` の無い版) で通る。d2-v2 とカンプ v4 をオーナーが見て決める | |
 
 ## 3. 寸法と拡大 (既存の 2 倍の規則は緩めていない)
 
-目標は差し替えの 2 倍の規則を範囲の端 (600・1199・1920) まで満たす最小の大きさ (`photo-slot-edges-d2-v1.json`、10 単位に切り上げ)。
+目標は差し替えの 2 倍の規則を範囲の端 (600・1199・1920) まで満たす最小の大きさ (`photo-slot-edges-d2-v2.json`、10 単位に切り上げ)。
 
 | 写真 | 比 | 2 倍の目標 | 1.5 倍の下限 (例外の記録が要る) | よくある生成の大きさから |
 |---|---|---|---|---|
@@ -65,7 +65,7 @@
 +export const HOSHIGAMA_APPROVAL: HoshigamaApproval | null = {
 +  approval_record: "hoshigama-one-time-run-<YYYYMMDD>",
 +  decided_by: "owner", decided_on: "<YYYY-MM-DD>", evidence: "<Issue のコメント>",
-+  shop: "bakery", page: "d2-v1", jobs: 1, max_image_calls: 3, codex_runs: 1, timeout_minutes: 15, retry: false,
++  shop: "bakery", page: "d2-v2", jobs: 1, max_image_calls: 3, codex_runs: 1, timeout_minutes: 15, retry: false,
 +  core_prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, core_prompt_bytes: HOSHIGAMA_PROMPT_DRAFT_BYTES,
 +  run_prompt_sha256: HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256, run_prompt_chars: HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS,
 +  upscale_allowed: ["ph-mouth-pc", "ph-loaf"],
@@ -101,10 +101,10 @@
  …
 +  bakery: {
 +    shop_id: "bakery",
-+    page: "d2-v1",
-+    pageDir: `${BAKERY_DIR}/fidelity/d2-v1`,
-+    slotInventory: `${BAKERY_DIR}/photo-slots-d2-v1.json`,
-+    slotEdges: `${BAKERY_DIR}/photo-slot-edges-d2-v1.json`,
++    page: "d2-v2",
++    pageDir: `${BAKERY_DIR}/fidelity/d2-v2`,
++    slotInventory: `${BAKERY_DIR}/photo-slots-d2-v2.json`,
++    slotEdges: `${BAKERY_DIR}/photo-slot-edges-d2-v2.json`,
 +    slotIds: HOSHIGAMA_PHOTOS.map((p) => p.photo_id),
 +    photoToSlot: Object.fromEntries(HOSHIGAMA_PHOTOS.map((p) => [p.photo_id, p.slot_id])),
 +    maxImages: HOSHIGAMA_PHOTOS_MAX_IMAGES,
@@ -145,7 +145,7 @@
 - 実行の後は、輪の (g) と同じく、ほし窯を `AUTORUN_SHOPS` と `IMAGE_AUTORUN_SHOPS` から外す PR を出す (新しい ID で 2 回目が走れてしまうため)。
 
 ジョブ (輪の (d) と同じ形、値だけ違う):
-`{"version":1,"shop_id":"bakery","page":"d2-v1","slot_ids":["ph-mouth-pc","ph-mouth-sp","ph-loaf"],"brief_sha256":"<承認された実行プロンプトの SHA-256>","approval_id":"<APPROVAL>","approval_scope":{"shop":"bakery","max_images":3,"max_jobs":1,"expires_at":"<EXP>"},"requested_at":"<REQ>"}`
+`{"version":1,"shop_id":"bakery","page":"d2-v2","slot_ids":["ph-mouth-pc","ph-mouth-sp","ph-loaf"],"brief_sha256":"<承認された実行プロンプトの SHA-256>","approval_id":"<APPROVAL>","approval_scope":{"shop":"bakery","max_images":3,"max_jobs":1,"expires_at":"<EXP>"},"requested_at":"<REQ>"}`
 
 ## 5. ローカル DB の許可 (オーナーの承認が要る。今は何も無い)
 
@@ -161,16 +161,15 @@
 2. **取り込みの許可:** `import.ts` の `RIN_PROSPECT_ID` の 1 件だけの確かめに `S0_PROSPECT_ID` を足す (コードの変更、レビューが要る)。
 3. 写真入りの版は `ai_demo_internal` (管理画面の確認だけ) で、**送信・共有には出ない**。S0 の写真なしの送信用の版とは別の版になる。
 
-## 6. 文章入りの v2 の包み: d2-v1 では今は通らない
+## 6. 文章入りの v2 の包み: d2-v2 で通る
 
 `package-local.ts --page … --facts …` は、写真の確かめ (権利・元の写真・描写の確認) をそのまま行い、文章を足して v2 にする。文章の記録は差し替えの
 copy.json で、差し替えが外した 写真｜ の札 2 つだけが写真の alt (石窯の口・田舎パン) になる。審査は既存の監査をその page に round 0 で掛ける。
 
-**ただし d2-v1 の HTML は文を `<wbr>` で割っている**ため、サーバーの文章の検査 (`checkArtifactCopy`、`checkArtifactHtml` の文字の断片を読む) が
-`UNVERIFIED_COPY`・`JOINED_TEXT_LOOKS_LIKE_FACT` で止める。写真なしのカンプ (`comps/d2-hearth-floor`) を `--copy` で包んでも同じで、
-写真の流れのせいではない (`docs/operations/step2-fictional-e2e.md` の輪 d1-wheel-hub と同じ。検査は緩めない)。
-テストでは、同じ差し替えの出力から `<wbr>` を抜いた**テストだけの版**で、v2 (文章 + 写真、facts の SHA・権利・送信不可) が通ることを確かめた。
-本番の道にするには、`<wbr>` の無い ほし窯 のページの版 (デザインの変更、写真の枠の測り直し) をオーナーが決める必要がある。
+d2-v2 は文を `<wbr>` で割っていたため、サーバーの文章の検査 (`checkArtifactCopy`、`checkArtifactHtml` の文字の断片を読む) が
+`UNVERIFIED_COPY`・`JOINED_TEXT_LOOKS_LIKE_FACT` で止めた (写真なしのカンプも同じ)。検査は緩めず、`<wbr>` の無い版を作った:
+カンプ `comps/d2-hearth-floor-v4` と C ページ `fidelity/d2-v2` (折り返しは CSS の箱の幅で句の切れ目に合わせる。写真の枠は d2-v2 と同じ寸法)。
+差し替えの spec は d2-v2 を指す。テストは**コミットされた d2-v2** で、v2 (文章 + 写真、facts の SHA・権利・送信不可) が通ることを確かめる。
 
 ## 7. 実生成の後 (承認された場合)
 

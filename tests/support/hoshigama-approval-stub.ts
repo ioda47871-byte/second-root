@@ -19,7 +19,7 @@ export const STUB_APPROVAL: HoshigamaApproval = {
   decided_on: "2026-11-17",
   evidence: "test stub (no approval exists)",
   shop: "bakery",
-  page: "d2-v1",
+  page: "d2-v2",
   jobs: 1,
   max_image_calls: 3,
   codex_runs: 1,

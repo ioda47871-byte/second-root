@@ -15,7 +15,7 @@
  * generate pictures for it: the image auto-run takes only scripts/sales-design-worker/autorun-shops.ts's shops (and
  * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run (つぐ手 and 輪 only).
  *
- * DEV-139: ほし窯 (bakery, a FICTIONAL bakery, research page d2-v1) is here so that its page is swappable offline with
+ * DEV-139: ほし窯 (bakery, a FICTIONAL bakery, research page d2-v2, the <wbr>-free version of d2-v1) is here so that its page is swappable offline with
  * rights-checked photos (aiDemoAllowed: false, no prompt pin: nothing about its AI photos is approved). It is in neither
  * AUTORUN_SHOPS nor IMAGE_AUTORUN_SHOPS; docs/operations/hoshigama-one-time-run-sheet.md lists the exact changes an
  * owner approval would make (not approved).
@@ -172,15 +172,15 @@ export const SWAP_SHOP_SPECS = {
     aiDemoAllowed: true,
     aiDemoPromptSha256: BICYCLE_PROMPT_SHA256,
   },
-  // DEV-139: ほし窯 (fictional bakery) d2-v1 — research only. NOT an approval of AI photos for it (see the file comment).
+  // DEV-139: ほし窯 (fictional bakery) d2-v2 — research only. NOT an approval of AI photos for it (see the file comment).
   bakery: {
     shop: "bakery",
-    pages: ["d2-v1"],
+    pages: ["d2-v2"],
     renders: [
       { viewport: "desktop_1440", width: 1440, height: 900 },
       { viewport: "mobile_390", width: 390, height: 844 },
     ],
-    // the pinned d2-v1 CSS has two ranges: SP ≤600 (laid out first) and PC ≥601 (`@media (min-width: 601px)`, every
+    // the pinned d2-v2 CSS (d2-v1's plus line-box rules) has two ranges: SP ≤600 (laid out first) and PC ≥601 (`@media (min-width: 601px)`, every
     // board sized in vw, its shape unchanged from 601 to 1920). The PC range is cut into two crop files at 1199 (the
     // measured edge, EDGE_VIEWPORTS) only so that the copy keeps the swap's three files per slot (desktop / tablet /
     // mobile, which the demo version package expects); both PC files are cut to the same board shape.

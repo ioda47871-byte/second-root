@@ -1,4 +1,4 @@
-DRAFT (未承認) — DEV-139 — ほし窯 (fictional bakery) — demo photo prompts for the research page fidelity/d2-v1.
+DRAFT (未承認) — DEV-139 — ほし窯 (fictional bakery) — demo photo prompts for the research page fidelity/d2-v2.
 Nothing here is approved: not the direction, the count (2 slots, 3 pictures), the sizes, nor this text. It is not a run prompt,
 and no tool may be called with it until the owner approves the text itself (docs/design/hoshigama-ai-photo-brief.md §6).
 

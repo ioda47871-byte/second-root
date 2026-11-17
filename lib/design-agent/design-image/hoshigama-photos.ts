@@ -64,7 +64,7 @@ export async function writeHoshigamaPhotos(o: {
   const manifest: HoshigamaPhotosManifest = {
     schema: "hoshigama_ai_photos_v0",
     shop: "bakery",
-    page: "d2-v1",
+    page: "d2-v2",
     demo_only: true,
     public_web: false,
     label: HOSHIGAMA_DEMO_LABEL,

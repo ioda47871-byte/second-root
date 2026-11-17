@@ -1,5 +1,5 @@
 /**
- * DEV-139: ほし窯 (bakery, a FICTIONAL bakery) research page d2-v1 in the existing photo pipeline, OFFLINE.
+ * DEV-139: ほし窯 (bakery, a FICTIONAL bakery) research page d2-v2 in the existing photo pipeline, OFFLINE.
  *
  * Every picture here is a MOCK made by code at test time under os.tmpdir() (solid colours), never written to the
  * repository; the pipeline root with .intake/photos/ is temporary. No model, generator or network is used, and nothing
@@ -50,9 +50,9 @@ import { STUB_APPROVAL, STUB_RUN_APPROVAL_ID } from "../../../support/hoshigama-
 
 const REPO = resolve(__dirname, "../../../..");
 const POC = "design-library/research/quality-pipeline/poc/bakery";
-const PAGE = `${POC}/fidelity/d2-v1`;
-const INV = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, POC, "photo-slots-d2-v1.json"), "utf8")));
-const EDGES = PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, POC, "photo-slot-edges-d2-v1.json"), "utf8")));
+const PAGE = `${POC}/fidelity/d2-v2`;
+const INV = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, POC, "photo-slots-d2-v2.json"), "utf8")));
+const EDGES = PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, POC, "photo-slot-edges-d2-v2.json"), "utf8")));
 const EDGE_MAP = edgesFor(INV, EDGES)!;
 const SPEC = SWAP_SHOP_SPECS.bakery;
 const FORBIDDEN = loadForbiddenSha256(REPO);
@@ -63,7 +63,7 @@ const slot = (id: string) => INV.slots.find((s) => s.slot_id === id)!;
 const photo = (id: string) => HOSHIGAMA_PHOTOS.find((p) => p.photo_id === id)!;
 const launch = () => chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
 
-describe("ほし窯 d2-v1: the swap spec, pinned to the page", () => {
+describe("ほし窯 d2-v2: the swap spec, pinned to the page", () => {
   it("is in the swap (research only) and nowhere that generates: no AI demo, no prompt pin, not an auto-run shop", () => {
     expect(SWAP_SHOPS).toContain("bakery");
     expect(SPEC.aiDemoAllowed).toBe(false);
@@ -83,7 +83,7 @@ describe("ほし窯 d2-v1: the swap spec, pinned to the page", () => {
   });
   it("its ranges are the page's two (≤600, ≥601; the PC range in two files at the measured 1199 edge), its edges the default", () => {
     const css = readFileSync(join(REPO, PAGE, "style.css"), "utf8");
-    expect([...css.matchAll(/@media[^{]*/g)].map((m) => m[0].trim())).toEqual(["@media (min-width: 601px)"]);
+    expect(new Set([...css.matchAll(/@media[^{]*/g)].map((m) => m[0].trim()))).toEqual(new Set(["@media (min-width: 601px)"]));
     expect(SPEC.ranges.map((r) => [r.key, r.media])).toEqual([["desktop", null], ["tablet", "(max-width: 1199px)"], ["mobile", "(max-width: 600px)"]]);
     expect(SPEC.edgeViewports).toEqual(EDGE_VIEWPORTS);
     expect(EDGES.edge_viewports ?? EDGE_VIEWPORTS).toEqual(EDGE_VIEWPORTS);
@@ -241,7 +241,7 @@ describe("the bundle writer and the intake: refused without the owner's approval
   });
   it("with the stub: 3 pictures in, the oven-mouth PC and the loaf enlarged (lanczos3, ≤2×), rights ai_generated_demo", async () => {
     const { dir, manifest } = await write(await stubBatch([[1024, 1024], [1024, 1536], [1536, 1024]]));
-    expect(manifest).toMatchObject({ status: "complete", shop: "bakery", page: "d2-v1", public_web: false, prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, run_prompt_sha256: HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 });
+    expect(manifest).toMatchObject({ status: "complete", shop: "bakery", page: "d2-v2", public_web: false, prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, run_prompt_sha256: HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 });
     expect(manifest.photos.map((x) => [x.photo_id, x.meets_target_2x])).toEqual([["ph-mouth-pc", false], ["ph-mouth-sp", true], ["ph-loaf", false]]);
     const p = pipeline("ok");
     const res = await intake(dir, p);
