@@ -17,13 +17,13 @@
     {
       "id": "F3",
       "key": "ward",
-      "value": "架空区",
+      "value": "千種区",
       "source_id": "S1"
     },
     {
       "id": "F4",
       "key": "address",
-      "value": "架空市架空区架空町三丁目7-4 2階",
+      "value": "名古屋市千種区架空町三丁目7-4 2階",
       "source_id": "S1"
     },
     {
@@ -76,25 +76,25 @@
     },
     {
       "id": "F13",
-      "key": "menu_item_1",
+      "key": "service_1",
       "value": "架空ネルドリップ珈琲",
       "source_id": "S1"
     },
     {
       "id": "F14",
-      "key": "menu_item_2",
+      "key": "service_2",
       "value": "架空厚切りトースト",
       "source_id": "S1"
     },
     {
       "id": "F15",
-      "key": "menu_item_3",
+      "key": "service_3",
       "value": "架空かためのプリン",
       "source_id": "S1"
     },
     {
       "id": "F16",
-      "key": "menu_item_4",
+      "key": "service_4",
       "value": "架空季節のフルーツサンド",
       "source_id": "S1"
     }

@@ -25,6 +25,18 @@ export class BRoutePromptStop extends Error {
  */
 export const V2_DIRECTION_ID = /^[a-z0-9][a-z0-9-]{3,60}$/;
 
+/** Separates, inside a reference's `use`, what is adopted from how it is translated into this shop (S0 A-2, review L2). */
+export const TRANSLATION_MARK = "／翻訳：";
+
+/** `use` split at the first TRANSLATION_MARK into [adopted, translation]; no mark (or an empty side) → [use, undefined]. */
+export function splitUse(use: string): [string, string | undefined] {
+  const i = use.indexOf(TRANSLATION_MARK);
+  if (i < 0) return [use, undefined];
+  const adopted = use.slice(0, i).trim();
+  const translated = use.slice(i + TRANSLATION_MARK.length).trim();
+  return adopted && translated ? [adopted, translated] : [use, undefined];
+}
+
 type Reference = {
   id: string;
   case_id: string;
@@ -98,12 +110,18 @@ export function buildBRouteGenerationInput(input: {
     !Array.isArray(manifest.refs)
   ) throw new BRoutePromptStop("REFERENCES_SCHEMA");
 
-  const research = selected.references.slice(0, 3).map((r) => ({
-    case_id: r.case_id,
-    adopted_for: r.use,
-    lost_or_rejected: "Do not reuse the referenced shop's brand identity, photographs, composition or words. Transfer only the cited design principle.",
-    translate_to_this_shop: motif.becomes_structure,
-  }));
+  // A reference's `use` may carry its own translation after TRANSLATION_MARK ("<what is adopted>／翻訳：<how it becomes
+  // this shop's structure>"); each research entry then gets its own text. Without the mark, the motif's structure is used
+  // for every entry (the behaviour before S0 A-2, unchanged for older direction sets).
+  const research = selected.references.slice(0, 3).map((r) => {
+    const [adopted, translated] = splitUse(r.use);
+    return {
+      case_id: r.case_id,
+      adopted_for: adopted,
+      lost_or_rejected: "Do not reuse the referenced shop's brand identity, photographs, composition or words. Transfer only the cited design principle.",
+      translate_to_this_shop: translated ?? motif.becomes_structure,
+    };
+  });
   if (research.length < 1) throw new BRoutePromptStop("DIRECTION_WITHOUT_REFERENCES");
   const caseIds = new Set(research.map((r) => r.case_id));
   const scoped = manifest.refs.filter((r) => caseIds.has(r.case_id));
