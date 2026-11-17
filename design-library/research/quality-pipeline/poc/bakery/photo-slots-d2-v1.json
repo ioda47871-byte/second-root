@@ -3,8 +3,8 @@
   "shop": "bakery",
   "shop_id": "fictional-bakery-hoshigama",
   "page_dir": "design-library/research/quality-pipeline/poc/bakery/fidelity/d2-v1",
-  "html_sha256": "454be930b549033c7a4983dee3e38c5fa856632d1aac56e63c3c9fa215b27204",
-  "css_sha256": "3c5c982286ec582642cb627410bd1c6d1b8b2f18cfabcf5ccf9ef68bc75ba287",
+  "html_sha256": "666850d54d479f3fbcb1fbc42d906fe58363384a6da5a0acf42ce6cd2225f066",
+  "css_sha256": "7017a35e44808700ac534e0d76557edeab26d02372700f9a2d08d632b9bb0b00",
   "copy_sha256": "ec9c1d6b24623176315e805c3fda2f7c181dbc9d7269c6e645b0975cca9140f8",
   "derived_by": "scripts/design-artifact/photo-slots.ts",
   "evaluation_label": "placeholder_limited",
@@ -24,35 +24,35 @@
       "variants": [
         {
           "viewport": "desktop_1440",
-          "width_px": 760,
-          "height_px": 800,
-          "ratio": 0.95,
-          "min_width_px": 1521,
-          "min_height_px": 1601
+          "width_px": 460,
+          "height_px": 510,
+          "ratio": 0.902,
+          "min_width_px": 920,
+          "min_height_px": 1020
         },
         {
           "viewport": "tablet_1024",
-          "width_px": 540,
-          "height_px": 569,
-          "ratio": 0.95,
-          "min_width_px": 1081,
-          "min_height_px": 1138
+          "width_px": 327,
+          "height_px": 363,
+          "ratio": 0.902,
+          "min_width_px": 655,
+          "min_height_px": 726
         },
         {
           "viewport": "tablet_768",
-          "width_px": 405,
-          "height_px": 427,
-          "ratio": 0.95,
-          "min_width_px": 811,
-          "min_height_px": 854
+          "width_px": 245,
+          "height_px": 272,
+          "ratio": 0.902,
+          "min_width_px": 491,
+          "min_height_px": 544
         },
         {
           "viewport": "mobile_390",
-          "width_px": 300,
-          "height_px": 488,
-          "ratio": 0.615,
-          "min_width_px": 600,
-          "min_height_px": 976
+          "width_px": 190,
+          "height_px": 315,
+          "ratio": 0.603,
+          "min_width_px": 380,
+          "min_height_px": 630
         }
       ]
     },
