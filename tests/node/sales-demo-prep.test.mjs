@@ -45,6 +45,7 @@ test("reuses existing four stages in order on staged copies that keep the direct
   assert.equal(report.status, "package_prepared_owner_review_required");
   assert.equal(report.owner_approval, "required");
   assert.equal(report.external_send, "disabled");
+  assert.equal(report.sendable, false);
   assert.equal(report.direction_id, DIRECTION);
   assert.deepEqual(seen.map((x) => x.step), ["copy", "render", "visual", "package"]);
   const stagedFacts = join(f.outDir, "input", "facts-pack.json");
@@ -87,6 +88,19 @@ test("review verdict revise/drop stops before packaging even when schema checks 
     assert.equal(report.code, "VISUAL_NOT_READY_FOR_OWNER");
     assert.equal(report.package_sha256, null);
   }
+});
+
+test("no review.json stops before the visual check runs (VISUAL_REVIEW_MISSING), after the renders exist", () => {
+  const f = fixture();
+  rmSync(join(f.compDir, "review.json"));
+  const seen = [];
+  const report = prepareOffline(f, (step) => { seen.push(step); return ok(step); });
+  assert.deepEqual(seen, ["copy", "render"]);
+  assert.equal(report.code, "VISUAL_REVIEW_MISSING");
+  assert.equal(report.status, "blocked");
+  assert.equal(report.sendable, false);
+  assert.deepEqual(report.steps.at(-1), { ...report.steps.at(-1), step: "visual", outcome: "stopped", exit: null, findings: [] });
+  assert.equal(report.package_sha256, null);
 });
 
 test("findings are codes only and capped; stderr text is reduced to its leading code", () => {
@@ -286,9 +300,9 @@ test("real CLI with a browser: copy audit, render and v2 package of the fictiona
   mkdirSync(join(root, "runs"));
   const f = { compDir, factsPath: join(root, "shop", "facts-pack.json"), outDir: join(root, "runs", "run-1") };
   const report = prepareOffline(f);
-  assert.deepEqual(report.steps.map((s) => [s.step, s.outcome, s.exit]), [["copy", "ok", 0], ["render", "ok", 0], ["visual", "stopped", 2]], JSON.stringify(report.steps));
-  assert.equal(report.code, "STEP_INVALID_OUTPUT");
-  assert.equal(report.steps[2].stderr_code, "INPUT_ERROR");
+  // no review.json yet: the adapter stops before running the visual check (a person has not looked at the renders)
+  assert.deepEqual(report.steps.map((s) => [s.step, s.outcome, s.exit]), [["copy", "ok", 0], ["render", "ok", 0], ["visual", "stopped", null]], JSON.stringify(report.steps));
+  assert.equal(report.code, "VISUAL_REVIEW_MISSING");
   assert.equal(report.render_review, "none");
   assert.ok(existsSync(join(f.outDir, "renders", "desktop.png")));
   const pkg = runRepoStep("package", ["--out", join(f.outDir, "package"), "--copy", join(f.outDir, "comp", "page"), "--facts", join(f.outDir, "input", "facts-pack.json")]);
