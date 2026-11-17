@@ -6,30 +6,34 @@
 
 `scripts/sales/demo-version/prepare-offline.mjs` は、**すでに制作済みの写真なしB-route全ページカンプ**を受け取り、既存の品質審査・v2パッケージ化を順番につなぐ最小のオフラインadapterである。候補収集・アートディレクション・HTML生成・DB import・管理画面表示は行わない。これだけで自動営業が完成したとは見なさない。
 
-実店舗データ・画像・非公開ページ・出典内容は公開GitHubへ入れない。原本はリポジトリ外の私有ディレクトリ（従来の無追跡 `.local-shops/` でも可）に保管し、**この実行の出力先は必ずリポジトリ外**とする。
+実店舗データ・画像・非公開ページ・出典内容は公開GitHubへ入れない。原本はリポジトリ外の私有ディレクトリ（従来の無追跡 `.local-shops/` でも可）に保管し、**この実行の出力先は必ずリポジトリ外、かつ入力のカンプ・factsのディレクトリの外**とする。
 
 ```bash
 mkdir -p "$HOME/second-root-runs"
 node scripts/sales/demo-version/prepare-offline.mjs \
   --facts "$HOME/second-root-shops/<shop-id>/facts-pack.json" \
-  --comp "$HOME/second-root-shops/<shop-id>/comp" \
+  --comp "$HOME/second-root-shops/<shop-id>/comps/<direction-id>" \
   --out "$HOME/second-root-runs/<new-run-id>"
 ```
 
-`--out` は存在していないディレクトリであること。実行前の `npm ci` と既存Playwright Chromiumの準備は実機で必要。これは本番サービス・タイマーの起動手順ではない。
+**`--comp` のディレクトリ名は方向ID（例 `d1-wheel-hub-v6`）そのもの**であること。`comp-lane.ts` は方向IDをディレクトリ名から読み、`review.json` の `direction_id` と違えば `REVIEW_OF_ANOTHER_DIRECTION` で拒否するため、adapterは私有出力先の `comp/<direction-id>/` に同じ名前で複製する。名前は英数字で始まり英数字・`.`・`_`・`-` だけ（100文字まで）で、それ以外は `COMP_NAME_UNSAFE`。`comp` のような汎用名のディレクトリを渡すと、正しい `show_owner` レビューでも視覚レビュー検査で止まる。
+
+`--out` は存在していないディレクトリであること。カンプやfactsファイルのあるディレクトリの中（またはそれらを含む場所）は `OUTPUT_OVERLAPS_INPUT` で拒否する。実行前の `npm ci` と既存Playwright Chromiumの準備は実機で必要。これは本番サービス・タイマーの起動手順ではない。
 
 既存の各工程を再実装せず、そのまま利用する：
 
-1. `comp-copy.ts --audit` の文章監査。元のカンプへ書き込まず、私有出力先 `comp/` に限定したコピーへ監査結果を書き込む。HOLD・REVISE・FAILは停止。**描画レーンが`show_owner`のときcopy監査済みを要求するため、必ず先に実行する。**
+開始時にfactsファイルを `input/facts-pack.json` へ、カンプを `comp/<direction-id>/` へ複製し、両方のSHAを照合する。以下の全工程はこの複製だけを読む。原本（factsとカンプ）は開始時にadapterが読むだけで、工程には渡さない（工程が原本へ書き込まない保証はコードの経路とSHA再照合による検出であり、OSの書込み禁止ではない）。
+
+1. `comp-copy.ts --audit` の文章監査。複製したカンプへ `copy-review.json` を書き込む（変わってよいのはこのファイルだけ。監査後に複製全体を再ハッシュし、他のファイルの変化・追加は `STAGED_COMP_MUTATED`）。HOLD・REVISE・FAILは停止。**描画レーンが`show_owner`のときcopy監査済みを要求するため、必ず先に実行する。**
 2. `comp-lane.ts` のPC1440/SP390描画・安全・表示文字チェック（出力先 `renders/`）。
 3. `comp-lane.ts --check-review --facts` の既存の視覚レビュー検査。レビューがない場合、および`review.json`の判定が`revise`や`drop`の場合は停止。機械的なPASSを美観合格とは扱わない。
 4. `package-local.ts --copy --facts` のv2パッケージ生成と再検証（出力先 `package/`）。写真・外部送信・DBアクセスなし。
 
-開始前に `shop_id` と factsのバイト列SHAが `copy.json` と一致することを検査する。入力ファイルのSHAを各工程の前後に再照合し、原本の改変・別バージョンの混入を拒否する。シンボリックリンク、未知の素材ファイル、出力の上書きも拒否する。
+開始前に `shop_id` と factsのバイト列SHAが `copy.json` と一致することを検査する。原本・factsの複製・カンプの複製のSHAを各工程の前後に再照合し、原本の改変（`INPUT_MUTATED`）、複製の改変（`STAGED_FACTS_MUTATED` / `STAGED_COMP_MUTATED`）、別バージョンの混入を拒否する。シンボリックリンク、未知の素材ファイル、出力の上書きも拒否する。各工程は独自のプロセスグループで実行し、180秒を超えたらグループごと（ブラウザを含む）停止して `STEP_TIMEOUT` とする。
 
-私有の `status.json` は実行ID・facts SHA・各入力ファイルSHA・工程ごとの経過時間・停止理由・package SHAを保持する。標準出力はステータスとハッシュのみで、店舗固有文言や実店舗連絡先を出力しない。成功時も `package_prepared_owner_review_required` であり、営業送信できる意味ではない。
+私有の `status.json` は実行ID・方向ID・facts SHA・各入力ファイルSHA・文章監査後の複製のSHA・工程ごとの経過時間／終了コード／検出コード（最大40件、`A-Z0-9_` のコードだけ）・stderr先頭のコード（本文は記録しない）・停止理由・描画工程の `review.renders_match_here`（`render_review`）・package SHAを保持する。複製の途中で失敗しても `status.json` は書く（`stage` 工程で停止）。標準出力はステータスとハッシュのみで、店舗固有文言や実店舗連絡先を出力しない。成功時も `package_prepared_owner_review_required` であり、営業送信できる意味ではない。
 
-テスト：`node --test tests/node/sales-demo-prep.test.mjs`（9テスト）。既存Vitest unit suiteからも `tests/unit/sales/offline-demo-prep.test.ts` が実行する。これらは**制御ロジックのモックテスト**であり、本物のChromium/DB E2Eを通った証拠ではない。
+テスト：`node --test tests/node/sales-demo-prep.test.mjs`。既存Vitest unit suiteからも `tests/unit/sales/offline-demo-prep.test.ts` が実行する。内容は、制御ロジック、全停止コードの表、タイムアウト時のプロセスツリー停止、そして**コミット済みの架空カンプをリポジトリ外へ複製した本物のCLI**（`comp-copy.ts --audit`、`comp-lane.ts --check-review`、`package-local.ts` の拒否経路）の契約テスト。`PLAYWRIGHT_CHROMIUM_EXECUTABLE` があれば、架空の送付用ページで本物の描画とv2パッケージ化も通す。コミット済みのカンプに「文章監査がowner_review」かつ「`show_owner` の視覚レビュー」を両方満たすものはないため、4工程すべてを本物で通した証拠はまだない。DB E2Eも対象外。
 
 ## 接続監査：すでにあるものとない矢印
 
