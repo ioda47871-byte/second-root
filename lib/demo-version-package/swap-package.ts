@@ -7,24 +7,15 @@
  * as they are). Plain files only: a symbolic link, a directory where a file belongs, or a file the swap does not write
  * (in page/photos/) is refused. copy.json is not part of a demo version and is not read by prepareSwap.
  *
- * DEV-139: swapCopyInput gives a photo-swapped page its copy, so that package-local.ts can build a v2 package
- * (sales_demo_version_package_v2) with BOTH the copy and the photos. The copy record is the swap's own copy.json (the
- * research page's, unchanged by the swap: its sha256 must be the summary's source copy hash) with exactly one change per
- * swapped slot: the placeholder caption the swap took off the page (`写真｜<alt>`) becomes the picture's alt text
- * (`<alt>`, which the swap put on the page), keeping the item's id, claim type, facts and owner-review flag. A slot
- * whose alt is not its caption's text, a caption item missing or doubled, or any 写真｜ item left is refused. The
- * review is the existing deterministic copy audit (reviewCopyQuality, as comp-copy.ts --audit runs it) of exactly the
- * stored page (HTML / CSS after the photo URL rewrite, with its photo URLs) as round 0; buildPackage then checks the copy
- * again (re-hash, the existing copy check, the audit re-run) and refuses a failed one. Nothing is sendable from here.
+ * DEV-139: readSwapCopyInputs reads the swap page's copy record (its copy.json) and the facts pack, read-only, for
+ * package-local.ts --page … --facts …; the copy itself is derived and audited by copy.ts deriveSwapCopy (through
+ * package.ts swapCopyInput), the one module of the package that may call the copy audit.
  */
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { z } from "zod";
-import { reviewCopyQuality } from "@/lib/design-agent/quality-pipeline/copy-quality-review";
 import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-rights";
-import type { CopyInput } from "./copy";
 import { convertPhoto, photoUrlMap, provePhotoUrlRewrite, rewriteCssPhotoUrls, rewriteHtmlPhotoUrls, SWAP_PHOTO_URL, type ConvertedPhoto, type RewriteProof } from "./photos";
 import { buildSwapImages, type PackageImage, type SwapImages } from "./swap-rights";
 
@@ -144,42 +135,6 @@ export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictio
 /** DEV-139: the swap page's copy record (its copy.json) and the facts pack, as plain files (no link). */
 export function readSwapCopyInputs(pageDir: string, factsPath: string): { copyRecord: Uint8Array; factsPack: Uint8Array } {
   return { copyRecord: new Uint8Array(readPlain(join(pageDir, "copy.json"), "PAGE_COPY_RECORD_UNREADABLE")), factsPack: new Uint8Array(readPlain(factsPath, "FACTS_PACK_UNREADABLE")) };
-}
-
-const SwapCopySummary = z.object({
-  source_hashes: z.object({ copy: z.string().regex(/^[0-9a-f]{64}$/) }),
-  slots: z.array(z.object({ slot_id: z.string(), alt: z.string().min(1) })).min(1),
-});
-const PLACEHOLDER = "写真｜";
-
-/**
- * DEV-139: the copy of a photo-swapped page (see the file comment) → buildPackage's `copy`. Throws SwapInputError.
- * `html` / `css` are the STORED page (PreparedSwap.html / .css) and `photoUrls` its stored photo URLs.
- */
-export function swapCopyInput(o: { copyRecord: Uint8Array; factsPack: Uint8Array; summary: unknown; html: string; css: string; photoUrls: ReadonlySet<string> }): { copy: CopyInput; replaced: string[] } {
-  const summary = SwapCopySummary.safeParse(o.summary);
-  if (!summary.success) throw new SwapInputError("SUMMARY_INVALID", ["copy"]);
-  if (sha256(o.copyRecord) !== summary.data.source_hashes.copy) throw new SwapInputError("COPY_RECORD_NOT_THE_PAGE_COPY");
-  let record: { items?: unknown };
-  try {
-    record = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(o.copyRecord)) as { items?: unknown };
-  } catch {
-    throw new SwapInputError("COPY_RECORD_INVALID");
-  }
-  if (!record || typeof record !== "object" || !Array.isArray(record.items)) throw new SwapInputError("COPY_RECORD_INVALID");
-  const items = record.items as Array<Record<string, unknown>>;
-  const replaced: string[] = [];
-  const next = items.map((i) => ({ ...i }));
-  for (const slot of summary.data.slots) {
-    const at = next.map((i, n) => (i.text === `${PLACEHOLDER}${slot.alt}` ? n : -1)).filter((n) => n >= 0);
-    if (at.length !== 1) throw new SwapInputError("COPY_PLACEHOLDER_ITEM_NOT_FOUND", [slot.slot_id]);
-    next[at[0]!]!.text = slot.alt;
-    replaced.push(String(next[at[0]!]!.id));
-  }
-  if (next.some((i) => typeof i.text === "string" && i.text.includes(PLACEHOLDER))) throw new SwapInputError("COPY_PLACEHOLDER_LEFT");
-  const copyRecord = new TextEncoder().encode(`${JSON.stringify({ ...record, items: next }, null, 2)}\n`);
-  const review = reviewCopyQuality({ factsPack: o.factsPack, copyRecord, pageHtml: new TextEncoder().encode(o.html), pageCss: new TextEncoder().encode(o.css) }, { round: 0, photoUrls: o.photoUrls });
-  return { copy: { factsPack: o.factsPack, copyRecord, review: new TextEncoder().encode(`${JSON.stringify(review, null, 2)}\n`), rounds: [] }, replaced };
 }
 
 /** The success-case hashes the swap forbids (the repository's originals inventory). */

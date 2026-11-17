@@ -15,7 +15,7 @@
   看板・文字・ロゴ・値札・包装・人の顔を写さない。店の住所・営業・品揃えの事実を写真で足さない。
 - 写真で見せてよいのは事実パックにあるものだけ: 薪の石窯 (F9・F10・F12)、田舎パン (F12・F13)。
   価格・量・重さ・原材料・焼き時間・窯の温度・職人の姿は事実に無いので、写真でも示さない。
-- 対象のページは `poc/bakery/fidelity/d2-v1`。カンプは `poc/bakery/comps/d2-hearth-floor-v2` (Claude の見比べ `show_owner`、文章の監査 `approve_candidate`。元の `d2-hearth-floor` は残す)。
+- 対象のページは `poc/bakery/fidelity/d2-v1`。カンプは `poc/bakery/comps/d2-hearth-floor-v3` (Claude の見比べ `show_owner`、文章の監査 `approve_candidate`。v2 の粉の割合の図だけを直した版。元の `d2-hearth-floor`・`-v2` は記録として残し、候補ではない)。
   どちらもオーナーはまだ見ていない。**成功例ではない。**
 - 枠の一覧と寸法は `poc/bakery/photo-slots-d2-v1.json` と `photo-slot-edges-d2-v1.json` (d2-v1 の HTML・CSS・copy の SHA で測った)。
 
@@ -55,7 +55,7 @@
 **推奨は 3枚** (2枠。石窯の口だけ PC と SP で2枚)。
 
 - ph-mouth は PC (0.90) と SP (縦長、0.60) の形が大きく違う。1枚 (3:4) でも `requestFor` は通るが、
-  PC で写真の 80% しか残らず、アーチで上の角も切れる。だから PC 用 1:1 と SP 用 2:3 の2枚にする (輪の作業台と同じ考え方)。
+  PC で写真の約 83% しか残らず (SP の板では約 80%)、アーチで上の角も切れる。だから PC 用 1:1 と SP 用 2:3 の2枚にする (輪の作業台と同じ考え方)。
 - ph-loaf は PC と SP の形が同じ (1.2) なので1枚。中央の主役の箱は、どの幅の切り抜きにも入る。
 - **代案 (2枚):** ph-mouth を 3:4 の1枚にする。枚数は減るが、PC で上下が詰まる。オーナーの判断に残す。
 

@@ -161,10 +161,13 @@ describe("ほし窯's draft prompt: pinned, NOT approved", () => {
   });
   it("3 photos (2 slots), each target the swap's 2× request at the range edges, each box the draft's, each passing planSlot", () => {
     expect(HOSHIGAMA_PHOTOS.map((p) => [p.photo_id, p.slot_id, p.use, p.aspect])).toEqual([["ph-mouth-pc", "ph-mouth", "pc", "1:1"], ["ph-mouth-sp", "ph-mouth", "sp", "2:3"], ["ph-loaf", "ph-loaf", "pc", "4:3"]]);
-    for (const p of HOSHIGAMA_PHOTOS) expect(DRAFT).toContain(`${p.photo_id} (${p.aspect}): `), expect(DRAFT).toContain(`inside ${boxText(p.focal_box)})`);
+    for (const p of HOSHIGAMA_PHOTOS) {
+      expect(DRAFT).toContain(`${p.photo_id} (${p.aspect}): `);
+      expect(DRAFT).toContain(`inside ${boxText(p.focal_box)})`);
+    }
     // ph-loaf: the swap's own request for the slot (one shape for every viewport)
     expect(requestFor(slot("ph-loaf"), { edges: EDGE_MAP.get("ph-loaf")! })).toMatchObject({ ok: true, aspect: "4:3", min_width_px: photo("ph-loaf").target.width, min_height_px: photo("ph-loaf").target.height });
-    // the oven mouth: one 3:4 photo would keep only 80% of itself at PC → the brief asks for a PC and an SP photo
+    // the oven mouth: one 3:4 photo would keep about 83% of itself at PC and 80% at SP (the worst) → the brief asks for a PC and an SP photo
     expect(requestFor(slot("ph-mouth"), { edges: EDGE_MAP.get("ph-mouth")! })).toMatchObject({ ok: true, aspect: "3:4", worst_kept_area: 0.803 });
     const exact = (id: string) => ({ width: photo(id).target.width, height: photo(id).target.height, focal_box: photo(id).focal_box });
     expect(planSlot(slot("ph-mouth"), { pc: exact("ph-mouth-pc"), sp: exact("ph-mouth-sp") }, { spViewports: SPEC.spViewports, edges: EDGE_MAP.get("ph-mouth")! })).toMatchObject({ ok: true, codes: [] });
@@ -380,7 +383,7 @@ describe("ほし窯 swap E2E with MOCK photos: rights → crop (2× at the edges
   }, 180_000);
 
   it("refuses an ai_generated_demo picture for ほし窯 (not approved: AI_DEMO_NOT_ALLOWED), and nothing is written", async () => {
-    const s = await slots("ai");
+    const s: Array<Record<string, unknown>> = await slots("ai");
     const pc0 = (s[1]!.pc as { rights: Record<string, unknown> }).rights;
     s[1] = { ...s[1]!, pc: { rights: { ...pc0, source_kind: "ai_generated_demo", ai_provenance: { generator: "g", model: "fixture-image-model", generated_at: "2026-11-17T10:00:00+09:00", prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, approval_id: "x-test-01", demo_only: true } }, focal_box: box("ph-loaf") } };
     const out = outDir();

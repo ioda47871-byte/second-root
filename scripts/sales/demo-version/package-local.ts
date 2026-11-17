@@ -38,8 +38,8 @@
  *
  * Every photo check of the photo mode runs unchanged (prepareSwap). The copy is the swap page's own copy.json (bound to
  * the research page by the summary's source copy hash) with each swapped placeholder caption item (写真｜<alt>) turned
- * into the picture's alt text, and the existing copy audit of exactly the stored page as round 0 (swap-package.ts
- * swapCopyInput); buildPackage checks the copy again and refuses what fails. --copy (a comp dir) stays photo-less.
+ * into the picture's alt text, and the existing copy audit of exactly the stored page as round 0 (package.ts
+ * swapCopyInput → copy.ts deriveSwapCopy); buildPackage checks the copy again and refuses what fails. --copy (a comp dir) stays photo-less.
  *
  * Renders PC 1440 and SP 390 full pages with the comp-lane renderer (renderPrototype: JavaScript off, network blocked,
  * deviceScaleFactor 1, this machine's fonts as in the research renders), downscales any render whose side exceeds
@@ -55,8 +55,8 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
 import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib/demo-version-package/local-inputs";
-import { buildPackage, insideRepo, PackageError, writePackage } from "../../../lib/demo-version-package/package";
-import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, swapCopyInput, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
+import { buildPackage, insideRepo, PackageError, swapCopyInput, writePackage } from "../../../lib/demo-version-package/package";
+import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
 
 const arg = (k: string) => {
   const i = process.argv.indexOf(k);

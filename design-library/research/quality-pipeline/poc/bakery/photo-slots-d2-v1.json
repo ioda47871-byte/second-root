@@ -3,7 +3,7 @@
   "shop": "bakery",
   "shop_id": "fictional-bakery-hoshigama",
   "page_dir": "design-library/research/quality-pipeline/poc/bakery/fidelity/d2-v1",
-  "html_sha256": "666850d54d479f3fbcb1fbc42d906fe58363384a6da5a0acf42ce6cd2225f066",
+  "html_sha256": "974cc35736fadb86b642a0b5cc3095164cbfa4b1cde0d88f859a450822a1895e",
   "css_sha256": "7017a35e44808700ac534e0d76557edeab26d02372700f9a2d08d632b9bb0b00",
   "copy_sha256": "ec9c1d6b24623176315e805c3fda2f7c181dbc9d7269c6e645b0975cca9140f8",
   "derived_by": "scripts/design-artifact/photo-slots.ts",
