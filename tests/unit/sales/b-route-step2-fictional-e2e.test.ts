@@ -56,7 +56,8 @@ beforeAll(() => {
   facts = join(root, "shop", "facts-pack.json");
   copyFileSync(join(TAMAKI, "facts-pack.json"), facts);
   // 環 has no direction set of its own: its page is the 輪 d1-wheel-hub design. The 輪 set refers to facts by id only
-  // (F9–F16 have the same values in both packs), so it is re-pinned to 環's shop id and facts SHA, nothing else. The
+  // (F10–F16 have the same values in both packs; F9 differs only in its leading phrase, and the set uses it only for
+  // 「店先の作業台」, same in both), so it is re-pinned to 環's shop id and facts SHA, nothing else. The
   // direction-set gate (C1–C7) still runs on it against 環's facts.
   const set = readJson(join(POC, "bicycle", "direction-set.json"));
   set.shop_id = readJson(facts).shop_id;
