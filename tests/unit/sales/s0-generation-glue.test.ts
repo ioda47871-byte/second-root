@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDesignPrompt, promptVariantOf } from "@/lib/design-agent/phase2f/prompt";
 import { runDesignCall } from "@/lib/design-agent/phase2f-live/design-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
+import { fromGeneration } from "../../../scripts/sales/demo-version/from-generation.mjs";
 
 // DEV-139 Stage 0 A-3 (Issue #139): one recorded route-B generation through the real CLIs, into the existing offline
 // B-route chain, with the generation's receipt pinned all the way to the status beside the v2 package:
@@ -66,8 +67,11 @@ function cli(args: string[], timeout = 280_000) {
 const tsx = (script: string, ...args: string[]) => cli(["--import", "tsx", join(REPO, script), ...args]);
 const glue = (...args: string[]) => cli([join(REPO, "scripts/sales/demo-version/from-generation.mjs"), ...args]);
 
-/** The recorded design answer (codex_design_v1): 環's reviewed page, a declaration naming only 環's fact ids. */
-function recordedAnswer() {
+/**
+ * The recorded design answer (codex_design_v1): 環's reviewed page, a declaration naming only 環's fact ids.
+ * `ghost`: the declaration also names a section the page never marks (data-section), so the artifact is incomplete.
+ */
+function recordedAnswer(o: { ghost?: boolean } = {}) {
   const box = (y: number, h: number, w: number) => ({ x: 0, y, w, h });
   const sections = [
     ["hero", "hero", 60, 960, 110, 844, ["F1", "F9"]],
@@ -76,6 +80,7 @@ function recordedAnswer() {
     ["check", "story", 3100, 824, 3516, 792, ["F15"]],
     ["lesson", "other", 3924, 576, 4308, 500, ["F16"]],
     ["visit", "info", 4500, 760, 4808, 791, ["F4", "F5", "F6", "F7", "F8"]],
+    ...(o.ghost ? ([["ghost", "other", 5200, 60, 5540, 59, ["F1"]]] as const) : []),
   ] as const;
   const ids = sections.map((s) => s[0]);
   const dna = (choice: string, refs: readonly string[]) => ({ choice, fact_refs: refs });
@@ -107,6 +112,22 @@ let designInput = "";
 let designDir = "";
 let promptPin = { sha256: "", chars: 0 };
 let receipt: Record<string, unknown> = {};
+let built = { prompt: "", sha256: "", chars: 0 };
+
+/** One recorded design step (temporary ledger, the recorded answer in place of Codex; no model name recorded). */
+async function recordDesign(outDir: string, approvalId: string, answer: unknown) {
+  return runDesignCall(
+    { route: "B_html_prototype", prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId, planId: PLAN_ID, retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir, promptVersion: "v2" },
+    { ledger: openLedger(state), commit: async () => ({ head: COMMIT, base: COMMIT, clean: true }), codex: async () => ({ answer, meta: { threadId: null, cliVersion: null, modelReported: null, redactions: [] } }) },
+  );
+}
+/** The existing packaging step (Codex never called): ledger, prompt rebuilt from this design input, safety, PC/SP render. */
+function packageDesign(design: string, out: string, result: string, artifactId: string, input = designInput) {
+  return tsx("scripts/design-artifact/phase2f-steps.ts", "--package", "--route", "B", "--prompt-version", "v2",
+    "--direction", join(input, "direction.json"), "--references", join(input, "references.json"),
+    "--facts", facts, "--design", design, "--artifact-id", artifactId, "--shop-id", readJson(facts).shop_id, "--shop-name", "架空自転車修理 環",
+    "--out", out, "--result", result);
+}
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "secondroot-s0-glue-"));
@@ -143,16 +164,12 @@ describe("Stage 0 A-3: a recorded route-B generation through the glue into the o
     // the prompt the real call would send: the same builder and variant as the CLI (its SHA must be the printed pin)
     const variant = promptVariantOf({ route: "B_html_prototype", version: "v2", research: undefined, direction: readJson(join(designInput, "direction.json")), references: readJson(join(designInput, "references.json")) });
     if (!variant.ok) throw new Error(variant.code);
-    const built = buildDesignPrompt({ route: "B_html_prototype", facts: readJson(facts), maxAssets: 1, variant: variant.variant });
+    built = buildDesignPrompt({ route: "B_html_prototype", facts: readJson(facts), maxAssets: 1, variant: variant.variant });
     expect([built.sha256, built.chars]).toEqual([promptPin.sha256, promptPin.chars]);
 
     // ONE recorded design step: the ledger (a temporary state directory) reserves the approval and a slot exactly as a
     // real call would; the recorded answer stands in for Codex (nothing is called, no model name is recorded)
-    const answer = recordedAnswer();
-    const r = await runDesignCall(
-      { route: "B_html_prototype", prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: APPROVAL_ID, planId: PLAN_ID, retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir: designDir, promptVersion: "v2" },
-      { ledger: openLedger(state), commit: async () => ({ head: COMMIT, base: COMMIT, clean: true }), codex: async () => ({ answer, meta: { threadId: null, cliVersion: null, modelReported: null, redactions: [] } }) },
-    );
+    const r = await recordDesign(designDir, APPROVAL_ID, recordedAnswer());
     expect(r.status).toBe("succeeded");
     const call = readJson(join(designDir, "call.json"));
     receipt = call.receipt;
@@ -177,16 +194,52 @@ describe("Stage 0 A-3: a recorded route-B generation through the glue into the o
 
     it("phase2f-steps --package checks the recorded design against its ledger and prompt pin and packages it (route B, PC/SP)", { timeout: 300_000 }, () => {
       expect(receipt.approval_id, "the first test records the design step").toBe(APPROVAL_ID);
-      const p = tsx("scripts/design-artifact/phase2f-steps.ts", "--package", "--route", "B", "--prompt-version", "v2",
-        "--direction", join(designInput, "direction.json"), "--references", join(designInput, "references.json"),
-        "--facts", facts, "--design", designDir, "--artifact-id", "DA-20261117-s0glue", "--shop-id", readJson(facts).shop_id, "--shop-name", "架空自転車修理 環",
-        "--out", artifact(), "--result", result());
+      const p = packageDesign(designDir, artifact(), result(), "DA-20261117-s0glue");
       expect(p.status, JSON.stringify(p.out)).toBe(0);
       expect(p.out).toMatchObject({ status: "done", record: { route: "B_html_prototype", verification_state: "render_pair_complete" } });
       const a = readJson(join(artifact(), "artifact.json"));
       expect(a.facts_pack_sha256).toBe(FACTS_SHA);
       expect(a.observed.generation).toMatchObject({ approval_id: APPROVAL_ID, run_id: receipt.run_id, prompt_sha256: promptPin.sha256 });
       expect(readFileSync(join(artifact(), "quarantine", "index.html"), "utf8")).toBe(HTML);
+      // the result file records the bytes the prompt was rebuilt from: this design input's direction and references
+      expect(readJson(result()).prompt_inputs_sha256).toEqual({
+        brief: null, tm_brief: null, research: null,
+        direction: sha(readFileSync(join(designInput, "direction.json"))), references: sha(readFileSync(join(designInput, "references.json"))),
+      });
+    });
+
+    it("refuses another direction's design input on this generation (d1 generation + d2 input), writing nothing", { timeout: 120_000 }, () => {
+      const d2 = join(root, "runs", "design-input-d2");
+      const input = tsx("scripts/sales/demo-version/prepare-design-input.ts", "--facts", facts, "--directions", directions, "--direction-id", "d2-chain-links", "--out", d2);
+      expect(input.status, input.stderr).toBe(0);
+      const out = join(root, "runs", "glue-d2");
+      const r = cli([join(REPO, "scripts/sales/demo-version/from-generation.mjs"), ...args(out).map((x) => (x === designInput ? d2 : x === DIRECTION_ID ? "d2-chain-links" : x))]);
+      expect([r.status, r.out?.code]).toEqual([2, "GENERATION_DIRECTION_MISMATCH"]);
+      expect(existsSync(out)).toBe(false);
+    });
+
+    it("refuses an incomplete Design Artifact (a declared section the page does not mark), writing nothing", { timeout: 300_000 }, async () => {
+      const design = join(root, "runs", "design-ghost");
+      expect((await recordDesign(design, "fictional-s0-glue-design-02", recordedAnswer({ ghost: true }))).status).toBe("succeeded");
+      const art = join(root, "runs", "artifact-ghost");
+      const res = join(root, "runs", "artifact-ghost-result.json");
+      const p = packageDesign(design, art, res, "DA-20261117-s0gh01");
+      expect(p.status, JSON.stringify(p.out)).toBe(0);
+      expect(p.out).toMatchObject({ status: "done", record: { verification_state: "incomplete" } });
+      const out = join(root, "runs", "glue-ghost");
+      const r = cli([join(REPO, "scripts/sales/demo-version/from-generation.mjs"), ...args(out).map((x) => (x === designDir ? design : x === artifact() ? art : x === result() ? res : x))]);
+      expect([r.status, r.out?.code]).toEqual([2, "DESIGN_ARTIFACT_NOT_COMPLETE"]);
+      expect(existsSync(out)).toBe(false);
+    });
+
+    it("a failure after --out exists is a stop written to status.json, never a refusal", { timeout: 60_000 }, () => {
+      const out = join(root, "runs", "glue-throws");
+      const status = fromGeneration({
+        factsPath: facts, directionsPath: directions, directionId: DIRECTION_ID, designInputDir: designInput, expectedPromptSha256: promptPin.sha256,
+        designDir, artifactDir: artifact(), resultPath: result(), lane: "quality_research_fictional", outDir: out,
+      }, { runFromPrototype: () => { throw new Error("boom"); } });
+      expect(status).toMatchObject({ status: "blocked", code: "GLUE_EXCEPTION", stage: "staging", sendable: false });
+      expect(readJson(join(out, "status.json"))).toMatchObject({ status: "blocked", code: "GLUE_EXCEPTION", sendable: false });
     });
 
     it("refuses a generation that is not the pinned one, or a prototype that is not the generated bytes, writing nothing", { timeout: 60_000 }, () => {
@@ -220,6 +273,8 @@ describe("Stage 0 A-3: a recorded route-B generation through the glue into the o
         status: "blocked", code: "VISUAL_REVIEW_MISSING", stage: "offline", facts_sha256: FACTS_SHA, shop_id: "fictional-bicycle-repair-tamaki", site_name: "架空自転車修理 環",
         direction_id: DIRECTION_ID, review: { supplied: false, sha256: null }, package_sha256: null, owner_approval: "required", sendable: false,
       });
+      expect(status.checks).toMatchObject({ ledger_and_output_agree: "packaging_step", prompt_rebuilt_from_direction_and_compared: "packaging_step", repeated_by_glue: false });
+      expect(status.design_input).toMatchObject({ direction_sha256: sha(readFileSync(join(designInput, "direction.json"))), references_sha256: sha(readFileSync(join(designInput, "references.json"))) });
       // the generation pin: the ledger receipt, carried unchanged
       expect(status.generation).toMatchObject({ approval_id: receipt.approval_id, plan_id: receipt.plan_id, run_id: receipt.run_id, slot: receipt.slot, prompt_sha256: promptPin.sha256, prompt_chars: promptPin.chars, prompt_version: "v2", worker_commit: COMMIT });
       expect(status.generation.call_json_sha256).toBe(sha(readFileSync(join(designDir, "call.json"))));

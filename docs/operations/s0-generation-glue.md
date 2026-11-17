@@ -6,6 +6,9 @@
 ## 何を足したか
 
 `scripts/sales/demo-version/from-generation.mjs`（接着だけ）。新しい pipeline・service・worker・テンプレート DB は作っていない。
+既存の `scripts/design-artifact/phase2f-steps.ts --package` には、結果ファイルへ1項目だけ足した（PR #282 review M1）：
+指示文を組み直すのに渡された入力ファイルのバイトの SHA-256（`prompt_inputs_sha256`：`brief`・`tm_brief`・`research`・`direction`・`references`、
+渡されなかったものは null。route A には無い）。記録だけで、包みの段の判定は何も変えていない。import も増やしていない。
 
 ```
 prepare-design-input → phase2f-design --print-pin → [phase2f-design 実呼び出し：オーナー承認後・未実施]
@@ -20,20 +23,26 @@ prepare-design-input → phase2f-design --print-pin → [phase2f-design 実呼�
 | 照合 | 止まるコード |
 | --- | --- |
 | design-input の `pin.json` が同じ facts バイト・同じ方向案・同じ方向 ID | `DESIGN_INPUT_MISMATCH` |
-| 設計呼び出しの `call.json` が succeeded・route B・kind design、`slot` が実在 | `GENERATION_NOT_SUCCEEDED` / `GENERATION_NOT_ROUTE_B` / `GENERATION_RECORD_INVALID` |
+| 設計呼び出しの `call.json` が succeeded・route B・kind design・`prompt_version` v2、`slot` が実在 | `GENERATION_NOT_SUCCEEDED` / `GENERATION_NOT_ROUTE_B` / `GENERATION_NOT_V2` / `GENERATION_RECORD_INVALID` |
 | 受領（receipt）の指示文 SHA が、オーナーが承認した `--expected-prompt-sha256` | `GENERATION_PROMPT_NOT_PINNED` |
 | `generation.json` の承認 ID・run ID・指示文 SHA が受領と同じ | `GENERATION_RECEIPT_MISMATCH` |
 | 包みの結果ファイルが done・route B で、使った呼び出しが受領と同じ（承認 ID・run ID・slot・指示文 SHA） | `DESIGN_PACKAGE_NOT_DONE` / `PACKAGE_RESULT_MISMATCH` |
+| **方向の結びつき**：包みの段が指示文を組み直した `direction.json`・`references.json` の SHA（結果ファイルの `prompt_inputs_sha256`）が、この design-input フォルダのファイルの SHA と同じ（brief・tm_brief・research は null）。包みの段はその入力から組み直した指示文の SHA を受領と照合済みなので、これで「この方向の入力からこの生成」が結ばれる。別の方向（例：d1 の生成に d2 の design-input）は拒む | `GENERATION_DIRECTION_MISMATCH` |
+| Design Artifact の検証状態が `render_pair_complete`（`incomplete` は渡さない。intake の規則）。状態は包みの段の結果ファイルの値で、接着は intake を走らせ直さない | `DESIGN_ARTIFACT_NOT_COMPLETE` |
 | Design Artifact の生成記録が受領と同じ、`facts_pack_sha256` が facts バイトの SHA、店 ID と店名が facts と同じ | `DESIGN_ARTIFACT_GENERATION_MISMATCH` / `FACTS_SHA_MISMATCH` / `SITE_IDENTITY_MISMATCH` |
 | `quarantine/index.html`・`style.css` が artifact の記録の SHA どおりで、かつ設計の答え（`answer.json`）の HTML/CSS とバイト単位で同じ | `DESIGN_ARTIFACT_FILES_MISMATCH` / `PROTOTYPE_NOT_FROM_GENERATION` |
 
 そのあとは既存の段をそのまま走らせる。どこかの段が止まれば、接着もその段のコードで止まる（exit 1）。
+`--out` を作った後に起きた想定外の失敗も、`status.json` に停止コード（`GLUE_EXCEPTION` など）を書いて exit 1。
+**exit 2 は「何も書いていない」ときだけ**（PR #282 review L1）。
 たとえば目視レビューがまだ無ければ `VISUAL_REVIEW_MISSING`。**接着はレビューを書かない。門も変えない。再試行もしない。**
 `--review` は人が描画を見て書いた `comp_review_v1` を渡すときだけ使い、その中身の判定は `comp-lane.ts --check-review` に任せる。
 
 `<out>/status.json`（`sales_generation_glue_v1`）に残るもの：生成の pin（承認 ID・plan ID・run ID・slot・retry_of・指示文 SHA と文字数・
 指示文の版・コミット・`call.json` と `answer.json` の SHA）、facts SHA、店 ID と店名、方向 ID と方向案 SHA、試作の SHA、
-Design Artifact の ID と SHA、導いた文章台帳の SHA と行数、レビューを渡したかとその SHA、オフラインの各段の結果、v2 包みの bundle SHA。
+Design Artifact の ID と SHA、design-input の `direction.json`・`references.json` の SHA、
+誰が何を検めたか（`checks`：台帳と出力の一致・指示文の組み直しと照合・安全検査と PC/SP 描画は包みの段が行い、接着は繰り返さない＝`repeated_by_glue: false`、
+接着が比べたもの）、導いた文章台帳の SHA と行数（from-prototype の方向案 SHA と reference_mode が design-input と同じことも確かめる）、レビューを渡したかとその SHA、オフラインの各段の結果、v2 包みの bundle SHA。
 包みそのものの形式（`sales_demo_version_package_v2`）は変えていない。**どの生成から作った包みかは、status.json の pin と
 `package_sha256` の組で記録する。**
 
@@ -49,7 +58,9 @@ Design Artifact の ID と SHA、導いた文章台帳の SHA と行数、レビ
 
 ```bash
 export PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium   # 実機ではその環境の Chromium
-export SR_PHASE2F_STATE="$HOME/.local/state/sr-design-worker/phase2f-live"   # 実呼び出しと包みの段が同じ台帳を読む（既定値と同じ）
+# 実呼び出しと包みの段が同じ台帳を読むように固定する。未設定なら台帳は $XDG_STATE_HOME/sr-design-worker/phase2f-live
+# （XDG_STATE_HOME も未設定なら ~/.local/state/…）。下の値が既定と同じなのは XDG_STATE_HOME が未設定のときだけ
+export SR_PHASE2F_STATE="$HOME/.local/state/sr-design-worker/phase2f-live"
 mkdir -p "$RUN/shop" "$RUN/runs"
 # facts と方向案（3方向、C1〜C7 を通るもの）を $RUN/shop/ に置く
 
@@ -114,8 +125,11 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B --prompt-version v2 
    台帳は一時ディレクトリ（`SR_PHASE2F_STATE`）で、本物の台帳には触れない。承認 ID・plan・slot `first-1`・指示文 SHA が受領に入る。
    CLI の `--human-approval-confirmed` は使っていない。モデル名は記録しない（`model_reported: null`）。
 3. ブラウザがあるとき：`phase2f-steps --package`（本物）が台帳・指示文・安全検査・PC/SP 描画を通し `render_pair_complete`。
+   結果ファイルの `prompt_inputs_sha256` が design-input の `direction.json`・`references.json` の SHA であることも確かめる。
 4. 接着が、pin の違い（`GENERATION_PROMPT_NOT_PINNED`）、facts の1バイトの違い（`DESIGN_INPUT_MISMATCH`）、
-   包みと違う答え（`PROTOTYPE_NOT_FROM_GENERATION`）を、何も書かずに拒む。
+   包みと違う答え（`PROTOTYPE_NOT_FROM_GENERATION`）、d1 の生成に d2-chain-links の design-input（`GENERATION_DIRECTION_MISMATCH`）、
+   ページに無い区画を宣言した答えから包まれた `incomplete` の Design Artifact（`DESIGN_ARTIFACT_NOT_COMPLETE`）を、何も書かずに拒む。
+   `--out` を作った後の例外は `GLUE_EXCEPTION` として status.json に残る（exit 2 にしない）。
 5. レビュー無し：文章監査 `owner_review`、PC/SP 描画（PNG 2枚）、そして `VISUAL_REVIEW_MISSING` で停止。包みは無い。
    facts SHA は design-input の pin・Design Artifact・from-prototype の status・copy.json・オフラインの status・段の facts コピーで同じ。
    status.json の pin は受領そのまま。

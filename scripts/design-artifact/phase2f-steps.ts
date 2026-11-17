@@ -141,6 +141,19 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
   const common = { facts: { path: resolve(factsPath), pack: facts.data }, shop, artifactId, outDir: resolve(out) };
   const calls: SheetCall[] = [];
   let result: RunResult;
+  /**
+   * DEV-139 Stage 0 A-3 (review M1): the SHA-256 of each prompt input file this packaging was given (the prompt is
+   * rebuilt from exactly these bytes and must give the recorded SHA), so a later step can tie the package to the
+   * direction it was made from. A record only: nothing here is checked against it. null = not given (route A: none).
+   */
+  const promptInputs: Record<string, string | null> = {};
+  const recorded = async (flag: string): Promise<unknown> => {
+    const path = args.get(flag);
+    if (path === undefined) return undefined;
+    const bytes = await readFile(resolve(path));
+    promptInputs[flag.slice(2).replace(/-/g, "_")] = sha256(bytes);
+    return JSON.parse(bytes.toString("utf8")) as unknown;
+  };
   if (route === "A_image") {
     const imageDir = args.get("--image");
     const expectedSha = args.get("--expected-prompt-sha256");
@@ -160,13 +173,13 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
     if (!designDir || (noBrief ? briefPath !== undefined : !briefPath) || (route === "B_html_prototype" && args.has("--image"))) return refuse("USAGE");
     let brief: DesignBrief | undefined;
     if (briefPath !== undefined) {
-      const parsed = DesignBrief.safeParse(await json(briefPath));
+      const parsed = DesignBrief.safeParse(await recorded("--brief"));
       if (!parsed.success) return refuse("BRIEF_INVALID");
       brief = parsed.data;
     }
     // DEV-122: the prompt version (and research section) the design was made with; the prompt is rebuilt from them
     // and must give the recorded SHA (RECORD_PROMPT_MISMATCH otherwise)
-    const opt = async (flag: string) => (args.has(flag) ? await json(args.get(flag)!) : undefined);
+    const opt = recorded;
     const tmBrief = await opt("--tm-brief");
     const variant = promptVariantOf({ route, version: args.get("--prompt-version"), research: await opt("--research"), direction: await opt("--direction"), references: await opt("--references"), ...(tmBrief === undefined ? {} : { tmBrief }) });
     if (!variant.ok) return refuse(variant.code);
@@ -223,7 +236,7 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
       await browser.close();
     }
   }
-  await writeFile(resolve(resultPath), `${JSON.stringify({ schema: "phase2f_package_result_v1", route, result, calls }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  await writeFile(resolve(resultPath), `${JSON.stringify({ schema: "phase2f_package_result_v1", route, result, calls, ...(route === "A_image" ? {} : { prompt_inputs_sha256: Object.fromEntries(["brief", "tm_brief", "research", "direction", "references"].map((k) => [k, promptInputs[k] ?? null])) }) }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   say({ mode: "recorded_steps", route, calls, ...result });
   return result.status === "done" ? 0 : 2;
 }
