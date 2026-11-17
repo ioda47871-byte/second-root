@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildBRouteGenerationInput, BRoutePromptStop, V2_DIRECTION_ID } from "@/lib/sales/b-route/generation-prompt";
+import { buildBRouteGenerationInput, BRoutePromptStop, splitUse, TRANSLATION_MARK, V2_DIRECTION_ID } from "@/lib/sales/b-route/generation-prompt";
 import { runDirectionSetCheck } from "../../../scripts/design-artifact/direction-set";
 
 const BASE = "design-library/research/quality-pipeline/poc/bicycle";
@@ -62,5 +62,18 @@ describe("B-route design preparation preserves the isolated model-call entry", (
   it("keeps the copied v2 direction_id rule identical to the protected schema (read as text, not imported)", () => {
     const source = readFileSync("lib/design-agent/phase2f/open-direction.ts", "utf8");
     expect(source).toContain(`direction_id: z.string().regex(${V2_DIRECTION_ID.toString()})`);
+  });
+  it("gives each research entry its own translation when the reference's use carries the mark (S0 A-2, review L2)", () => {
+    expect(splitUse(`採るもの${TRANSLATION_MARK}この店の構造`)).toEqual(["採るもの", "この店の構造"]);
+    expect(splitUse("印の無い use")).toEqual(["印の無い use", undefined]);
+    expect(splitUse(`${TRANSLATION_MARK}右だけ`)).toEqual([`${TRANSLATION_MARK}右だけ`, undefined]);
+    // an older set (no mark): every entry falls back to the motif's structure, as before
+    const old = buildBRouteGenerationInput({ facts, directionSet: set, directionId: set.directions[0]!.id, referenceManifest: refs });
+    expect(new Set(old.direction.research.map((r) => r.translate_to_this_shop)).size).toBe(1);
+    const marked = JSON.parse(JSON.stringify(set)) as { directions: Array<{ id: string; references: Array<{ use: string }> }> };
+    marked.directions[0]!.references = marked.directions[0]!.references.map((r, i) => ({ ...r, use: `${r.use}${TRANSLATION_MARK}翻訳${i}` }));
+    const p = buildBRouteGenerationInput({ facts, directionSet: marked, directionId: set.directions[0]!.id, referenceManifest: refs });
+    expect(p.direction.research.map((r) => r.translate_to_this_shop)).toEqual(marked.directions[0]!.references.slice(0, 3).map((_, i) => `翻訳${i}`));
+    expect(p.direction.research.every((r) => !r.adopted_for.includes(TRANSLATION_MARK))).toBe(true);
   });
 });

@@ -1,0 +1,542 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-bakery-hoshigama",
+  "facts_sha256": "d46adc81bee7b7096e47f57091d88df348ac37cf389d7cce071a76f634fcf715",
+  "motif": {
+    "candidates": [
+      {
+        "id": "M1",
+        "what": "毎朝4時半に薪をくべる石窯",
+        "source": "time",
+        "fact_refs": [
+          "F10",
+          "F5"
+        ],
+        "becomes_structure": "4時半の薪から7:00の開店、16:00か売り切れの終わりまでを、目盛りの付いた1本の縦の時刻の軸にする"
+      },
+      {
+        "id": "M2",
+        "what": "石窯の床",
+        "source": "space",
+        "fact_refs": [
+          "F9",
+          "F12"
+        ],
+        "becomes_structure": "窯の床を真上から見た1枚の面にし、火の側から扉の側へ地の色が冷めていく"
+      },
+      {
+        "id": "M3",
+        "what": "粉と焼き色",
+        "source": "material",
+        "fact_refs": [
+          "F11",
+          "F9"
+        ],
+        "becomes_structure": "粉の白の面と焼き色の面を見開きで交互に開き、その綴じ目で粉がパンに変わる"
+      },
+      {
+        "id": "M4",
+        "what": "売り切れ次第終了",
+        "source": "time",
+        "fact_refs": [
+          "F5"
+        ],
+        "becomes_structure": "その日の品が尽きた所でページの流れが途切れ、そこが来店の情報になる"
+      }
+    ],
+    "chosen": "M1",
+    "why": "M1 は「毎朝4時半に石窯へ薪をくべます」(F10) と営業時間 (F5) という、この店の事実に時刻が2つ書かれていることから来る。業種の一般論でなく実際の時刻で構造が決まるので最初に試す。比べるために d2 は M2 (窯の床という場所)、d3 は M3 (粉と焼き色という素材) を中心にする。M4 は単独では弱いので d1 の終点として使う。どの方向も、品を時刻・場所・焼き方に結び付けない (事実に無い)"
+  },
+  "directions": [
+    {
+      "id": "d1-kiln-clock",
+      "motif_focus": "M1",
+      "concept": "ページの左寄りに1本の縦の時刻の軸を引く。上端は朝4時半、石窯へ薪をくべる時刻 (F10)。軸を下ると 7:00 の開店、16:00 か売り切れで軸が終わる (F5)。Hero は軸の始まりの図で、4:30 の目盛りと石窯の口の線画に店名が掛かる。目盛りに吊るすのは事実に書かれた時刻だけで、5つの品名 (F13–F17) は時刻に結び付けず、軸の脇に一続きの一覧で置く。 SP（390px）では、店名と 4:30 の目盛り、石窯の口の線画の上半分だけを1画面目に置く。",
+      "composition": {
+        "hero": "diagram_led",
+        "flow": "single_axis_scroll"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "inline",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "vertical_text",
+            "overlap_collage",
+            "single_column_text",
+            "diagram",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "continuous",
+            "overlap",
+            "continuous"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "hero",
+          "motif_facet": "4:30 の目盛りと石窯の口の線画、火の入る時刻に店名が掛かる",
+          "ground": "夜明け前の濃い藍",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "fire",
+          "motif_facet": "火を入れてから開店までの2時間半を、軸の目盛りの広い間隔で見せる",
+          "ground": "藍から窯の橙へ",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "open",
+          "motif_facet": "7:00 の開店の目盛りの横に、店の説明の文を一文のまま置く",
+          "ground": "焼き色の明るい茶",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "names",
+          "motif_facet": "5つの品名は時刻に結び付けず、軸の脇に一続きの一覧で置く",
+          "ground": "粉の白",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "sellout",
+          "motif_facet": "16:00 か売り切れで軸が切れる所 (営業時間の値をそのまま)",
+          "ground": "夕方の薄い灰",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "visit",
+          "motif_facet": "軸が終わった先に、定休・所在地・道順・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "軸が売り切れで途切れた先に来店の情報を置き、翌朝4時半へ戻る目盛りを小さく添えて、店の一日が閉じたことを示す",
+      "pc_plan": "1440 の左から3分の1に時刻の軸を通し、区画は軸の右側に置く。目盛りの間隔は実時間に比例させ、火入れから開店までの間を広く空ける",
+      "sp_plan": {
+        "first_screen": "店名と 4:30 の目盛り、石窯の口の線画の上半分だけを1画面目に置く",
+        "reorder": "軸を画面の左端 24px に寄せ、区画は軸の右に縦一列に置く。品名の一覧は開店の目盛りの後に寄せる",
+        "overlaps": "PC で軸に掛かる店名は、SP では軸の上端で折り返して2行にし、軸と重ねない"
+      },
+      "protect": [
+        "4:30 から始まる縦の時刻の軸",
+        "目盛りの間隔が実際の時間に比例すること"
+      ],
+      "references": [
+        {
+          "principle": "P2",
+          "case_id": "CP-019",
+          "use": "時間の経過を1本の読み順の上の地点として置く方法 (蝋のアーチの形・3語の見出しは写さない)／翻訳：この店の事実に書かれた時刻 (4:30 の薪、7:00〜16:00) だけを目盛りにした縦の軸"
+        },
+        {
+          "principle": "P5",
+          "case_id": "CP-008",
+          "use": "細い1本の線が道筋として区画をまたぐ方法 (黄色の線と GO. の配置は写さない)／翻訳：その線を時刻の軸そのものにし、区画の境をまたいで火入れから売り切れまで続ける"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-020",
+          "reason": "ショーケースの棚を格子にする方法は、時刻の軸と別の構造なので使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M1 (F10 の4時半の薪と F5 の営業時間)。入れ替えテスト: 火入れの時刻を書いていない店に替えると、軸の上端の 4:30 と開店までの広い間隔が根拠を失う"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は図 (diagram_led)、流れは1本の軸 (single_axis_scroll)。d2 の場面と1枚の面、d3 の文字と見開きのどちらとも型が違い、航法・読み順・図像も違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は軸の上の時刻: 4:30 の薪 → 開店と説明の文 → 品名の一覧 → 売り切れ。終点は軸が切れた先の来店の情報"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は軸を左端 24px に寄せて区画を右に縦一列で置き、PC の3分の1の位置の軸とは組み方が違う"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "汎用の Hero でも帯の積み重ねでもない。区画に split_copy_media・grid_cards を使わず、P1・P2・P5 を満たす"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "時刻の目盛りの線と数字が読み順を作る。写真は使わず、石窯の口は線画で描く。品名は時刻に結び付けない"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "改良でなく新しい方向。守る核 (4:30 から始まる時刻の軸と比例する目盛り) は protect に先に書いた"
+        }
+      }
+    },
+    {
+      "id": "d2-hearth-floor",
+      "motif_focus": "M2",
+      "concept": "ページ全体を、石窯の床を真上から見た1枚の面にする (F12 石窯で焼くのは田舎パンとバゲット、F9 焼き上がった順に店先の棚へ)。上端が窯の奥の火の側で、下へ行くほど扉に近づき、地の色が焦げ茶から粉の白へ冷めていく。Hero は窯の口から床を覗く場面で、店名は窯の口の弧に沿う。窯の床に置く品名は、石窯で焼くと事実にある田舎パンとバゲット (F12) だけで、残りの3品は扉の外の店先の棚 (F9) に格子に揃えず置く。 SP（390px）では、窯の口の弧と店名、弧の下に覗く床の奥だけを1画面目に入れる。",
+      "composition": {
+        "hero": "scene_led",
+        "flow": "one_continuous_surface"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "none",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "free",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "overlap_collage",
+            "diagram",
+            "overlap_collage",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "mouth",
+          "motif_facet": "窯の口の弧から床を覗く場面、店名が弧に沿う",
+          "ground": "火の側の焦げ茶",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "石窯の口",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "deep",
+          "motif_facet": "火にいちばん近い奥に、「石窯で焼くのは田舎パンとバゲットです」の文と2つの品名",
+          "ground": "焦げ茶",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "田舎パン",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "fire",
+          "motif_facet": "窯の奥の火の位置に、「毎朝4時半に石窯へ薪をくべます」の文",
+          "ground": "焼き色の茶",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "door",
+          "motif_facet": "扉の外の店先の棚に、説明の文と残りの3つの品名を格子に揃えず並べる",
+          "ground": "小麦色",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "flour",
+          "motif_facet": "扉の脇に、「粉は二種類を、季節で割合を変えて合わせます」の文",
+          "ground": "粉の白",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "visit",
+          "motif_facet": "扉を出た所に、営業時間・定休・所在地・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "床の扉の側の端が店の扉になり、そこに営業時間と所在地を置いて、窯から客の手元へ出た位置で終わる",
+      "pc_plan": "1440 の幅いっぱいを床の面にし、品名は格子に揃えず扉の外の棚に大小ばらばらに置く。地の色は上から下へ連続して冷め、区画の境を線で切らない",
+      "sp_plan": {
+        "first_screen": "窯の口の弧と店名、弧の下に覗く床の奥だけを1画面目に入れる",
+        "reorder": "床の区画を奥から扉へ1つずつ縦に置き直し、左右に半分ずつずらして床に散った感じを残す",
+        "overlaps": "PC で品名どうしが棚の上で重なる所は、SP では重ねずに縦の間隔を詰め、地の色の冷め方だけで連続を保つ"
+      },
+      "protect": [
+        "窯の奥から扉へ冷めていく1枚の床の面",
+        "品名が格子に揃わないこと"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-020",
+          "use": "店の物理的な台を情報の置き場にする考え方 (ガラスケースの格子と枠は写さない)／翻訳：石窯の床と扉の外の店先の棚という2つの置き場にし、格子にしない"
+        },
+        {
+          "principle": "P3",
+          "case_id": "CP-012",
+          "use": "章ごとに同じ素材の別の面を見せる考え方 (石・色・標本の札は写さない)／翻訳：床の奥・火の位置・扉の外という位置ごとに別の面を見せる"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-022",
+          "reason": "生地の断面と飛び散るクラムは同じ食べ物の業種で写す危険が高いので使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M2 (F12 の石窯で焼く2品、F9 の店先の棚)。入れ替えテスト: 窯を持たない店に替えると、火の側から扉の側へ冷める床という面そのものが成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は場面 (scene_led)、流れは1枚の面 (one_continuous_surface)。d1 の軸、d3 の見開きと型が違い、航法なし・自由な読み順・寄せ集めの図像も兄弟と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は床の位置: 窯の口 → 奥の石窯の2品 → 薪の位置 → 店先の棚の3品 → 粉の文。終点は扉を出た所の来店の情報"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は床の区画を奥から扉へ縦に置き直して左右に半分ずつずらし、PC の大小ばらばらの配置を狭い幅のために組み替える"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は分割でも中央見出しでもなく場面、流れは帯でなく1枚の面。区画は重ねの寄せ集めと図で、P1・P3・P4 を挙げられる"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "地の色の冷め方が情報の順を作る。写真の枠は窯の口と田舎パンの2つで、この案は写真に頼る割合が3案でいちばん高い"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良の前の段階。守る核 (冷めていく1枚の床の面と、格子に揃わない品名) を protect に挙げた"
+        }
+      }
+    },
+    {
+      "id": "d3-flour-crust",
+      "motif_focus": "M3",
+      "concept": "白い粉の面と焼き色の面を、見開きのように交互に開く (F11 粉は二種類を季節で割合を変えて合わせる、F12 石窯で焼く田舎パンとバゲット)。Hero は店名を巨大な文字で組み、文字の上半分を粉の白、下半分を焼き色に塗り分ける。以降の見開きは粉の側に店の文の事実を置き、焼き色の側に説明の文と品名を置く。品と文を組にしない (どの品がどう作られるかは事実に無い)。最後に5つの品名が綴じ目をまたいで一続きに並ぶ。 SP（390px）では、二色に分かれた巨大な店名だけを縦に組み、上が粉の白、下が焼き色。",
+      "composition": {
+        "hero": "type_led",
+        "flow": "alternating_spreads"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "alternating_spreads",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "z_pattern",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "vertical_text",
+            "overlap_collage",
+            "split_copy_media",
+            "vertical_text",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "none",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "name",
+          "motif_facet": "巨大な店名の上半分が粉の白、下半分が焼き色に分かれる",
+          "ground": "粉の白と焼き色の二色",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "spread-flour",
+          "motif_facet": "粉の側に「粉は二種類を、季節で割合を変えて合わせます」、焼き色の側に店の説明の文",
+          "ground": "粉の白と濃い焼き色",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "spread-fire",
+          "motif_facet": "粉の側に「毎朝4時半に石窯へ薪をくべます」、焼き色の側は文字を置かない焼き色の面",
+          "ground": "生成りと明るい焼き色",
+          "layout": "split_copy_media",
+          "image_slots": []
+        },
+        {
+          "id": "spread-names",
+          "motif_facet": "綴じ目をまたいで、5つの品名が一続きに焼き色の面へ縦に並ぶ",
+          "ground": "焼き色",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "hours",
+          "motif_facet": "粉の白に戻る面に、営業時間と売り切れ次第終了",
+          "ground": "粉の白",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "visit",
+          "motif_facet": "最後の見開きの焼き色の側に所在地・道順・電話、粉の側に定休",
+          "ground": "濃い焼き色",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "最後の見開きで粉の側に定休、焼き色の側に所在地と電話を置き、粉がパンになりきった面で終わる",
+      "pc_plan": "1440 を左右に二分した見開きを縦に重ね、左右の色 (粉と焼き色) を見開きごとに入れ替える。左端に見開きの位置を示す細い目次を置く",
+      "sp_plan": {
+        "first_screen": "二色に分かれた巨大な店名だけを縦に組み、上が粉の白、下が焼き色",
+        "reorder": "見開きの左右を上下にし、粉の面 → 焼き色の面の順に縦へ積む。目次は外して見開きごとの小さな色の印にする",
+        "overlaps": "PC で綴じ目をまたぐ品名は、SP では粉の面の下端から焼き色の面の上端へまたがせる"
+      },
+      "protect": [
+        "粉の白と焼き色の二色が見開きごとに入れ替わること",
+        "巨大な店名が二色に分かれること"
+      ],
+      "references": [
+        {
+          "principle": "P5",
+          "case_id": "CP-001",
+          "use": "巨大な文字を面の区切りをまたぐ構造の板として使う方法 (字形と三連の比率は写さない)／翻訳：店名そのものを粉の白と焼き色の境にまたがせ、1画面目で二つの面を示す"
+        },
+        {
+          "principle": "P5",
+          "case_id": "CP-018",
+          "use": "2つの版を重ねてずらす考え方 (版の色・トンボ・網点は写さない)／翻訳：粉と焼き色という2つの面を見開きごとに左右入れ替える"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-019",
+          "reason": "時間の地点を並べる型は d1 の時刻の軸で使うので、ここでは使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M3 (F11 二種類の粉と F12 石窯の焼き色)。入れ替えテスト: 粉を扱わない店に替えると、粉の白と焼き色の二色の入れ替えが何の変化も表さなくなる"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は文字 (type_led)、流れは見開き (alternating_spreads)。d1・d2 と Hero・流れ・航法 (横の目次)・読み順 (Z)・文字組 (縦横混在) が違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は粉と焼き色の見開き: 店名 → 粉の配合と説明の文 → 火の文と焼き色の面 → 品名の一続き → 時間。終点は粉がパンになりきった最後の見開き"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は見開きの左右を上下に積み直し、横の目次を外して色の印にする。PC の二分の構図をそのまま縮めない"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "split_copy_media は6区画中1つだけで半分に届かず、Hero は巨大な文字で分割の型でない。P1・P4・P5 を満たす"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "店名の文字そのものが二色の境をまたぎ、綴じ目をまたぐ品名が粉からパンへの変化の印になる。写真は使わない (画像なしの B方式に合う)"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "初めての方向なので改良ではない。核 (二色の入れ替えと二色に分かれる店名) を先に protect に名指しした"
+        }
+      }
+    }
+  ]
+}

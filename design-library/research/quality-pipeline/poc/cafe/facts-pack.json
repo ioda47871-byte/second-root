@@ -1,0 +1,102 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-cafe-nikai",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "架空喫茶 二階の窓",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "cafe",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "千種区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "名古屋市千種区架空町三丁目7-4 2階",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "8:00〜18:00",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "木曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "access",
+      "value": "架空線架空駅 3番出口から徒歩5分。階段で二階へ上がります",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "phone",
+      "value": "000-0000-0925",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "description",
+      "value": "比較研究用の架空の喫茶店です。実在の店舗ではありません。商店街の二階で、通りを見下ろす窓辺の席と、ネルで一杯ずつ淹れるコーヒーを出しています。",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "statement_1",
+      "value": "通りに面した窓のカウンターは六席です",
+      "source_id": "S1"
+    },
+    {
+      "id": "F11",
+      "key": "statement_2",
+      "value": "豆は一杯ぶんずつ、淹れる直前に挽きます",
+      "source_id": "S1"
+    },
+    {
+      "id": "F12",
+      "key": "statement_3",
+      "value": "朝8時から11時までは、トーストのセットがあります",
+      "source_id": "S1"
+    },
+    {
+      "id": "F13",
+      "key": "service_1",
+      "value": "架空ネルドリップ珈琲",
+      "source_id": "S1"
+    },
+    {
+      "id": "F14",
+      "key": "service_2",
+      "value": "架空厚切りトースト",
+      "source_id": "S1"
+    },
+    {
+      "id": "F15",
+      "key": "service_3",
+      "value": "架空かためのプリン",
+      "source_id": "S1"
+    },
+    {
+      "id": "F16",
+      "key": "service_4",
+      "value": "架空季節のフルーツサンド",
+      "source_id": "S1"
+    }
+  ]
+}

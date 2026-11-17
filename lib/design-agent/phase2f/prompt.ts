@@ -86,7 +86,15 @@ export type PromptVariant =
    * (promptVariantOf) refuses "v3" with PROMPT_VERSION_NOT_ACTIVATED, so no command can run it. Wiring it into a CLI
    * or a run needs the owner's approval (docs/design/copy-prompt-v3-comparison.md).
    */
-  | { version: "v3"; direction: OpenDirection; references: Reference[] };
+  | { version: "v3"; direction: OpenDirection; references: Reference[] }
+  /**
+   * DEV-139 S0 A-2 (PR #283 review H1): PROPOSAL, not activated. v2 with its two wagashi-only lines (the address rule
+   * "show only 名古屋市東区" and "evoke the sweets") replaced by shop-neutral rules built from the facts
+   * (shopNeutralRules). Nothing else differs from v2. Built only when code passes this variant explicitly:
+   * promptVariantOf refuses "v2.1" with PROMPT_VERSION_NOT_ACTIVATED, so no command can run it. Activating it needs
+   * the owner's approval (docs/operations/s0-three-shop-directions.md).
+   */
+  | { version: "v2.1"; direction: OpenDirection; references: Reference[] };
 export const B_V11_RULES = [
   "- On this route every section's asset_refs is an empty list [] (there are no images).",
   "- Show the phone number, the address and the hours as plain text. Add no link other than the stylesheet link required above: no tel:, mailto:, sms: or other URL; in-page navigation may use only #anchors such as #info.",
@@ -101,6 +109,24 @@ export const V2_IMAGE_RULES = {
   B_html_prototype: "- Do not imitate a photograph with CSS or SVG; evoke the sweets with colour, shape, type and drawn forms.",
   C_hybrid: "- A generated image is a concept image: say so next to it in a short caption, and never present it as a photograph of the shop or its products.",
 } as const;
+
+/**
+ * DEV-139 S0 A-2 (review H1): the v2.1 proposal's replacement for V2_FACT_RULES and V2_IMAGE_RULES, from the facts
+ * themselves (fact ids only; the values are already quoted in the facts block). Pure.
+ */
+export function shopNeutralRules(facts: FactsPack, route: "B_html_prototype" | "C_hybrid"): string[] {
+  const id = (key: string) => facts.facts.find((f) => f.key === key)?.id;
+  const address = id("address");
+  const category = id("category");
+  return [
+    "- The shop is fictional; keep the description's own words that say so. Show each fact's value exactly as written. Never show a value containing テスト as real content.",
+    address ? `- Show the address exactly as fact ${address} gives it, in full, as plain text.` : "- The facts give no address: show none.",
+    "- No order, booking or cart wording: the facts give no such route.",
+    route === "B_html_prototype"
+      ? `- Do not imitate a photograph with CSS or SVG; evoke what the facts name${category ? ` (the shop's kind is fact ${category})` : ""} with colour, shape, type and drawn forms.`
+      : V2_IMAGE_RULES.C_hybrid,
+  ];
+}
 
 /**
  * DEV-199f (Issue #258, spec docs/design/copy-authenticity-quality-gate.md): the copy rules of the v3 proposal.
@@ -132,6 +158,8 @@ export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; ver
   const version = o.version ?? "v1";
   // DEV-199f: the v3 proposal exists in code only; no command may select it until the owner approves activation
   if (version === "v3") return { ok: false, code: "PROMPT_VERSION_NOT_ACTIVATED" };
+  // DEV-139 S0 A-2: the v2.1 proposal (shop-neutral v2) exists in code only, like v3
+  if (version === "v2.1") return { ok: false, code: "PROMPT_VERSION_NOT_ACTIVATED" };
   if (version !== "v1" && version !== "v1.1" && version !== "v2" && version !== "tm0") return { ok: false, code: "PROMPT_VERSION_UNKNOWN" };
   // DEV-150: tm0 takes the three-method brief only (no research, no direction, no references, no DesignBrief); the
   // others never take it. Its shop and fact ids are checked against the facts pack where the prompt is built.
@@ -170,7 +198,7 @@ export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; f
   const variant = o.variant ?? { version: "v1" };
   if (variant.version === "v1.1" && o.route !== "B_html_prototype") throw new PromptVariantError("PROMPT_VARIANT_ROUTE");
   // v1 / v1.1 are built from a brief; v2 / v3 from their direction only; tm0 (DEV-150) from the three-method brief only
-  const open = variant.version === "v2" || variant.version === "v3";
+  const open = variant.version === "v2" || variant.version === "v3" || variant.version === "v2.1";
   if ((open || variant.version === "tm0") === (o.brief !== undefined)) throw new PromptVariantError("PROMPT_VARIANT_BRIEF");
   if (variant.version === "tm0") {
     // the same shop and only its facts (the brief has no facts pack of its own)
@@ -204,7 +232,7 @@ export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; f
     assetRule,
     "- Text shown must be facts (verbatim) or short neutral UI labels.",
     ...(variant.version === "v1.1" ? [...B_V11_RULES, ...(variant.research ? researchBlock(variant.research) : [])] : []),
-    ...(open ? [...(o.route === "B_html_prototype" ? B_V11_RULES : B_V11_RULES.slice(1)), ...V2_FACT_RULES, V2_IMAGE_RULES[o.route]] : []),
+    ...(open ? [...(o.route === "B_html_prototype" ? B_V11_RULES : B_V11_RULES.slice(1)), ...(variant.version === "v2.1" ? shopNeutralRules(o.facts, o.route) : [...V2_FACT_RULES, V2_IMAGE_RULES[o.route]])] : []),
     ...(variant.version === "v3" ? COPY_V3_RULES : []),
   ].join("\n");
   return { prompt, sha256: sha256(prompt), chars: prompt.length };

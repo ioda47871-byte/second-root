@@ -1,0 +1,522 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-wagashi",
+  "facts_sha256": "7d101d9f726237734422fd03d91eceba05a048107351e4e7a002beb9311fea86",
+  "motif": {
+    "candidates": [
+      {
+        "id": "M1",
+        "what": "一つずつお包みする紙",
+        "source": "action",
+        "fact_refs": [
+          "F9"
+        ],
+        "becomes_structure": "包み紙を開いた1枚の紙をページにし、斜めの折り目を区画の境にして、開くごとに中から店の事実が出る"
+      },
+      {
+        "id": "M2",
+        "what": "毎朝炊く粒あんの粒",
+        "source": "material",
+        "fact_refs": [
+          "F9",
+          "F11"
+        ],
+        "becomes_structure": "大小の粒を面に散らし、いくつかの粒を駅にして事実を1つずつ置き、粒の間を細い線でつなぐ"
+      },
+      {
+        "id": "M3",
+        "what": "季節の上生菓子",
+        "source": "time",
+        "fact_refs": [
+          "F9",
+          "F10"
+        ],
+        "becomes_structure": "季節で替わる品があることを、区画の中の1つの品名の扱いだけで示す"
+      },
+      {
+        "id": "M4",
+        "what": "小さな店頭",
+        "source": "space",
+        "fact_refs": [
+          "F9"
+        ],
+        "becomes_structure": "狭い間口の幅に絞った縦長の1本の柱をページにし、柱の中で上から順に事実を出す"
+      }
+    ],
+    "chosen": "M1",
+    "why": "M1 は説明 (F9) の「一つずつお包みしています」から来る、この店の手の仕事である。品名 (F10–F16) の数や並びでなく、紙を開く動作で構造を作れる M1 を最初に試す。比べるために d2 は M2 (粒あんの粒)、d3 は M4 (小さな店頭) を中心にする。M3 は各方向の区画の中で使う。説明の文 (F9) は一文のまま置き、分けて言い換えない。パン屋・喫茶の方向案と同じ型は使わない"
+  },
+  "directions": [
+    {
+      "id": "w1-wrapping-sheet",
+      "motif_focus": "M1",
+      "concept": "Hero は、一つの包みを正面から大きく描く (F9 一つずつお包みしています)。ページ全体はその包み紙を開いた1枚の紙で、斜めの折り目が区画の境になる。折り目を1つ越えるごとに包みが1段開き、説明の文 (F9、一文のまま) と7つの品名 (F10–F16) が中から現れ、紙がすべて開いた面に営業時間・定休を、開いた紙の端に所在地・道順・電話を置く。 SP（390px）では、包みの正面と縦書きの店名だけを入れ、折り目の端を画面の下端に覗かせる。",
+      "composition": {
+        "hero": "object_led",
+        "flow": "one_continuous_surface"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "none",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "z_pattern",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "vertical_text",
+            "overlap_collage",
+            "diagram",
+            "single_column_text",
+            "vertical_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "vertical",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "wrap",
+          "motif_facet": "正面から大きく描いた一つの包み、店名は包みの帯に縦書きで",
+          "ground": "包み紙の白",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "fold-one",
+          "motif_facet": "最初の折り目が開き、説明の文が一文のまま紙の内側に縦書きで現れる",
+          "ground": "包み紙の裏の薄い鼠色",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "fold-two",
+          "motif_facet": "二つ目の折り目の内側に、7つの品名が縦書きの一列で並ぶ",
+          "ground": "薄い若草",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "fold-three",
+          "motif_facet": "三つ目の折り目の内側に、文字を置かない点の並び (粒あんの粒を思わせる模様)",
+          "ground": "小豆の色",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "opened",
+          "motif_facet": "紙がすべて開いた面に、営業時間 (売り切れ次第終了) と定休",
+          "ground": "包み紙の白",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "edge",
+          "motif_facet": "開いた紙の端に、所在地・道順・電話",
+          "ground": "包み紙の白",
+          "layout": "vertical_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "包み紙が開ききった端に所在地と電話を置き、包みを受け取る手前で終わる",
+      "pc_plan": "1440 の中央に包みを大きく置き、下へ読むにつれ紙が斜めの折り目で左右へ開いていく。折り目の線は区画の境を斜めに横切り、地の紙は切れずに続く",
+      "sp_plan": {
+        "first_screen": "包みの正面と縦書きの店名だけを入れ、折り目の端を画面の下端に覗かせる",
+        "reorder": "斜めの折り目を浅い角度に直し、開いた紙の内側を縦一列に積む。営業時間は開ききる前の区画へ1つ繰り上げる",
+        "overlaps": "PC で折り目が文字の列に掛かる所は、SP では折り目を文字の列の間に通し、縦書きの列を切らない"
+      },
+      "protect": [
+        "一つの包みが開いていく1枚の紙",
+        "斜めの折り目が区画の境になること"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-031",
+          "use": "布を広げ、裁ち、組み直す工程を台の構造にした考え方 (裁断台の座標・布・色は写さない)／翻訳：包みを1段ずつ開く工程を、斜めの折り目で区切った1枚の紙にする"
+        },
+        {
+          "principle": "P5",
+          "case_id": "CP-012",
+          "use": "物の近くに標本の札のような注釈を置く方法 (石の形・紫と金・写真の寄せ方は写さない)／翻訳：折り目の内側に、事実の値を縦書きの注釈として置く"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-009",
+          "reason": "縫い糸で全ページをつなぐ方法は、紙の折り目と同じ役割になって写す危険があるので使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M1 (F9 の一つずつお包み)。入れ替えテスト: 包まずに量り売りする店に替えると、1つの包みが開いていく紙という構造が意味を失う"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は物 (object_led)、流れは1枚の面 (one_continuous_surface)。w2 の図と駅の地図、w3 の場面と1本の柱と型が違い、縦組みの文字と Z の読み順も兄弟と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は包みを開く段: 包み → 説明の文 → 7つの品名 → 点の模様 → 開いた面。終点は開ききった紙の端の所在地と電話"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は折り目の角度を浅くし、開いた内側を縦一列に積み、営業時間を1つ前の区画へ上げる"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "汎用の印は無い (Hero は包みの物、流れは紙の面、区画に grid_cards・split_copy_media が無い)。P1・P2・P5 を挙げられる"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "折り目の線が区画の境と読み順を作り、縦書きの注釈が折り目の内側に付く。写真は使わず線で描く"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "改良でなく新しく立てた方向。核 (開いていく1枚の紙と斜めの折り目) を protect に名指しした"
+        }
+      }
+    },
+    {
+      "id": "w2-tsubu-stations",
+      "motif_focus": "M2",
+      "concept": "Hero は、毎朝炊く粒あん (F9) の粒を真上から見た図で、大小の粒が画面に散り、いちばん大きな粒の中に店名を置く。ページはその粒の散らばりを地図として広げ、いくつかの粒を駅にして、説明の文 (F9、一文のまま)、7つの品名 (F10–F16)、営業時間、定休を1つずつ置く。粒の間は細い線でつなぎ、最後の駅で来店の情報に出る。 SP（390px）では、大きな粒と店名、そのまわりの小さな粒を数個だけ入れる。",
+      "composition": {
+        "hero": "diagram_led",
+        "flow": "map_of_stations"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "map_of_stations",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "radial",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "overlap_collage",
+            "single_column_text",
+            "diagram",
+            "single_column_text",
+            "overlap_collage"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "overlap",
+            "overlap",
+            "overlap"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "none",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "scatter",
+          "motif_facet": "散った粒の図の中心、いちばん大きな粒に店名",
+          "ground": "炊いた小豆の深い赤茶",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "description",
+          "motif_facet": "説明の文を一文のまま置いた、大きな粒の隣の駅",
+          "ground": "赤茶",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "names",
+          "motif_facet": "7つの品名を、粒の群れから離れた小さな粒に1つずつ添えた駅",
+          "ground": "淡い桜鼠",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "hours",
+          "motif_facet": "営業時間と売り切れ次第終了を、粒が少なくなる地図の端の駅に",
+          "ground": "淡い生成り",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "closed",
+          "motif_facet": "定休日の駅は、粒の無い空白の中に1つだけ",
+          "ground": "淡い生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "last-station",
+          "motif_facet": "最後の駅に、店名・所在地・道順・電話",
+          "ground": "赤茶",
+          "layout": "overlap_collage",
+          "image_slots": []
+        }
+      ],
+      "ending": "地図の端の最後の駅に店名・所在地・電話を置き、散った粒が1つの所へ集まって終わる",
+      "pc_plan": "1440 の幅いっぱいに粒の地図を広げ、駅の粒は左上から右下へ緩い弧で並べる。左端に駅の位置を示す小さな粒の目次を置く",
+      "sp_plan": {
+        "first_screen": "大きな粒と店名、そのまわりの小さな粒を数個だけ入れる",
+        "reorder": "駅を弧から縦の蛇行に直し、1画面に1駅ずつ置く。目次は外し、駅の粒の大きさで今の位置を示す",
+        "overlaps": "PC で駅の札が隣の粒に重なる所は、SP では札を粒の下に出して重ねない"
+      },
+      "protect": [
+        "粒の散らばりがそのまま地図になること",
+        "店名が最も大きな粒の中にあること"
+      ],
+      "references": [
+        {
+          "principle": "P2",
+          "case_id": "CP-009",
+          "use": "丸い要素を不揃いの星座にして細い線でつなぐ方法 (布の丸・赤い扉・糸の軌跡は写さない)／翻訳：粒あんの粒の散らばりを地図にし、駅の粒どうしを細い線でつなぐ"
+        },
+        {
+          "principle": "P1",
+          "case_id": "CP-002",
+          "use": "分かれ方が読む向きと余白の形を決める考え方 (枝の位置・花・色見本の丸は写さない)／翻訳：粒の散らばり方が読む向きと余白を決め、駅の順は粒の弧に従う"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-031",
+          "reason": "包む・開く工程の型は w1 で使うので、ここでは使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M2 (F9 の毎朝炊く粒あん、F11 のどら焼き)。入れ替えテスト: あんを炊かない店に替えると、粒の散らばりの地図と大きな粒の中の店名が何も指さなくなる"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は図 (diagram_led)、流れは駅の地図 (map_of_stations)。w1 の包みと紙の面、w3 の店頭の場面と柱と型が違い、放射の読み順と横の目次も兄弟と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は地図の駅: 粒の図 → 説明の文の駅 → 品名の駅 → 端の時間の駅 → 空白の定休の駅。終点は粒が集まる最後の駅"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は弧の駅の並びを縦の蛇行に直して1画面に1駅を置き、目次を外して粒の大きさで位置を示す"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は図で汎用の型でなく、流れは帯でない。区画は図・重ね・本文で grid_cards・split_copy_media が無い。P1・P2・P4 を満たす"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "粒の大きさと駅の間の細い線が読み順を作り、札の文字が粒に付く。写真は使わない"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "最初の案で改良前。核 (地図になる粒の散らばりと、最大の粒の中の店名) を protect に先に挙げた"
+        }
+      }
+    },
+    {
+      "id": "w3-narrow-front",
+      "motif_focus": "M4",
+      "concept": "Hero は、通りから見た小さな店頭の場面 (F9 小さな店頭)。間口の狭さを、ページの幅を絞った縦長の1本の柱として組み、PC でも本文の列は狭い間口の幅に収める。柱を下へ進むと、説明の文 (F9、一文のまま)、7つの品名 (F10–F16) の縦の一列、営業時間の順に替わり、柱の足元で定休・所在地・道順・電話に出る。店頭に何がどう並ぶかは事実に無いので描かない。 SP（390px）では、柱が画面の幅いっぱいになり、店頭の場面と店名の板が1画面目を占める。",
+      "composition": {
+        "hero": "scene_led",
+        "flow": "single_axis_scroll"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "vertical_text",
+            "overlap_collage",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "continuous",
+            "continuous",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "front",
+          "motif_facet": "狭い間口の店頭を正面から描いた場面、店名は間口の上の板に",
+          "ground": "濃い墨色",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "店頭の正面",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "description",
+          "motif_facet": "間口の中に、説明の文を一文のまま縦書きで",
+          "ground": "生成り",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "names",
+          "motif_facet": "柱の中に、7つの品名を縦の一列で",
+          "ground": "小豆の赤茶",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "hours",
+          "motif_facet": "柱の下の方で、営業時間と売り切れ次第終了",
+          "ground": "包み紙の白",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "threshold",
+          "motif_facet": "柱の足元に、定休・所在地・道順・電話",
+          "ground": "濃い墨色",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "柱の足元、間口の敷居に当たる所に定休と電話を置き、店頭の前に立った所で終わる",
+      "pc_plan": "1440 の中央に幅 420px ほどの縦長の柱を立て、柱の左右は通りの地として広く空ける。柱の中の区画は上から順に替わり、柱の外へは店名の板だけがはみ出す",
+      "sp_plan": {
+        "first_screen": "柱が画面の幅いっぱいになり、店頭の場面と店名の板が1画面目を占める",
+        "reorder": "PC で柱の左右にあった通りの地は無くし、区画の間に通りの地の色の細い帯を挟んで区切る",
+        "overlaps": "PC で柱の外へはみ出す店名の板は、SP では柱の中に収めて2行に折る"
+      },
+      "protect": [
+        "狭い間口の幅に絞った1本の柱",
+        "柱の中で区画が上から順に替わること"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-027",
+          "use": "店の実際の空間の違いを読み進める形にする考え方 (段差・階段の線・章の言葉は写さない)／翻訳：狭い間口という空間を、ページの本文の列の幅そのものにする"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-020",
+          "reason": "ショーケースの棚を格子にする方法は台を並べる構造で、狭い間口の1本の柱と逆なので使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M4 (F9 の小さな店頭)。入れ替えテスト: 広い売り場の店に替えると、間口の幅に絞った柱と柱の外へはみ出す店名の板に理由が無くなる"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は場面 (scene_led)、流れは1本の柱 (single_axis_scroll)。w1 の物と面、w2 の図と地図と型が違い、上端のナビと単一の主写真も兄弟と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は柱の中: 店頭 → 説明の文 → 品名の一列 → 時間。終点は柱の足元、敷居の位置の定休と電話"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP では柱が画面幅いっぱいになり、PC の左右の通りの地を細い帯に替え、はみ出す店名の板を柱の中へ収める"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は場面、流れは柱で汎用の帯でない。区画は全面・縦書き・重ね・本文で、P1・P3・P4 を挙げられる"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "柱の幅そのものが間口の比喩で、縦書きの説明の文が柱の中の区画を区切る。写真の枠は店頭の場面の1つで、この案はそれに頼る"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しく立てたもので改良の手前。核 (間口の幅の柱と、上から替わる区画) を protect に書いた"
+        }
+      }
+    }
+  ]
+}
