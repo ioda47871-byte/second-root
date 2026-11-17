@@ -45,7 +45,10 @@ const stopCode = async (p: Promise<unknown>) => {
     await p;
     return "no-stop";
   } catch (e) {
-    return (e as { code?: string }).code ?? (e as Error).message.split(":")[0];
+    // S0SeedError carries its own code; a database raise carries SQLSTATE (e.g. P0001) in `code` and the reason in `message`
+    const code = (e as { code?: string }).code;
+    if (code && !/^[0-9A-Z]{5}$/.test(code)) return code;
+    return (e as Error).message.split(":")[0].trim();
   }
 };
 /** Rows per seeded table for a prospect (null: every prospect). */
