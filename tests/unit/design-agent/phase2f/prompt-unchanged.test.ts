@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
@@ -10,7 +10,7 @@ import { ThreeMethodBrief } from "@/lib/design-agent/three-methods/brief";
 // DEV-139 (activation of v2.1): every prompt version that existed before it is unchanged, byte for byte. The SHA-256
 // and character count of each combination below were captured from develop 5af70616 (before v2.1 was activated) with
 // the same builder calls: versions v1, v1.1, v1.1 + research, v2 and v3 (wagashi-open-a / -b) and tm0, routes B and C,
-// on every committed facts fixture. "refused" rows are combinations the builder refuses (v1.1 on route C, tm0 with
+// on every committed facts fixture (the 9 shop_facts_pack_v1 files under design-library). "refused" rows are combinations the builder refuses (v1.1 on route C, tm0 with
 // another shop's facts), with the code they were refused with. Offline: nothing is called.
 
 const REPO = resolve(__dirname, "../../../..");
@@ -21,6 +21,10 @@ const PACKS: Record<string, string> = {
   "bakery/facts-pack.json": "design-library/research/quality-pipeline/poc/bakery/facts-pack.json",
   "cafe/facts-pack.json": "design-library/research/quality-pipeline/poc/cafe/facts-pack.json",
   "wagashi/facts-pack.json": "design-library/research/quality-pipeline/poc/wagashi/facts-pack.json",
+  "bicycle/facts-pack.json": "design-library/research/quality-pipeline/poc/bicycle/facts-pack.json",
+  "sendable-tamaki/facts-pack.json": "design-library/research/quality-pipeline/poc/sendable-tamaki/facts-pack.json",
+  "sento/facts-pack.json": "design-library/research/quality-pipeline/poc/sento/facts-pack.json",
+  "tsugute/facts-pack.json": "design-library/research/quality-pipeline/poc/tsugute/facts-pack.json",
 };
 const brief = DesignBrief.parse(read("design-library/phase2f/wagashi-brief-v4.json"));
 const research = ResearchSection.parse(read("design-library/phase2f/research/wagashi-b-research-v1.json"));
@@ -123,12 +127,80 @@ const PINNED: [string, "B_html_prototype" | "C_hybrid", string, string, number |
   ["wagashi/facts-pack.json", "C_hybrid", "v3/wagashi-open-a", "bc93008f6e44a535d5984062c0f5bfeb2fb7962c0976447940d10274f367924e", 10016],
   ["wagashi/facts-pack.json", "C_hybrid", "v3/wagashi-open-b", "4a1e559b870d394ad61ac8bca919ef6fbc334114b34e117bd51e326e4b55daa1", 9898],
   ["wagashi/facts-pack.json", "C_hybrid", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v1", "6076279c5f8ceb08d94a23c5727fdba7cd96e1434bc95d6c7a2d6f7642e2c989", 5711],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v1.1", "6bc8ef11a1d9cf417f05b1bc5748986462f9f75152eb1be03261876ab87587da", 6015],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v1.1+research", "b407c4adf6073bf46dec0088aa6a3bca6e6fa1a38f2dc533be05ac0b5d23fb80", 7746],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v2/wagashi-open-a", "6a33a1d2a9328dc66dc0f6efa6102eac5bffb12b469ef82bdb1e5d74137dfc2e", 7001],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v2/wagashi-open-b", "8c62f1a87e9336f0a1c0b7d8b20e19df9e55b19f22f8586fa5c63ee6ccf72a6b", 6883],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v3/wagashi-open-a", "67e4b9d6b7c7ab0125e4ae37a99994bbcb299dc1d0f71f2d725604aaccc0f4bc", 9599],
+  ["bicycle/facts-pack.json", "B_html_prototype", "v3/wagashi-open-b", "9e66a15531264b3b4980ccc46c769496fb2e7596a64a5eb42e56d6abac90904c", 9481],
+  ["bicycle/facts-pack.json", "B_html_prototype", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["bicycle/facts-pack.json", "C_hybrid", "v1", "f72d81981ed97f64181708d2884fa61fa07651d6d732a7d1149b70dbc9ad3dc1", 6205],
+  ["bicycle/facts-pack.json", "C_hybrid", "v1.1", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["bicycle/facts-pack.json", "C_hybrid", "v1.1+research", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["bicycle/facts-pack.json", "C_hybrid", "v2/wagashi-open-a", "b2a119d8276c59102f30f4c109b057fd1f6caa63d898af5b210ad8fb1cfe719e", 7447],
+  ["bicycle/facts-pack.json", "C_hybrid", "v2/wagashi-open-b", "69f795d920a07adb2b0fce0e27bcbde56a2e68f057de43725f5bfca1220ae0e1", 7329],
+  ["bicycle/facts-pack.json", "C_hybrid", "v3/wagashi-open-a", "9a8ce46d386b3b0479495d7373f6932daa1dc33e12fd22c261b84b4f43e556e2", 10045],
+  ["bicycle/facts-pack.json", "C_hybrid", "v3/wagashi-open-b", "64cb02c4569d5c40e56b788a060eb467ddd255aab3a439053c3072ae02a81974", 9927],
+  ["bicycle/facts-pack.json", "C_hybrid", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v1", "554edb7245ce25f5869a1d1c73445a3a4aa8b1324a59b846b185bbf2a75fe3e1", 5712],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v1.1", "be25d86983740351cd028022e69cd393cf468623fb5d3bc96ffad2896dcf8005", 6016],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v1.1+research", "f2ad8bbe1ea4b5f32fd264e0b7634f56dcd813f95a0ec4c5bff068c175db22c9", 7747],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v2/wagashi-open-a", "f16894efa45671a5d06ef9d633c1554d1d8b8f593b12b28c87adf46c9aa8431b", 7002],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v2/wagashi-open-b", "07199d323a08c66462d9f04d99aa89a14bd563b2ce6f2be294095e57d9ff646c", 6884],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v3/wagashi-open-a", "23aac20ff8db102fa1261d7736372c04f5c9f3dadfb54713ad84224e683afbad", 9600],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "v3/wagashi-open-b", "0222331960b15d477a24f1c6cb0ac157fb9380b15fe916c2a279c5091d94baab", 9482],
+  ["sendable-tamaki/facts-pack.json", "B_html_prototype", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v1", "15820681ed0e0549078cd80f40c638a1c4f60b6dbd880da5f730cee9ff36ea50", 6206],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v1.1", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v1.1+research", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v2/wagashi-open-a", "11cf082e2be35780f9768839bc6269f526fbebe903c17a133a4593575e816512", 7448],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v2/wagashi-open-b", "641bae5a283b3d3b6b9d3dfe235a946a93deda354530328b3dbbbda6168d73d3", 7330],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v3/wagashi-open-a", "9f7d686085bedfca55e2acde05962861ac5efe4e579d1cdd59cf19b80192a268", 10046],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "v3/wagashi-open-b", "2612a8dc52c4e6d81694bdc883d248c6295e12b483e701e85119f24da6a38691", 9928],
+  ["sendable-tamaki/facts-pack.json", "C_hybrid", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["sento/facts-pack.json", "B_html_prototype", "v1", "6bc89b5fbcaecf48e9ae0affd1b4440edd23388c483e1cd74cfee2ee97969175", 5661],
+  ["sento/facts-pack.json", "B_html_prototype", "v1.1", "d6bb05eed998f764af1284c5e8ace0724c37fb457b02c72fd62222f6cbc01c68", 5965],
+  ["sento/facts-pack.json", "B_html_prototype", "v1.1+research", "f9ff0857b6823ddfe37d65ea79d323199c45568afefb054657a651205fa7817e", 7696],
+  ["sento/facts-pack.json", "B_html_prototype", "v2/wagashi-open-a", "efe9bcd5ad0d7043f3af5e924503cb0d32939cadf17f48d7d0fffefd72be3459", 6951],
+  ["sento/facts-pack.json", "B_html_prototype", "v2/wagashi-open-b", "14c2eba7366f01674e389ba3e64d53e3b03f2680f7096f188e42a7cc2513b305", 6833],
+  ["sento/facts-pack.json", "B_html_prototype", "v3/wagashi-open-a", "04f4c5c420a98902df2af001ec087c82fa6d44f8a350794a6afacdc23a6fff05", 9549],
+  ["sento/facts-pack.json", "B_html_prototype", "v3/wagashi-open-b", "ec83507241c9dba778a0050841c52910108e1681a2a44d945c3cc2fd38804078", 9431],
+  ["sento/facts-pack.json", "B_html_prototype", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["sento/facts-pack.json", "C_hybrid", "v1", "a22bd48c70a5ec423f0303de975d192e9f51a916ba769a9007b99468f7055452", 6155],
+  ["sento/facts-pack.json", "C_hybrid", "v1.1", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["sento/facts-pack.json", "C_hybrid", "v1.1+research", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["sento/facts-pack.json", "C_hybrid", "v2/wagashi-open-a", "47813ca995f2f005a91285af366d16669c9c98d418d58a483d80aab2e0396bd9", 7397],
+  ["sento/facts-pack.json", "C_hybrid", "v2/wagashi-open-b", "a5e00f43cab23322ddddf7637585edc7844f296f2888a0e3b960170030e623fe", 7279],
+  ["sento/facts-pack.json", "C_hybrid", "v3/wagashi-open-a", "58f919602cce608c0023ee1d81a1d595f0b84f322683652ca6a5441d50710e80", 9995],
+  ["sento/facts-pack.json", "C_hybrid", "v3/wagashi-open-b", "8931d399d721ffc6b7b4677905ee73783e05472e966908d4437b6276757bd832", 9877],
+  ["sento/facts-pack.json", "C_hybrid", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v1", "6103a1e405c98a507c31f064498e394c386c2c6f89978e4faf28054903829d76", 5654],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v1.1", "3d08e3b45f47110ae28177bda164e9420a2683680cd812f7af283dafe49adf7f", 5958],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v1.1+research", "db908a4efc4d2f1ed925e36c499f155a3e51a8c7606da6978451348e75423cf8", 7689],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v2/wagashi-open-a", "0e569c811cf2eb8c9471298dca87d8793467f6fa662c3526ef732759fba1ca67", 6944],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v2/wagashi-open-b", "72f86f2c70cb5022fe1d8eac761939eb58f350cc143239ae19efb6b1dc618530", 6826],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v3/wagashi-open-a", "4ad550a1ce895e62d94b5b4cfe5805e9fb883f4e335cd381b2b662a9c5873c06", 9542],
+  ["tsugute/facts-pack.json", "B_html_prototype", "v3/wagashi-open-b", "ea31ad37ec5512586579b9a302db657b269b9f66e9f060e90bcac8c2c7211600", 9424],
+  ["tsugute/facts-pack.json", "B_html_prototype", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
+  ["tsugute/facts-pack.json", "C_hybrid", "v1", "b063b2a82606e6176143445df7249813e124a0979e011a1492fa0f9fc6dbdb3f", 6148],
+  ["tsugute/facts-pack.json", "C_hybrid", "v1.1", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["tsugute/facts-pack.json", "C_hybrid", "v1.1+research", "refused", "PROMPT_VARIANT_ROUTE"],
+  ["tsugute/facts-pack.json", "C_hybrid", "v2/wagashi-open-a", "052ad62e5891cf3905e4c329b3f31e1c352296af956f1dd8d5eec4da454e52aa", 7390],
+  ["tsugute/facts-pack.json", "C_hybrid", "v2/wagashi-open-b", "73b84a851c6d516eddf8f535ab0a1a6e6168ba2ce9a4299c5e0ee0f8a78603ed", 7272],
+  ["tsugute/facts-pack.json", "C_hybrid", "v3/wagashi-open-a", "08bcca11ee60c90909befcaa40a97043a4f1777b9cc0275cd874778e71892079", 9988],
+  ["tsugute/facts-pack.json", "C_hybrid", "v3/wagashi-open-b", "1027ec37b68286d361127009f0823a4b9f21c019a45e97f3b9ee08c7b4e060a4", 9870],
+  ["tsugute/facts-pack.json", "C_hybrid", "tm0", "refused", "PROMPT_VARIANT_BRIEF"],
 ];
 
 describe("prompt versions before v2.1 are unchanged (pinned from develop 5af70616)", () => {
-  it("covers every facts fixture, both routes and every version (80 combinations, 62 built)", () => {
-    expect(PINNED).toHaveLength(80);
-    expect(PINNED.filter((p) => p[3] !== "refused")).toHaveLength(62);
+  it("covers every facts fixture, both routes and every version (144 combinations, 110 built)", () => {
+    expect(new Set(PINNED.map((p) => p[0]))).toEqual(new Set(Object.keys(PACKS)));
+    // every committed facts pack fixture is pinned (a new one must be added here)
+    const committed = readdirSync(resolve(REPO, "design-library"), { recursive: true, encoding: "utf8" }).filter((f) => /facts-pack\.json$/.test(f)).map((f) => `design-library/${f}`).sort();
+    expect(committed).toEqual(Object.values(PACKS).sort());
+    expect(PINNED).toHaveLength(144);
+    expect(PINNED.filter((p) => p[3] !== "refused")).toHaveLength(110);
   });
 
   it.each(PINNED)("%s %s %s", (packKey, route, name, sha, chars) => {

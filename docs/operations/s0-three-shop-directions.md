@@ -25,7 +25,7 @@
 v2.1 の規則（値は facts の欄にすでに引用されているので、id だけを書く）：
 
 - 住所：「facts の address の id（例 F4）の値を**省かずにそのまま**」。address が無ければ「出さない」。
-- 店の種類：category の id と**その code の意味**（`bakery` = パン、`cafe` = 喫茶、`baked_goods` = 菓子：和菓子または洋菓子）。どちらの菓子かは
+- 店の種類：category の id と**その code の意味**（種類の名前だけ：`bakery` = パン屋、`cafe` = 喫茶、`baked_goods` = 菓子店：和菓子または洋菓子。何を売るかは書き足さない＝PR #285 レビュー L1）。どちらの菓子かは
   その店の description と品の facts が言う（レビュー L2：菓子店を「焼菓子」へ向けない。店ごとの書き分けはしない）。code 自体は表示しない。
 - 品：`service_N`（古い pack では `menu_item_N`）の id を列挙し、その名前のとおりに出す。ほかの品・価格・材料・特徴は作らない。品が無ければ「出さない」。
 - 画像の規則（B）：写真を CSS や SVG でまねず、facts が名指すものを色・形・文字・線で。C は v2 と同じ。
@@ -39,7 +39,7 @@ brief なし）で受ける。`from-generation.mjs` は v2 と v2.1 の設計だ
 
 テスト：`tests/unit/design-agent/phase2f/prompt-v21.test.ts`（v2 から2行を置き換えただけであること、住所・種類・品が facts の id から来ること、
 矛盾する facts を名前付きで拒むこと、CLI の pin、有効でない版のコード）、`prompt-unchanged.test.ts`（develop `5af70616` で取った v1 / v1.1 /
-v1.1+research / v2 / v3 / tm0 × route B・C × 5つの facts の 80 通りの SHA と文字数が変わらないこと）。
+v1.1+research / v2 / v3 / tm0 × route B・C × コミット済みの facts 9つ（全部）の 144 通りの SHA と文字数が変わらないこと。拒まれる 34 通りは同じコードで拒まれる）。
 
 ## 何をしたか
 
@@ -119,12 +119,12 @@ v2 の prompt に入る方向案は `concept`・`composition`・`research` だ�
 
 | 店 | 方向 | v2 prompt SHA-256 | 文字数 | v2 で実行してよいか | **v2.1 prompt SHA-256（有効）** | 文字数 |
 | --- | --- | --- | --- | --- | --- | --- |
-| パン屋 | d1-kiln-clock | `9b0560e7f86b4911508e2b06f6ce99264700954d4c56335286c181725ae75189` | 4922 | いいえ（H1） | `b90951bc37070381c23e22e65aed11d34bf2deb318218a21e83c2815cbab31fe` | 5332 |
-| パン屋 | d3-flour-crust | `bdf727ab562f0e8efdc626cb04094acc390e6e99543acbbd1e8c01b61383816e` | 4899 | いいえ（H1） | `4e735dc6c2193b803f65cf5b2ab5b7d1db2a1b8876b9e41c815f4a5d496f7718` | 5309 |
-| 喫茶 | c1-window-street | `7ef511d73b4bad38c0d6270225154321f2312a31dbe053c401fde981f9c97da6` | 4908 | いいえ（H1） | `c9d80ad8bc883017d26ab6423a84b23d9361e2aa10829e61b4fc2f746ec22f77` | 5325 |
-| 喫茶 | c2-nel-drop | `e88f8d0cacff74f86024ca20c7385a17666ff67ba9a50bbb374cd67095b6c6ae` | 4869 | いいえ（H1） | `e9b6e39ee942b932662adbc61badfb0e5feb1df7dd0593108f464f6d6ce4bc58` | 5286 |
-| 菓子店 | w1-wrapping-sheet | `e47c9478261e3d78635cd45f0f7fe22afaf082732a8befdf1bddbea54c9910f9` | 4806 | はい（住所は「名古屋市東区」までになる） | `cb46674e7e594a33289e56ee9994e5de503316e7c76dcf00f418675c8b1f49cb` | 5271 |
-| 菓子店 | w2-tsubu-stations | `0982133cb8dfe5be7be2800c380ac4097cdadb341ff399c460463924404f1f41` | 4785 | はい（同上） | `391c3d969d6140b90f04a7ce82404e2e9859db3d69836b316a023054522af897` | 5250 |
+| パン屋 | d1-kiln-clock | `9b0560e7f86b4911508e2b06f6ce99264700954d4c56335286c181725ae75189` | 4922 | いいえ（H1） | `d837d8c6a81ffb08e247407c75fa6a2ed6198f5e7e306aea7ef3c156fc1d26bf` | 5325 |
+| パン屋 | d3-flour-crust | `bdf727ab562f0e8efdc626cb04094acc390e6e99543acbbd1e8c01b61383816e` | 4899 | いいえ（H1） | `3b21ffdf8696bac4f1e750acfb000f7dfe9bdc541895fb2b1c69499147727040` | 5302 |
+| 喫茶 | c1-window-street | `7ef511d73b4bad38c0d6270225154321f2312a31dbe053c401fde981f9c97da6` | 4908 | いいえ（H1） | `500315427d6e728efc9524bbd791c2eb96b294d12b15e5f1ffa8f5ab5eca094c` | 5302 |
+| 喫茶 | c2-nel-drop | `e88f8d0cacff74f86024ca20c7385a17666ff67ba9a50bbb374cd67095b6c6ae` | 4869 | いいえ（H1） | `f882496f4ea78c94cf0511aa1fe66837c48265e1d983219938ed75d520c46bb5` | 5263 |
+| 菓子店 | w1-wrapping-sheet | `e47c9478261e3d78635cd45f0f7fe22afaf082732a8befdf1bddbea54c9910f9` | 4806 | はい（住所は「名古屋市東区」までになる） | `30bd03a6f40d418d0f20d6213e61445292bb6ae7388c97045b8d6db9158811eb` | 5263 |
+| 菓子店 | w2-tsubu-stations | `0982133cb8dfe5be7be2800c380ac4097cdadb341ff399c460463924404f1f41` | 4785 | はい（同上） | `ce3bb2db8e6697e5eef2d2117c75853d6f413976976f8d165a84cd742d8ef31f` | 5242 |
 
 **6本とも v2.1 で実行できる（この PR が `develop` に merge された後）。**v2.1 の pin は、住所を省かずに出し、店の種類と品をその店の facts から
 言うので、パン屋・喫茶も facts と食い違わない。v2.1 の SHA は `prompt.ts`・facts・方向案・参照の manifest のバイトで決まり、commit には依らない。

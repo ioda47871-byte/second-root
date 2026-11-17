@@ -119,13 +119,14 @@ export const ACTIVATED_PROMPT_VERSIONS = ["v1", "v1.1", "v2", "v2.1", "tm0"] as 
 
 /**
  * DEV-139 (review L2): what each category code means, for the v2.1 rule that says what the shop is. The codes are the
- * ones the facts path and the seed accept (bakery / baked_goods / cafe). `baked_goods` covers Japanese and Western
- * sweets alike, so the rule also points at the shop's own description and products, which say which.
+ * ones the facts path and the seed accept (bakery / baked_goods / cafe). Only the kind's name: what the shop sells is
+ * never described here (PR #285 review L1); the rule points at the shop's own description and products for that.
+ * `baked_goods` covers Japanese and Western confectioners alike, and the facts say which.
  */
 export const CATEGORY_KINDS: Readonly<Record<string, string>> = {
-  bakery: "a bakery (パン): bread",
-  baked_goods: "a confectioner (菓子): sweets, Japanese (和菓子) or Western (洋菓子)",
-  cafe: "a café (喫茶): coffee and light food",
+  bakery: "a bakery (パン)",
+  baked_goods: "a confectioner (菓子), Japanese (和菓子) or Western (洋菓子)",
+  cafe: "a café (喫茶)",
 };
 /** The facts the v2.1 rules name as the shop's products: service_N (the facts path's key), or menu_item_N in older packs. */
 const PRODUCT_KEY = /^(?:service|menu_item)_\d+$/;

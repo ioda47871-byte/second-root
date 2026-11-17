@@ -13,7 +13,7 @@ prompt の SHA は `prompt.ts`・facts・方向案・参照の manifest の**バ
 `--expected-commit` は merge 後の `origin/develop` の SHA（下の 3.）で、承認はそれに結びつく。
 
 この branch で出した値（`docs/operations/s0-three-shop-directions.md`・`s0-generation-selection.json` と同じ）：
-`prompt_sha256 b90951bc37070381c23e22e65aed11d34bf2deb318218a21e83c2815cbab31fe`、`prompt_chars 5332`。
+`prompt_sha256 d837d8c6a81ffb08e247407c75fa6a2ed6198f5e7e306aea7ef3c156fc1d26bf`、`prompt_chars 5325`。
 
 ```bash
 cd ~/second-root && git fetch origin && git checkout develop && git pull --ff-only
@@ -71,6 +71,10 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B --prompt-version v2.
 ```
 
 - 参照 0 件なので `--reference-dir` は付けない（付けると `USAGE` で拒まれる）。
+- **design input の `pin.json` の `prompt_version` は、この呼び出しの prompt の版ではない**（PR #285 レビュー L3）。`prepare-design-input` は
+  open direction の入力（v2 と v2.1 が共通に使う形）を作るだけで、どの版で呼ぶかを知らないので、いつも `"v2"` と書く。呼び出しの版は
+  `--prompt-version` で決まり、正本は設計出力の `call.json`（`prompt_version`）と受領の prompt SHA である。`pin.json` の値は変えていない
+  （facts SHA などと一緒に記録される値で、変えると既存の記録と食い違うため）。
 - 呼び出しの前に確かめられること（どれかが違えば exit 2、承認は使われない）：版が有効（v2.1）、facts が v2.1 の規則と矛盾しない、
   prompt の SHA と文字数、HEAD = `origin/develop` = `--expected-commit` で作業ツリーが空、`--out` が新しくリポジトリの外、承認 ID が未使用、
   plan の上限と残り時間、`.env` の規則と sandbox。

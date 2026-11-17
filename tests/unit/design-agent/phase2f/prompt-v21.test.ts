@@ -78,10 +78,11 @@ describe("the v2.1 prompt (shop-neutral v2, activated)", () => {
     expect(prompt).toContain(`- The shop's products are facts ${products.join(", ")}: show them by these names, exactly as written.`);
   });
 
-  it("names the confectioner as 菓子 (和菓子 or 洋菓子) from its category code, the bakery as パン and the café as 喫茶 (review L2)", () => {
-    expect(shopNeutralRules(pack(`${POC}/wagashi/facts-pack.json`), "B_html_prototype").join("\n")).toContain('"baked_goods", which means a confectioner (菓子): sweets, Japanese (和菓子) or Western (洋菓子)');
-    expect(shopNeutralRules(pack(`${POC}/bakery/facts-pack.json`), "B_html_prototype").join("\n")).toContain('"bakery", which means a bakery (パン): bread');
-    expect(shopNeutralRules(pack(`${POC}/cafe/facts-pack.json`), "C_hybrid").join("\n")).toContain('"cafe", which means a café (喫茶)');
+  it("names the confectioner as 菓子 (和菓子 or 洋菓子) from its category code, the bakery as パン and the café as 喫茶 (review L2), and only the kind: what it sells comes from the facts (PR #285 review L1)", () => {
+    for (const kind of Object.values(CATEGORY_KINDS)) expect(kind).not.toMatch(/bread|coffee|light food|sweets|:/);
+    expect(shopNeutralRules(pack(`${POC}/wagashi/facts-pack.json`), "B_html_prototype").join("\n")).toContain('"baked_goods", which means a confectioner (菓子), Japanese (和菓子) or Western (洋菓子);');
+    expect(shopNeutralRules(pack(`${POC}/bakery/facts-pack.json`), "B_html_prototype").join("\n")).toContain('"bakery", which means a bakery (パン);');
+    expect(shopNeutralRules(pack(`${POC}/cafe/facts-pack.json`), "C_hybrid").join("\n")).toContain('"cafe", which means a café (喫茶);');
   });
 
   it("refuses facts it would contradict, by name, before any prompt exists (review L2)", () => {
