@@ -13,6 +13,7 @@
  *   --result <new file> [--brief <brief.json>] [--design <design-dir>] [--image <image-dir>] [--expected-prompt-sha256 <sha> (route A)]
  *   [--prompt-version v1|v1.1] [--research <section.json>] (routes B/C, DEV-122: the same as the design step was given)
  *   or --prompt-version v2 --direction <direction.json> --references <manifest.json> and no --brief (DEV-124)
+ *   or --prompt-version v2.1 with the same inputs as v2 (DEV-139, owner approval 2026-11-17)
  *   or --prompt-version tm0 --tm-brief <three-method brief.json> and no --brief (DEV-150, Issue #180)
  *       Builds the Design Artifact with the 2f-1 runner from the recorded steps, then the DEV-114 intake. The design
  *       prompt rebuilt from the facts and brief, and each image prompt rebuilt by the pre-render checks, must be the
@@ -38,6 +39,17 @@ import { readStep, sha256, StepStop, type Step } from "../../lib/design-agent/ph
 
 process.umask(0o077);
 const FLAGS = new Set(["--prerender", "--package", "--sheet"]);
+/**
+ * DEV-199f review L4 / DEV-139 review L1: a `--prompt-version` that is not activated (the v3 proposal, or any unknown
+ * value), told by the prompt parser itself. Absent or without a value, it is left to the usage check.
+ */
+const notActivated = (argv: readonly string[]) =>
+  argv.some((a, i) => {
+    const v = argv[i + 1];
+    if (a !== "--prompt-version" || v === undefined || v.startsWith("--")) return false;
+    const c = promptVariantOf({ route: "B_html_prototype", version: v, research: undefined });
+    return !c.ok && (c.code === "PROMPT_VERSION_NOT_ACTIVATED" || c.code === "PROMPT_VERSION_UNKNOWN");
+  });
 const VALUES = new Set(["--route", "--design", "--image", "--facts", "--brief", "--out", "--result", "--results", "--artifact-id", "--shop-id", "--shop-name", "--expected-prompt-sha256", "--prompt-version", "--research", "--direction", "--references", "--tm-brief"]);
 /** Stops that come before the image tool can be called: the call never reached it. */
 const BEFORE_THE_TOOL = new Set(["CODEX_NOT_INSTALLED", "CODEX_NOT_SIGNED_IN", "CODEX_API_KEY_AUTH", "CODEX_DOTENV_PRESENT", "CODEX_SANDBOX_UNAVAILABLE", "CODEX_SANDBOX_LEAK", "CODEX_SANDBOX_CONFIG", "OUT_DIR_UNWRITABLE"]);
@@ -169,7 +181,8 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
     const briefPath = args.get("--brief");
     // DEV-124: a v2 design has no brief; it is rebuilt from its direction and the reference manifest
     // DEV-150: neither has a tm0 design; it is rebuilt from the three-method brief (--tm-brief)
-    const noBrief = args.get("--prompt-version") === "v2" || args.get("--prompt-version") === "tm0";
+    // DEV-139: v2.1 is rebuilt exactly like v2
+    const noBrief = ["v2", "v2.1", "tm0"].includes(args.get("--prompt-version") ?? "");
     if (!designDir || (noBrief ? briefPath !== undefined : !briefPath) || (route === "B_html_prototype" && args.has("--image"))) return refuse("USAGE");
     let brief: DesignBrief | undefined;
     if (briefPath !== undefined) {
@@ -181,7 +194,8 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
     // and must give the recorded SHA (RECORD_PROMPT_MISMATCH otherwise)
     const opt = recorded;
     const tmBrief = await opt("--tm-brief");
-    const variant = promptVariantOf({ route, version: args.get("--prompt-version"), research: await opt("--research"), direction: await opt("--direction"), references: await opt("--references"), ...(tmBrief === undefined ? {} : { tmBrief }) });
+    // DEV-139 (review L2): with the facts, so facts the v2.1 rules would contradict are refused by name (as the design step does)
+    const variant = promptVariantOf({ route, version: args.get("--prompt-version"), research: await opt("--research"), direction: await opt("--direction"), references: await opt("--references"), ...(tmBrief === undefined ? {} : { tmBrief }), facts: facts.data });
     if (!variant.ok) return refuse(variant.code);
     const { step, answer } = await designStep(designDir, ledger, route);
     calls.push(callOf(step));
@@ -259,10 +273,11 @@ async function sheet(args: Map<string, string>): Promise<number> {
 }
 
 async function main(): Promise<number> {
-  // DEV-199f review L4: the v3 proposal is refused before anything else (before the ledger is opened, whatever the
-  // other flags), so it never reads as a usage error and nothing is read or written
+  // DEV-199f review L4 / DEV-139 review L1: a version that is not activated (the v3 proposal, or any unknown value) is
+  // refused before anything else (before the ledger is opened, whatever the other flags), so it never reads as a usage
+  // error and nothing is read or written
   const argv = process.argv.slice(2);
-  if (argv.some((a, i) => a === "--prompt-version" && argv[i + 1] === "v3")) return refuse("PROMPT_VERSION_NOT_ACTIVATED");
+  if (notActivated(argv)) return refuse("PROMPT_VERSION_NOT_ACTIVATED");
   const args = parseArgs(argv);
   if (!args) return refuse("USAGE");
   const ledger = openLedger(resolve(defaultLedgerDir(process.env, homedir())));

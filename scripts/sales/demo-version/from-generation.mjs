@@ -104,8 +104,8 @@ export function readGeneration(o) {
   if (call.schema !== "phase2f_live_call_v1" || receipt.schema !== "phase2f_live_receipt_v1") throw new GlueStop("GENERATION_RECORD_INVALID");
   if (call.status !== "succeeded" || generation.status !== "succeeded") throw new GlueStop("GENERATION_NOT_SUCCEEDED");
   if (receipt.kind !== "design" || receipt.route !== "B_html_prototype") throw new GlueStop("GENERATION_NOT_ROUTE_B");
-  // the design input is a v2 open direction: only a v2 design can have been made from it
-  if (call.prompt_version !== "v2") throw new GlueStop("GENERATION_NOT_V2");
+  // the design input is an open direction: only a v2 or (DEV-139) v2.1 design can have been made from it
+  if (call.prompt_version !== "v2" && call.prompt_version !== "v2.1") throw new GlueStop("GENERATION_NOT_V2");
   if (receipt.prompt_sha256 !== o.expectedPromptSha256) throw new GlueStop("GENERATION_PROMPT_NOT_PINNED");
   if (typeof receipt.slot !== "string" || receipt.slot === "none") throw new GlueStop("GENERATION_RECORD_INVALID");
   if (!same(generation, receipt, ["approval_id", "run_id", "prompt_sha256"])) throw new GlueStop("GENERATION_RECEIPT_MISMATCH");

@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDesignPrompt, promptVariantOf } from "@/lib/design-agent/phase2f/prompt";
 import { runDesignCall } from "@/lib/design-agent/phase2f-live/design-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
-import { fromGeneration } from "../../../scripts/sales/demo-version/from-generation.mjs";
+import { fromGeneration, readGeneration } from "../../../scripts/sales/demo-version/from-generation.mjs";
 
 // DEV-139 Stage 0 A-3 (Issue #139): one recorded route-B generation through the real CLIs, into the existing offline
 // B-route chain, with the generation's receipt pinned all the way to the status beside the v2 package:
@@ -262,6 +262,21 @@ describe("Stage 0 A-3: a recorded route-B generation through the glue into the o
       const swapped = cli([join(REPO, "scripts/sales/demo-version/from-generation.mjs"), ...args(join(root, "runs", "glue-forged")).map((x) => (x === designDir ? forged : x))]);
       expect([swapped.status, swapped.out?.code]).toEqual([2, "PROTOTYPE_NOT_FROM_GENERATION"]);
       expect(existsSync(join(root, "runs", "glue-forged"))).toBe(false);
+      // DEV-139: an open-direction design input gives a v2 or a v2.1 design only; any other recorded version is refused
+      const relabel = (version: string) => {
+        const d = join(root, "runs", `design-${version}`);
+        mkdirSync(d);
+        for (const f of ["generation.json", "answer.json"]) copyFileSync(join(designDir, f), join(d, f));
+        writeFileSync(join(d, "call.json"), JSON.stringify({ ...readJson(join(designDir, "call.json")), prompt_version: version }));
+        return d;
+      };
+      const v3 = cli([join(REPO, "scripts/sales/demo-version/from-generation.mjs"), ...args(join(root, "runs", "glue-v3")).map((x) => (x === designDir ? relabel("v3") : x))]);
+      expect([v3.status, v3.out?.code]).toEqual([2, "GENERATION_NOT_V2"]);
+      expect(existsSync(join(root, "runs", "glue-v3"))).toBe(false);
+      // a v2.1 label passes the version check (read only: readGeneration writes nothing); the receipt's SHA is still pinned
+      const read = { factsPath: facts, directionsPath: directions, directionId: DIRECTION_ID, designInputDir: designInput, expectedPromptSha256: promptPin.sha256, designDir: relabel("v2.1"), artifactDir: artifact(), resultPath: result() };
+      expect(readGeneration(read).pin.prompt_version).toBe("v2.1");
+      expect(() => readGeneration({ ...read, expectedPromptSha256: "0".repeat(64) })).toThrow("GENERATION_PROMPT_NOT_PINNED");
     });
 
     it("without a visual review: copy audit and PC/SP render run for real, then the glue stops at VISUAL_REVIEW_MISSING (no package)", { timeout: 300_000 }, () => {

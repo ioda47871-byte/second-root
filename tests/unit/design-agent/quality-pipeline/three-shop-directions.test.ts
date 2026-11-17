@@ -14,8 +14,8 @@ import { loadInputs } from "../../../../scripts/design-artifact/direction-set";
 
 // DEV-139 Stage 0 A-2: three fictional shops (bakery, café, confectionery), each with its own art_direction_set_v0 of
 // three directions on a facts-path edition of its facts, and the six directions selected for the generation experiment.
-// READY_FOR_COMPS is "ready to draw comps", never a quality verdict. The v2 pins are rebuilt by the real CLIs as
-// subprocesses (no model call); the v2.1 candidate pins (a proposal no CLI can select) by the prompt builder directly.
+// READY_FOR_COMPS is "ready to draw comps", never a quality verdict. The v2 pins and (DEV-139, v2.1 activated) the v2.1
+// pins are rebuilt by the real CLIs as subprocesses (no model call), and agree with the prompt builder.
 // The structural similarity of the six is NOT asserted here: the structure vocabulary may be imported only by its own
 // module and its listed users (tests/unit/design-agent/structure/structure.test.ts); the measured values are in
 // docs/operations/s0-three-shop-directions.md, and the C2 check above already holds siblings under its threshold.
@@ -31,7 +31,7 @@ const factsOf = (shop: string) => readJson<{ shop_id: string; facts: Array<{ id:
 type Pin = { prompt_sha256: string; prompt_chars: number };
 type Selection = {
   schema: "s0_generation_selection_v0";
-  blockers: Array<{ id: string }>;
+  blockers: Array<{ id: string; status?: string }>;
   pin: { route: string };
   status: { design_generated: boolean; owner_approval: string; sendable: boolean };
   shops: Array<{
@@ -147,10 +147,10 @@ describe("S0 A-2: three fictional shops, three directions each (C1–C7)", () =>
 describe("S0 A-2: the six directions selected for the generation experiment", () => {
   const selected = selection.shops.flatMap((s) => s.selected.map((d) => ({ shop: s, d })));
 
-  it("two per shop, six in all, each a direction of that shop's set; the record is pinned to the committed bytes and names the H1 blocker", () => {
+  it("two per shop, six in all, each a direction of that shop's set; the record is pinned to the committed bytes and records H1 as resolved by v2.1", () => {
     expect(selection.shops.map((s) => s.dir)).toEqual(SHOPS.map((s) => `${POC}/${s}`));
     expect(selection.status).toEqual({ design_generated: false, owner_approval: "required", sendable: false, note: expect.any(String) });
-    expect(selection.blockers.map((b) => b.id)).toContain("H1");
+    expect(selection.blockers.find((b) => b.id === "H1")?.status).toBe("resolved_by_v2_1_activation");
     expect(selected.map(({ d }) => d.direction_id)).toEqual(["d1-kiln-clock", "d3-flour-crust", "c1-window-street", "c2-nel-drop", "w1-wrapping-sheet", "w2-tsubu-stations"]);
     for (const s of selection.shops) {
       const set = readJson<DirectionSet>(`${s.dir}/direction-set.json`);
@@ -165,7 +165,8 @@ describe("S0 A-2: the six directions selected for the generation experiment", ()
         expect(d.composition).toEqual(set.directions.find((x) => x.id === d.direction_id)!.composition);
         // only the confectionery pins are safe under the approved v2 (its address and "sweets" lines are wagashi-only)
         expect(d.pins.v2.safe_to_run_under_current_version).toBe(s.shop_id === "fictional-wagashi");
-        expect(d.pins["v2.1"].status).toBe("candidate_requires_owner_approval_to_activate");
+        // DEV-139: v2.1 is activated; all six run under it once merged (the pins are re-confirmed after merge)
+        expect(d.pins["v2.1"].status).toBe("activated_runnable_after_merge");
       }
     }
   });
@@ -184,7 +185,7 @@ describe("S0 A-2: the six directions selected for the generation experiment", ()
     return { status: r.status, out, stderr: r.stderr };
   };
 
-  it.each(selected.map(({ shop, d }) => [d.direction_id, shop, d] as const))("%s: the recorded v2 pin is rebuilt by the CLI, and the v2.1 candidate by the builder", { timeout: 300_000 }, (id, shop, d) => {
+  it.each(selected.map(({ shop, d }) => [d.direction_id, shop, d] as const))("%s: the recorded v2 and v2.1 pins are rebuilt by the CLI (and agree with the builder)", { timeout: 300_000 }, (id, shop, d) => {
     const out = join(root, id);
     const facts = resolve(REPO, shop.dir, "facts-pack.json");
     const input = tsx("scripts/sales/demo-version/prepare-design-input.ts", "--facts", facts, "--directions", resolve(REPO, shop.dir, "direction-set.json"), "--direction-id", id, "--out", out);
@@ -200,10 +201,48 @@ describe("S0 A-2: the six directions selected for the generation experiment", ()
     const pack = FactsPack.parse(JSON.parse(readFileSync(facts, "utf8")));
     const v2 = buildDesignPrompt({ route: "B_html_prototype", facts: pack, maxAssets: 1, variant: { version: "v2", direction: r.direction, references: r.references } });
     expect(v2.sha256).toBe(d.pins.v2.prompt_sha256); // the builder and the CLI agree
+    const pin21 = tsx("scripts/design-artifact/phase2f-design.ts", "--print-pin", "--route", "B", "--prompt-version", "v2.1", "--facts", facts, "--direction", join(out, "direction.json"), "--references", join(out, "references.json"));
+    expect(pin21.status, pin21.stderr).toBe(0);
+    expect(pin21.out).toMatchObject({ mode: "print_pin", route: "B_html_prototype", prompt_version: "v2.1", direction: { direction_id: id, composition: d.composition } });
+    expect([pin21.out?.prompt_sha256, pin21.out?.prompt_chars]).toEqual([d.pins["v2.1"].prompt_sha256, d.pins["v2.1"].prompt_chars]);
+    expect((pin21.out?.references as unknown[]).length).toBe(d.reference_count);
     const v21 = buildDesignPrompt({ route: "B_html_prototype", facts: pack, maxAssets: 1, variant: { version: "v2.1", direction: r.direction, references: r.references } });
     expect([v21.sha256, v21.chars]).toEqual([d.pins["v2.1"].prompt_sha256, d.pins["v2.1"].prompt_chars]);
+    // the address in full and this shop's own products, from its facts
+    const address = pack.facts.find((f) => f.key === "address")!;
+    expect(v21.prompt).toContain(`- Show the address exactly as fact ${address.id} gives it, in full, as plain text.`);
+    expect(v21.prompt).toContain(`- The shop's products are facts ${pack.facts.filter((f) => f.key.startsWith("service_")).map((f) => f.id).join(", ")}:`);
     expect(v21.prompt).not.toContain("show only 名古屋市東区");
     // each research entry has its own translation
     expect(new Set(r.direction.research.map((x) => x.translate_to_this_shop)).size).toBe(r.direction.research.length);
+  });
+});
+
+// DEV-139 (PR #283 review L4): the confectioner's facts-path edition keeps the committed pack's shop_id
+// (fictional-wagashi) with other facts bytes. Nothing on the generation path is keyed on shop_id alone: the direction set
+// is bound to its facts SHA (C1), the design input records the facts SHA, the prompt quotes the facts (so its pinned SHA
+// binds them), and the Design Artifact and the glue check the facts SHA. The two packs cannot be swapped silently.
+describe("S0 A-2: the wagashi edition and the committed wagashi pack are told apart by facts SHA, not shop_id", () => {
+  const COMMITTED = "design-library/phase2f/wagashi-facts-pack.json";
+  it("same shop_id, different bytes; the edition's direction set refuses the committed pack (C1 FACTS_SHA_MISMATCH)", () => {
+    expect(factsOf("wagashi").shop_id).toBe(readJson<{ shop_id: string }>(COMMITTED).shop_id);
+    expect(sha(readFileSync(resolve(REPO, POC, "wagashi", "facts-pack.json")))).not.toBe(sha(readFileSync(resolve(REPO, COMMITTED))));
+    const r = checkDirectionSet(setOf("wagashi"), loadInputs(resolve(REPO, COMMITTED)));
+    expect(r.status).not.toBe("READY_FOR_COMPS");
+    expect(r.findings).toContainEqual(expect.objectContaining({ check: "C1", code: "FACTS_SHA_MISMATCH" }));
+    expect(r.findings.some((f) => f.code === "SHOP_ID_MISMATCH")).toBe(false);
+  });
+
+  it("the design input refuses the committed pack with the edition's direction set (nothing written)", { timeout: 120_000 }, () => {
+    const root = mkdtempSync(join(tmpdir(), "secondroot-s0-l4-"));
+    try {
+      const out = join(root, "input");
+      const r = spawnSync(process.execPath, ["--import", "tsx", join(REPO, "scripts/sales/demo-version/prepare-design-input.ts"), "--facts", resolve(REPO, COMMITTED), "--directions", resolve(REPO, POC, "wagashi", "direction-set.json"), "--direction-id", "w1-wrapping-sheet", "--out", out], { cwd: REPO, encoding: "utf8", timeout: 120_000 });
+      expect(r.status).toBe(1);
+      expect(JSON.parse(r.stdout)).toEqual({ status: "blocked", code: "DIRECTION_SET_HOLD" });
+      expect(() => readFileSync(join(out, "pin.json"))).toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
