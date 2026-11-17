@@ -54,7 +54,9 @@ describe("from-prototype.ts file-system guards", () => {
   it("stages a private comp on valid inputs (not sendable, owner approval required)", () => {
     const status = stage({ prospectId: "123e4567-e89b-42d3-a456-426614174000" });
     expect(status).toMatchObject({ sendable: false, owner_approval: "required", direction_id: "d1-wheel-hub" });
-    for (const f of ["comp/index.html", "comp/style.css", "comp/copy.json", "status.json"]) expect(existsSync(join(tmp, "out", f))).toBe(true);
+    // the comp directory is named by the direction id, as prepare-offline.mjs / comp-lane.ts --check-review expect
+    for (const f of ["comp/d1-wheel-hub/index.html", "comp/d1-wheel-hub/style.css", "comp/d1-wheel-hub/copy.json", "status.json"]) expect(existsSync(join(tmp, "out", f))).toBe(true);
+    expect(status.copy).toMatchObject({ label_bound_fact_lines: 0 });
     expect(statSync(join(tmp, "out")).mode & 0o777).toBe(0o700);
   });
 

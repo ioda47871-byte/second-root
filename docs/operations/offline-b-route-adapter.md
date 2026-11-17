@@ -26,14 +26,14 @@ node scripts/sales/demo-version/prepare-offline.mjs \
 
 1. `comp-copy.ts --audit` の文章監査。複製したカンプへ `copy-review.json` を書き込む（変わってよいのはこのファイルだけ。監査後に複製全体を再ハッシュし、他のファイルの変化・追加は `STAGED_COMP_MUTATED`）。HOLD・REVISE・FAILは停止。**描画レーンが`show_owner`のときcopy監査済みを要求するため、必ず先に実行する。**
 2. `comp-lane.ts` のPC1440/SP390描画・安全・表示文字チェック（出力先 `renders/`）。
-3. `comp-lane.ts --check-review --facts` の既存の視覚レビュー検査。レビューがない場合、および`review.json`の判定が`revise`や`drop`の場合は停止。機械的なPASSを美観合格とは扱わない。
+3. `comp-lane.ts --check-review --facts` の既存の視覚レビュー検査。レビューがない場合は検査を走らせず `VISUAL_REVIEW_MISSING`（描画は済んでいるので、その絵を見てレビューを書く）、`review.json`の判定が`revise`や`drop`の場合は停止。機械的なPASSを美観合格とは扱わない。
 4. `package-local.ts --copy --facts` のv2パッケージ生成と再検証（出力先 `package/`）。写真・外部送信・DBアクセスなし。
 
 開始前に `shop_id` と factsのバイト列SHAが `copy.json` と一致することを検査する。原本・factsの複製・カンプの複製のSHAを各工程の前後に再照合し、原本の改変（`INPUT_MUTATED`）、複製の改変（`STAGED_FACTS_MUTATED` / `STAGED_COMP_MUTATED`）、別バージョンの混入を拒否する。シンボリックリンク、未知の素材ファイル、出力の上書きも拒否する。各工程は独自のプロセスグループで実行し、180秒を超えたらグループごと（ブラウザを含む）停止して `STEP_TIMEOUT` とする。
 
-私有の `status.json` は実行ID・方向ID・facts SHA・各入力ファイルSHA・文章監査後の複製のSHA・工程ごとの経過時間／終了コード／検出コード（最大40件、`A-Z0-9_` のコードだけ）・stderr先頭のコード（本文は記録しない）・停止理由・描画工程の `review.renders_match_here`（`render_review`）・package SHAを保持する。複製の途中で失敗しても `status.json` は書く（`stage` 工程で停止）。標準出力はステータスとハッシュのみで、店舗固有文言や実店舗連絡先を出力しない。成功時も `package_prepared_owner_review_required` であり、営業送信できる意味ではない。
+私有の `status.json` は実行ID・方向ID・facts SHA・各入力ファイルSHA・文章監査後の複製のSHA・工程ごとの経過時間／終了コード／検出コード（最大40件、`A-Z0-9_` のコードだけ）・stderr先頭のコード（本文は記録しない）・停止理由・描画工程の `review.renders_match_here`（`render_review`）・package SHAを保持する。複製の途中で失敗しても `status.json` は書く（`stage` 工程で停止）。標準出力はステータスとハッシュのみで、店舗固有文言や実店舗連絡先を出力しない。成功時も `package_prepared_owner_review_required`（`sendable: false`）であり、営業送信できる意味ではない。
 
-テスト：`node --test tests/node/sales-demo-prep.test.mjs`。既存Vitest unit suiteからも `tests/unit/sales/offline-demo-prep.test.ts` が実行する。内容は、制御ロジック、全停止コードの表、タイムアウト時のプロセスツリー停止、そして**コミット済みの架空カンプをリポジトリ外へ複製した本物のCLI**（`comp-copy.ts --audit`、`comp-lane.ts --check-review`、`package-local.ts` の拒否経路）の契約テスト。`PLAYWRIGHT_CHROMIUM_EXECUTABLE` があれば、架空の送付用ページで本物の描画とv2パッケージ化も通す。コミット済みのカンプに「文章監査がowner_review」かつ「`show_owner` の視覚レビュー」を両方満たすものはないため、4工程すべてを本物で通した証拠はまだない。DB E2Eも対象外。
+テスト：`node --test tests/node/sales-demo-prep.test.mjs`。既存Vitest unit suiteからも `tests/unit/sales/offline-demo-prep.test.ts` が実行する。内容は、制御ロジック、全停止コードの表、タイムアウト時のプロセスツリー停止、そして**コミット済みの架空カンプをリポジトリ外へ複製した本物のCLI**（`comp-copy.ts --audit`、`comp-lane.ts --check-review`、`package-local.ts` の拒否経路）の契約テスト。`PLAYWRIGHT_CHROMIUM_EXECUTABLE` があれば、架空の送付用ページで本物の描画とv2パッケージ化も通す。4工程すべてを本物で通した記録は STEP 2（`docs/operations/step2-fictional-e2e.md`、架空の 環、`tests/unit/sales/b-route-step2-fictional-e2e.test.ts`）にある。DB E2Eは対象外。
 
 ## 接続監査：すでにあるものとない矢印
 

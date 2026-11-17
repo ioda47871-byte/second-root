@@ -10,6 +10,9 @@
  *
  * A direction set is a prerequisite, not proof that the rendered page follows
  * that direction. The output is NOT an approved or sendable demo.
+ *
+ * The comp is written to <out>/comp/<direction-id>/: the directory name is the direction id, which is what the next
+ * stage (prepare-offline.mjs → comp-lane.ts --check-review) reads to tie a review.json to its direction (STEP 2).
  */
 import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -20,6 +23,8 @@ import { runDirectionSetCheck } from "../../design-artifact/direction-set";
 const REPO = resolve(__dirname, "../../..");
 const SHA = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The art-direction set's own id rule (lib/design-agent/quality-pipeline/direction-set.ts); also a safe directory name. */
+const DIRECTION_ID = /^[a-z0-9][a-z0-9-]{2,40}$/;
 export class InputStop extends Error { constructor(readonly code: string) { super(code); } }
 export function inside(root: string, dest: string): boolean {
   const rel = relative(root, dest);
@@ -69,7 +74,7 @@ export function stagePrototype(o: {
   const checked = runDirectionSetCheck(directionsPath, factsPath);
   if (checked.status !== "READY_FOR_COMPS") throw new InputStop("DIRECTION_SET_HOLD");
   if (directionSet.shop_id === undefined || directionSet.facts_sha256 !== SHA(factsBytes) ||
-      !directionSet.directions?.some((d) => d.id === o.directionId))
+      !DIRECTION_ID.test(o.directionId) || !directionSet.directions?.some((d) => d.id === o.directionId))
     throw new InputStop("DIRECTION_MISMATCH");
   const composed = deriveBRouteCopy({
     factsBytes, html: htmlBytes.toString("utf8"), css: cssBytes.toString("utf8"), lane: o.lane,
@@ -84,8 +89,8 @@ export function stagePrototype(o: {
     throw new InputStop("INPUT_MUTATED");
 
   mkdirSync(outDir, { mode: 0o700 });
-  const compDir = join(outDir, "comp");
-  mkdirSync(compDir, { mode: 0o700 });
+  const compDir = join(outDir, "comp", o.directionId);
+  mkdirSync(compDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(compDir, "index.html"), htmlBytes, { mode: 0o600, flag: "wx" });
   writeFileSync(join(compDir, "style.css"), cssBytes, { mode: 0o600, flag: "wx" });
   writeFileSync(join(compDir, "copy.json"), `${JSON.stringify(composed.record, null, 2)}\n`, { mode: 0o600, flag: "wx" });

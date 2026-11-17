@@ -18,7 +18,11 @@ import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
 export type BRouteLane = "quality_research_fictional" | "real_shop_proposal";
 export type DerivedCopy = {
   record: CopyRecord;
-  stats: { fact_lines: number; proposed_lines: number; visible_texts: number };
+  /**
+   * label_bound_fact_lines (review of PR #279, L7): fact lines bound to a label by the parse tree only. CSS can still
+   * hide or reorder such a pair, so the visual reviewer checks each label/value pair on the PC/SP renders.
+   */
+  stats: { fact_lines: number; label_bound_fact_lines: number; proposed_lines: number; visible_texts: number };
   hashes: { facts_sha256: string; html_sha256: string; css_sha256: string };
 };
 
@@ -147,6 +151,7 @@ export function deriveBRouteCopy(input: {
     record: record.data,
     stats: {
       fact_lines: items.filter((x) => x.claim_type === "fact").length,
+      label_bound_fact_lines: items.filter((x) => x.claim_type === "fact" && x.label !== undefined).length,
       proposed_lines: items.filter((x) => x.claim_type !== "fact").length,
       visible_texts: htmlCheck.texts.length,
     },

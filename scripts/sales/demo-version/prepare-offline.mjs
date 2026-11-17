@@ -207,6 +207,7 @@ export function prepareOffline({ factsPath, compDir, outDir }, runStep = runRepo
     package_sha256: null,
     owner_approval: "required",
     external_send: "disabled",
+    sendable: false,
   };
   const save = () => { report.elapsed_ms = Date.now() - started; writeFileSync(join(out, "status.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 }); };
   const stop = (entry) => { report.code = entry.code; report.steps.push({ ...entry, outcome: "stopped" }); save(); return report; };
@@ -266,6 +267,8 @@ export function prepareOffline({ factsPath, compDir, outDir }, runStep = runRepo
     });
     try {
       checkUnchanged();
+      // STEP 2: no review yet is the normal stop before a person looks at the renders, not an invalid step output
+      if (step === "visual" && !existsSync(join(staged, "review.json"))) return stop({ ...record(), code: "VISUAL_REVIEW_MISSING" });
       result = runStep(step, args);
       if (step === "copy") acceptCopyAudit();
       checkUnchanged();
