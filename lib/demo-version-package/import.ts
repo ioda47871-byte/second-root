@@ -12,7 +12,8 @@
  *
  * DEV-196s: a package with photos (AI demo pictures, `images`) is imported only into the fictional 輪 demo
  * (RIN_PROSPECT_ID, checked on the demo's row before anything is written); the images go through the existing ingest
- * as its p_images, where the database derives each image's rights status.
+ * as its p_images, where the database derives each image's rights status. DEV-139 (owner approval 2026-11-18): also
+ * into the fictional ほし窯's Stage 0 demo (S0_PROSPECT_ID), for ai_demo_internal pictures only (AI_DEMO_PROSPECT_IDS).
  *
  * DEV-199d: before anything is read from or written to the database, the package's copy is checked again on its bytes
  * (checkPackageCopy: re-hash, the existing copy check, the review re-audited with its chain) — a package whose copy is
@@ -45,8 +46,26 @@ import { precheckStructureFindings, recordStructureFindings, StructureFindingsEr
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME, priorName, type PackageCopyResult } from "./copy";
 import { checkPackageCopy, PACKAGE_FORMAT_COPY, PackageError, type DemoVersionPackage } from "./verify";
 import { RIN_PROSPECT_ID } from "./seed-rin";
+import { S0_PROSPECT_ID } from "./seed-s0";
 
 export const DEMO_VERSIONS_BUCKET = "sales-demo-versions";
+
+/**
+ * The prospects whose demos may take a package with AI demo pictures: the fictional 輪 (DEV-196s) and the fictional
+ * ほし窯's Stage 0 prospect (DEV-139, owner approval 2026-11-18). The database refuses both unless the owner's local-only
+ * patch for that shop is applied (local-rin-ai-photos.sql / local-hoshigama-ai-photos.sql) and the row still carries
+ * that shop's fictional markers.
+ */
+export const AI_DEMO_PROSPECT_IDS: readonly string[] = [RIN_PROSPECT_ID, S0_PROSPECT_ID];
+
+/** Every picture is an internal AI demo picture (ai_demo_internal, public_web false) and the summary says only that. */
+function aiDemoInternalOnly(pkg: DemoVersionPackage): boolean {
+  const statuses = Object.keys(pkg.rightsSummary.by_status ?? {});
+  return (
+    pkg.images.every((i) => i.source_kind === "ai_generated_demo" && i.rights_status === "ai_demo_internal" && i.allowed_uses.public_web === false) &&
+    statuses.length === 1 && statuses[0] === "ai_demo_internal"
+  );
+}
 
 export class ImportError extends Error {
   constructor(public readonly code: string, detail?: string) {
@@ -242,9 +261,12 @@ export async function importPackage(
   }
   const toStore = copy.status === "checked" && state ? planStore(state, copyCandidates(pkg, copy.round), photoUrlPaths(pkg.manifest)) : [];
   if (pkg.images.length > 0) {
-    // AI demo pictures belong to the fictional 輪 only: the demo must be that prospect's
+    // AI demo pictures belong to the fictional 輪, and (DEV-139, owner approval 2026-11-18) to the fictional ほし窯's
+    // Stage 0 prospect: the demo must be one of those prospects', and every picture an internal AI demo picture
+    // (ai_demo_internal, never public web) so the version stays admin-preview only — never sendable or shareable
     const d = await o.client.from("sales_demos").select("prospect_id").eq("id", o.demoId).maybeSingle();
-    if (d.error || !d.data || (d.data as { prospect_id: string }).prospect_id !== RIN_PROSPECT_ID) throw new ImportError("AI_DEMO_NOT_ALLOWED");
+    if (d.error || !d.data || !AI_DEMO_PROSPECT_IDS.includes((d.data as { prospect_id: string }).prospect_id)) throw new ImportError("AI_DEMO_NOT_ALLOWED");
+    if (!aiDemoInternalOnly(pkg)) throw new ImportError("AI_DEMO_NOT_ALLOWED");
   }
   const { data, error } = await o.client.rpc("sales_ingest_demo_version", {
     p_demo_id: o.demoId,

@@ -7,10 +7,13 @@
  *   (WebP, image records from the rights and the owner's depiction confirmation).
  *
  * No model, no image generation, no network, no database. The pictures are plain images with ai_generated_demo
- * provenance STUBS. Nothing here is an approval: the steps after the bundle use a STUB approval record and an
- * approved-state spec (tests/support/hoshigama-approval-stub.ts) handed EXPLICITLY to the in-process seams (swapPage's
- * `spec`, package-local main's `aiDemoSpecFor`). The committed SWAP_SHOP_SPECS are frozen with aiDemoAllowed: false,
- * HOSHIGAMA_APPROVAL stays null, and the real CLI (a separate process, no seams) refuses and writes nothing (shown below).
+ * provenance STUBS, written under a STUB run approval id and the stub generator (tests/support/hoshigama-approval-stub.ts).
+ *
+ * DEV-139 (owner approval 2026-11-18, one run): the committed SWAP_SHOP_SPECS (frozen) now allow ほし窯's AI demo
+ * pictures of the approved prompt, so the real CLI (a separate process, no seams) writes the v2 package itself; a spec
+ * handed in with aiDemoAllowed false shows the refusal. The import takes AI demo pictures into ほし窯's S0 prospect (and
+ * 輪's) only, for ai_demo_internal pictures only; the database still refuses them unless the owner's local-only patch
+ * is applied (tests/integration/hoshigama-local-patch.test.ts).
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -21,7 +24,8 @@ import { chromium, type Browser } from "playwright";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { COPY_FACTS_NAME, COPY_RECORD_NAME, COPY_REVIEW_NAME } from "@/lib/demo-version-package/copy";
-import { ImportError, importPackage, type PackageStore } from "@/lib/demo-version-package/import";
+import { AI_DEMO_PROSPECT_IDS, ImportError, importPackage, type PackageStore } from "@/lib/demo-version-package/import";
+import { RIN_PROSPECT_ID } from "@/lib/demo-version-package/seed-rin";
 import { checkPackageCopy, PACKAGE_FORMAT, PACKAGE_FORMAT_COPY, readPackage, swapCopyInput } from "@/lib/demo-version-package/package";
 import { S0_FACTS_PATH, S0_PROSPECT_ID } from "@/lib/demo-version-package/seed-s0";
 import { DEPICTION_CONFIRMATION_STATEMENT } from "@/lib/demo-version-package/swap-rights";
@@ -87,32 +91,32 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
   const manifest = () => JSON.parse(readFileSync(join(root, "swap-manifest.json"), "utf8")) as unknown;
   const swap = (out: string, spec?: ReturnType<typeof approvedBakerySpec>) => swapPage({ pageDir: PAGE, manifest: manifest(), out, pipelineRoot: pipeline, now: "2026-11-17", forbiddenSha256: loadForbiddenSha256(REPO), browser, ...(spec ? { spec } : {}) });
 
-  it("without the owner's approval the swap refuses the AI demo pictures (AI_DEMO_NOT_ALLOWED), nothing written", async () => {
-    expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(false);
-    const res = await swap(join(root, "swap-refused"));
+  it("a spec handed in without the AI demo approval refuses the AI demo pictures (AI_DEMO_NOT_ALLOWED), nothing written", async () => {
+    const res = await swap(join(root, "swap-refused"), { ...SWAP_SHOP_SPECS.bakery, aiDemoAllowed: false });
     expect(res.ok ? [] : res.refusals.map((r) => [r.slot_id, r.photo, r.codes])).toEqual([["ph-mouth", "pc", ["AI_DEMO_NOT_ALLOWED"]], ["ph-mouth", "sp", ["AI_DEMO_NOT_ALLOWED"]], ["ph-loaf", "pc", ["AI_DEMO_NOT_ALLOWED"]]]);
     expect(readdirSync(root)).not.toContain("swap-refused");
   }, 60_000);
 
-  it("the committed specs are frozen: nothing can switch ほし窯's AI demo approval on at run time", () => {
+  it("the committed specs are frozen: nothing can change ほし窯's AI demo approval at run time (approved prompt pinned)", () => {
     expect(Object.isFrozen(SWAP_SHOP_SPECS)).toBe(true);
     expect(Object.isFrozen(SWAP_SHOP_SPECS.bakery)).toBe(true);
     expect(Object.isFrozen(SWAP_SHOP_SPECS.bakery.ranges)).toBe(true);
     expect(() => {
-      (SWAP_SHOP_SPECS.bakery as { aiDemoAllowed: boolean }).aiDemoAllowed = true;
+      (SWAP_SHOP_SPECS.bakery as { aiDemoPromptSha256: string }).aiDemoPromptSha256 = "0".repeat(64);
     }).toThrow(TypeError);
-    expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(false);
-    expect("aiDemoPromptSha256" in SWAP_SHOP_SPECS.bakery).toBe(false);
+    expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(true);
+    expect(SWAP_SHOP_SPECS.bakery.aiDemoPromptSha256).toBe(HOSHIGAMA_PROMPT_DRAFT_SHA256);
+    // the stub's approved-state spec is now the committed one
+    expect(approvedBakerySpec()).toEqual(SWAP_SHOP_SPECS.bakery);
   });
 
-  it("with an approved-state spec handed in (in-process only): the swap renders PC 1440 and SP 390 with both photos", async () => {
+  it("with the committed spec (the owner's approval): the swap renders PC 1440 and SP 390 with both photos", async () => {
     swapOut = join(root, "swap");
-    const res = await swap(swapOut, approvedBakerySpec());
+    const res = await swap(swapOut);
     if (!res.ok) throw new Error(JSON.stringify(res.refusals));
     expect(res.renders.map((r) => [r.viewport, r.images_loaded, r.boards_intact, r.caption_text_left, r.horizontal_overflow])).toEqual([["desktop_1440", 2, 2, false, false], ["mobile_390", 2, 2, false, false]]);
     const slots = res.summary.slots as Array<{ slot_id: string; photos: Array<{ which: string; source_kind: string }> }>;
     expect(slots.flatMap((s) => s.photos.map((p) => [s.slot_id, p.which, p.source_kind]))).toEqual([["ph-mouth", "pc", "ai_generated_demo"], ["ph-mouth", "sp", "ai_generated_demo"], ["ph-loaf", "pc", "ai_generated_demo"]]);
-    expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(false);
     // a spec of another shop is refused
     const wrong = await swap(join(root, "swap-wrong"), { ...SWAP_SHOP_SPECS.bicycle } as unknown as ReturnType<typeof approvedBakerySpec>);
     expect(wrong.ok ? [] : wrong.refusals.flatMap((r) => r.codes)).toEqual(["SPEC_OF_ANOTHER_SHOP"]);
@@ -127,20 +131,19 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
   };
   const args = (swapDir: string, out: string, facts = true) => ["--out", out, "--page", join(swapDir, "page"), "--rights", join(swapDir, "rights.private.json"), "--originals", join(pipeline, ".intake", "photos"), "--depiction-confirmation", depictionPath, ...(facts ? ["--facts", FACTS] : [])];
 
-  it("a direct CLI run with ほし窯's photos (a separate process, no seams) refuses with SUMMARY_NOT_RIN and writes nothing", () => {
-    for (const [name, facts] of [["pkg-refused-v2", true], ["pkg-refused-v1", false]] as const) {
-      const refused = node("scripts/sales/demo-version/package-local.ts", args(swapOut, join(root, name), facts));
-      expect(refused.status, refused.stderr).toBe(1);
-      expect(JSON.parse(refused.stdout)).toMatchObject({ status: "FAIL", code: "SUMMARY_NOT_RIN" });
-      expect(readdirSync(root)).not.toContain(name);
-    }
+  it("DEV-139: a direct CLI run with ほし窯's photos (a separate process, no seams) writes the v2 package (committed approval)", () => {
+    const cli = node("scripts/sales/demo-version/package-local.ts", args(swapOut, join(root, "pkg-cli")));
+    expect(cli.status, cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout)).toMatchObject({ status: "OK", format: PACKAGE_FORMAT_COPY, source: "swap-copy" });
+    expect(readPackage(join(root, "pkg-cli")).images).toHaveLength(5);
   }, 300_000);
 
-  it("in-process without the approved resolver: refused (SUMMARY_NOT_RIN); with it, the photos alone make a v1 package", async () => {
+  it("in-process with a resolver that withholds the AI demo approval: refused (SUMMARY_NOT_RIN); with the committed one, the photos alone make a v1 package", async () => {
     let printed = "";
-    expect(await packageLocal(args(swapOut, join(root, "pkg-noseam")), { write: (t) => void (printed += t), writeErr: () => {} })).toBe(1);
+    const withheld = (shop: string) => (shop === "bakery" ? { ...SWAP_SHOP_SPECS.bakery, aiDemoAllowed: false } : null);
+    expect(await packageLocal(args(swapOut, join(root, "pkg-withheld")), { aiDemoSpecFor: withheld, write: (t) => void (printed += t), writeErr: () => {} })).toBe(1);
     expect(JSON.parse(printed)).toMatchObject({ status: "FAIL", code: "SUMMARY_NOT_RIN" });
-    expect(readdirSync(root)).not.toContain("pkg-noseam");
+    expect(readdirSync(root)).not.toContain("pkg-withheld");
     // the photos alone (no --facts): a v1 package, every photo check passed
     const v1 = await approved(args(swapOut, join(root, "pkg-v1"), false));
     expect(v1.status, `${v1.stdout}\n${v1.stderr}`).toBe(0);
@@ -187,28 +190,43 @@ describe("ほし窯: stub photos → intake → swap → render → package v2 w
     expect(trusted).toMatchObject({ status: "checked", sendable: false, facts_from_facts_path: true });
     expect(() => checkPackageCopy(pkg, { trustedFactsPack: Buffer.concat([facts, Buffer.from("\n")]) })).toThrow(/COPY_FACTS_NOT_FROM_FACTS_PATH/);
 
-    // the import keeps AI demo pictures to the fictional 輪: ほし窯's S0 prospect is refused before anything is written
-    const calls: string[] = [];
+    // DEV-139 (owner approval 2026-11-18): the import takes AI demo pictures into the fictional 輪's and ほし窯's S0
+    // prospect only. Any other prospect is refused before anything is written; the S0 prospect goes on to the ingest
+    // (stubbed here to stop; the database itself refuses unless the owner's local patch is applied)
     const store: PackageStore = { download: async () => null, upload: async () => { throw new Error("must not upload"); } };
-    const client = {
-      from: (table: string) => ({
-        select: () => {
-          const q = {
-            eq: () => q,
-            in: () => q,
-            order: () => Object.assign(Promise.resolve({ data: [], error: null }), { limit: async () => ({ data: [], error: null }) }),
-            maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: S0_PROSPECT_ID } : null, error: null }),
-          };
-          return q;
+    const clientFor = (prospectId: string, calls: string[]) =>
+      ({
+        from: (table: string) => ({
+          select: () => {
+            const q = {
+              eq: () => q,
+              in: () => q,
+              order: () => Object.assign(Promise.resolve({ data: [], error: null }), { limit: async () => ({ data: [], error: null }) }),
+              maybeSingle: async () => ({ data: table === "sales_demos" ? { prospect_id: prospectId } : null, error: null }),
+            };
+            return q;
+          },
+        }),
+        rpc: async (name: string) => {
+          calls.push(name);
+          return { data: null, error: { message: "stop" } };
         },
-      }),
-      rpc: async (name: string) => {
-        calls.push(name);
-        return { data: null, error: { message: "stop" } };
-      },
-    } as never;
-    await expect(importPackage(pkg, { client, store, demoId: "11111111-1111-4111-8111-111111111111", trustedFactsPack: facts })).rejects.toThrow(new ImportError("AI_DEMO_NOT_ALLOWED"));
-    expect(calls).toEqual([]);
+      }) as never;
+    const demoId = "11111111-1111-4111-8111-111111111111";
+    for (const other of ["22222222-2222-4222-8222-222222222222", "13900000-5e00-4d00-8a00-000000000002"]) {
+      const calls: string[] = [];
+      await expect(importPackage(pkg, { client: clientFor(other, calls), store, demoId, trustedFactsPack: facts })).rejects.toThrow(new ImportError("AI_DEMO_NOT_ALLOWED"));
+      expect(calls).toEqual([]);
+    }
+    const s0calls: string[] = [];
+    await expect(importPackage(pkg, { client: clientFor(S0_PROSPECT_ID, s0calls), store, demoId, trustedFactsPack: facts })).rejects.toThrow(/INGEST_REFUSED/);
+    expect(s0calls).toEqual(["sales_ingest_demo_version"]);
+    expect(AI_DEMO_PROSPECT_IDS).toEqual([RIN_PROSPECT_ID, S0_PROSPECT_ID]);
+    // only internal AI demo pictures: a package whose picture claims anything else is refused for S0 before the ingest
+    const tampered = { ...pkg, images: pkg.images.map((i, n) => (n === 0 ? { ...i, rights_status: "share_cleared" } : i)) } as unknown as typeof pkg;
+    const tcalls: string[] = [];
+    await expect(importPackage(tampered, { client: clientFor(S0_PROSPECT_ID, tcalls), store, demoId, trustedFactsPack: facts })).rejects.toThrow(new ImportError("AI_DEMO_NOT_ALLOWED"));
+    expect(tcalls).toEqual([]);
   }, 300_000);
 
   it("the copy derivation fails closed: a copy record that is not the page's, a custom alt, a caption left", () => {

@@ -292,7 +292,8 @@ describe("DEV-191/192 offline E2E with 6 STUB pictures: bundle → intake → ri
   it("DEV-192: the swap takes 輪's AI demo pictures (aiDemoAllowed), rights checks unchanged; the test-only seam is gone", async () => {
     expect(SWAP_SHOP_SPECS.bicycle.aiDemoAllowed).toBe(true);
     expect(Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS.bicycle, "aiDemoCandidate")).toBe(false);
-    expect([...AI_DEMO_SHOPS].sort()).toEqual(["bicycle", "tsugute"]);
+    // DEV-139 (owner approval 2026-11-18): ほし窯 takes its own approved prompt's pictures too
+    expect([...AI_DEMO_SHOPS].sort()).toEqual(["bakery", "bicycle", "tsugute"]);
     expect(readFileSync(join(REPO, "scripts/design-artifact/photo-swap.ts"), "utf8")).not.toMatch(/offlineAiDemoCandidate|aiDemoAllowedFor/);
     // a real-generator bundle (as the worker hook writes it) passes intake and swap without any test option
     const c = fresh();

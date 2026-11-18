@@ -1,9 +1,10 @@
 /**
  * DEV-139 — OFFLINE. The import of ほし窯's (bakery, a FICTIONAL bakery) AI demo photos into the photo swap
- * (photo-swap.ts), the same steps as 輪's (bicycle-ai-intake.ts). **Usable only after the owner's approval**: called
- * without an approval record it uses HOSHIGAMA_APPROVAL (null today) and refuses every bundle (RUN_PROMPT_NOT_APPROVED),
- * and without approvalIds it accepts no run id. No worker hook calls it today; the offline tests pass a stub approval
- * record, a stub approval id and the stub generator.
+ * (photo-swap.ts), the same steps as 輪's (bicycle-ai-intake.ts). Called without an approval record it uses
+ * HOSHIGAMA_APPROVAL (the owner's one-run approval of 2026-11-18; a null record refuses every bundle with
+ * RUN_PROMPT_NOT_APPROVED), and without approvalIds it accepts no run id. The worker's image auto-run calls it with the
+ * job's one run approval id (autorun-shops.ts AUTORUN_SHOPS.bakery); the offline tests pass a stub approval id and the
+ * stub generator.
  *
  * Refuses (nothing written) unless the bundle's manifest.json (hoshigama_ai_photos_v0, design-image/hoshigama-photos.ts)
  *  - is complete: 3 pictures, 3 calls, none failed, the model reported;
@@ -20,8 +21,9 @@
  * records are `ai_generated_demo`, demo only, public_web false, with the provenance (generator, model, date, prompt
  * SHA-256, approval id), plus <manifest-out>.provenance.json.
  *
- * The swap takes these pictures only once ほし窯's swap spec allows AI demo pictures (photo-swap-shops.ts, an owner
- * approval: aiDemoAllowed false today). Never calls a model, a generator or the network. Nothing is committed.
+ * The swap takes these pictures because ほし窯's swap spec allows AI demo pictures of the approved prompt only
+ * (photo-swap-shops.ts aiDemoAllowed / aiDemoPromptSha256, the owner's approval of 2026-11-18). Never calls a model, a
+ * generator or the network. Nothing is committed.
  */
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -77,7 +79,7 @@ export async function importHoshigamaAiPhotos(o: {
   approvalIds?: readonly string[];
   /** the generators accepted. Default: the real run's label only */
   generators?: readonly string[];
-  /** the owner's approval record; default HOSHIGAMA_APPROVAL (null today: every bundle is refused). Tests pass a stub. */
+  /** the owner's approval record; default HOSHIGAMA_APPROVAL. Tests may pass another (null: every bundle is refused). */
   approval?: HoshigamaApproval | null;
 }): Promise<HoshigamaIntakeResult> {
   const pipelineRoot = o.pipelineRoot ?? PIPELINE_ROOT;

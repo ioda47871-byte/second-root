@@ -1,8 +1,8 @@
 /**
- * DEV-139 — TESTS ONLY. A STUB of the owner's approval for ほし窯 (bakery, a FICTIONAL bakery), so the offline tests can
- * show that the whole photo path (bundle writer → intake → swap → package) runs once the owner approves — without any
- * approval existing. Nothing here is an approval: HOSHIGAMA_APPROVAL stays null and photo-swap-shops.ts keeps
- * aiDemoAllowed: false in the repository.
+ * DEV-139 — TESTS ONLY. A STUB approval record for ほし窯 (bakery, a FICTIONAL bakery), written before the owner's
+ * approval so the offline tests could show the whole photo path (bundle writer → intake → swap → package). Since the
+ * owner's approval of 2026-11-18 the repository holds the real record (HOSHIGAMA_APPROVAL) and the approved swap spec;
+ * this stub names the same byte pins under a test-only record name and run approval id, and never reaches the worker.
  *
  *  - STUB_APPROVAL: an approval record naming the DRAFT prompt's pins (as the owner's would, if the owner approved the
  *    draft unchanged), with the upscale list of the brief's proposal. Handed explicitly to the writer and the intake.

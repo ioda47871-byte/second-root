@@ -9,18 +9,20 @@
  *  - the HTML structure of a placeholder (where the 写真｜ caption and the empty board are), which the transform
  *    matches exactly and refuses otherwise;
  *  - the CSS appended to the private copy so that the picture fills its board;
- *  - whether the shop's swap may take `ai_generated_demo` pictures (an owner approval: つぐ手, DEV-185; 輪, DEV-192).
+ *  - whether the shop's swap may take `ai_generated_demo` pictures (an owner approval: つぐ手, DEV-185; 輪, DEV-192;
+ *    ほし窯, DEV-139 2026-11-18).
  *
  * Adding a shop here makes its research page swappable OFFLINE with rights-checked photos. It is not an approval to
  * generate pictures for it: the image auto-run takes only scripts/sales-design-worker/autorun-shops.ts's shops (and
- * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run (つぐ手 and 輪 only).
+ * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run; DEV-139: ほし窯 likewise (2026-11-18).
  *
  * DEV-139: ほし窯 (bakery, a FICTIONAL bakery, research page d2-v2, the <wbr>-free version of d2-v1) is here so that its page is swappable offline with
- * rights-checked photos (aiDemoAllowed: false, no prompt pin: nothing about its AI photos is approved). It is in neither
- * AUTORUN_SHOPS nor IMAGE_AUTORUN_SHOPS; docs/operations/hoshigama-one-time-run-sheet.md lists the exact changes an
- * owner approval would make (not approved).
+ * rights-checked photos. From the owner's approval of 2026-11-18 (one run, Issue #139 comment 6970468763 follow-up) its
+ * swap takes ai_generated_demo pictures of the approved prompt only (aiDemoPromptSha256), and it is in AUTORUN_SHOPS and
+ * IMAGE_AUTORUN_SHOPS for that one run (docs/operations/hoshigama-one-time-run-sheet.md).
  */
 import { BICYCLE_PROMPT_SHA256 } from "./bicycle-ai-photos";
+import { HOSHIGAMA_PROMPT_DRAFT_SHA256 } from "./hoshigama-ai-photos";
 import { EDGE_VIEWPORTS, type EdgeViewport, type PlanViewport } from "./photo-slots";
 
 export type SwapRangeKey = "desktop" | "tablet" | "mobile";
@@ -187,7 +189,7 @@ export const SWAP_SHOP_SPECS = deepFreeze({
     aiDemoAllowed: true,
     aiDemoPromptSha256: BICYCLE_PROMPT_SHA256,
   },
-  // DEV-139: ほし窯 (fictional bakery) d2-v2 — research only. NOT an approval of AI photos for it (see the file comment).
+  // DEV-139: ほし窯 (fictional bakery) d2-v2 — AI demo photos of the approved prompt, for the owner's one run (2026-11-18).
   bakery: {
     shop: "bakery",
     pages: ["d2-v2"],
@@ -220,9 +222,10 @@ export const SWAP_SHOP_SPECS = deepFreeze({
     swapCss: HOSHIGAMA_SWAP_CSS,
     // the loaf is 1.2 at every width and the oven mouth 0.9 at every PC width: identical crops share one file
     shareIdenticalCrops: true,
-    // NOT approved (DEV-139): the swap refuses ai_generated_demo pictures for ほし窯 (AI_DEMO_NOT_ALLOWED). The owner's
-    // approval of the prompt text and of one run would set this true and pin aiDemoPromptSha256 (the run sheet's diff).
-    aiDemoAllowed: false,
+    // DEV-139 (owner approval 2026-11-18, one run): the swap takes ほし窯's ai_generated_demo pictures of the approved
+    // prompt text only (rights unchanged: demo only, never a public site, full provenance; the intake checks the pins)
+    aiDemoAllowed: true,
+    aiDemoPromptSha256: HOSHIGAMA_PROMPT_DRAFT_SHA256,
   },
 } as const satisfies Record<string, SwapShopSpec>);
 
