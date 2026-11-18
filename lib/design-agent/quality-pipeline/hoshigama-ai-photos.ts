@@ -1,21 +1,22 @@
 /**
- * DEV-139: the ほし窯 (bakery, a FICTIONAL bakery) AI demo photos — the pure data. **NOTHING HERE IS APPROVED.**
+ * DEV-139: the ほし窯 (bakery, a FICTIONAL bakery) AI demo photos — the pure data.
  *
- * Shaped like 輪's (bicycle-ai-photos.ts), so that once the owner approves the prompt text and ONE generation run the
- * rest (run bundle → intake → swap → package) runs without new code: the approval is recorded by setting
- * HOSHIGAMA_APPROVAL (and the swap spec's aiDemoAllowed / aiDemoPromptSha256, photo-swap-shops.ts), exactly as listed in
- * docs/operations/hoshigama-one-time-run-sheet.md. Until then:
- *  - HOSHIGAMA_APPROVAL is null: the bundle writer (design-image/hoshigama-photos.ts) and the intake
- *    (scripts/design-artifact/hoshigama-ai-intake.ts) refuse everything (PROMPT_NOT_APPROVED / RUN_PROMPT_NOT_APPROVED);
- *  - buildHoshigamaRunPrompt() returns "" (whose SHA-256 matches no pin);
- *  - ほし窯 is in neither scripts/sales-design-worker/autorun-shops.ts AUTORUN_SHOPS nor root's IMAGE_AUTORUN_SHOPS, and
- *    its swap spec has aiDemoAllowed: false (the swap refuses ai_generated_demo pictures for it).
+ * **Owner-approved on 2026-11-18 for ONE run** (Issue #139 comment 6970468763 follow-up, owner message 2026-11-18): the
+ * prompt text docs/design/hoshigama-ai-photo-prompt.txt exactly as committed (its bytes, the 3-line header included —
+ * the owner approved the file's content and SHA-256 as they are), the run prompt built from it, 3 photos (ph-mouth-pc,
+ * ph-mouth-sp, ph-loaf), 1 job, at most 3 image calls, 1 Codex run, 15 minutes, no retry, ほし窯 d2-v2 only, and
+ * enlargement (never above the existing 2×) for ph-mouth-pc and ph-loaf only. The record is HOSHIGAMA_APPROVAL. It is
+ * void if EITHER byte sequence changes: every check compares the file's bytes and the built run prompt with the pins.
+ * The "_DRAFT_" names of the pins are kept: the owner approved exactly the draft's bytes, and renaming changes nothing.
  *
- * The prompt text is the DRAFT of docs/design/hoshigama-ai-photo-brief.md §6, fixed byte for byte in
- * docs/design/hoshigama-ai-photo-prompt.txt (with its "DRAFT (未承認)" header). Its SHA-256, size and each photo's prompt
- * SHA-256 are recorded here as DRAFT pins (what the owner would be asked to approve), not as approved values. The 3
- * photos (2 slots; the oven mouth takes a PC and an SP picture) follow the brief §3 recommendation; the brief's 2-photo
- * alternative would need another text and another photo list. Nothing here calls a model, a process or the network.
+ * Not a standing permission. ほし窯 is in scripts/sales-design-worker/autorun-shops.ts AUTORUN_SHOPS and root's
+ * IMAGE_AUTORUN_SHOPS ('bakery:3') only so that the owner's one run can be started: each run still needs the owner's
+ * root switch entry for one job, root's atomic use record, the boot-bound 20-minute grant and the worker's one-use
+ * ledger (no timer, no retry). The run approval id and its expiry are chosen by the owner at run time, never in code.
+ * After the run a follow-up PR removes ほし窯 from both lists (docs/operations/hoshigama-one-time-run-sheet.md (g)).
+ *
+ * The 3 photos (2 slots; the oven mouth takes a PC and an SP picture) follow the brief §3 recommendation. Nothing here
+ * calls a model, a process or the network.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -23,13 +24,13 @@ import { join as joinPath, resolve as resolvePath } from "node:path";
 import { z } from "zod";
 import { cropReaches } from "./tsugute-ai-photos";
 
-/** the draft prompt text, by repository path (read by the tests and, after an approval, by the run's caller; never written) */
+/** the approved prompt text, by repository path (read by the tests and by the run's caller; never written) */
 export const HOSHIGAMA_PROMPT_FILE = "docs/design/hoshigama-ai-photo-prompt.txt";
-/** the DRAFT bytes (UTF-8): SHA-256, byte count and String.length. NOT approved. */
+/** the prompt file's bytes (UTF-8): SHA-256, byte count and String.length — owner-approved 2026-11-18, exactly these */
 export const HOSHIGAMA_PROMPT_DRAFT_SHA256 = "372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6";
 export const HOSHIGAMA_PROMPT_DRAFT_BYTES = 2007;
 export const HOSHIGAMA_PROMPT_DRAFT_CHARS = 1988;
-/** the run prompt the draft would give (buildHoshigamaRunPromptCandidate): its pins, NOT approved */
+/** the run prompt built from those bytes (buildHoshigamaRunPromptCandidate): its pins — owner-approved 2026-11-18 */
 export const HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 = "a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1";
 export const HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS = 2668;
 
@@ -67,9 +68,9 @@ export const HOSHIGAMA_PHOTOS: readonly HoshigamaPhoto[] = [
 ];
 
 /**
- * The owner's approval of the prompt text AND of one run — null: NOT approved. When the owner approves, this record is
- * written here with the decided values (the run sheet lists them); the writer and the intake take it as their default.
- * Tests hand their own stub record to show the path works; no stub ever reaches the worker.
+ * The owner's approval of the prompt text AND of one run. The writer, the intake and buildHoshigamaRunPrompt take
+ * HOSHIGAMA_APPROVAL as their default; tests may hand another record (null, or one naming other bytes) to show the
+ * refusals. No test record ever reaches the worker.
  */
 export type HoshigamaApproval = {
   approval_record: string;
@@ -91,7 +92,28 @@ export type HoshigamaApproval = {
   /** the photos the owner allows the intake to enlarge (≤ HOSHIGAMA_MAX_UPSCALE, lanczos3); every other must reach its target */
   upscale_allowed: readonly HoshigamaPhotoId[];
 };
-export const HOSHIGAMA_APPROVAL: HoshigamaApproval | null = null;
+/**
+ * DEV-139: the owner's GO for ONE real run (2026-11-18) — its scope and both pinned byte sequences. Void if either
+ * changes (every check compares the bytes with these pins). No run approval id or expiry is written in code.
+ */
+export const HOSHIGAMA_APPROVAL: HoshigamaApproval | null = {
+  approval_record: "hoshigama-one-time-run-20261118",
+  decided_by: "owner",
+  decided_on: "2026-11-18",
+  evidence: "Issue #139 comment 6970468763 follow-up, owner message 2026-11-18",
+  shop: "bakery",
+  page: "d2-v2",
+  jobs: 1,
+  max_image_calls: 3,
+  codex_runs: 1,
+  timeout_minutes: 15,
+  retry: false,
+  core_prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256,
+  core_prompt_bytes: HOSHIGAMA_PROMPT_DRAFT_BYTES,
+  run_prompt_sha256: HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256,
+  run_prompt_chars: HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS,
+  upscale_allowed: ["ph-mouth-pc", "ph-loaf"],
+};
 
 const sha256 = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
 
@@ -137,8 +159,8 @@ export function hoshigamaPhotoPrompt(parsed: ParsedHoshigamaPrompt, photoId: Hos
 export type HoshigamaPromptCheck = { ok: true; parsed: ParsedHoshigamaPrompt } | { ok: false; codes: string[] };
 
 /**
- * Whether a text is the pinned DRAFT (SHA-256, byte count, each photo's prompt). This says only that the bytes are the
- * draft the owner would be shown; it is not an approval — approvedHoshigamaPrompt adds that.
+ * Whether a text is the pinned text (SHA-256, byte count, each photo's prompt). This says only that the bytes are the
+ * pinned ones; the approval record is checked by checkApprovedHoshigamaPrompt.
  */
 export function checkDraftHoshigamaPrompt(text: string): HoshigamaPromptCheck {
   const codes: string[] = [];
@@ -156,8 +178,8 @@ export function checkDraftHoshigamaPrompt(text: string): HoshigamaPromptCheck {
 }
 
 /**
- * The text is the draft AND an approval record names exactly its bytes (default: HOSHIGAMA_APPROVAL, null today, so
- * this always refuses with PROMPT_NOT_APPROVED).
+ * The text is the pinned text AND an approval record names exactly its bytes (default: HOSHIGAMA_APPROVAL; null, or a
+ * record naming other bytes, refuses with PROMPT_NOT_APPROVED).
  */
 export function checkApprovedHoshigamaPrompt(text: string, approval: HoshigamaApproval | null = HOSHIGAMA_APPROVAL): HoshigamaPromptCheck {
   if (!approval) return { ok: false, codes: ["PROMPT_NOT_APPROVED"] };
@@ -168,9 +190,9 @@ export function checkApprovedHoshigamaPrompt(text: string, approval: HoshigamaAp
 }
 
 /**
- * The run prompt the draft would give: fixed run rules (as 輪's run had), then the text from its "COMMON: " line to the
- * end, byte for byte (the 3-line DRAFT header, which tells a reader not to call any tool, is left out). Built from the
- * DRAFT so the owner can be shown its SHA-256 (HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256); it is not a run prompt until approved.
+ * The run prompt of the pinned text: fixed run rules (as 輪's run had), then the text from its "COMMON: " line to the
+ * end, byte for byte (the file's 3-line header is left out). Its SHA-256 and length are HOSHIGAMA_RUN_PROMPT_DRAFT_*,
+ * owner-approved 2026-11-18; the worker uses it only through buildHoshigamaRunPrompt, which checks the approval record.
  */
 export function buildHoshigamaRunPromptCandidate(draftText: string): string {
   const check = checkDraftHoshigamaPrompt(draftText);
@@ -192,7 +214,7 @@ ${check.parsed.fromCommon}`;
 const REPO_ROOT = resolvePath(__dirname, "../../..");
 /**
  * The approved run prompt from this checkout, for the worker — "" unless an approval record names exactly the file's
- * bytes and the built prompt (today: always "", HOSHIGAMA_APPROVAL is null). Never throws. `o` is for tests only.
+ * bytes and the built prompt (default HOSHIGAMA_APPROVAL). Never throws. `o` is for tests only.
  */
 export function buildHoshigamaRunPrompt(o: { text?: string; approval?: HoshigamaApproval | null } = {}): string {
   try {
@@ -206,7 +228,7 @@ export function buildHoshigamaRunPrompt(o: { text?: string; approval?: Hoshigama
   }
 }
 
-/** The approved prompt TEXT from this checkout, or "" when it is not approved (today: always ""). Never throws. */
+/** The approved prompt TEXT from this checkout, or "" when it is not approved (or its bytes changed). Never throws. */
 export function readApprovedHoshigamaPrompt(approval: HoshigamaApproval | null = HOSHIGAMA_APPROVAL): string {
   try {
     const text = readFileSync(joinPath(REPO_ROOT, HOSHIGAMA_PROMPT_FILE), "utf8");

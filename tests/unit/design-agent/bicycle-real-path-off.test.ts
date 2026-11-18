@@ -124,7 +124,8 @@ async function stubBatch(): Promise<ImageBatchResult> {
 
 describe("DEV-192 the worker's fixed 輪 entry: pinned, no free values", () => {
   it("bicycle is an auto-run shop with page d1-v9, the 6 photo ids, the approved run prompt and max 6 images", () => {
-    expect([...AUTORUN_SHOP_IDS].sort()).toEqual(["bicycle", "tsugute"]);
+    // DEV-139 (owner approval 2026-11-18): ほし窯 joined for its own one run (hoshigama-real-path.test.ts)
+    expect([...AUTORUN_SHOP_IDS].sort()).toEqual(["bakery", "bicycle", "tsugute"]);
     expect(Object.prototype.hasOwnProperty.call(UNIMPLEMENTED_SHOPS, "bicycle")).toBe(false);
     const b = AUTORUN_SHOPS.bicycle;
     expect([b.page, b.slotIds, b.maxImages, b.bundle]).toEqual(["d1-v9", ["ph-d", "ph-a", "ph-c", "ph-b", "ph-bench-pc", "ph-bench-sp"], 6, "bicycle_ai_photos_v0"]);
@@ -243,7 +244,7 @@ describe("DEV-192 the full chain with a mock generator: exactly one run → 6-ph
   }, 240_000);
 });
 
-describe("DEV-192 root's cycle.sh: 'tsugute:6 bicycle:6', its own matcher, the consumed つぐ手 id", () => {
+describe("DEV-192 root's cycle.sh: 'tsugute:6 bicycle:6' (DEV-139: + 'bakery:3'), its own matcher, the consumed つぐ手 id", () => {
   const cycle = readFileSync(join(REPO, "scripts/sales-design-worker/cycle.sh"), "utf8");
   const allow = /^IMAGE_AUTORUN_SHOPS='([^']*)'$/m.exec(cycle)![1]!;
   const py = /\nIMAGE_MATCH_PY='\n([\s\S]*?)\n'\n/.exec(cycle)![1]!;
@@ -258,8 +259,8 @@ describe("DEV-192 root's cycle.sh: 'tsugute:6 bicycle:6', its own matcher, the c
     expect(r.status).toBe(0);
     return r.stdout.trim();
   };
-  it("the allowlist is exactly 'tsugute:6 bicycle:6', one assignment", () => {
-    expect(cycle.split("\n").filter((l) => /^IMAGE_AUTORUN_SHOPS=/.test(l))).toEqual(["IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'"]);
+  it("the allowlist is exactly 'tsugute:6 bicycle:6 bakery:3' (DEV-139, owner approval 2026-11-18), one assignment", () => {
+    expect(cycle.split("\n").filter((l) => /^IMAGE_AUTORUN_SHOPS=/.test(l))).toEqual(["IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6 bakery:3'"]);
   });
   it("輪 6 images with a matching entry → MATCH; 7 images or another shop → SCOPE_MISMATCH; つぐ手 still MATCH", () => {
     expect(match("bicycle", 6)).toBe("IMAGE_GRANT_MATCH");

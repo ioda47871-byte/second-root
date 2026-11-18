@@ -169,7 +169,8 @@ GRANT_TTL=1200
 # unit test pins the two. Any other shop, or more images than its slots: IMAGE_GRANT_SCOPE_MISMATCH, no grant.
 # DEV-192 (owner GO 2026-11-07): bicycle (輪 d1-v9, 6 photos) for the owner's one approved run. Listing a shop is not a
 # permission: every grant still needs the owner's switch entry for one job, the use records below and the 20-min grant.
-IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'
+# DEV-139 (owner approval 2026-11-18): bakery (ほし窯 d2-v2, 3 photos) for the owner's one approved run, on the same terms.
+IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6 bakery:3'
 BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
 
 now() {

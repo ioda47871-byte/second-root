@@ -38,8 +38,9 @@ describe("DEV-188 the shop allowlist: root and worker agree", () => {
     expect(rootAllowlist()).toEqual(fromManifest);
   });
 
-  it("つぐ手 and (DEV-192, owner GO 2026-11-07, one approved run) 輪 are implemented — no other shop", () => {
-    expect(AUTORUN_SHOP_IDS).toEqual(["tsugute", "bicycle"]);
+  it("つぐ手, (DEV-192, owner GO 2026-11-07, one approved run) 輪 and (DEV-139, owner approval 2026-11-18, one run) ほし窯 are implemented — no other shop", () => {
+    expect(AUTORUN_SHOP_IDS).toEqual(["tsugute", "bicycle", "bakery"]);
+    expect(rootAllowlist()).toEqual({ tsugute: 6, bicycle: 6, bakery: 3 });
   });
 
   it("cycle.sh compares the job's shop with that allowlist, not with a literal", () => {
@@ -82,6 +83,8 @@ describe("DEV-188 every implemented entry is complete and pinned", () => {
       expect((SWAP_SHOPS as readonly string[]).includes(id)).toBe(true);
       expect(AI_DEMO_SHOPS.has(id)).toBe(true);
       expect(shop.rights).toEqual({ sourceKind: "ai_generated_demo", demoOnly: true, publicWeb: false, maxUpscale: MAX_UPSCALE, upscaleMethod: "sharp-lanczos3" });
+      // DEV-139: a shop with a separate run approval record pins the same run prompt there
+      if ("promptApproval" in shop) expect([shop.promptApproval.run_prompt_sha256, shop.promptApproval.run_prompt_chars]).toEqual([shop.prompt.sha256, shop.prompt.chars]);
       expect(shop.rights.maxUpscale).toBeLessThanOrEqual(2);
       expect(shop.out.subdir).toBe("image-autorun");
     });
@@ -132,5 +135,15 @@ describe("DEV-188 unimplemented shops stay out (未対応)", () => {
     // its older page inventories stay beside d1-v9's (no photo-slot-edges.json without a page suffix)
     expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slots-d1-v7.json"))).toBe(true);
     expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slot-edges-d1-v7.json"))).toBe(true);
+  });
+
+  it("DEV-139 (owner approval 2026-11-18): ほし窯 for one approved run — swap, worker and root agree on d2-v2's 3 photos", () => {
+    expect(Object.prototype.hasOwnProperty.call(UNIMPLEMENTED_SHOPS, "bakery")).toBe(false);
+    expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(true);
+    const b = AUTORUN_SHOPS.bakery;
+    expect([b.page, b.slotIds, b.maxImages, b.bundle]).toEqual(["d2-v2", ["ph-mouth-pc", "ph-mouth-sp", "ph-loaf"], 3, "hoshigama_ai_photos_v0"]);
+    expect(b.photoToSlot).toEqual({ "ph-mouth-pc": "ph-mouth", "ph-mouth-sp": "ph-mouth", "ph-loaf": "ph-loaf" });
+    expect([b.prompt.sha256, b.prompt.chars]).toEqual(["a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1", 2668]);
+    expect(rootAllowlist().bakery).toBe(3);
   });
 });

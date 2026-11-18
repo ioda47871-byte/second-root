@@ -12,11 +12,14 @@
  * rights records, and a photo swap that takes the shop (photo-swap.ts SWAP_SHOPS and AI_DEMO_SHOPS). つぐ手 (DEV-186) and,
  * from DEV-192 (owner GO 2026-11-07, Issue #193 comment 6689664215), 輪 for ONE approved run: the entry itself is not a
  * permission — each run still needs the owner's root config entry for one job, root's atomic use record, the boot-bound
- * 20-minute grant and the worker's one-use ledger, and the auto-run (timer) stays OFF.
+ * 20-minute grant and the worker's one-use ledger, and the auto-run (timer) stays OFF. DEV-139 (owner approval
+ * 2026-11-18, Issue #139 comment 6970468763 follow-up): ほし窯 for ONE approved run on the same terms (3 photos).
  */
 import { importBicycleAiPhotos } from "../design-artifact/bicycle-ai-intake";
+import { importHoshigamaAiPhotos } from "../design-artifact/hoshigama-ai-intake";
 import { importTsuguteAiPhotos, MAX_UPSCALE, type IntakeResult } from "../design-artifact/tsugute-ai-intake";
 import { BICYCLE_PHOTOS, BICYCLE_PHOTOS_MAX_IMAGES, BICYCLE_RUN_PROMPT_APPROVAL, BICYCLE_RUN_PROMPT_CANDIDATE_CHARS, BICYCLE_RUN_PROMPT_CANDIDATE_SHA256, buildBicycleRunPrompt } from "../../lib/design-agent/quality-pipeline/bicycle-ai-photos";
+import { buildHoshigamaRunPrompt, HOSHIGAMA_APPROVAL, HOSHIGAMA_MAX_UPSCALE, HOSHIGAMA_PHOTOS, HOSHIGAMA_PHOTOS_MAX_IMAGES, type HoshigamaApproval } from "../../lib/design-agent/quality-pipeline/hoshigama-ai-photos";
 import { buildTsugutePhotosPrompt, TSUGUTE_PHOTOS_MAX_IMAGES, TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256, TSUGUTE_SLOTS } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
 
 export type AutorunIntake = (o: { from: string; manifestOut: string; pipelineRoot: string; approvalIds: readonly string[] }) => Promise<IntakeResult>;
@@ -41,13 +44,13 @@ export type AutorunShop = {
   /** DEV-192: photo id → swap slot of the page's inventory, when a slot takes more than one picture */
   photoToSlot?: Readonly<Record<string, string>>;
   /** DEV-192: the owner's approval record of the run prompt, when it is separate from the source */
-  promptApproval?: typeof BICYCLE_RUN_PROMPT_APPROVAL;
+  promptApproval?: typeof BICYCLE_RUN_PROMPT_APPROVAL | HoshigamaApproval;
   /** = slotIds.length; the image calls of the one run (cycle.sh's allowlist carries the same number) */
   maxImages: number;
   /** the whole prompt of the run: built in code from the owner-approved brief, pinned by SHA-256 and length */
   prompt: { source: string; brief: string; sha256: string; chars: number; build: () => string };
   /** which run-bundle writer image-autorun.ts uses (by the bundle's schema name) */
-  bundle: "tsugute_ai_photos_v0" | "bicycle_ai_photos_v0";
+  bundle: "tsugute_ai_photos_v0" | "bicycle_ai_photos_v0" | "hoshigama_ai_photos_v0";
   intake: AutorunIntake;
   /** under the worker's results root: <outRoot>/<subdir>/<job_id>/ (photos, pipeline, swap, renders) */
   out: { subdir: "image-autorun" };
@@ -60,6 +63,14 @@ export type AutorunShop = {
 
 const TSUGUTE_DIR = "design-library/research/quality-pipeline/poc/tsugute";
 const BICYCLE_DIR = "design-library/research/quality-pipeline/poc/bicycle";
+const BAKERY_DIR = "design-library/research/quality-pipeline/poc/bakery";
+
+/** DEV-139: the owner's one-run approval of ほし窯 (2026-11-18). Refuses to load the manifest without it (fail closed). */
+function hoshigamaApproval(): HoshigamaApproval {
+  if (!HOSHIGAMA_APPROVAL) throw new Error("HOSHIGAMA_APPROVAL_MISSING");
+  return HOSHIGAMA_APPROVAL;
+}
+const HOSHIGAMA_RUN_APPROVAL = hoshigamaApproval();
 
 export const AUTORUN_SHOPS = {
   tsugute: {
@@ -104,6 +115,30 @@ export const AUTORUN_SHOPS = {
     intake: importBicycleAiPhotos,
     out: { subdir: "image-autorun" },
     rights: { sourceKind: "ai_generated_demo", demoOnly: true, publicWeb: false, maxUpscale: MAX_UPSCALE, upscaleMethod: "sharp-lanczos3" },
+  },
+  // DEV-139 (owner approval 2026-11-18, Issue #139 comment 6970468763 follow-up): ONE run of ほし窯 d2-v2's 3 photos, the
+  // approved run prompt pinned. Removed again by the follow-up PR after the run (the run sheet's (g)).
+  bakery: {
+    shop_id: "bakery",
+    page: "d2-v2",
+    pageDir: `${BAKERY_DIR}/fidelity/d2-v2`,
+    slotInventory: `${BAKERY_DIR}/photo-slots-d2-v2.json`,
+    slotEdges: `${BAKERY_DIR}/photo-slot-edges-d2-v2.json`,
+    slotIds: HOSHIGAMA_PHOTOS.map((p) => p.photo_id),
+    photoToSlot: Object.fromEntries(HOSHIGAMA_PHOTOS.map((p) => [p.photo_id, p.slot_id])),
+    maxImages: HOSHIGAMA_PHOTOS_MAX_IMAGES,
+    prompt: {
+      source: "lib/design-agent/quality-pipeline/hoshigama-ai-photos.ts",
+      brief: "docs/design/hoshigama-ai-photo-brief.md",
+      sha256: HOSHIGAMA_RUN_APPROVAL.run_prompt_sha256,
+      chars: HOSHIGAMA_RUN_APPROVAL.run_prompt_chars,
+      build: () => buildHoshigamaRunPrompt(),
+    },
+    promptApproval: HOSHIGAMA_RUN_APPROVAL,
+    bundle: "hoshigama_ai_photos_v0",
+    intake: importHoshigamaAiPhotos,
+    out: { subdir: "image-autorun" },
+    rights: { sourceKind: "ai_generated_demo", demoOnly: true, publicWeb: false, maxUpscale: HOSHIGAMA_MAX_UPSCALE, upscaleMethod: "sharp-lanczos3" },
   },
 } as const satisfies Record<string, AutorunShop>;
 

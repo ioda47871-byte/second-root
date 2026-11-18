@@ -73,10 +73,13 @@ export function migrationImageWriteFunction(migration: string): string {
   return migration.slice(start, migration.indexOf("$$;", start) + 3);
 }
 
-/** The migration's function with the edits applied (each old text must occur exactly once). */
-export function patchedImageWriteFunction(migration: string): string {
+/**
+ * The migration's function with the edits applied (each old text must occur exactly once). DEV-139: `edits` defaults to
+ * 輪's; the ほし窯 local patch (local-hoshigama-patch.ts) passes its own.
+ */
+export function patchedImageWriteFunction(migration: string, edits: ReadonlyArray<{ old: string; new: string }> = RIN_PATCH_FUNCTION_EDITS): string {
   let fn = migrationImageWriteFunction(migration);
-  for (const e of RIN_PATCH_FUNCTION_EDITS) {
+  for (const e of edits) {
     if (fn.split(e.old).length !== 2) throw new Error("RIN_PATCH_EDIT_NOT_UNIQUE");
     fn = fn.replace(e.old, () => e.new);
   }

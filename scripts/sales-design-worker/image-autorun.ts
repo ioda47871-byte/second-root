@@ -43,6 +43,7 @@ import { cleanupActiveImageCalls, generateImagesInOneRun, MAX_BATCH_IMAGES, type
 /** the worker's stop handler removes a cut-off image call's session log and image dir (as tsugute-photos.ts) */
 export { cleanupActiveImageCalls };
 import { writeBicyclePhotosForRun } from "../../lib/design-agent/design-image/bicycle-photos";
+import { writeHoshigamaPhotosForRun } from "../../lib/design-agent/design-image/hoshigama-photos";
 import { writeTsugutePhotos } from "../../lib/design-agent/design-image/tsugute-photos";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { TSUGUTE_PHOTOS_APPROVAL_ID } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
@@ -86,13 +87,18 @@ const LEDGER = "poc-approval-used";
 type BundleInput = { outRoot: string; batch: ImageBatchResult; commit: string; prompt: string; generatedAt: string; approvalId: string };
 type BundleOutcome = { dir: string; status: "complete" | "stopped"; stop_code: string | null; images: number; image_tool_calls: number };
 /** DEV-192: one outcome shape for every shop's writer (つぐ手's manifest is unchanged; 輪's photos are its 6 pictures) */
-const BUNDLE_WRITERS: Record<"tsugute_ai_photos_v0" | "bicycle_ai_photos_v0", (o: BundleInput) => Promise<BundleOutcome>> = {
+const BUNDLE_WRITERS: Record<"tsugute_ai_photos_v0" | "bicycle_ai_photos_v0" | "hoshigama_ai_photos_v0", (o: BundleInput) => Promise<BundleOutcome>> = {
   tsugute_ai_photos_v0: async (o) => {
     const { dir, manifest } = await writeTsugutePhotos(o);
     return { dir, status: manifest.status, stop_code: manifest.stop_code, images: manifest.slots.length, image_tool_calls: manifest.image_tool_calls };
   },
   bicycle_ai_photos_v0: async (o) => {
     const { dir, manifest } = await writeBicyclePhotosForRun(o);
+    return { dir, status: manifest.status, stop_code: manifest.stop_code, images: manifest.photos.length, image_tool_calls: manifest.image_tool_calls };
+  },
+  // DEV-139 (owner approval 2026-11-18): ほし窯's 3 photos, for the one approved run
+  hoshigama_ai_photos_v0: async (o) => {
+    const { dir, manifest } = await writeHoshigamaPhotosForRun(o);
     return { dir, status: manifest.status, stop_code: manifest.stop_code, images: manifest.photos.length, image_tool_calls: manifest.image_tool_calls };
   },
 };

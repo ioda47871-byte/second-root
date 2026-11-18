@@ -2,10 +2,14 @@
  * DEV-139: ほし窯 (bakery, a FICTIONAL bakery) research page d2-v2 in the existing photo pipeline, OFFLINE.
  *
  * Every picture here is a MOCK made by code at test time under os.tmpdir() (solid colours), never written to the
- * repository; the pipeline root with .intake/photos/ is temporary. No model, generator or network is used, and nothing
- * here approves anything: ほし窯's swap spec keeps aiDemoAllowed: false, HOSHIGAMA_APPROVAL stays null, and ほし窯 is in
- * neither AUTORUN_SHOPS nor root's IMAGE_AUTORUN_SHOPS. Where a test shows the path AFTER an approval, it hands a STUB
- * approval record explicitly (tests/support/hoshigama-approval-stub.ts).
+ * repository; the pipeline root with .intake/photos/ is temporary. No model, generator or network is used.
+ *
+ * DEV-139 (owner approval 2026-11-18, one run, Issue #139 comment 6970468763 follow-up): the committed state is now the
+ * APPROVED one — HOSHIGAMA_APPROVAL names exactly the committed prompt file's bytes (SHA-256 372f7802…a8f6) and the
+ * built run prompt (a7b7d524…62be7f1, 2668 chars), the swap spec allows AI demo pictures of that prompt only, and ほし窯
+ * is in AUTORUN_SHOPS and root's IMAGE_AUTORUN_SHOPS ('bakery:3'). If the committed bytes ever stop hashing to the
+ * approved values, the tests below fail: the owner approved those exact bytes. The offline writer/intake tests still use
+ * the STUB run approval id and stub generator (tests/support/hoshigama-approval-stub.ts); a null record shows the refusal.
  *
  * Covered: the spec (pages, breakpoints, edges, SP viewports, the exact placeholder triples, the CSS), the transform,
  * the swap end to end with mock photos (rights, 2× at the range edges, focal box, overflow, PC 1440 / SP 390 renders),
@@ -64,15 +68,16 @@ const photo = (id: string) => HOSHIGAMA_PHOTOS.find((p) => p.photo_id === id)!;
 const launch = () => chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
 
 describe("ほし窯 d2-v2: the swap spec, pinned to the page", () => {
-  it("is in the swap (research only) and nowhere that generates: no AI demo, no prompt pin, not an auto-run shop", () => {
+  it("DEV-139 (owner approval 2026-11-18): AI demo pictures of the approved prompt only, and an auto-run shop for the one run", () => {
     expect(SWAP_SHOPS).toContain("bakery");
-    expect(SPEC.aiDemoAllowed).toBe(false);
-    expect("aiDemoPromptSha256" in SPEC).toBe(false);
-    expect(AI_DEMO_SHOPS.has("bakery")).toBe(false);
-    expect(Object.keys(AUTORUN_SHOPS)).not.toContain("bakery");
+    expect(SPEC.aiDemoAllowed).toBe(true);
+    expect(SPEC.aiDemoPromptSha256).toBe("372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6");
+    expect(AI_DEMO_SHOPS.has("bakery")).toBe(true);
+    expect(Object.keys(AUTORUN_SHOPS)).toContain("bakery");
+    expect(AUTORUN_SHOPS.bakery.prompt.sha256).toBe("a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1");
     const cycle = readFileSync(join(REPO, "scripts/sales-design-worker/cycle.sh"), "utf8");
-    expect(cycle).toMatch(/^IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'$/m);
-    expect(cycle).not.toMatch(/bakery|hoshigama/);
+    expect(cycle).toMatch(/^IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6 bakery:3'$/m);
+    expect(cycle).not.toMatch(/hoshigama/);
   });
   it("the inventory and edges pin the page's HTML, CSS and copy; two slots, both empty CSS boards", () => {
     for (const [f, h] of [["index.html", INV.html_sha256], ["style.css", INV.css_sha256], ["copy.json", INV.copy_sha256]] as const) expect(sha(readFileSync(join(REPO, PAGE, f))), f).toBe(h);
@@ -135,25 +140,57 @@ describe("ほし窯's transform", () => {
   });
 });
 
-describe("ほし窯's draft prompt: pinned, NOT approved", () => {
-  it("the file's bytes are the draft of the brief §6, and nothing names it approved", () => {
-    expect(sha(DRAFT)).toBe(HOSHIGAMA_PROMPT_DRAFT_SHA256);
-    expect(Buffer.byteLength(DRAFT)).toBe(HOSHIGAMA_PROMPT_DRAFT_BYTES);
-    expect(DRAFT.split("\n")[0]).toContain("DRAFT (未承認)");
+describe("ほし窯's prompt: owner-approved 2026-11-18, exactly these bytes", () => {
+  it("the committed file and the built run prompt hash to EXACTLY the approved values (else the approval is void)", () => {
+    // the owner approved these literal values; the constants must not drift from them either
+    expect([sha(DRAFT), Buffer.byteLength(DRAFT), DRAFT.length]).toEqual(["372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6", 2007, 1988]);
+    expect([HOSHIGAMA_PROMPT_DRAFT_SHA256, HOSHIGAMA_PROMPT_DRAFT_BYTES]).toEqual(["372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6", 2007]);
+    const run = buildHoshigamaRunPromptCandidate(DRAFT);
+    expect([sha(run), run.length]).toEqual(["a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1", 2668]);
+    expect([HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256, HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS]).toEqual(["a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1", 2668]);
+    // the file is the brief §6 text byte for byte (its 3-line header is part of the approved bytes and stays as it is)
+    expect(DRAFT.split("\n")[0]).toContain("DEV-139");
     const brief = readFileSync(join(REPO, "docs/design/hoshigama-ai-photo-brief.md"), "utf8");
     const block = brief.slice(brief.indexOf("## 6."), brief.indexOf("## 7."));
     expect(DRAFT.endsWith(block.slice(block.indexOf("```\n") + 4, block.lastIndexOf("```")))).toBe(true);
-    expect(checkDraftHoshigamaPrompt(DRAFT)).toMatchObject({ ok: true });
-    expect(HOSHIGAMA_APPROVAL).toBeNull();
-    expect(checkApprovedHoshigamaPrompt(DRAFT)).toEqual({ ok: false, codes: ["PROMPT_NOT_APPROVED"] });
-    expect(buildHoshigamaRunPrompt()).toBe("");
-    expect(readApprovedHoshigamaPrompt()).toBe("");
-    const run = buildHoshigamaRunPromptCandidate(DRAFT);
-    expect([sha(run), run.length]).toEqual([HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256, HOSHIGAMA_RUN_PROMPT_DRAFT_CHARS]);
     expect(run.endsWith(DRAFT.slice(DRAFT.indexOf("COMMON: ")))).toBe(true);
-    // with the stub approval the run prompt is built (the shape the worker would get after an approval)
-    expect(buildHoshigamaRunPrompt({ approval: STUB_APPROVAL })).toBe(run);
-    expect(buildHoshigamaRunPrompt({ approval: STUB_APPROVAL, text: `${DRAFT} ` })).toBe("");
+    expect(checkDraftHoshigamaPrompt(DRAFT)).toMatchObject({ ok: true });
+  });
+
+  it("the approval record: the owner's decided values, both byte sequences pinned, no run id in code", () => {
+    expect(HOSHIGAMA_APPROVAL).toEqual({
+      approval_record: "hoshigama-one-time-run-20261118",
+      decided_by: "owner",
+      decided_on: "2026-11-18",
+      evidence: "Issue #139 comment 6970468763 follow-up, owner message 2026-11-18",
+      shop: "bakery",
+      page: "d2-v2",
+      jobs: 1,
+      max_image_calls: 3,
+      codex_runs: 1,
+      timeout_minutes: 15,
+      retry: false,
+      core_prompt_sha256: "372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6",
+      core_prompt_bytes: 2007,
+      run_prompt_sha256: "a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1",
+      run_prompt_chars: 2668,
+      upscale_allowed: ["ph-mouth-pc", "ph-loaf"],
+    });
+    expect(HOSHIGAMA_APPROVAL!.max_image_calls).toBe(HOSHIGAMA_PHOTOS.length);
+    expect(JSON.stringify(HOSHIGAMA_APPROVAL)).not.toMatch(/approval_id|expires/);
+    // the default record approves the committed bytes: the worker gets the run prompt, the readers the text
+    const run = buildHoshigamaRunPromptCandidate(DRAFT);
+    expect(checkApprovedHoshigamaPrompt(DRAFT)).toMatchObject({ ok: true });
+    expect(buildHoshigamaRunPrompt()).toBe(run);
+    expect(readApprovedHoshigamaPrompt()).toBe(DRAFT);
+    // any other bytes, or no record, void it (fail closed)
+    expect(buildHoshigamaRunPrompt({ text: `${DRAFT} ` })).toBe("");
+    expect(buildHoshigamaRunPrompt({ approval: null })).toBe("");
+    expect(checkApprovedHoshigamaPrompt(DRAFT, null)).toEqual({ ok: false, codes: ["PROMPT_NOT_APPROVED"] });
+    expect(checkApprovedHoshigamaPrompt(DRAFT, { ...HOSHIGAMA_APPROVAL!, core_prompt_sha256: "0".repeat(64) })).toEqual({ ok: false, codes: ["PROMPT_NOT_APPROVED"] });
+    expect(buildHoshigamaRunPrompt({ approval: { ...HOSHIGAMA_APPROVAL!, run_prompt_sha256: "0".repeat(64) } })).toBe("");
+    // the test stub names the same bytes (so the offline pipeline tests show the approved path)
+    expect([STUB_APPROVAL.core_prompt_sha256, STUB_APPROVAL.run_prompt_sha256, STUB_APPROVAL.upscale_allowed]).toEqual([HOSHIGAMA_APPROVAL!.core_prompt_sha256, HOSHIGAMA_APPROVAL!.run_prompt_sha256, HOSHIGAMA_APPROVAL!.upscale_allowed]);
   });
   it("an edited text is not the draft (fail closed)", () => {
     expect(checkDraftHoshigamaPrompt(DRAFT.replace("country loaf", "baguette")).ok).toBe(false);
@@ -208,14 +245,14 @@ async function stubBatch(sizes: Array<[number, number]>): Promise<ImageBatchResu
   return { images, outcome: "not_applicable", stopCode: null, imageCalls: images.length, imageFailed: 0, threadId: null, cliVersion: "0.0.0-test", model: "fixture-image-model", codexMs: 1 };
 }
 
-describe("the bundle writer and the intake: refused without the owner's approval, working with a stub", () => {
+describe("the bundle writer and the intake: working with the owner's approval, refused without it", () => {
   let root: string;
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), "dev139-intake-"));
   });
   afterAll(() => rmSync(root, { recursive: true, force: true }));
   const RUN = buildHoshigamaRunPromptCandidate(DRAFT);
-  /** `approval: "default"` leaves the writer's own default (HOSHIGAMA_APPROVAL, null today) */
+  /** `approval: "default"` leaves the writer's own default (HOSHIGAMA_APPROVAL, the owner's record of 2026-11-18) */
   const write = (batch: ImageBatchResult, approval: typeof STUB_APPROVAL | null | "default" = STUB_APPROVAL, runPrompt = RUN) =>
     writeHoshigamaPhotos({ outRoot: root, batch, commit: "a".repeat(40), approvedPrompt: DRAFT, runPrompt, generatedAt: "2026-11-17T10:00:00+09:00", approvalId: STUB_RUN_APPROVAL_ID, generator: HOSHIGAMA_OFFLINE_STUB_GENERATOR, ...(approval === "default" ? {} : { approval }) });
   const pipeline = (tag: string) => {
@@ -225,19 +262,32 @@ describe("the bundle writer and the intake: refused without the owner's approval
   };
   const intake = (from: string, p: string, o: Partial<Parameters<typeof importHoshigamaAiPhotos>[0]> = {}) => importHoshigamaAiPhotos({ from, manifestOut: join(p, "swap-manifest.json"), pipelineRoot: p, approvalIds: [STUB_RUN_APPROVAL_ID], generators: [HOSHIGAMA_OFFLINE_STUB_GENERATOR], approval: STUB_APPROVAL, ...o });
 
-  it("today (no approval): the writer and the run hook refuse, and the intake refuses every bundle", async () => {
+  it("the default (the owner's record): the writer and the run hook write; a null record or another run prompt refuse; the intake needs the run's id", async () => {
     const batch = await stubBatch([[1536, 1536], [1024, 1536], [1536, 1024]]);
-    await expect(write(batch, "default")).rejects.toThrow(/PROMPT_NOT_APPROVED/);
+    // the owner's record (the default) takes the committed text and the approved run prompt
+    const byDefault = await write(batch, "default");
+    expect(byDefault.manifest).toMatchObject({ status: "complete", prompt_approval_record: "hoshigama-one-time-run-20261118", prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, run_prompt_sha256: HOSHIGAMA_RUN_PROMPT_DRAFT_SHA256 });
+    const hook = await writeHoshigamaPhotosForRun({ outRoot: root, batch, commit: "a".repeat(40), prompt: RUN, generatedAt: "2026-11-17T10:00:00+09:00", approvalId: STUB_RUN_APPROVAL_ID });
+    expect(hook.manifest).toMatchObject({ status: "complete", approval_id: STUB_RUN_APPROVAL_ID, prompt_approval_record: "hoshigama-one-time-run-20261118" });
+    // the run hook needs the job's approval id and the approved run prompt
+    await expect(writeHoshigamaPhotosForRun({ outRoot: root, batch, commit: "a".repeat(40), prompt: RUN, generatedAt: "2026-11-17T10:00:00+09:00" })).rejects.toThrow(/APPROVAL_ID_REQUIRED/);
+    await expect(writeHoshigamaPhotosForRun({ outRoot: root, batch, commit: "a".repeat(40), prompt: `${RUN}\n`, generatedAt: "2026-11-17T10:00:00+09:00", approvalId: STUB_RUN_APPROVAL_ID })).rejects.toThrow(/RUN_PROMPT/);
+    // no record: refused
     await expect(write(batch, null)).rejects.toThrow(/PROMPT_NOT_APPROVED/);
-    await expect(writeHoshigamaPhotosForRun({ outRoot: root, batch, commit: "a".repeat(40), prompt: RUN, generatedAt: "2026-11-17T10:00:00+09:00", approvalId: STUB_RUN_APPROVAL_ID })).rejects.toThrow(/PROMPT_NOT_APPROVED/);
-    // a run prompt other than the approved one is refused even with the stub
+    // a run prompt other than the approved one is refused
     await expect(write(batch, STUB_APPROVAL, `${RUN}\n`)).rejects.toThrow(/RUN_PROMPT/);
     const { dir } = await write(batch);
     const p = pipeline("none");
-    expect(await importHoshigamaAiPhotos({ from: dir, manifestOut: join(p, "m.json"), pipelineRoot: p })).toEqual({ ok: false, codes: ["RUN_PROMPT_NOT_APPROVED"] });
+    expect(await importHoshigamaAiPhotos({ from: dir, manifestOut: join(p, "m.json"), pipelineRoot: p, approval: null })).toEqual({ ok: false, codes: ["RUN_PROMPT_NOT_APPROVED"] });
+    // the default intake knows no run approval id (the worker passes the job's own) and only the real generator
+    expect(await importHoshigamaAiPhotos({ from: dir, manifestOut: join(p, "m.json"), pipelineRoot: p })).toMatchObject({ ok: false, codes: expect.arrayContaining(["RUN_APPROVAL_UNKNOWN"]) });
     expect(await intake(dir, p, { approvalIds: undefined })).toMatchObject({ ok: false, codes: ["RUN_APPROVAL_UNKNOWN"] });
     expect(await intake(dir, p, { generators: undefined })).toMatchObject({ ok: false, codes: ["RUN_GENERATOR_UNKNOWN"] });
-    expect(readdirSync(join(p, ".intake", "photos"))).toEqual([]);
+    // a bundle written under the stub record is not the owner's record's
+    expect(await intake(dir, p, { approval: undefined })).toMatchObject({ ok: false, codes: ["RUN_PROMPT_NOT_APPROVED"] });
+    // the bundle written under the owner's record: the intake's default record accepts it once the id and generator are known
+    expect(await intake(byDefault.dir, p, { approval: undefined })).toMatchObject({ ok: true });
+    expect(readdirSync(join(p, ".intake", "photos")).length).toBe(3);
   });
   it("with the stub: 3 pictures in, the oven-mouth PC and the loaf enlarged (lanczos3, ≤2×), rights ai_generated_demo", async () => {
     const { dir, manifest } = await write(await stubBatch([[1024, 1024], [1024, 1536], [1536, 1024]]));
@@ -382,13 +432,13 @@ describe("ほし窯 swap E2E with MOCK photos: rights → crop (2× at the edges
     expect(sha(readFileSync(join(REPO, PAGE, "index.html")))).toBe(INV.html_sha256);
   }, 180_000);
 
-  it("refuses an ai_generated_demo picture for ほし窯 (not approved: AI_DEMO_NOT_ALLOWED), and nothing is written", async () => {
+  it("DEV-139 (owner approval 2026-11-18): an ai_generated_demo picture of ANOTHER prompt is refused (AI_DEMO_PROMPT_NOT_APPROVED), nothing written", async () => {
     const s: Array<Record<string, unknown>> = await slots("ai");
     const pc0 = (s[1]!.pc as { rights: Record<string, unknown> }).rights;
-    s[1] = { ...s[1]!, pc: { rights: { ...pc0, source_kind: "ai_generated_demo", ai_provenance: { generator: "g", model: "fixture-image-model", generated_at: "2026-11-17T10:00:00+09:00", prompt_sha256: HOSHIGAMA_PROMPT_DRAFT_SHA256, approval_id: "x-test-01", demo_only: true } }, focal_box: box("ph-loaf") } };
+    const ai = (prompt: string) => ({ ...s[1]!, pc: { rights: { ...pc0, source_kind: "ai_generated_demo", ai_provenance: { generator: "g", model: "fixture-image-model", generated_at: "2026-11-17T10:00:00+09:00", prompt_sha256: prompt, approval_id: "x-test-01", demo_only: true } }, focal_box: box("ph-loaf") } });
     const out = outDir();
-    const res = await run(s, out, browser);
-    expect(res.ok ? [] : res.refusals).toEqual([{ slot_id: "ph-loaf", photo: "pc", codes: ["AI_DEMO_NOT_ALLOWED"] }]);
+    const res = await run([s[0]!, ai("0".repeat(64))], out, browser);
+    expect(res.ok ? [] : res.refusals).toEqual([{ slot_id: "ph-loaf", photo: "pc", codes: ["AI_DEMO_PROMPT_NOT_APPROVED"] }]);
     nothingLeft(out);
   });
   it("a photo below 2× at the 1920 edge is refused; the SP photo is the brief's choice, not the swap rule's", async () => {

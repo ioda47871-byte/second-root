@@ -1,9 +1,9 @@
 /**
  * DEV-139: the ほし窯 (bakery, a FICTIONAL bakery) run-bundle writer — the same shape as 輪's (bicycle-photos.ts), for the 3
- * photos of ../quality-pipeline/hoshigama-ai-photos.ts. **Usable only after the owner's approval**: it refuses unless an
- * approval record (default HOSHIGAMA_APPROVAL, null today) names exactly the prompt text's bytes and the run prompt.
- * No worker hook calls it (ほし窯 is not in AUTORUN_SHOPS; image-autorun.ts has no writer for its bundle schema), so
- * today only the offline tests reach it, with stub batches and a stub approval record.
+ * photos of ../quality-pipeline/hoshigama-ai-photos.ts. It refuses unless an approval record (default HOSHIGAMA_APPROVAL,
+ * the owner's one-run approval of 2026-11-18) names exactly the prompt text's bytes and the run prompt. The worker's
+ * image auto-run (image-autorun.ts, bundle hoshigama_ai_photos_v0) calls writeHoshigamaPhotosForRun only after the
+ * whole chain held (root switch entry, root use record, 20-minute grant, worker ledger).
  *
  * Output (outside the repository, 0700 dir, 0600 files): <root>/hoshigama-photos-XXXXXX/ with <photo_id>.png in call order
  * (Image 1 → ph-mouth-pc, 2 → ph-mouth-sp, 3 → ph-loaf) and manifest.json (photo → slot and use, file SHA-256, pixel
@@ -41,7 +41,7 @@ export async function writeHoshigamaPhotos(o: {
   /** the one-use approval id of the run: required, no default (the owner chooses it at run time) */
   approvalId: string;
   generator?: string;
-  /** the owner's approval record; default HOSHIGAMA_APPROVAL (null today: everything is refused). Tests pass a stub. */
+  /** the owner's approval record; default HOSHIGAMA_APPROVAL. Tests may pass another (null: everything is refused). */
   approval?: HoshigamaApproval | null;
 }): Promise<{ dir: string; manifest: HoshigamaPhotosManifest }> {
   const { batch } = o;
@@ -91,8 +91,8 @@ export async function writeHoshigamaPhotos(o: {
 }
 
 /**
- * The call a worker hook would make after the approval (the same inputs as 輪's writeBicyclePhotosForRun). Not wired
- * to any hook today. The text is read from this checkout; unapproved bytes or no approval → it throws.
+ * The worker hook's call (image-autorun.ts BUNDLE_WRITERS.hoshigama_ai_photos_v0; the same inputs as 輪's
+ * writeBicyclePhotosForRun). The text is read from this checkout; unapproved bytes or no approval → it throws.
  */
 export async function writeHoshigamaPhotosForRun(o: { outRoot: string; batch: ImageBatchResult; commit: string; prompt: string; generatedAt: string; approvalId?: string }): Promise<{ dir: string; manifest: HoshigamaPhotosManifest }> {
   if (!o.approvalId) throw new Error("APPROVAL_ID_REQUIRED");
