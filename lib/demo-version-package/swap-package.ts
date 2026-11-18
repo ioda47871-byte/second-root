@@ -5,7 +5,11 @@
  *
  * Nothing is written here and nothing is changed in the inputs (the swap's copy, the rights file, the originals stay
  * as they are). Plain files only: a symbolic link, a directory where a file belongs, or a file the swap does not write
- * (in page/photos/) is refused. copy.json is not part of a demo version and is not read.
+ * (in page/photos/) is refused. copy.json is not part of a demo version and is not read by prepareSwap.
+ *
+ * DEV-139: readSwapCopyInputs reads the swap page's copy record (its copy.json) and the facts pack, read-only, for
+ * package-local.ts --page … --facts …; the copy itself is derived and audited by copy.ts deriveSwapCopy (through
+ * package.ts swapCopyInput), the one module of the package that may call the copy audit.
  */
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
@@ -13,7 +17,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-rights";
 import { convertPhoto, photoUrlMap, provePhotoUrlRewrite, rewriteCssPhotoUrls, rewriteHtmlPhotoUrls, SWAP_PHOTO_URL, type ConvertedPhoto, type RewriteProof } from "./photos";
-import { buildSwapImages, type PackageImage, type SwapImages } from "./swap-rights";
+import { buildSwapImages, type PackageImage, type SwapImages, type SwapImagesInput } from "./swap-rights";
 
 export { PhotoError } from "./photos";
 export { SwapRightsError } from "./swap-rights";
@@ -95,7 +99,7 @@ export type PreparedSwap = {
  * The swap's copy (`page`), its rights file and summary, and the run's originals → the stored copy. Every photo the
  * copy holds must be referenced by its HTML or CSS, and every reference must be a photo it holds.
  */
-export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictions: unknown; summary: unknown; originals: readonly Uint8Array[]; forbiddenSha256: ReadonlySet<string>; now: string; photoLimit?: number }): Promise<PreparedSwap> {
+export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictions: unknown; summary: unknown; originals: readonly Uint8Array[]; forbiddenSha256: ReadonlySet<string>; now: string; photoLimit?: number; aiDemoSpecFor?: SwapImagesInput["aiDemoSpecFor"] }): Promise<PreparedSwap> {
   const map = photoUrlMap(o.page.photos.keys());
   // only <img src> / srcset, <source srcset> and CSS url() values are rewritten; a photos/ anywhere else is refused
   const h = rewriteHtmlPhotoUrls(o.page.html, map);
@@ -124,8 +128,14 @@ export async function prepareSwap(o: { page: SwapPage; rights: unknown; depictio
     originals: o.originals,
     forbiddenSha256: o.forbiddenSha256,
     now: o.now,
+    ...(o.aiDemoSpecFor ? { aiDemoSpecFor: o.aiDemoSpecFor } : {}),
   });
   return { html, css, photos, images: built.images, sources: built.sources, conversions, proof };
+}
+
+/** DEV-139: the swap page's copy record (its copy.json) and the facts pack, as plain files (no link). */
+export function readSwapCopyInputs(pageDir: string, factsPath: string): { copyRecord: Uint8Array; factsPack: Uint8Array } {
+  return { copyRecord: new Uint8Array(readPlain(join(pageDir, "copy.json"), "PAGE_COPY_RECORD_UNREADABLE")), factsPack: new Uint8Array(readPlain(factsPath, "FACTS_PACK_UNREADABLE")) };
 }
 
 /** The success-case hashes the swap forbids (the repository's originals inventory). */

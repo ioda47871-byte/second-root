@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileS
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import sharp from "sharp";
 import { ARTIFACT_LIMITS, bundleSha256, CSS_NAME, HTML_NAME, type ManifestFile, type RenderViewport } from "@/lib/sales/demo-version/manifest";
-import { CopyPackageError, copyRoleOfName, makeCopyFiles, type CopyInput, type CopyManifest } from "./copy";
+import { CopyPackageError, copyRoleOfName, deriveSwapCopy, makeCopyFiles, type CopyInput, type CopyManifest } from "./copy";
 import { type PackageImage } from "./swap-rights";
 import { checkPackageCopy, checkPackageFiles, checkPackageImages, PACKAGE_FORMAT, PACKAGE_FORMAT_COPY, PackageError, packageFromSource, packageRightsSummary, type DemoVersionPackage } from "./verify";
 
@@ -144,6 +144,19 @@ export async function buildPackage(o: {
     source: o.source,
     ...(copy ?? {}),
   };
+}
+
+/**
+ * DEV-139: a photo-swapped page's copy for a v2 package with both copy and photos (copy.ts deriveSwapCopy), refusals as
+ * PackageError("COPY_INVALID", [code, …]) like every other copy refusal of the build.
+ */
+export function swapCopyInput(o: Parameters<typeof deriveSwapCopy>[0]): ReturnType<typeof deriveSwapCopy> {
+  try {
+    return deriveSwapCopy(o);
+  } catch (e) {
+    if (e instanceof CopyPackageError) throw new PackageError("COPY_INVALID", [e.code, ...e.details]);
+    throw e;
+  }
 }
 
 const REPO = resolve(__dirname, "../..");

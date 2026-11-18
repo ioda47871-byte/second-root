@@ -30,6 +30,17 @@
  * `copy` as bytes (lib/demo-version-package/local-inputs.ts compCopyInput). buildPackage checks the copy again and
  * refuses what fails. Without --copy, nothing changes (a v1 package as before).
  *
+ * DEV-139: or package a photo-swapped page WITH its copy, as a v2 package holding both (the photo mode above plus --facts):
+ *
+ *   npx tsx scripts/sales/demo-version/package-local.ts --out <dir outside the repository> \
+ *     --page <swap>/page --rights <rights.private.json> --originals <photo dir> --depiction-confirmation <file> \
+ *     --facts <facts-pack.json> [--summary <swap-summary.json>] [--compare-renders <dir>] [--png-out <dir>]
+ *
+ * Every photo check of the photo mode runs unchanged (prepareSwap). The copy is the swap page's own copy.json (bound to
+ * the research page by the summary's source copy hash) with each swapped placeholder caption item (写真｜<alt>) turned
+ * into the picture's alt text, and the existing copy audit of exactly the stored page as round 0 (package.ts
+ * swapCopyInput → copy.ts deriveSwapCopy); buildPackage checks the copy again and refuses what fails. --copy (a comp dir) stays photo-less.
+ *
  * Renders PC 1440 and SP 390 full pages with the comp-lane renderer (renderPrototype: JavaScript off, network blocked,
  * deviceScaleFactor 1, this machine's fonts as in the research renders), downscales any render whose side exceeds
  * 4096 px (the server's limit; see lib/demo-version-package/package.ts), builds the manifest and runs the same checks
@@ -44,17 +55,25 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
 import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib/demo-version-package/local-inputs";
-import { buildPackage, insideRepo, PackageError, writePackage } from "../../../lib/demo-version-package/package";
-import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
+import { buildPackage, insideRepo, PackageError, swapCopyInput, writePackage } from "../../../lib/demo-version-package/package";
+import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
 
-const arg = (k: string) => {
-  const i = process.argv.indexOf(k);
-  return i > 0 ? process.argv[i + 1] : undefined;
-};
 const REPO = resolve(__dirname, "../../..");
 const DEFAULT_SOURCE = "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9";
 
-async function main(): Promise<number> {
+/**
+ * DEV-139 (PR #288 review M1): the programmatic entry. `seams` is for in-process tests only (the CLI below passes none):
+ * `aiDemoSpecFor` stands in for the frozen swap specs (photo-swap-shops.ts) when the photos' image records are built,
+ * `write` / `writeErr` capture what the CLI prints.
+ */
+export type PackageLocalSeams = { aiDemoSpecFor?: Parameters<typeof prepareSwap>[0]["aiDemoSpecFor"]; write?: (s: string) => void; writeErr?: (s: string) => void };
+export async function main(argv: string[], seams: PackageLocalSeams = {}): Promise<number> {
+  const arg = (k: string) => {
+    const i = argv.indexOf(k);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const out_ = seams.write ?? ((s: string) => void process.stdout.write(s));
+  const err_ = seams.writeErr ?? ((s: string) => void process.stderr.write(s));
   const out = arg("--out");
   const page = arg("--page");
   const rightsPath = arg("--rights");
@@ -66,16 +85,16 @@ async function main(): Promise<number> {
   const pngOut = arg("--png-out");
   const copyDir = arg("--copy");
   const factsArg = arg("--facts");
-  if (!out || (copyDir ? !factsArg || page || arg("--source") : factsArg) || (page && arg("--source")) || (page && (!rightsPath || !originalsDir || !depictionPath)) || (!page && (rightsPath || originalsDir || depictionPath || arg("--summary") || compareDir))) {
-    process.stderr.write(
+  if (!out || (copyDir ? !factsArg || page || arg("--source") : factsArg && !page) || (page && arg("--source")) || (page && (!rightsPath || !originalsDir || !depictionPath)) || (!page && (rightsPath || originalsDir || depictionPath || arg("--summary") || compareDir))) {
+    err_(
       "usage: package-local.ts --out <dir outside the repository> [--source <comp dir>] [--png-out <dir>]\n" +
         "       package-local.ts --out <dir> --copy <comp dir> --facts <facts-pack.json> [--png-out <dir>]\n" +
-        "       package-local.ts --out <dir> --page <swap>/page --rights <rights.private.json> --originals <photo dir> --depiction-confirmation <file> [--summary <swap-summary.json>] [--compare-renders <dir>] [--png-out <dir>]\n",
+        "       package-local.ts --out <dir> --page <swap>/page --rights <rights.private.json> --originals <photo dir> --depiction-confirmation <file> [--facts <facts-pack.json>] [--summary <swap-summary.json>] [--compare-renders <dir>] [--png-out <dir>]\n",
     );
     return 2;
   }
   if (insideRepo(out) || (pngOut && insideRepo(pngOut))) {
-    process.stderr.write("refused: write the package outside the repository\n");
+    err_("refused: write the package outside the repository\n");
     return 2;
   }
   try {
@@ -83,6 +102,7 @@ async function main(): Promise<number> {
     let css: string;
     let swap: PreparedSwap | null = null;
     let compCopy: CompCopyInput | null = null;
+    let swapCopy: ReturnType<typeof swapCopyInput> | null = null;
     if (copyDir) {
       compCopy = compCopyInput(resolve(copyDir), resolve(factsArg!));
       html = compCopy.html;
@@ -96,17 +116,24 @@ async function main(): Promise<number> {
           throw new SwapInputError(code);
         }
       };
+      const summary = read(summaryPath, "SUMMARY_UNREADABLE");
       swap = await prepareSwap({
         page: readSwapPage(page),
         rights: read(rightsPath!, "RIGHTS_UNREADABLE"),
         depictions: read(depictionPath!, "DEPICTION_CONFIRMATION_UNREADABLE"),
-        summary: read(summaryPath, "SUMMARY_UNREADABLE"),
+        summary,
         originals: readOriginals(originalsDir!),
         forbiddenSha256: forbiddenHashes(REPO),
         now: new Date().toISOString().slice(0, 10),
+        ...(seams.aiDemoSpecFor ? { aiDemoSpecFor: seams.aiDemoSpecFor } : {}),
       });
       html = swap.html;
       css = swap.css;
+      // DEV-139: --facts with --page: the swapped page's copy (its copy.json, the placeholder captions → alt texts) → v2
+      if (factsArg) {
+        const inputs = readSwapCopyInputs(resolve(page), resolve(factsArg));
+        swapCopy = swapCopyInput({ ...inputs, summary, html, css, photoUrls: new Set(swap.photos.keys()) });
+      }
     } else {
       const dir = resolve(REPO, source);
       html = readFileSync(join(dir, "index.html"), "utf8");
@@ -121,7 +148,7 @@ async function main(): Promise<number> {
       await browser.close();
     }
     if (renders.desktop_1440.blocked || renders.mobile_390.blocked) {
-      process.stderr.write("refused: the page tried outside requests\n");
+      err_("refused: the page tried outside requests\n");
       return 1;
     }
     const compare: Record<string, PixelDiff> = {};
@@ -163,12 +190,12 @@ async function main(): Promise<number> {
             local: { conversions, sources: swap.sources, rewrite_proof: swap.proof, compare },
           }
         : {}),
-      ...(compCopy ? { copy: compCopy.copy } : {}),
+      ...(compCopy ? { copy: compCopy.copy } : swapCopy ? { copy: swapCopy.copy } : {}),
       source: swap ? "swap-copy" : compCopy ? (insideRepo(copyDir!) ? relative(REPO, resolve(copyDir!)).split(sep).join("/") : "comp-copy") : source,
       validatorCommit: commit,
     });
     writePackage(out, pkg);
-    process.stdout.write(
+    out_(
       `${JSON.stringify(
         {
           status: "OK",
@@ -193,15 +220,15 @@ async function main(): Promise<number> {
     return 0;
   } catch (e) {
     if (e instanceof LocalInputError) {
-      process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
+      out_(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
       return 1;
     }
     if (e instanceof PackageError || e instanceof SwapInputError || e instanceof PhotoError || e instanceof SwapRightsError) {
-      process.stdout.write(`${JSON.stringify({ status: "FAIL", code: e.code, details: e.details })}\n`);
+      out_(`${JSON.stringify({ status: "FAIL", code: e.code, details: e.details })}\n`);
       return 1;
     }
     throw e;
   }
 }
 
-main().then((code) => process.exit(code));
+if (require.main === module) main(process.argv.slice(2)).then((code) => process.exit(code));

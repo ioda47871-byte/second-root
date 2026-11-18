@@ -9,7 +9,9 @@
  *    crops' sha256 and the copy's HTML/CSS hashes — checked against the bytes, so the crop ↔ record link is the swap's;
  *  - the ORIGINAL photos (the run's bundle): each record must describe one of them byte for byte, so the existing
  *    checkPhotoRights runs exactly as the swap ran it (quality_verification, AI demo allowed for this fictional shop,
- *    the success-case hashes forbidden) plus the swap's prompt pin (AI_DEMO_PROMPT_NOT_APPROVED).
+ *    the success-case hashes forbidden) plus the swap's prompt pin (AI_DEMO_PROMPT_NOT_APPROVED). DEV-139: the shop is
+ *    the summary's, and only a swap shop whose spec allows AI demo pictures AND pins their prompt (輪; ほし窯 after its
+ *    owner approval) is taken.
  *
  *  - the owner's DEPICTION CONFIRMATION (review round 1 L2; written and kept by the owner outside the repository): for
  *    each original photo, keyed by its sha256, `depicts_real_product`, `depicts_real_interior` and
@@ -25,7 +27,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { checkPhotoRights, measurePhotoBytes, utcDay, type PhotoRights } from "@/lib/design-agent/quality-pipeline/photo-rights";
-import { swapShopSpec } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
+import { SWAP_SHOP_SPECS, type SwapShopSpec } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
 import { AiConceptProvenance } from "@/lib/sales/demo-version/ai-concept-rights";
 import { SWAP_PHOTO_URL } from "./photos";
 
@@ -148,6 +150,11 @@ export type SwapImagesInput = {
   forbiddenSha256: ReadonlySet<string>;
   /** the check day (ISO date) */
   now: string;
+  /**
+   * DEV-139 (PR #288 review M1), tests only: resolves a shop's spec instead of the frozen SWAP_SHOP_SPECS (e.g. the state
+   * an owner approval would write). In-process callers only; package-local.ts's CLI run never passes it.
+   */
+  aiDemoSpecFor?: (shop: string) => SwapShopSpec | null;
 };
 
 export type SwapImages = {
@@ -171,8 +178,13 @@ export function buildSwapImages(i: SwapImagesInput): SwapImages {
   }
   const summary = SwapSummaryFile.safeParse(i.summary);
   if (!summary.success) throw new SwapRightsError("SUMMARY_INVALID");
-  const spec = swapShopSpec("bicycle");
-  if (summary.data.shop !== spec.shop) throw new SwapRightsError("SUMMARY_NOT_RIN");
+  // DEV-139: the summary's shop must be a fictional swap shop whose AI demo pictures the owner approved with a pinned
+  // prompt (photo-swap-shops.ts aiDemoAllowed + aiDemoPromptSha256): 輪 today, ほし窯 only once its approval sets both.
+  // Any other shop is refused as before (the code keeps its DEV-196s name, when 輪 was the only such shop).
+  const shop = summary.data.shop;
+  const committed = (s: string): SwapShopSpec | null => (Object.prototype.hasOwnProperty.call(SWAP_SHOP_SPECS, s) ? SWAP_SHOP_SPECS[s as keyof typeof SWAP_SHOP_SPECS] : null);
+  const spec: SwapShopSpec | null = (i.aiDemoSpecFor ?? committed)(shop);
+  if (!spec || spec.shop !== shop || !spec.aiDemoAllowed || !spec.aiDemoPromptSha256) throw new SwapRightsError("SUMMARY_NOT_RIN", ["shop_not_ai_demo_approved"]);
   // the copy is the swap's own, unchanged
   if ((sha256Hex(new TextEncoder().encode(i.pageHtml))) !== summary.data.copy_hashes.html || (sha256Hex(new TextEncoder().encode(i.pageCss))) !== summary.data.copy_hashes.css) {
     throw new SwapRightsError("PAGE_NOT_THE_SWAP_COPY");
@@ -195,7 +207,7 @@ export function buildSwapImages(i: SwapImagesInput): SwapImages {
       const bytes = typeof sha === "string" ? originals.get(sha) : undefined;
       if (!bytes) throw new SwapRightsError("ORIGINAL_MISSING", [label]);
       const info = measurePhotoBytes(Buffer.from(bytes));
-      const checked = checkPhotoRights(p.rights, info, { purpose: "quality_verification", now: i.now, forbiddenSha256: i.forbiddenSha256, aiDemoAllowed: true });
+      const checked = checkPhotoRights(p.rights, info, { purpose: "quality_verification", now: i.now, forbiddenSha256: i.forbiddenSha256, aiDemoAllowed: spec.aiDemoAllowed });
       if (!checked.ok) throw new SwapRightsError("RIGHTS_REFUSED", [label, ...checked.codes]);
       const r = checked.record;
       if (r.source_kind !== "ai_generated_demo" || !r.ai_provenance) throw new SwapRightsError("NOT_AI_DEMO", [label]);

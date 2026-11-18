@@ -1,0 +1,239 @@
+{
+  "schema": "comp_copy_v1",
+  "shop_id": "fictional-bakery-hoshigama",
+  "facts_sha256": "d46adc81bee7b7096e47f57091d88df348ac37cf389d7cce071a76f634fcf715",
+  "lane": "quality_research_fictional",
+  "items": [
+    {
+      "id": "name-full",
+      "text": "架空パン店 ほし窯",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F1"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "name",
+      "text": "ほし窯",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F1"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "kind",
+      "text": "bakery",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F2"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "hours",
+      "text": "7:00〜16:00（売り切れ次第終了）",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F5"
+      ],
+      "owner_review_needed": false,
+      "label": "時間"
+    },
+    {
+      "id": "closed",
+      "text": "日曜・月曜",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F6"
+      ],
+      "owner_review_needed": false,
+      "label": "定休"
+    },
+    {
+      "id": "address",
+      "text": "名古屋市瑞穂区架空町四丁目2-6",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F4"
+      ],
+      "owner_review_needed": false,
+      "label": "所在地"
+    },
+    {
+      "id": "phone",
+      "text": "000-0000-0631",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F8"
+      ],
+      "owner_review_needed": false,
+      "label": "電話"
+    },
+    {
+      "id": "ph-mouth",
+      "text": "写真｜石窯の口",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "mk-deep",
+      "text": "窯の奥",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-loaf",
+      "text": "写真｜田舎パン",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F12",
+        "F13"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "deep",
+      "text": "石窯で焼くのは田舎パンとバゲットです",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "p-inaka",
+      "text": "架空田舎パン",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F13"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "p-baguette",
+      "text": "架空バゲット",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F14"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "mk-fire",
+      "text": "薪の火",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "fire",
+      "text": "毎朝4時半に石窯へ薪をくべます",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "mk-door",
+      "text": "店先の棚",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "door",
+      "text": "薪の石窯で田舎パンを焼き、焼き上がった順に店先の棚へ並べています。",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "p-kurumi",
+      "text": "架空くるみパン",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F16"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "p-shio",
+      "text": "架空塩パン",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F15"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "p-danish",
+      "text": "架空季節のフルーツデニッシュ",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F17"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "mk-flour",
+      "text": "粉",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F11"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "flour",
+      "text": "粉は二種類を、季節で割合を変えて合わせます",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F11"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "mk-visit",
+      "text": "扉の外",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "access",
+      "text": "架空線架空駅 1番出口から徒歩6分",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F7"
+      ],
+      "owner_review_needed": false,
+      "label": "道順"
+    },
+    {
+      "id": "fictional",
+      "text": "比較研究用の架空のパン屋です。実在の店舗ではありません。",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": false
+    }
+  ]
+}

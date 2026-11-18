@@ -1,11 +1,15 @@
 # ほし窯 d2 v1 — 研究専用の忠実な実装 (C、`experimental_fidelity`) (DEV-139)
 
+> **置き換え済み (2026-11-17):** 文を `<wbr>` で割っていたため文章入りの包みが作れず、`<wbr>` の無い `../d2-v2` に直した。
+> 今の C ページは d2-v2。この版は記録として以後は変えずに残す (写真の差し替えの spec はこの版を指さない。PR #288 で粉の割合の図を連続の帯に直し、写真の枠の JSON の HTML の SHA を更新したのが最後の変更)。
+
 2026-11-17。輪 (SR-001) の作り方 (カンプ → C ページ → 写真の枠の計測 → 写真の指示書) を、架空のパン屋 ほし窯 の方向 `d2-hearth-floor` でオフラインに通したもの。
 **本番用の実装ではない。成功例ではない。** オーナーはまだ見ていない。写真はすべて仮の板 (`placeholder_limited`)。
 
 ## 何から作ったか
 
-- 今の版は、カンプ `../../comps/d2-hearth-floor-v2` (A2) から作った。**index.html と copy.json は A2 と同じバイト。** 事実と文は足していない・変えていない。
+- 今の版は、カンプ `../../comps/d2-hearth-floor-v3` (A3) と **index.html と copy.json が同じバイト**。A3 は A2 (`../../comps/d2-hearth-floor-v2`) の粉の割合の図だけを直した版 (下の「2巡目のレビューの後」)。事実と文は足していない・変えていない。
+  - A3 は `comp-lane.ts` の描画と検査 (所見 0)、`comp-copy.ts --audit` (round 0 で `approve_candidate`)、Claude の見比べ `review.json` (1巡、判定 `show_owner`) と `--check-review` を通った。
   - A2 は `comp-lane.ts` の描画と検査 (所見 0)、`comp-copy.ts --audit` (round 0 で `approve_candidate`)、Claude の見比べ `review.json` (2巡、判定 `show_owner`) を通った。
   - 最初の版はカンプ `../../comps/d2-hearth-floor` (A1) から作った。A1 のディレクトリは変えずに残す。A1 の見比べは、下の M1 を見落としていた。
 - style.css は、Hero (窯の口のアーチの舞台、`vw` で幅に比例) まで A2 と同じで、その下の区画を作り直した:
@@ -24,13 +28,20 @@
 - **L5 (意図の記録)** PC の扉の外の区画は2列 (アーチの中に時間と定休、右に所在地など) にした。方向の `single_column_text` からの読み替えで、アーチを店の扉にするため。石窯の口の写真は、方向の `image_slots` の `full` を、アーチに縁取られた窯の中の眺めとして読み替え、アーチの奥の小さな板にした。
 - **写真の板の HTML は変えていない** (`fig-mouth`・`board-mouth`・`ph-mouth` と `fig-loaf`・`board-loaf`・`ph-loaf` の3つ組は同じ)。HTML で変えたのは、`fig-mouth` の前に描いた窯の中の SVG 2つ (`.inside-pc`・`.inside-sp`) と、Hero の頭の煉瓦の目地の SVG (`.masonry`) を足したこと、店名の `<wbr>`、クープの線の位置、粉の区画の点の円の SVG (`.mix`) を足したこと。石窯の口の板の大きさは CSS で変わった (下の表)。
 
+## 2巡目のレビュー (PR #287 round 2) の後に直したこと (DEV-139 写真の流れの PR)
+
+- 粉の区画の割合の図 (`.mix`) が数えられる4つの段 (割合の違う4組の点の円) で、事実 F11 (二種類を季節で割合を変えて合わせる) に無い「季節ごとの4つの配合」を読ませていた。
+  2つの粉の点が左から右へ連続して入れ替わる1本の帯にした (段も境も無く、配合の数を示さない)。カンプは新しい版 A3 (`comps/d2-hearth-floor-v3`) に記録し、この C ページの HTML も同じバイトにした。
+  写真の枠は測り直して動かないこと (HTML の SHA だけが変わる) を確かめた (`photo-slots-d2-v1.json`・`photo-slot-edges-d2-v1.json`)。
+
 ## 描画 (comp-lane、JS 無効、通信遮断、deviceScaleFactor 1。PNG はリポジトリの外)
 
 | | HTML | CSS | PC 1440 | SP 390 |
 |---|---|---|---|---|
 | A1 カンプ | `454be930b549…` | `7f385570462e…` | `d12c5312b908…` 1440×5200 | `ab63cee75b21…` 390×3853 |
 | A2 カンプ v2 | `666850d54d47…` | `acaac8ab9d91…` | `4f0a66f96ec7…` 1440×5090 | `fddd7c163cfb…` 390×3943 |
-| C d2-v1 (今) | `666850d54d47…` (A2 と同じ) | `7017a35e4480…` | `e4805418b2c7…` 1440×5162 | `fddd7c163cfb…` 390×3943 (SP の CSS は A2 と同じ) |
+| A3 カンプ v3 | `974cc35736fa…` | `acaac8ab9d91…` (A2 と同じ) | `288783883f70…` 1440×5090 | `cc7f88a5a046…` 390×3943 |
+| C d2-v1 (今) | `974cc35736fa…` (A3 と同じ) | `7017a35e4480…` | `1bb2f3b5d0d5…` 1440×5162 | `cc7f88a5a046…` 390×3943 (SP の CSS は A2・A3 と同じ) |
 
 描画のバイトは書体で機械ごとに変わる (この容器で描いた値)。comp-lane は所見 0 件 (exit 0)。
 
@@ -51,5 +62,8 @@
 
 - 写真はすべて仮の板。写真の生成・取得は別の承認が要る (指示書の草案は未承認)。
 - この容器には明朝体が無く、明朝体の指定は IPAGothic などで描かれている。
-- 写真の差し替え (`photo-swap-shops.ts`) に ほし窯 は入れていない。
+- 写真の差し替え (`photo-swap-shops.ts`) には DEV-139 で研究用として入れた (`aiDemoAllowed: false`: 権利を確かめた写真だけ、AI のデモ画像は拒否)。
+  AI 写真の生成・取り込みはオーナーの承認の後 (`docs/operations/hoshigama-one-time-run-sheet.md`、未承認)。
+- この版の HTML は文を `<wbr>` で割っているので、サーバーの文章の検査 (`checkArtifactCopy`) が断片を読み、文章入りの v2 の包みは
+  `UNVERIFIED_COPY` で止まる (写真なしのカンプも同じ。検査は緩めない。`docs/operations/step2-fictional-e2e.md` の輪と同じ)。
 - 自己批評の残りは A2 の `review.json` の `remaining`。

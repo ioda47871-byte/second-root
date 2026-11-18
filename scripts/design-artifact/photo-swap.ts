@@ -8,6 +8,8 @@
  * rights-cleared photo, then draws it at the shop's render widths (PC 1440 and SP 390; 輪 also tablet 768) (JavaScript off, every request outside the copy refused).
  * The repository page is not changed. Nothing is written inside the repository.
  *
+ * DEV-139: and ほし窯 (bakery, a FICTIONAL bakery, page d2-v2; research only, no AI demo pictures until the owner approves).
+ *
  * DEV-189: this file is the COMMON part. What is fixed per shop (the CSS breakpoint ranges and their edges, where the
  * SP photo is used, the placeholder's HTML structure, the CSS added to the copy, whether AI demo pictures are taken)
  * lives in lib/design-agent/quality-pipeline/photo-swap-shops.ts. The ranges named below are つぐ手's.
@@ -147,6 +149,11 @@ export type SwapOptions = {
   browser?: Browser;
   /** tests only: a stand-in for transformHtml, to prove a late failure leaves no --out */
   transform?: typeof transformHtml;
+  /**
+   * DEV-139 (PR #288 review M1), tests only: the shop's spec to use instead of the frozen SWAP_SHOP_SPECS entry (e.g. the
+   * state an owner approval would write). In-process callers only; the CLI (main) never passes it.
+   */
+  spec?: SwapShopSpec;
 };
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -384,7 +391,8 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
   const manifest = m.data;
   const outCode = checkOut(opts.out);
   if (outCode) refusals.push({ codes: [outCode] });
-  const spec = swapShopSpec(manifest.shop);
+  const spec = opts.spec ?? swapShopSpec(manifest.shop);
+  if (spec.shop !== manifest.shop) return { ok: false, refusals: [...refusals, { codes: ["SPEC_OF_ANOTHER_SHOP"] }] };
   const page = loadInventory(manifest.shop, opts.pageDir);
   if (!page.ok) return { ok: false, refusals: [...refusals, { codes: [page.code] }] };
   const { inv, edges, dir } = page;
@@ -518,6 +526,8 @@ async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, tr
   const crops: Record<string, unknown> = {};
   for (const { slot, entry, plan, photos } of plans) {
     const names = {} as Record<SwapRangeKey, string>;
+    // DEV-139 (spec.shareIdenticalCrops): the file already cut for an earlier range of this slot, by source and rectangle
+    const cut = new Map<string, { name: string; range: SwapRangeKey }>();
     let size = { width: 0, height: 0 };
     for (const r of spec.ranges) {
       const lead = plan.byViewport[r.viewports[0]!];
@@ -540,12 +550,17 @@ async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, tr
         // the decoder's message is not passed on: codes only
         return { ok: false, refusals: [{ slot_id: slot.slot_id, photo: src.which, codes: ["PHOTO_DECODE_FAILED"] }] };
       }
-      const name = `photos/${slot.slot_id}-${r.key}.${ext}`;
-      files[name] = buf;
+      const key = `${src.which}:${rect.left},${rect.top},${rect.width},${rect.height}`;
+      const same = spec.shareIdenticalCrops ? cut.get(key) : undefined;
+      const name = same ? same.name : `photos/${slot.slot_id}-${r.key}.${ext}`;
+      if (!same) {
+        files[name] = buf;
+        cut.set(key, { name, range: r.key });
+      }
       names[r.key] = name;
       if (r.key === "desktop") size = { width: rect.width, height: rect.height };
       const checked = Object.fromEntries(r.viewports.map((v) => [v, plan.byViewport[v]?.crop.ok ? (plan.byViewport[v]!.crop as { density: number }).density : null]));
-      crops[`${slot.slot_id}/${r.key}`] = { source: lead.source, asset_id: src.record.asset_id, rect, density: lead.crop.density, density_by_viewport: checked, scale_basis: lead.crop.scale_basis, exception_applied: lead.crop.exception_applied, kept_area: lead.kept_area };
+      crops[`${slot.slot_id}/${r.key}`] = { source: lead.source, asset_id: src.record.asset_id, rect, density: lead.crop.density, density_by_viewport: checked, scale_basis: lead.crop.scale_basis, exception_applied: lead.crop.exception_applied, kept_area: lead.kept_area, ...(same ? { same_file_as: same.range } : {}) };
     }
     slotsOut.push({ slot, alt: entry.alt ?? slot.role, files: names, size });
   }

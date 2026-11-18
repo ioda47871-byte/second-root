@@ -34,8 +34,10 @@ type Slot = (typeof TSUGUTE_SLOTS)[number];
 /**
  * The smallest factor (> 1, three decimals, rounded up) whose enlarged size still covers the slot's 2× target after the
  * cover crop to the slot's shape; 1 when the picture already does; null when even MAX_UPSCALE would not.
+ * DEV-139: `max` is a shop's own explicit limit (ほし窯's HOSHIGAMA_MAX_UPSCALE); it defaults to MAX_UPSCALE, so every
+ * existing caller (つぐ手, 輪) is unchanged.
  */
-export function upscaleFactor(img: { width: number; height: number }, slot: { aspect: `${number}:${number}`; target: Slot["target"] }): number | null {
+export function upscaleFactor(img: { width: number; height: number }, slot: { aspect: `${number}:${number}`; target: Slot["target"] }, max: number = MAX_UPSCALE): number | null {
   if (cropReaches(img, slot.aspect, slot.target)) return 1;
   const [a, b] = slot.aspect.split(":").map(Number) as [number, number];
   const r = a / b;
@@ -43,8 +45,8 @@ export function upscaleFactor(img: { width: number; height: number }, slot: { as
   const ch = cw / r;
   let f = Math.ceil(Math.max(slot.target.width / cw, slot.target.height / ch) * 1000) / 1000;
   const size = (k: number) => ({ width: Math.round(img.width * k), height: Math.round(img.height * k) });
-  while (f <= MAX_UPSCALE && !cropReaches(size(f), slot.aspect, slot.target)) f = Math.round((f + 0.001) * 1000) / 1000;
-  return f <= MAX_UPSCALE ? f : null;
+  while (f <= max && !cropReaches(size(f), slot.aspect, slot.target)) f = Math.round((f + 0.001) * 1000) / 1000;
+  return f <= max ? f : null;
 }
 
 export type IntakeResult = { ok: true; manifest: Record<string, unknown>; files: string[] } | { ok: false; codes: string[] };

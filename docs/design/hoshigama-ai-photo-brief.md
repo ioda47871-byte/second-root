@@ -6,16 +6,18 @@
 
 > **状態:** 承認されたものは何も無い。写真の方向・枚数・寸法・§6 のプロンプトの草案は、どれもオーナーの確認の前である。
 > 画像の生成・取得・有料素材・外部 API は行っていない (生成した画像は **0枚**)。生成には、輪と同じく、プロンプト全文の承認と
-> 1回限りの実生成の承認が別々に要る (`docs/design/bicycle-ai-photo-brief.md` §5・§7)。ほし窯は `photo-swap-shops.ts`・
-> `AUTORUN_SHOPS`・root の `IMAGE_AUTORUN_SHOPS` のどれにも入っていない。
+> 1回限りの実生成の承認が別々に要る (`docs/design/bicycle-ai-photo-brief.md` §5・§7)。ほし窯は `AUTORUN_SHOPS`・root の
+> `IMAGE_AUTORUN_SHOPS` のどちらにも入っていない。DEV-139 (写真の流れ) で `photo-swap-shops.ts` には**研究用 (`aiDemoAllowed: false`、
+> プロンプトの pin なし)** として入れた: 差し替えは権利を確かめた写真 (テストではモック) だけを取り、AI のデモ画像は拒否する。
+> 承認の後に変える所 (と、変える前の今の状態) は `docs/operations/hoshigama-one-time-run-sheet.md` (未承認)。
 
 - ほし窯は架空の店である (`poc/bakery/facts-pack.json`)。写真は**デモ用のイメージ**で、実在の店・商品・人・窯ではない。
   看板・文字・ロゴ・値札・包装・人の顔を写さない。店の住所・営業・品揃えの事実を写真で足さない。
 - 写真で見せてよいのは事実パックにあるものだけ: 薪の石窯 (F9・F10・F12)、田舎パン (F12・F13)。
   価格・量・重さ・原材料・焼き時間・窯の温度・職人の姿は事実に無いので、写真でも示さない。
-- 対象のページは `poc/bakery/fidelity/d2-v1`。カンプは `poc/bakery/comps/d2-hearth-floor-v2` (Claude の見比べ `show_owner`、文章の監査 `approve_candidate`。元の `d2-hearth-floor` は残す)。
+- 対象のページは `poc/bakery/fidelity/d2-v2` (d2-v1 から `<wbr>` を外し、折り返しを CSS で決めた版。写真の枠の寸法は d2-v1 と同じ)。カンプは `poc/bakery/comps/d2-hearth-floor-v4` (Claude の見比べ `show_owner`、文章の監査 `approve_candidate`)。元の `d2-hearth-floor`・`-v2`・`-v3` と `fidelity/d2-v1` は記録として残し、候補ではない。
   どちらもオーナーはまだ見ていない。**成功例ではない。**
-- 枠の一覧と寸法は `poc/bakery/photo-slots-d2-v1.json` と `photo-slot-edges-d2-v1.json` (d2-v1 の HTML・CSS・copy の SHA で測った)。
+- 枠の一覧と寸法は `poc/bakery/photo-slots-d2-v2.json` と `photo-slot-edges-d2-v2.json` (d2-v2 の HTML・CSS・copy の SHA で測った。d2-v1 の `photo-slots-d2-v1.json` と寸法は同じ)。
 
 ## 1. 写真の枠と、写真にしないもの
 
@@ -26,7 +28,7 @@
 | ph-mouth | 石窯の口 (窯の口から覗く窯の中) | mouth | 460×510 | 327×363 | 245×272 | 190×315 | 292×485 / 383×425 / 613×680 |
 | ph-loaf | 田舎パン | deep | 588×490 | 418×348 | 314×261 | 300×250 | 462×385 / 490×408 / 784×653 |
 
-(CSS px、d2-v1。範囲は SP ≤600 と PC ≥601 の2つで、PC の板は 601 から 1920 まで幅に比例して大きくなる。`photo-slots.ts` の既定の端 600・1199・1920 で測った。)
+(CSS px、d2-v1 と d2-v2 で同じ。範囲は SP ≤600 と PC ≥601 の2つで、PC の板は 601 から 1920 まで幅に比例して大きくなる。`photo-slots.ts` の既定の端 600・1199・1920 で測った。)
 
 - **ph-mouth の板は、窯の口のアーチの奥に小さく入れた板で、上の辺が半円に切られる** (PC は板の高さの上 45.1%、SP は上 30.2% が丸い角で切れる)。
   方向の `image_slots` の `full` を、アーチに縁取られた窯の中の眺めとして読み替えた (意図。カンプ v2 の `review.json` に記録)。
@@ -53,11 +55,11 @@
 **推奨は 3枚** (2枠。石窯の口だけ PC と SP で2枚)。
 
 - ph-mouth は PC (0.90) と SP (縦長、0.60) の形が大きく違う。1枚 (3:4) でも `requestFor` は通るが、
-  PC で写真の 80% しか残らず、アーチで上の角も切れる。だから PC 用 1:1 と SP 用 2:3 の2枚にする (輪の作業台と同じ考え方)。
+  PC で写真の約 83% しか残らず (SP の板では約 80%)、アーチで上の角も切れる。だから PC 用 1:1 と SP 用 2:3 の2枚にする (輪の作業台と同じ考え方)。
 - ph-loaf は PC と SP の形が同じ (1.2) なので1枚。中央の主役の箱は、どの幅の切り抜きにも入る。
 - **代案 (2枚):** ph-mouth を 3:4 の1枚にする。枚数は減るが、PC で上下が詰まる。オーナーの判断に残す。
 
-| 写真 | 比 | 目標 (2倍、範囲の端まで。`requestFor` + `photo-slot-edges-d2-v1.json`) | 使う範囲 |
+| 写真 | 比 | 目標 (2倍、範囲の端まで。`requestFor` + `photo-slot-edges-d2-v2.json`) | 使う範囲 |
 |---|---|---|---|
 | ph-mouth (PC) | 1:1 | 1370×1370 | PC (601〜1920) |
 | ph-mouth (SP) | 2:3 | 650×975 | SP (≤600) |
@@ -115,8 +117,9 @@ MOCK・スタブの写真では1つも合格にしない。
 ## 6. プロンプトの草案 — **draft, not approved** (草案、未承認)
 
 > **DRAFT (未承認)。この節の文は承認に持っていく前の下書きである。この文で画像を生成しない。道具を呼ばない。**
-> 承認に持っていくときは、輪と同じく別のファイル (例 `docs/design/hoshigama-ai-photo-prompt.txt`) に本文を固定し、SHA-256・バイト数・文字数を記録する。
-> この草案のバイトは承認の対象ではない。
+> DEV-139 (写真の流れ): 下のコードブロックを `docs/design/hoshigama-ai-photo-prompt.txt` に、頭に 3 行の「DRAFT (未承認)」を付けて**草案のまま**固定した
+> (SHA-256 `372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6`・2007 バイト・1988 文字。写真ごとの SHA-256 と、
+> この本文から組む実行プロンプトの SHA-256 は `lib/design-agent/quality-pipeline/hoshigama-ai-photos.ts`)。これは**承認に持っていく対象の記録**であり、承認ではない。
 
 ```
 COMMON: Demo images for a FICTIONAL bakery's research web page. Not a real shop, oven, product or person.
@@ -141,9 +144,10 @@ lower right dark and quiet. Low warm light from the top edge of the frame; short
 
 ## 7. 生成の前に残ること
 
-1. オーナーが d2-v1 (またはカンプ) を見て、写真を入れる価値があるかを決める (今はどちらも未確認)。
+1. オーナーが d2-v2 (またはカンプ v4) を見て、写真を入れる価値があるかを決める (今はどちらも未確認)。
 2. 枚数 (§3 の推奨3枚か代案2枚か) と、補間 (2倍の内) を認めるか、1.5倍の下限か。
 3. §6 の本文を別のファイルに固定し、プロンプト全文の承認を受ける (輪の DEV-191 と同じ)。
 4. 1回限りの実生成の承認 (輪の DEV-192 と同じ: 1ジョブ・呼び出しの回数・やり直しなし・期限・承認 ID の使い切り)。
-   ほし窯を `photo-swap-shops.ts`・`AUTORUN_SHOPS`・`IMAGE_AUTORUN_SHOPS` に入れるのは、その承認と一緒に行う。
+   ほし窯の差し替えで AI のデモ画像を許すこと (`photo-swap-shops.ts` の `aiDemoAllowed`・`aiDemoPromptSha256`) と、`AUTORUN_SHOPS`・
+   `IMAGE_AUTORUN_SHOPS` に入れることは、その承認と一緒に行う (差分は `docs/operations/hoshigama-one-time-run-sheet.md`)。
 5. 実生成のあと、§5 の表をオーナーが埋める。写真・manifest・権利の記録は私有の成果物のままで、リポジトリに入れない (`docs/design/photo-intake.md` §3)。

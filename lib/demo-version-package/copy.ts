@@ -145,6 +145,49 @@ export function makeCopyFiles(input: CopyInput, bundle: string): { copy: CopyMan
   return { copy: { version: COPY_MANIFEST_VERSION, bundle_sha256: bundle, files: entries }, copyFiles: files };
 }
 
+const SwapCopySummary = z.object({
+  source_hashes: z.object({ copy: z.string().regex(/^[0-9a-f]{64}$/) }),
+  slots: z.array(z.object({ slot_id: z.string(), alt: z.string().min(1) })).min(1),
+});
+const PLACEHOLDER = "写真｜";
+
+/**
+ * DEV-139: the copy of a photo-swapped page → buildPackage's `copy`, so that one v2 package holds both the copy and the
+ * photos. The copy record is the swap's own copy.json (the research page's, unchanged by the swap: its sha256 must be
+ * the summary's source copy hash) with exactly one change per swapped slot: the placeholder caption the swap took off
+ * the page (`写真｜<alt>`) becomes the picture's alt text (`<alt>`, which the swap put on the page), keeping the item's
+ * id, claim type, facts and owner-review flag. A slot whose alt is not its caption's text, a caption item missing or
+ * doubled, or any 写真｜ item left is refused. The review is the existing audit (reviewCopyQuality, as comp-copy.ts
+ * --audit runs it) of exactly the stored page (`html` / `css` after the photo URL rewrite, `photoUrls` its stored
+ * photo URLs) as round 0; buildPackage then checks it again like any v2 copy (verifyPackageCopy). Throws
+ * CopyPackageError. Pure: no file access.
+ */
+export function deriveSwapCopy(o: { copyRecord: Uint8Array; factsPack: Uint8Array; summary: unknown; html: string; css: string; photoUrls: ReadonlySet<string> }): { copy: CopyInput; replaced: string[] } {
+  const summary = SwapCopySummary.safeParse(o.summary);
+  if (!summary.success) throw new CopyPackageError("SUMMARY_INVALID", ["copy"]);
+  if (sha256(o.copyRecord) !== summary.data.source_hashes.copy) throw new CopyPackageError("COPY_RECORD_NOT_THE_PAGE_COPY");
+  let record: { items?: unknown };
+  try {
+    record = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(o.copyRecord)) as { items?: unknown };
+  } catch {
+    throw new CopyPackageError("COPY_RECORD_INVALID");
+  }
+  if (!record || typeof record !== "object" || !Array.isArray(record.items)) throw new CopyPackageError("COPY_RECORD_INVALID");
+  const items = record.items as Array<Record<string, unknown>>;
+  const replaced: string[] = [];
+  const next = items.map((i) => ({ ...i }));
+  for (const slot of summary.data.slots) {
+    const at = next.map((i, n) => (i.text === `${PLACEHOLDER}${slot.alt}` ? n : -1)).filter((n) => n >= 0);
+    if (at.length !== 1) throw new CopyPackageError("COPY_PLACEHOLDER_ITEM_NOT_FOUND", [slot.slot_id]);
+    next[at[0]!]!.text = slot.alt;
+    replaced.push(String(next[at[0]!]!.id));
+  }
+  if (next.some((i) => typeof i.text === "string" && i.text.includes(PLACEHOLDER))) throw new CopyPackageError("COPY_PLACEHOLDER_LEFT");
+  const copyRecord = new TextEncoder().encode(`${JSON.stringify({ ...record, items: next }, null, 2)}\n`);
+  const review = reviewCopyQuality({ factsPack: o.factsPack, copyRecord, pageHtml: new TextEncoder().encode(o.html), pageCss: new TextEncoder().encode(o.css) }, { round: 0, photoUrls: o.photoUrls });
+  return { copy: { factsPack: o.factsPack, copyRecord, review: new TextEncoder().encode(`${JSON.stringify(review, null, 2)}\n`), rounds: [] }, replaced };
+}
+
 /**
  * What the check computed about a package's copy. Never sendable here: the owner's approval is not in a package.
  *

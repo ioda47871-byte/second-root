@@ -154,10 +154,14 @@
   <p class="mark mark-flour">粉</p>
   <p class="flour-fact">粉は二種類を、<wbr>季節で<wbr>割合を<wbr>変えて<wbr>合わせます</p>
   <svg class="mix" viewBox="0 0 640 120" aria-hidden="true">
-    <g><circle cx="52" cy="60" r="44" fill="url(#dust-a)"/><circle cx="92" cy="62" r="20" fill="url(#dust-b)"/></g>
-    <g><circle cx="214" cy="58" r="36" fill="url(#dust-a)"/><circle cx="254" cy="62" r="30" fill="url(#dust-b)"/></g>
-    <g><circle cx="384" cy="62" r="28" fill="url(#dust-a)"/><circle cx="426" cy="58" r="40" fill="url(#dust-b)"/></g>
-    <g><circle cx="560" cy="60" r="40" fill="url(#dust-a)"/><circle cx="600" cy="62" r="26" fill="url(#dust-b)"/></g>
+    <defs>
+      <linearGradient id="mix-fade-a" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <linearGradient id="mix-fade-b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient>
+      <mask id="mix-a" maskContentUnits="userSpaceOnUse"><rect x="0" y="0" width="640" height="120" fill="url(#mix-fade-a)"/></mask>
+      <mask id="mix-b" maskContentUnits="userSpaceOnUse"><rect x="0" y="0" width="640" height="120" fill="url(#mix-fade-b)"/></mask>
+    </defs>
+    <rect x="8" y="22" width="624" height="76" rx="38" fill="url(#dust-a)" mask="url(#mix-a)"/>
+    <rect x="8" y="22" width="624" height="76" rx="38" fill="url(#dust-b)" mask="url(#mix-b)"/>
   </svg>
 </section>
 
