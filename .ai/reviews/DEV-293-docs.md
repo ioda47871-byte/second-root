@@ -90,3 +90,44 @@ Critical/High = 0, so the docs PR passes Fresh Review. M1/M2 are wording fixes o
 ### Conclusion
 
 Critical/High/Medium are all 0, so PR #294 passes Fresh Review at `d6a34e0`. CI must still pass on the latest head before feature→develop. Changing R2-L1 alone (text-only) does not need another review round.
+
+---
+
+## Round 3 — reviewed head `b9d3b69`
+
+**Verdict: PASS** (Critical 0 / High 0 / Medium 0 / Low 3). Same separate-context Fresh Reviewer, read-only. I did not open Issue #180's blind X/Y/Z mapping, and I did not open any Codex prototype output, `answer.json` or `quarantine/`.
+
+### Commits reviewed since round 2 (`efd06c5`)
+
+- `38d7844`: text now reads "Issue #293 P3のG2全ページ画像生成". This resolves R2-L1.
+- `4afb6e3`: merge of `develop` `4744cfb`. `git diff origin/develop 4afb6e3` shows only this PR's two files (`docs/design/design-first-workflow-decision.md` and this record). The merge adds nothing beyond develop. `origin/develop` is still `4744cfb`.
+- `b9d3b69`: docs-only (+2/−2 lines). It renames the main route to IMAGE_FIRST (output kind `MODEL_GENERATED_FULL_PAGE_COMP`) and adds a note on what the image tool can do.
+
+### Claims verified against the repository (read-only)
+
+| Claim in `b9d3b69` | Evidence | Result |
+|---|---|---|
+| Issue #180 "VISUAL_FIRST" means Codex's HTML prototype | `docs/design/three-methods-pilot-plan.md` §0: "VISUAL_FIRST — Route C (Codex の HTML 試作 + 画像ちょうど1枚)". `lib/design-agent/three-methods/visual-first.ts` header: "Codex's HTML prototype … is the design original" | Accurate. The route also has exactly one picture, which the doc leaves out; not misleading |
+| DEV-139 `prepare-visual-first` is a different route (Claude comp + photos) | `scripts/sales/demo-version/prepare-visual-first.ts` is an offline handoff of the PC/SP and photo plan for the photo-integrated route; it generates no comp. `docs/operations/dev139-visual-first-photo-route.md` | Accurate in substance. Wording — see R3-L2 |
+| `image-once.ts` cannot set size or quality | `lib/design-agent/design-image/image-once.ts` runs `codex exec … -c features.image_generation=true` and takes only `prompt`; there is no size or quality parameter. `docs/operations/design-image-poc.md` says "the image tool's sizes are limited" | Accurate. Size can only be asked for in the prompt text |
+| Outputs so far reach about 1.5 aspect at most | Recorded outputs are 1024×1536 / 1536×1024 (`design-dna-foundation.md`, `design-image-assets.md`, `comp-to-site.md`, `hoshigama-one-time-run-sheet.md`) | Accurate. The doc also says it is unverified whether a newer CLI version changes this |
+| A per-viewport, pre-defined section-image sequence with seam checks is the standard | Consistent with Issue #293 P1.3: define the sequence and its seam quality **before** generation; PC and SP are each full-page and independent | Consistent. Not a relaxation: still full-page, still no PC downscale used as SP |
+
+### Consistency
+
+- G2 must-have outputs, the 22/25 gate with every item ≥4, owner adoption before implementation, the fail-closed list, the approval packet and the out-of-scope list are all unchanged from round 2.
+- No conflict with the G0–G6 table, Identity Lock or `quality-first-process.md`. No Protected Scope, gate or threshold change.
+
+### Findings
+
+- Critical: none
+- High: none
+- Medium: none
+- Low:
+  - **R3-L1 (naming, same problem the rename fixes)**: the comparison route is still called "LAYOUT_FIRST", which is also an Issue #180 method name (`claude_layout`). Suggested text: 「**比較経路 CLAUDE_COMP_FIRST**（Issue #180 の LAYOUT_FIRST とは別の実験）」, or add 「（Issue #180 の LAYOUT_FIRST とは別）」 after the current name. This does not touch the blind mapping.
+  - **R3-L2**: "Claude の手書きカンプ＋写真" can be read as hand-drawn, and `prepare-visual-first` itself only prepares the brief. Suggested text: 「DEV-139 の `prepare-visual-first`（Claude が HTML/CSS で組むカンプ＋個別承認の写真の経路の、オフラインのブリーフ受渡し）」.
+  - **R3-L3**: Now that section sequences are the standard, the immutable record still says "PC/SP画像SHA・自然サイズ", and "短尺のみ" in the fail-closed list is ambiguous. Suggested texts: 「PC/SP各セクション画像のSHA・自然サイズ・順序（結合する場合は結合画像のSHAも）」 and 「短尺のみ（事前に定義した全セクションがそろわない）」.
+
+### Conclusion
+
+Critical/High/Medium are all 0, so PR #294 passes Fresh Review at `b9d3b69`. The three Lows are optional, text-only clarifications. CI must still pass on the latest head before feature→develop.
