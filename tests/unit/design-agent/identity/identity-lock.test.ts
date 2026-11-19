@@ -189,7 +189,12 @@ describe("isolation", () => {
       // DEV-150 (owner approval A′): its test compares its lock checks with the Lock's own (a test, never lib)
       ":!tests/unit/design-agent/three-methods/asset-image-audit.test.ts",
       // DEV-150: the lane's isolation test pins that file's exact imports (a test, never lib)
-      ":!tests/unit/design-agent/three-methods/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/three-methods/isolation.test.ts",
+      // Issue #293 P1 (owner instruction 2026-11-19, exact path): the IMAGE_FIRST validator audits each generated FULL
+      // design picture with the Lock's own image audit (auditIdentity) and compares names with cleanName (pinned below)
+      ":!lib/design-agent/image-first/validate.ts",
+      // Issue #293 P1: its isolation test pins that file's exact imports (a test, never lib)
+      ":!tests/unit/design-agent/image-first/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 
@@ -198,5 +203,10 @@ describe("isolation", () => {
     // owner approval A′: a picture is checked by the three-method asset-image-audit, never by the Lock's full-design image audit
     expect(names("scripts/design-artifact/three-methods-steps.ts")).toEqual([["../../lib/design-agent/identity/identity-lock", ["auditPageText", "type IdentityResult"]]]);
     expect(names("lib/design-agent/three-methods/asset-image-audit.ts")).toEqual([["../identity/identity-lock", ["cleanName"]]]);
+  });
+
+  it("Issue #293 P1: the IMAGE_FIRST validator takes only the full-design image audit and cleanName (never the page-text audit)", () => {
+    const names = (file: string) => [...readFileSync(resolve(__dirname, "../../../..", file), "utf8").matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*identity-lock)["']/g)].map((m) => [m[2], m[1]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]);
+    expect(names("lib/design-agent/image-first/validate.ts")).toEqual([["../identity/identity-lock", ["auditIdentity", "cleanName"]]]);
   });
 });

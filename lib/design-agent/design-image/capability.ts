@@ -436,6 +436,13 @@ export interface SessionFacts {
   image_call_ms: number[];
   /** DEV-084: one fixed bucket per failed call (failTimingOf; `unknown` without timestamps), in call order. */
   image_fail_timings: ImageFailTiming[];
+  /**
+   * Issue #293 (IMAGE_FIRST, additive): the image calls' own ids as the log names them (the Extension item's `id`, a
+   * function_call's `call_id`, a legacy end record's `call_id`), in the order first seen, at most MAX_IMAGE_CALL_TIMINGS.
+   * Only ids of a plain shape (IMAGE_CALL_ID) are kept; a call the log gives no id is counted but not listed. Together
+   * with the thread id this is the "image call ID" of a model-generated comp (Codex writes no request / generation id).
+   */
+  image_call_ids: string[];
   /** Other tool calls (shell, apply_patch, MCP …), by count only. */
   other_tool_calls: number;
   /** A log was larger than the read cap, or the walk of the session dirs hit its entry cap (facts are incomplete). */
@@ -469,10 +476,14 @@ export const emptySessionFacts = (): SessionFacts => ({
   code_mode_arg_error: false,
   image_call_ms: [],
   image_fail_timings: [],
+  image_call_ids: [],
   other_tool_calls: 0,
   truncated: false,
   unreadable: false,
 });
+
+/** Issue #293: the shape of an image call id that is listed in `image_call_ids` (anything else is counted, never kept). */
+export const IMAGE_CALL_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 
 /** The largest session log read (a successful image adds its base64 a few times). */
 export const MAX_SESSION_LOG_BYTES = 64 * 1024 * 1024;
@@ -674,8 +685,11 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   };
   const calls = new Map<string, Call>();
   let anonymous = 0;
+  /** Issue #293: the keys made up for calls the log gives no id (never listed as an id). */
+  const anonymousKeys = new Set<string>();
   const callOf = (id: string | undefined): Call => {
     const key = id ?? `anon-${anonymous++}`;
+    if (id === undefined) anonymousKeys.add(key);
     let c = calls.get(key);
     if (!c) calls.set(key, (c = {}));
     return c;
@@ -866,6 +880,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   f.image_failure_api_codes = [...IMAGE_API_ERROR_CODES, "other" as const].filter((c) => apiCodes.has(c));
   f.image_call_ms = settled.flatMap((c) => (c.ms !== undefined && c.status !== "pending" ? [c.ms] : [])).slice(0, MAX_IMAGE_CALL_TIMINGS);
   f.image_fail_timings = settled.filter((c) => c.status === "failed").map((c) => failTimingOf(c.ms)).slice(0, MAX_IMAGE_CALL_TIMINGS);
+  f.image_call_ids = [...calls.keys()].filter((k) => !anonymousKeys.has(k) && IMAGE_CALL_ID.test(k)).slice(0, MAX_IMAGE_CALL_TIMINGS);
   return f;
 }
 
