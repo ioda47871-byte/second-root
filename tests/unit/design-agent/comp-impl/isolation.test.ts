@@ -15,11 +15,32 @@ import { REPO } from "./support";
 /** DEV-131 (Issue #159, Phase 2e research): the implementation lane compares renders with the comp similarity primitives. */
 const IMPL_LANE_COMPARE = "lib/design-agent/impl-lane/compare.ts";
 const PHASE2F_RENDER = "lib/design-agent/phase2f/render-prototype.ts";
+/**
+ * Issue #293 P1 (owner instruction 2026-11-19, exact paths): the IMAGE_FIRST contract reuses the comp rubric (the owner's
+ * evaluation gate: EvaluationSchema, evaluationVerdict) and the pure similarity primitives (SP-not-shrunk-PC, seam
+ * colour). No comp spec, page CSS, renderer or loader of comp-impl is reachable from it.
+ */
+const IMAGE_FIRST_OWNER_GATE = "lib/design-agent/image-first/owner-gate.ts";
+const IMAGE_FIRST_COMPOSITION = "lib/design-agent/image-first/composition.ts";
 
 describe("isolation of the comp-to-site PoC", () => {
   it("is imported only by its own CLI", () => {
     const grep = spawnSync("grep", ["-rlE", "--exclude-dir=comp-impl", "design-agent/comp-impl|from \"\\./comp-impl|from \"\\.\\./comp-impl", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
-    expect(grep.stdout.trim().split("\n").filter(Boolean).sort()).toEqual([IMPL_LANE_COMPARE, PHASE2F_RENDER, "scripts/sales-design-worker/comp-impl-poc.ts"].sort());
+    expect(grep.stdout.trim().split("\n").filter(Boolean).sort()).toEqual([IMAGE_FIRST_COMPOSITION, IMAGE_FIRST_OWNER_GATE, IMPL_LANE_COMPARE, PHASE2F_RENDER, "scripts/sales-design-worker/comp-impl-poc.ts"].sort());
+  });
+
+  it("Issue #293 P1: the IMAGE_FIRST contract imports only the rubric and the pure similarity functions", () => {
+    const pinned: Record<string, [string, string[]][]> = {
+      [IMAGE_FIRST_OWNER_GATE]: [["../comp-impl/bundle", ["EvaluationSchema", "evaluationVerdict", "type EvalVerdict"]]],
+      [IMAGE_FIRST_COMPOSITION]: [["../comp-impl/similarity", ["deltaE", "gridOf", "rgbToLab", "ssim"]]],
+    };
+    for (const [file, expected] of Object.entries(pinned)) {
+      const source = readFileSync(resolve(REPO, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const imports = [...source.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"/g)].filter((m) => m[3]!.includes("comp-impl"));
+      expect(imports.map((m) => [m[3], m[2]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]), file).toEqual(expected);
+      expect([...source.matchAll(/["'`]([^"'`]*comp-impl[^"'`]*)["'`]/g)].map((m) => m[1]), file).toEqual(expected.map((e) => e[0]));
+      expect(source, file).not.toMatch(/import\s*\(|require\s*\(|export\s*\*|export\s*\{[^}]*\}\s*from/);
+    }
   });
 
   it("DEV-131: the implementation lane's comparison imports only the pure similarity functions", () => {

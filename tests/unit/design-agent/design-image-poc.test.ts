@@ -1953,6 +1953,18 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
         expect(f.image_fail_timings).toHaveLength(MAX_IMAGE_CALL_TIMINGS);
       });
 
+      it("Issue #293 (additive): the image calls' own ids, in call order; an odd-shaped id is counted, never listed; at most MAX_IMAGE_CALL_TIMINGS", async () => {
+        const f = await facts([imagegenCell(), timed("failed", 155_584, "ig_1"), cellOutput(), timed("completed", 32_648, "ig_2", T0 + 170_000)]);
+        expect(f).toMatchObject({ image_tool_calls: 2, image_call_ids: ["ig_1", "ig_2"] });
+        const odd = await facts([imagegenCell(), timed("completed", 1_000, `${CANARY} <x>`), timed("completed", 1_000, "ig_ok")]);
+        expect(odd.image_tool_calls).toBe(2);
+        expect(odd.image_call_ids).toEqual(["ig_ok"]);
+        expect(JSON.stringify(odd.image_call_ids)).not.toContain(CANARY);
+        const many = Array.from({ length: MAX_IMAGE_CALL_TIMINGS + 3 }, (_, i) => timed("completed", 1_000, `ig_${i}`));
+        expect((await facts([imagegenCell(), ...many])).image_call_ids).toHaveLength(MAX_IMAGE_CALL_TIMINGS);
+        expect(emptySessionFacts().image_call_ids).toEqual([]);
+      });
+
       it("failTimingOf: fixed buckets with the boundaries on the lower side", () => {
         expect(IMAGE_FAIL_TIMINGS).toEqual(["<5s", "5-60s", "60-140s", "140-170s", ">170s", "unknown"]);
         const cases: Array<[unknown, string]> = [[0, "unknown"], [1, "<5s"], [4_999, "<5s"], [5_000, "5-60s"], [59_999, "5-60s"], [60_000, "60-140s"], [139_999, "60-140s"], [140_000, "140-170s"], [155_584, "140-170s"], [157_760, "140-170s"], [169_999, "140-170s"], [170_000, ">170s"], [305_000, ">170s"], [null, "unknown"], [undefined, "unknown"], [-1, "unknown"], [Number.NaN, "unknown"], [2.5, "unknown"], [24 * 3600 * 1000 + 1, "unknown"]];
@@ -2142,7 +2154,11 @@ describe("isolation of the PoC's output", () => {
     // it is started only by run-tsugute-photos-once.sh (tests/unit/design-agent/tsugute-ai-photos.test.ts)
     // DEV-186 (owner instruction 2026-11-06): the worker's guarded hook for an approved demo image job reuses the same
     // call and output bundle; OFF unless a root-owned switch file exists (tests/unit/design-agent/image-autorun.test.ts)
-    expect(files.filter((f) => !compImpl.includes(f))).toEqual(["scripts/design-artifact/phase2f-image.ts", "scripts/sales-design-worker/design-image-poc.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
+    // Issue #293 P1 (owner instruction 2026-11-19, exact paths): the IMAGE_FIRST contract reuses the PNG check (png.ts) and
+    // the image outcome vocabulary (capability.ts); never the image call (tests/unit/design-agent/image-first/isolation.test.ts)
+    const imageFirst = ["lib/design-agent/image-first/builder.ts", "lib/design-agent/image-first/record.ts", "lib/design-agent/image-first/validate.ts"];
+    expect(files.filter((f) => f.startsWith("lib/design-agent/image-first/"))).toEqual(imageFirst);
+    expect(files.filter((f) => !compImpl.includes(f) && !imageFirst.includes(f))).toEqual(["scripts/design-artifact/phase2f-image.ts", "scripts/sales-design-worker/design-image-poc.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
   });
 
   it("the v2 direction, the direction files and the AI food-visual policy stay inside the PoC (worker, demo, presets, renderer, asset store never read them)", () => {
