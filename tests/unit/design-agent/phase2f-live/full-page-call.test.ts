@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,6 +14,7 @@ import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
 import { APPROVAL_PACKET_PATH, MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { CommitState } from "@/lib/design-agent/phase2f-live/steps";
+import { fileAtCommit } from "@/scripts/design-artifact/phase2f-live-cli";
 
 // Issue #293 P3 (preparation): the gated IMAGE_FIRST real-call step. The batch is a stub (an injected function): nothing
 // here calls Codex, a model, the image tool, the network or a process. The ledger lives in a temporary directory.
@@ -33,8 +35,8 @@ const COMMIT = "c".repeat(40);
 const THREAD = "0193a7c2-1111-4222-8333-944455556666";
 /**
  * A filled-in packet, built here in a temporary directory and never tracked (a tracked approved packet could be given to
- * the real entry). It reaches runFullPageCall only as packetBytes, an in-process seam: the CLI always reads the bytes
- * from --packet, which must be APPROVAL_PACKET_PATH.
+ * the real entry). It reaches runFullPageCall only through the injected deps.packetAt, an in-process seam: the CLI's
+ * packetAt is `git show <approved commit>:APPROVAL_PACKET_PATH`.
  */
 const PACKET_TEXT = `# IMAGE_FIRST approval packet (test only)
 
@@ -79,6 +81,9 @@ const packetWith = (label: string, value: string) => {
   return Buffer.from(text.slice(0, at) + text.slice(at).replace(re, `$1${value}$2`));
 };
 const withPacket = (bytes: Buffer) => ({ packetBytes: bytes, expected: { packetSha256: sha(bytes) } });
+/** What the stubbed packetAt returns for the next run (set by input()), and every (commit, path) it was asked for. */
+let packetNext: Buffer | null = null;
+let packetAsked: [string, string][] = [];
 
 let cached: { plan: PromptPlan; inputs: PromptInputs } | null = null;
 async function planD1() {
@@ -124,17 +129,19 @@ function setup() {
       calls.push({ prompt: o.prompt, maxImages: o.maxImages });
       return typeof r === "function" ? r() : r;
     };
+  packetAsked = [];
   return { state, runs, calls, batchOf, ledger: openLedger(state) };
 }
 
-async function input(s: ReturnType<typeof setup>, over: Partial<Omit<FullPageCallInput, "expected">> & { expected?: Partial<FullPageCallInput["expected"]> } = {}): Promise<FullPageCallInput> {
+/** `packetBytes` (test only): what the stubbed packetAt returns for this run (default: the approved test packet). */
+async function input(s: ReturnType<typeof setup>, over: Partial<Omit<FullPageCallInput, "expected">> & { expected?: Partial<FullPageCallInput["expected"]>; packetBytes?: Buffer | null } = {}): Promise<FullPageCallInput> {
   const { plan, inputs } = await planD1();
-  const { expected, ...rest } = over;
+  const { expected, packetBytes, ...rest } = over;
+  packetNext = packetBytes === undefined ? PACKET : packetBytes;
   return {
     plan,
     inputs,
     packetPath: resolve(REPO, APPROVAL_PACKET_PATH),
-    packetBytes: PACKET,
     humanApprovalConfirmed: true,
     approvalId: "test-imagefirst-d1-20261120-01",
     planId: "test-imagefirst-plan-01",
@@ -145,7 +152,17 @@ async function input(s: ReturnType<typeof setup>, over: Partial<Omit<FullPageCal
     ...rest,
   };
 }
-const deps = (s: ReturnType<typeof setup>, batch: FullPageBatch, commit: CommitState = { head: COMMIT, base: COMMIT, clean: true }) => ({ ledger: s.ledger, batch, commit: async () => commit, preflight: async () => null, now: () => NOW });
+const deps = (s: ReturnType<typeof setup>, batch: FullPageBatch, commit: CommitState = { head: COMMIT, base: COMMIT, clean: true }) => ({
+  ledger: s.ledger,
+  batch,
+  commit: async () => commit,
+  packetAt: async (c: string, p: string) => {
+    packetAsked.push([c, p]);
+    return packetNext;
+  },
+  preflight: async () => null,
+  now: () => NOW,
+});
 const ledgerEntries = (s: ReturnType<typeof setup>) => (existsSync(join(s.state, "approvals")) ? readdirSync(join(s.state, "approvals")) : []);
 
 describe("IMAGE_FIRST P3 real-call step: refused before the approval is used", () => {
@@ -283,10 +300,65 @@ describe("IMAGE_FIRST P3 real-call step: the approval packet and its expiry are 
     expect(readApprovalPacket(Buffer.from(text.replace("**状態: 承認済み。**", "**状態: 承認済み。** 状態: 差し戻し")))).toBeNull();
   });
 
-  it("the CLI reads the packet bytes from the one path it gives as packetPath (the bytes seam is never set otherwise)", () => {
+  it("the real packet, filled in exactly as its own §10 says, is accepted by the packet checks", () => {
+    let text = REAL_PACKET.toString("utf8");
+    const header = "**状態: 未承認。**";
+    // the status line at the top (before the first section): the one the §10 notes say to rewrite
+    expect(text.indexOf(header)).toBeGreaterThan(0);
+    expect(text.indexOf(header)).toBeLessThan(text.indexOf("\n## "));
+    text = text.replace(header, "**状態: 承認済み。**");
+    const at = text.indexOf("## 10. 承認欄");
+    let section = text.slice(at);
+    const fill = (label: string, value: string) => {
+      const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
+      expect(re.test(section), label).toBe(true);
+      section = section.replace(re, `$1${value}$2`);
+    };
+    fill("状態", "`承認済み`");
+    fill("承認する方向性", "`d1`");
+    fill("d1 の承認 ID", "`hoshigama-imagefirst-d1-20261120-01`");
+    fill("d3 の承認 ID", "`なし`");
+    fill("期限", "`2026-11-20T09:00:00Z`");
+    fill("計画 ID", "`hoshigama-imagefirst-p3-20261120`");
+    fill("承認日・承認者", "2026-11-20 owner");
+    expect(readApprovalPacket(Buffer.from(text.slice(0, at) + section))).toEqual({ status: "承認済み", directions: ["d1"], approvalIds: { d1: "hoshigama-imagefirst-d1-20261120-01", d3: "なし" }, expires: "2026-11-20T09:00:00Z", planId: "hoshigama-imagefirst-p3-20261120", approvedBy: "2026-11-20 owner" });
+  });
+
+  it("the packet is read only after the commit pin and the clean-tree check, as committed at the approved commit", async () => {
+    const s = setup();
+    expect(await runFullPageCall(await input(s), deps(s, s.batchOf(okBatch()), { head: COMMIT, base: COMMIT, clean: false }))).toMatchObject({ code: "COMMIT_PIN_MISMATCH" });
+    expect(await runFullPageCall(await input(s), deps(s, s.batchOf(okBatch()), { head: "d".repeat(40), base: COMMIT, clean: true }))).toMatchObject({ code: "COMMIT_PIN_MISMATCH" });
+    expect(packetAsked).toEqual([]);
+    expect((await runFullPageCall(await input(s), deps(s, s.batchOf(okBatch())))).status).toBe("succeeded");
+    expect(packetAsked).toEqual([[COMMIT, APPROVAL_PACKET_PATH]]);
+  });
+
+  it("fileAtCommit reads the committed bytes, never the working tree's", async () => {
+    const repo = tmp("sr-if-git-");
+    const git = (...a: string[]) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...a], { cwd: repo, encoding: "utf8" });
+      expect(r.status, a.join(" ")).toBe(0);
+      return r.stdout.trim();
+    };
+    git("init", "-q");
+    mkdirSync(join(repo, "docs/design"), { recursive: true });
+    writeFileSync(join(repo, APPROVAL_PACKET_PATH), "committed 状態\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "packet");
+    const head = git("rev-parse", "HEAD");
+    writeFileSync(join(repo, APPROVAL_PACKET_PATH), "working tree, not committed\n");
+    expect(await fileAtCommit(head, APPROVAL_PACKET_PATH, repo)).toEqual(Buffer.from("committed 状態\n"));
+    expect(await fileAtCommit("HEAD", APPROVAL_PACKET_PATH, repo)).toBeNull();
+    expect(await fileAtCommit(head, "../x", repo)).toBeNull();
+    expect(await fileAtCommit(head, "docs/design/missing.md", repo)).toBeNull();
+  });
+
+  it("the CLI never reads the packet from the working tree: its bytes come only from fileAtCommit", () => {
     const cli = readFileSync(resolve(REPO, "scripts/design-artifact/image-first-generate.ts"), "utf8");
-    expect(cli).toMatch(/const packet = resolve\(args\.get\("--packet"\)!\);\n\s*const packetBytes = \(await trackedInRepo\(\[packet\]\)\) \? await readFile\(packet\)/);
-    expect(cli).toMatch(/packetPath: packet,\n\s*packetBytes,/);
+    expect(cli).toMatch(/const packet = resolve\(args\.get\("--packet"\)!\);/);
+    expect(cli).toMatch(/packetPath: packet,/);
+    expect(cli).toMatch(/packetAt: \(commit, rel\) => fileAtCommit\(commit, rel\),/);
+    expect(cli).not.toMatch(/readFile\(packet|packetBytes|trackedInRepo/);
     expect(APPROVAL_PACKET_PATH).toBe("docs/design/image-first-hoshigama-p3-packet.md");
     expect(existsSync(resolve(REPO, "tests/unit/design-agent/phase2f-live/fixtures"))).toBe(false);
   });

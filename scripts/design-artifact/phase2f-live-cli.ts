@@ -252,6 +252,17 @@ export async function trackedInRepo(paths: readonly string[]): Promise<boolean> 
   return rels.every((rel) => listed.has(rel));
 }
 
+/**
+ * Issue #293 P3: a text file's bytes as committed at `commit` (`git show <commit>:<path>`), never the working tree's.
+ * null when the commit is not a full SHA, the path is not a plain repository-relative path, or git fails. The same
+ * bounded git as the commit pin (60 s).
+ */
+export async function fileAtCommit(commit: string, repoRelativePath: string, cwd: string = REPO): Promise<Buffer | null> {
+  if (!/^[0-9a-f]{40}$/.test(commit) || !/^[A-Za-z0-9._/-]+$/.test(repoRelativePath) || repoRelativePath.startsWith("-") || repoRelativePath.split("/").includes("..")) return null;
+  const r = await runBounded("git", ["show", "--no-textconv", `${commit}:${repoRelativePath}`], { cwd, env: childEnvironment(process.env), timeoutMs: 60_000 }).catch(() => null);
+  return r?.code === 0 ? Buffer.from(r.stdout, "utf8") : null;
+}
+
 /** Runs a CLI's main: its exit code, or 1 after killing every process when something unexpected happened. */
 export function runMain(main: () => Promise<number>): void {
   main().then(

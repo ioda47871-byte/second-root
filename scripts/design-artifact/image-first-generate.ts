@@ -10,7 +10,8 @@
  *
  * Before the approval is used: the plan is rebuilt from the pinned inputs (image-first/prompt.ts) and must be the
  * approved one; the packet must be exactly docs/design/image-first-hoshigama-p3-packet.md (nothing else, never a test
- * fixture), a tracked file of the repository with the approved bytes, and its own header and §10 are read: it
+ * fixture); after the commit pin, its bytes as committed at that commit (git show, never the working tree) must be the
+ * approved bytes, and its own header and §10 are read: it
  * must be filled in and 承認済み, and its direction, approval id, expiry (UTC, at most 24 h ahead) and plan id must be the
  * ones given here (the commit is not in the packet: --expected-commit vs HEAD pins it); the run directory must be
  * outside the repository, new, under a real parent (phase2f-live-cli.ts liveContext); the commit pin, the sandbox
@@ -28,7 +29,7 @@ import { cleanupActiveImageCalls, generateImagesInOneRun } from "../../lib/desig
 import { buildPromptPlan, loadPromptInputs, PromptStop, type DirectionKey } from "../../lib/design-agent/image-first/prompt";
 import { runFullPageCall } from "../../lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
-import { liveContext, parseArgs, REPO, runMain, say, stopSignals, trackedInRepo } from "./phase2f-live-cli";
+import { fileAtCommit, liveContext, parseArgs, REPO, runMain, say, stopSignals } from "./phase2f-live-cli";
 
 process.umask(0o077);
 // first, so a signal that arrives during the checks is never lost
@@ -51,9 +52,9 @@ async function main(): Promise<number> {
   } catch (error) {
     return (say({ status: "refused", code: error instanceof PromptStop ? error.code : "INPUT_UNREADABLE" }), 2);
   }
-  // the packet the owner approved: a tracked file of this repository (runFullPageCall pins its bytes and reads its §10)
+  // the packet the owner approved: its path must be the one packet path; its bytes are read by runFullPageCall as
+  // committed at the approved commit, after the commit pin held (never from the working tree)
   const packet = resolve(args.get("--packet")!);
-  const packetBytes = (await trackedInRepo([packet])) ? await readFile(packet).catch(() => null) : null;
   const ctx = await liveContext(args.get("--out")!, stop);
   if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
   const result = await runFullPageCall(
@@ -61,7 +62,6 @@ async function main(): Promise<number> {
       plan,
       inputs,
       packetPath: packet,
-      packetBytes,
       humanApprovalConfirmed: args.has("--human-approval-confirmed"),
       approvalId: args.get("--approval-id")!,
       planId: args.get("--plan-id")!,
@@ -74,6 +74,7 @@ async function main(): Promise<number> {
     {
       ledger: openLedger(ctx.ledgerDir),
       commit: ctx.commit,
+      packetAt: (commit, rel) => fileAtCommit(commit, rel),
       preflight: ctx.preflight,
       batch: async (o) => {
         const sandbox = ctx.sandbox();

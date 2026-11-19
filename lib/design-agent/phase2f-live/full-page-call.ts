@@ -9,15 +9,16 @@
  *   - the approval id names this direction (APPROVAL_ID_DIRECTION_MISMATCH); the expiry is a real UTC instant written
  *     YYYY-MM-DDTHH:MM:SSZ (APPROVAL_EXPIRY_INVALID), not past (APPROVAL_EXPIRED) and at most 24 hours ahead
  *     (APPROVAL_EXPIRY_TOO_FAR);
- *   - the plan rebuilt from the pinned inputs is the approved plan (PLAN_PIN_MISMATCH), the approval packet's bytes are
- *     the approved ones (PACKET_PIN_MISMATCH);
+ *   - the plan rebuilt from the pinned inputs is the approved plan (PLAN_PIN_MISMATCH);
  *   - the packet is exactly APPROVAL_PACKET_PATH of the repository (PACKET_PATH_NOT_ALLOWED: never a test fixture);
  *   - the packet itself is read: its header and its §10 say 承認済み, §10 is filled in (PACKET_NOT_APPROVED), and its direction,
  *     approval id, expiry and plan id are the ones given to this run (PACKET_APPROVAL_MISMATCH). The commit is not in
  *     the packet (the packet is part of that commit): it is pinned by the expected commit = HEAD check below;
  *   - steps.ts checkBeforeApproval: the owner's flag, the batch prompt's SHA-256 and length, the output place, the
  *     commit pin (HEAD = origin/develop = the approved commit, clean), the preflight (sandbox, .env) and the ledger
- *     (approval unused, a free slot, time left: 15 min a call, 2 h a plan).
+ *     (approval unused, a free slot, time left: 15 min a call, 2 h a plan);
+ *   - then the packet's bytes are read AS COMMITTED at the approved commit (deps.packetAt; never the working tree) and
+ *     must be the approved ones (PACKET_PIN_MISMATCH) and approve this run (below).
  *
  * Then: the approval is reserved, the private run directory is created (0700), the inputs and every prompt are written
  * into it, and the batch is called ONCE (the injected `batch`: the CLI passes the one-run batch call of image-once.ts, in the sandbox).
@@ -57,8 +58,6 @@ export type FullPageCallInput = {
   /** The packet path as given (absolute, or relative to the working directory): its real path must be APPROVAL_PACKET_PATH in the repository. */
   packetPath: string;
   inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
-  /** The bytes of the file at packetPath, as they are at the approved commit (null: unreadable). The CLI reads them from packetPath. */
-  packetBytes: Buffer | null;
   humanApprovalConfirmed: boolean;
   approvalId: string;
   planId: string;
@@ -70,7 +69,18 @@ export type FullPageCallInput = {
   repoRoot: string;
   signal?: AbortSignal;
 };
-export type FullPageCallDeps = { ledger: Ledger; batch: FullPageBatch; commit: () => Promise<CommitState>; preflight?: () => Promise<string | null>; now?: () => number };
+export type FullPageCallDeps = {
+  ledger: Ledger;
+  batch: FullPageBatch;
+  commit: () => Promise<CommitState>;
+  /**
+   * The packet's bytes as committed at the approved commit (the CLI: `git show <commit>:<path>`; null: unreadable).
+   * Asked only after the commit pin and the clean-tree check held, and only for APPROVAL_PACKET_PATH.
+   */
+  packetAt: (commit: string, repoRelativePath: string) => Promise<Buffer | null>;
+  preflight?: () => Promise<string | null>;
+  now?: () => number;
+};
 
 export type FullPageCallResult =
   | { status: "succeeded"; outDir: string; receipt: Receipt; runId: string; images: number; warnings: string[] }
@@ -184,12 +194,6 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   // exactly one packet path: a tracked test fixture or any other file is never an approval
   const packetReal = await realpath(i.packetPath).catch(() => null);
   if (packetReal === null || relative(repo, packetReal) !== APPROVAL_PACKET_PATH) return refuse("PACKET_PATH_NOT_ALLOWED");
-  if (!i.packetBytes || !/^[a-f0-9]{64}$/.test(i.expected.packetSha256) || sha256(i.packetBytes) !== i.expected.packetSha256) return refuse("PACKET_PIN_MISMATCH");
-  // the packet's own §10: the owner's approval, for exactly this run (never only a SHA typed on the same command line)
-  const packet = readApprovalPacket(i.packetBytes);
-  if (!packet) return refuse("PACKET_NOT_APPROVED");
-  const key = plan.direction_key;
-  if (!packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
   if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
   const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
   if (parts.length !== plan.batch.images || parts.length < 2 || parts.length > 6) return refuse("PLAN_PIN_MISMATCH");
@@ -201,6 +205,15 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
     d,
   );
   if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
+
+  // ---- before the approval is used: the packet, as committed at the approved commit (pinned and clean just above) ----
+  const packetBytes = await d.packetAt(i.expected.commit, APPROVAL_PACKET_PATH).catch(() => null);
+  if (!packetBytes || !/^[a-f0-9]{64}$/.test(i.expected.packetSha256) || sha256(packetBytes) !== i.expected.packetSha256) return refuse("PACKET_PIN_MISMATCH");
+  // the packet's own header and §10: the owner's approval, for exactly this run (never only a SHA typed on the same command line)
+  const packet = readApprovalPacket(packetBytes);
+  if (!packet) return refuse("PACKET_NOT_APPROVED");
+  const key = plan.direction_key;
+  if (!packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
 
   // ---- the approval is used from here on ------------------------------------------------------
   const runId = `if-${randomBytes(8).toString("hex")}`;

@@ -207,7 +207,8 @@ describe("IMAGE_FIRST P3 approval packet (draft, unapproved)", () => {
 
   it("is marked unapproved, names no used approval, and carries no prompt text", async () => {
     const text = await packet();
-    expect(text).toContain("**未承認**");
+    // the status line at the top carries the state (the title no longer does)
+    expect(text.slice(0, text.indexOf("\n## "))).toContain("**状態: 未承認。**");
     expect(text).not.toMatch(new RegExp([["HOSHIGAMA_", "APPROVAL"], ["wagashi-a-v4-", "20261025-01"], ["map", "ping.json"]].map((p) => p.join("")).join("|")));
     for (const p of pinOf(await planOf("d1")).parts) expect(text).not.toContain(p.prompt.split("\n")[0]!);
   });
