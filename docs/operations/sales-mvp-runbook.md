@@ -145,6 +145,8 @@ E2E (`sales-mvp-flow.spec.ts`) は、前後に 環 (固定の id) を消して�
 
 順番に進める。どの段も、前の段が終わってから。**どの段もまだ実施していない。**
 
+Staging で1店舗を通す順番と事前確認 (token・バックアップ・共有 URL の host) は [`staging-first-shop.md`](staging-first-shop.md)。
+
 ### B-1. 🛑 承認: migration を当てる
 
 当てる順 (develop にあるもの、この順だけ):
