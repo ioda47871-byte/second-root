@@ -9,7 +9,8 @@
  *     --expected-packet-sha256 <sha> --expected-commit <sha> --human-approval-confirmed
  *
  * Before the approval is used: the plan is rebuilt from the pinned inputs (image-first/prompt.ts) and must be the
- * approved one; the packet must be a tracked file of the repository with the approved bytes, and its own §10 is read: it
+ * approved one; the packet must be exactly docs/design/image-first-hoshigama-p3-packet.md (nothing else, never a test
+ * fixture), a tracked file of the repository with the approved bytes, and its own header and §10 are read: it
  * must be filled in and 承認済み, and its direction, approval id, expiry (UTC, at most 24 h ahead) and plan id must be the
  * ones given here (the commit is not in the packet: --expected-commit vs HEAD pins it); the run directory must be
  * outside the repository, new, under a real parent (phase2f-live-cli.ts liveContext); the commit pin, the sandbox
@@ -59,6 +60,7 @@ async function main(): Promise<number> {
     {
       plan,
       inputs,
+      packetPath: packet,
       packetBytes,
       humanApprovalConfirmed: args.has("--human-approval-confirmed"),
       approvalId: args.get("--approval-id")!,

@@ -40,4 +40,8 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-if (require.main === module) main(process.argv.slice(2)).then((code) => process.exit(code));
+// exitCode, not process.exit: a piped stdout is drained in full before the process ends
+if (require.main === module)
+  void main(process.argv.slice(2)).then((code) => {
+    process.exitCode = code;
+  });

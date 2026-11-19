@@ -143,7 +143,7 @@ npx tsx scripts/design-artifact/image-first-generate.ts --direction d1 --out ~/s
 
 次のどれでもその場で止まり、承認 ID は使用済みになる（同じ ID は二度と使えない）。続けるには新しい承認パケットと新しい承認 ID が要る。
 
-- 承認の前（何も使わない）: `HUMAN_APPROVAL_REQUIRED`、`PLAN_PIN_MISMATCH`、`PACKET_PIN_MISMATCH`、`PACKET_NOT_APPROVED`、`PACKET_APPROVAL_MISMATCH`、`PROMPT_PIN_MISMATCH`、`COMMIT_PIN_MISMATCH`、
+- 承認の前（何も使わない）: `HUMAN_APPROVAL_REQUIRED`、`PLAN_PIN_MISMATCH`、`PACKET_PATH_NOT_ALLOWED`、`PACKET_PIN_MISMATCH`、`PACKET_NOT_APPROVED`、`PACKET_APPROVAL_MISMATCH`、`PROMPT_PIN_MISMATCH`、`COMMIT_PIN_MISMATCH`、
   `APPROVAL_ID_DIRECTION_MISMATCH`、`APPROVAL_EXPIRY_INVALID`、`APPROVAL_EXPIRED`、`APPROVAL_EXPIRY_TOO_FAR`、`RUN_DIR_IN_REPO`、`OUT_DIR_*`、`APPROVAL_ALREADY_USED`、`RUN_LIMIT_*`、`RUN_TIME_BUDGET`、preflight の停止（`CODEX_DOTENV_PRESENT`、サンドボックス不可）。
 - 呼び出しの後: `CODEX_NO_IMAGE`、`CODEX_IMAGE_INVALID`、`CODEX_IMAGE_UNSUPPORTED_FORMAT`、`CODEX_QUOTA`、`CODEX_IMAGE_TOOL_FAILED`、`CODEX_TIMEOUT`、
   `CODEX_EXEC_FAILED`、`CODEX_NO_THREAD`、`CODEX_NOT_SIGNED_IN`、`CODEX_DOTENV_PRESENT`、`CODEX_RESULT_DISCARDED_DOTENV`、`CODEX_IMAGE_CALLS_EXCEEDED`、
@@ -184,5 +184,12 @@ npx tsx scripts/design-artifact/image-first-generate.ts --direction d1 --out ~/s
 - 期限は実在する UTC の時刻を `Z` 付きで書く（`2026-02-31` のような日付や、時差付きの書き方は `APPROVAL_EXPIRY_INVALID`）。過ぎていれば
   `APPROVAL_EXPIRED`、起動の時点から 24 時間より先なら `APPROVAL_EXPIRY_TOO_FAR`。
 - 承認コミットはこの表に書かない（§6 のとおり `--expected-commit` で渡す）。
+- 承認するときは、表の「状態」と一緒に**冒頭の見出しと 3 行目の「状態: 未承認」も**「承認済み」に書き換える。冒頭（最初の `## ` 見出しより前）に
+  「未承認」が残っている、または冒頭の状態と表の状態が食い違うと `PACKET_NOT_APPROVED`。`## 10.` の見出しはコードブロックの外に 1 つだけ置く
+  （2 つあれば拒否。コードブロックの中の例は読まない）。
+- 入口が受け付ける承認パケットはこの文書（`docs/design/image-first-hoshigama-p3-packet.md`）だけである。`--packet` に別のファイル
+  （`tests/` の下のもの、写し、他の文書）を渡すと `PACKET_PATH_NOT_ALLOWED` で何も使わずに拒否する。
+- 期限の 24 時間は**起動した時点から**数える（承認を書いた時点からではない）。遠い先の期限を書いたパケットは、その期限の 24 時間前から
+  使えるようになる。承認から時間が空いたら、期限を書き直して新しい版として承認し直す。
 
 使用済みの承認 ID（以前の写真生成・phase2f・DEV-185 のもの）は使わない。

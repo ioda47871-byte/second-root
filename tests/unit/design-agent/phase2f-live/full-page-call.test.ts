@@ -10,7 +10,7 @@ import { encodePng, type RgbImage } from "@/lib/design-agent/image-first/pixels"
 import { buildPromptPlan, loadPromptInputs, type PromptInputs, type PromptPlan } from "@/lib/design-agent/image-first/prompt";
 import { CODEX_STOP_CODES } from "@/lib/design-agent/image-first/record";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
-import { MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { APPROVAL_PACKET_PATH, MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { CommitState } from "@/lib/design-agent/phase2f-live/steps";
 
@@ -31,18 +31,52 @@ const REPO = resolve(__dirname, "../../../..");
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const COMMIT = "c".repeat(40);
 const THREAD = "0193a7c2-1111-4222-8333-944455556666";
-/** A filled-in packet (test fixture, approves nothing real): §10 names d1, the ids, expiry and plan id below. */
-const PACKET = readFileSync(resolve(__dirname, "fixtures/image-first-packet-approved.md"));
+/**
+ * A filled-in packet, built here in a temporary directory and never tracked (a tracked approved packet could be given to
+ * the real entry). It reaches runFullPageCall only as packetBytes, an in-process seam: the CLI always reads the bytes
+ * from --packet, which must be APPROVAL_PACKET_PATH.
+ */
+const PACKET_TEXT = `# IMAGE_FIRST approval packet (test only)
+
+**状態: 承認済み。** Built by full-page-call.test.ts in a temporary directory.
+
+\`\`\`
+## 10. a fenced example never counts
+| 状態 | 未記入 |
+\`\`\`
+
+## 9. before
+
+## 10. 承認欄（オーナーが記入する。**未記入 = 未承認**）
+
+| 項目 | 値 |
+|---|---|
+| 状態（\`承認済み\` と書いて承認） | 承認済み |
+| 承認する方向性（\`d1\` / \`d1,d3\`） | \`d1\` |
+| d1 の承認 ID | \`test-imagefirst-d1-20261120-01\` |
+| d3 の承認 ID（承認しないなら \`なし\`） | なし |
+| 期限（UTC、\`YYYY-MM-DDTHH:MM:SSZ\`） | \`2026-11-20T12:00:00Z\` |
+| 計画 ID | \`test-imagefirst-plan-01\` |
+| 承認日・承認者 | 2026-11-20 test |
+
+## 11. after
+`;
+const PACKET = (() => {
+  const file = join(tmp("sr-if-packet-"), "packet.md");
+  writeFileSync(file, PACKET_TEXT);
+  return readFileSync(file);
+})();
 /** The real packet in the repository: an unapproved draft (§10 未記入). */
-const REAL_PACKET = readFileSync(resolve(REPO, "docs/design/image-first-hoshigama-p3-packet.md"));
+const REAL_PACKET = readFileSync(resolve(REPO, APPROVAL_PACKET_PATH));
 const EXPIRES = "2026-11-20T12:00:00Z";
 const NOW = Date.parse("2026-11-20T10:00:00+09:00");
 /** The fixture packet with one §10 row's value replaced. */
 const packetWith = (label: string, value: string) => {
   const text = PACKET.toString("utf8");
+  const at = text.indexOf("## 10. 承認欄"); // the real §10 (not the fenced example above it)
   const re = new RegExp(`^(\\| ${label}[^|]*\\| ).*( \\|)$`, "m");
-  expect(re.test(text), label).toBe(true);
-  return Buffer.from(text.replace(re, `$1${value}$2`));
+  expect(re.test(text.slice(at)), label).toBe(true);
+  return Buffer.from(text.slice(0, at) + text.slice(at).replace(re, `$1${value}$2`));
 };
 const withPacket = (bytes: Buffer) => ({ packetBytes: bytes, expected: { packetSha256: sha(bytes) } });
 
@@ -99,6 +133,7 @@ async function input(s: ReturnType<typeof setup>, over: Partial<Omit<FullPageCal
   return {
     plan,
     inputs,
+    packetPath: resolve(REPO, APPROVAL_PACKET_PATH),
     packetBytes: PACKET,
     humanApprovalConfirmed: true,
     approvalId: "test-imagefirst-d1-20261120-01",
@@ -132,6 +167,18 @@ describe("IMAGE_FIRST P3 real-call step: refused before the approval is used", (
     ["the expiry is an impossible date", (s) => input(s, { approvalExpires: "2026-11-31T12:00:00Z" }), "APPROVAL_EXPIRY_INVALID"],
     ["the expiry is more than 24 hours ahead", (s) => input(s, { approvalExpires: "2026-11-21T01:00:01Z" }), "APPROVAL_EXPIRY_TOO_FAR"],
     ["the expiry is years ahead", (s) => input(s, { approvalExpires: "9999-12-31T23:59:59Z" }), "APPROVAL_EXPIRY_TOO_FAR"],
+    ["the packet path is a file under tests/", (s) => input(s, { packetPath: resolve(REPO, "tests/unit/design-agent/phase2f-live/full-page-call.test.ts") }), "PACKET_PATH_NOT_ALLOWED"],
+    ["the packet path is another doc of the repository", (s) => input(s, { packetPath: resolve(REPO, "docs/design/image-first-handoff.md") }), "PACKET_PATH_NOT_ALLOWED"],
+    [
+      "the packet path is a copy of the packet outside the repository",
+      (s) => {
+        const file = join(tmp("sr-if-copy-"), "image-first-hoshigama-p3-packet.md");
+        writeFileSync(file, PACKET);
+        return input(s, { packetPath: file });
+      },
+      "PACKET_PATH_NOT_ALLOWED",
+    ],
+    ["the packet path does not exist", (s) => input(s, { packetPath: resolve(REPO, "docs/design/no-such-packet.md") }), "PACKET_PATH_NOT_ALLOWED"],
     ["the real packet in the repository is an unapproved draft (§10 未記入)", (s) => input(s, withPacket(REAL_PACKET)), "PACKET_NOT_APPROVED"],
     ["a §10 field is still 未記入", (s) => input(s, withPacket(packetWith("承認日・承認者", "未記入"))), "PACKET_NOT_APPROVED"],
     ["the packet's status is not 承認済み", (s) => input(s, withPacket(packetWith("状態", "未承認"))), "PACKET_NOT_APPROVED"],
@@ -208,13 +255,40 @@ describe("IMAGE_FIRST P3 real-call step: the approval packet and its expiry are 
   });
 
   it("the fixture packet reads as approved for d1 only; the real draft packet does not read", () => {
-    expect(readApprovalPacket(PACKET)).toEqual({ status: "承認済み", directions: ["d1"], approvalIds: { d1: "test-imagefirst-d1-20261120-01", d3: "なし" }, expires: EXPIRES, planId: "test-imagefirst-plan-01", approvedBy: "2026-11-20 test fixture" });
+    expect(readApprovalPacket(PACKET)).toEqual({ status: "承認済み", directions: ["d1"], approvalIds: { d1: "test-imagefirst-d1-20261120-01", d3: "なし" }, expires: EXPIRES, planId: "test-imagefirst-plan-01", approvedBy: "2026-11-20 test" });
     expect(readApprovalPacket(REAL_PACKET)).toBeNull();
     // the commit is not a row of the packet (the packet is part of that commit): a packet that adds one is not read
     const withCommit = Buffer.from(PACKET.toString("utf8").replace("| 計画 ID |", `| 承認コミット | ${COMMIT} |\n| 計画 ID |`));
     expect(readApprovalPacket(withCommit)).toBeNull();
     // a repeated row is not read
     expect(readApprovalPacket(Buffer.from(PACKET.toString("utf8").replace("| 計画 ID |", "| 計画 ID | `x` |\n| 計画 ID |")))).toBeNull();
+  });
+
+  it("only one real §10 counts: a second §10 refuses, a filled fenced example never stands in for an unfilled §10", () => {
+    const text = PACKET.toString("utf8");
+    const section = text.slice(text.indexOf("## 10. 承認欄"), text.indexOf("## 11."));
+    expect(readApprovalPacket(Buffer.from(`${text}\n${section}`))).toBeNull();
+    const unfilled = section.replace("| 承認日・承認者 | 2026-11-20 test |", "| 承認日・承認者 | 未記入 |");
+    expect(readApprovalPacket(Buffer.from(text.replace(section, unfilled)))).toBeNull();
+    expect(readApprovalPacket(Buffer.from(text.replace("## 9. before", `\`\`\`\n${section}\`\`\`\n\n## 9. before`).replace(section + "## 11.", unfilled + "## 11.")))).toBeNull();
+    // an unclosed fence refuses
+    expect(readApprovalPacket(Buffer.from(`${text}\n\`\`\`\n`))).toBeNull();
+  });
+
+  it("the header must say 承認済み too: still 未承認, missing, or disagreeing with §10 refuses", () => {
+    const text = PACKET.toString("utf8");
+    expect(readApprovalPacket(Buffer.from(text.replace("**状態: 承認済み。**", "**状態: 未承認。**")))).toBeNull();
+    expect(readApprovalPacket(Buffer.from(text.replace("**状態: 承認済み。**", "")))).toBeNull();
+    expect(readApprovalPacket(Buffer.from(text.replace("# IMAGE_FIRST approval packet (test only)", "# IMAGE_FIRST approval packet（下書き・**未承認**）")))).toBeNull();
+    expect(readApprovalPacket(Buffer.from(text.replace("**状態: 承認済み。**", "**状態: 承認済み。** 状態: 差し戻し")))).toBeNull();
+  });
+
+  it("the CLI reads the packet bytes from the one path it gives as packetPath (the bytes seam is never set otherwise)", () => {
+    const cli = readFileSync(resolve(REPO, "scripts/design-artifact/image-first-generate.ts"), "utf8");
+    expect(cli).toMatch(/const packet = resolve\(args\.get\("--packet"\)!\);\n\s*const packetBytes = \(await trackedInRepo\(\[packet\]\)\) \? await readFile\(packet\)/);
+    expect(cli).toMatch(/packetPath: packet,\n\s*packetBytes,/);
+    expect(APPROVAL_PACKET_PATH).toBe("docs/design/image-first-hoshigama-p3-packet.md");
+    expect(existsSync(resolve(REPO, "tests/unit/design-agent/phase2f-live/fixtures"))).toBe(false);
   });
 
   it("an expiry exactly 24 hours ahead is accepted (the cap is inclusive)", async () => {

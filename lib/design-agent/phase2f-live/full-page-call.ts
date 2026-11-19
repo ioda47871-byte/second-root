@@ -11,7 +11,8 @@
  *     (APPROVAL_EXPIRY_TOO_FAR);
  *   - the plan rebuilt from the pinned inputs is the approved plan (PLAN_PIN_MISMATCH), the approval packet's bytes are
  *     the approved ones (PACKET_PIN_MISMATCH);
- *   - the packet itself is read: its §10 is filled in and says 承認済み (PACKET_NOT_APPROVED), and its direction,
+ *   - the packet is exactly APPROVAL_PACKET_PATH of the repository (PACKET_PATH_NOT_ALLOWED: never a test fixture);
+ *   - the packet itself is read: its header and its §10 say 承認済み, §10 is filled in (PACKET_NOT_APPROVED), and its direction,
  *     approval id, expiry and plan id are the ones given to this run (PACKET_APPROVAL_MISMATCH). The commit is not in
  *     the packet (the packet is part of that commit): it is pinned by the expected commit = HEAD check below;
  *   - steps.ts checkBeforeApproval: the owner's flag, the batch prompt's SHA-256 and length, the output place, the
@@ -53,8 +54,10 @@ export type FullPageBatch = (o: { prompt: string; timeoutMs: number; maxImages: 
 
 export type FullPageCallInput = {
   plan: PromptPlan;
+  /** The packet path as given (absolute, or relative to the working directory): its real path must be APPROVAL_PACKET_PATH in the repository. */
+  packetPath: string;
   inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
-  /** The approval packet's bytes as they are at the approved commit (null: unreadable). */
+  /** The bytes of the file at packetPath, as they are at the approved commit (null: unreadable). The CLI reads them from packetPath. */
   packetBytes: Buffer | null;
   humanApprovalConfirmed: boolean;
   approvalId: string;
@@ -98,16 +101,37 @@ export const PACKET_PLACEHOLDER = "未記入";
 export const PACKET_NONE = "なし";
 export type ApprovalPacket = { status: string; directions: string[]; approvalIds: Record<"d1" | "d3", string>; expires: string; planId: string; approvedBy: string };
 
+/** The one approval packet the entry accepts (repository-relative, after links are resolved). Nothing under tests/ or elsewhere. */
+export const APPROVAL_PACKET_PATH = "docs/design/image-first-hoshigama-p3-packet.md";
+
 /**
- * Reads §10 of the approval packet. null (PACKET_NOT_APPROVED) when the section or a row is missing or repeated, a value
- * is empty or still 未記入, the status is not 承認済み, or the direction list is not d1 / d1,d3 with an id for each
- * approved direction and なし for the other.
+ * Reads the approval packet. null (PACKET_NOT_APPROVED) when:
+ *   - the header (the text before the first `## ` heading) still says 未承認, or does not say exactly once 状態: 承認済み;
+ *   - there is not exactly one `## 10.` heading outside code fences (a fenced example never counts);
+ *   - a §10 row is missing, repeated or extra, a value is empty or still 未記入, the §10 status is not 承認済み, or the
+ *     direction list is not d1 / d1,d3 with an id for each approved direction and なし for the other.
  */
 export function readApprovalPacket(bytes: Buffer): ApprovalPacket | null {
-  const lines = bytes.toString("utf8").split(/\r?\n/);
-  const start = lines.findIndex((l) => /^## 10\.\s/.test(l));
-  if (start < 0) return null;
-  const rest = lines.slice(start + 1);
+  // every line outside a code fence, with its index (a fence line itself is dropped)
+  const lines: string[] = [];
+  let fence: string | null = null;
+  for (const line of bytes.toString("utf8").split(/\r?\n/)) {
+    const f = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    if (f) {
+      if (fence === null) fence = f[1]![0]!;
+      else if (f[1]![0] === fence) fence = null;
+      continue;
+    }
+    if (fence === null) lines.push(line);
+  }
+  if (fence !== null) return null;
+  const firstH2 = lines.findIndex((l) => /^## /.test(l));
+  const header = (firstH2 < 0 ? lines : lines.slice(0, firstH2)).join("\n");
+  const headerStatus = [...header.matchAll(/状態[:：]\s*([^。*\s]+)/g)].map((m) => m[1]);
+  if (header.includes("未承認") || headerStatus.length !== 1 || headerStatus[0] !== PACKET_APPROVED) return null;
+  const starts = lines.flatMap((l, n) => (/^## 10\.\s/.test(l) ? [n] : []));
+  if (starts.length !== 1) return null;
+  const rest = lines.slice(starts[0]! + 1);
   const stop = rest.findIndex((l) => /^#{1,2} /.test(l));
   const rows = new Map<string, string>();
   for (const line of stop < 0 ? rest : rest.slice(0, stop)) {
@@ -157,6 +181,9 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   if (expires - now() > MAX_APPROVAL_WINDOW_MS) return refuse("APPROVAL_EXPIRY_TOO_FAR");
   if (plan.plan_sha256 !== i.expected.planSha256) return refuse("PLAN_PIN_MISMATCH");
   if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
+  // exactly one packet path: a tracked test fixture or any other file is never an approval
+  const packetReal = await realpath(i.packetPath).catch(() => null);
+  if (packetReal === null || relative(repo, packetReal) !== APPROVAL_PACKET_PATH) return refuse("PACKET_PATH_NOT_ALLOWED");
   if (!i.packetBytes || !/^[a-f0-9]{64}$/.test(i.expected.packetSha256) || sha256(i.packetBytes) !== i.expected.packetSha256) return refuse("PACKET_PIN_MISMATCH");
   // the packet's own §10: the owner's approval, for exactly this run (never only a SHA typed on the same command line)
   const packet = readApprovalPacket(i.packetBytes);
