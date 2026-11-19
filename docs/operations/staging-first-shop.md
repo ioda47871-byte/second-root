@@ -10,7 +10,7 @@
 |---|---|---|
 | Staging のアプリ | Vercel の Preview、`develop` branch。develop の最新 (`31f09ce9`) が READY | Vercel API (読み取り) |
 | Staging の Preview の環境変数 | 既存の 7 つ (Supabase URL / anon / service role、ingest token、demo base URL、設計の旗2つ) だけ。runbook B-4 の `SALES_DEMO_*` 6 つは**どの環境にも無い** | Vercel API (名前だけ。値は読んでいない) |
-| Deployment Protection | `all_except_custom_domains`: Preview の `*.vercel.app` は **Vercel のログインが要る**。automation bypass はある | Vercel API |
+| Deployment Protection | `all_except_custom_domains`: Preview の `*.vercel.app` は **Vercel のログインが要る**。automation bypass はある。ログインが要らないと repo で確かめてあるのは Production の `secondroot.jp` だけ (develop に割り当てた独自ドメインがどうなるかは未確認) | Vercel API、`docs/operations/design-bridge-access.md` |
 | 独自ドメイン | `secondroot.jp` / `www.secondroot.jp` / `second-root.vercel.app` (Production) だけ。成果物 origin の domain は無い | Vercel API |
 | Staging の DB の migration・Storage | **読めなかった**: Supabase 管理 API が 401 (`Invalid access token`) | 下の §1 |
 
@@ -33,7 +33,9 @@
 ## 3. 🛑 バックアップ (人、適用の直前)
 
 - Supabase Dashboard → Database → Backups で、直近のバックアップの日時を確かめる (plan によって PITR の有無が違う)。
-- 加えて手元に schema とデータの dump を取る (repo の外、Git に入れない): `npx supabase db dump --db-url "<Staging の接続文字列>" -f <置き場>/staging-before-b1.sql` と `--data-only` の2つ。
+- 加えて手元に schema とデータの dump を取る (repo の外、Git に入れない): `npx supabase db dump --db-url "<Staging の接続文字列>" -f <置き場>/staging-before-b1.sql` と、同じく `--data-only` を付けたもの。
+  - CLI は Docker を使う。`--db-url` は percent-encode した接続文字列。**接続文字列には DB のパスワードが入るので、Claude にもチャットにも渡さず、人の端末だけで実行する。**
+  - 既定の dump には `auth`・`storage` の schema が入らない (このB-1は `public` と bucket だけを変える)。
 - rollback は migration ごとに runbook B-7 (forward-only のものがある)。dump は最後の手段。
 
 ## 4. 🛑 適用 (Claude が実行。オーナーの承認の後)
@@ -41,32 +43,38 @@
 1. `npm run staging:apply -- --project-ref <ref> --confirm-ref <ref> --apply` — 9本を順に当てる。1本でも失敗すればその1本は transaction ごと戻り、そこで止まる。その後 security の照合が走る。
 2. `notify pgrst, 'reload schema';` (DB の所有者)。
 3. private bucket `sales-demo-versions` を作る (public でない、4MiB、MIME 4 種。runbook B-5a)。storage policy は作らない。
-4. `npm run staging:verify` — 照合 (`demo_version_sharing_disabled` を含む) が通ること。
+4. `npm run staging:verify -- --project-ref <ref>` — 照合 (`demo_version_sharing_disabled` を含む) が通ること。
+5. 読み取りで、hosted で off のままにするスイッチ2つを確かめる (今の照合は見ていない):
+   `select local_test_recipients_enabled from public.sales_local_test_settings;` と
+   `select operator_cli_enabled from public.sales_facts_registration_settings;` — どちらも `false`。`true` なら止める。
 
-## 5. 🛑 共有 URL を Staging で外から開ける形にする (オーナーの選択)
+## 5. 🛑 Staging で共有 URL まで確かめるかを決める (オーナーの選択)
 
-Staging の Preview は Vercel のログインの内側なので、**受信者役のブラウザ (cookie なし) は共有 URL を開けない**。成果物 origin もアプリ origin と別の host が要る (runbook B-3)。どちらかを選ぶ:
+Staging の Preview は Vercel のログインの内側なので、**受信者役のブラウザ (cookie なし) は今のままでは共有 URL を開けない**。成果物 origin もアプリ origin と別の host が要る (runbook B-3)。
 
-- (a) 推奨: Staging 用の独自のサブドメインを2つ (例 `staging.<domain>` をアプリ、`staging-art.<domain>` を成果物) DNS に作り、Vercel で `develop` branch に割り当てる。`all_except_custom_domains` なので、独自ドメインはログイン不要になる。管理画面は Supabase のログインで守られる。
-- (b) DNS を作らずに、Staging では共有 URL の外部確認を省き、管理画面とローカルの E2E だけで確かめる (外部閲覧の確認は Production の段で行う)。
-- どちらでも、架空店は hosted では送信承認で止まるので、Staging で共有 URL を外から開けるのは実店舗の版だけ (§7)。
+- (a) Staging 用の独自のサブドメインを2つ (例 `staging.<domain>` をアプリ、`staging-art.<domain>` を成果物) DNS に作り、Vercel で `develop` branch に割り当てる。
+  **develop に割り当てた独自ドメインにログインが要るかは未確認。** 割り当てた後、cookie なしの要求が `vercel.com/sso-api` へ転送されないことを確かめる。転送されるなら**そこで止めてオーナーに報告する** (Deployment Protection を緩めて通す近道は取らない)。
+- (b) DNS を作らない。Staging では版の取り込み・プレビュー・承認の画面までを確かめ、共有 URL の外部表示はローカルの E2E に任せる。**(b) では Staging から実店舗に送らない**。外部表示と最初の送信は Production の段で、別の承認のもとで行う。
 
 ## 6. 🛑 Preview (develop) の環境変数 (runbook B-4)
 
-`SALES_DEMO_VERSIONS_ENABLED` / `SALES_DEMO_QUALITY_REVIEW_ENABLED` / `SALES_DEMO_SHARE_ENABLED` を `true`、`SALES_DEMO_VIEW_SIGNING_KEY` は Staging 専用の新しい値、`SALES_DEMO_ARTIFACT_ORIGIN` / `SALES_DEMO_APP_ORIGIN` / `SALES_DEMO_BASE_URL` は §5 の host。
 Environment は Preview・Branch は `develop` だけ。設定後に develop を再デプロイ (`/demo/*` の `frame-src` は build 時に読む)。
 
-## 7. 🛑 共有スイッチ (runbook B-5) と 架空店での通し
+- (a)・(b) 共通: `SALES_DEMO_VERSIONS_ENABLED=true`、`SALES_DEMO_QUALITY_REVIEW_ENABLED=true`。
+- (a) だけ: `SALES_DEMO_SHARE_ENABLED=true`、`SALES_DEMO_VIEW_SIGNING_KEY` (Staging 専用の新しい値)、`SALES_DEMO_ARTIFACT_ORIGIN` / `SALES_DEMO_APP_ORIGIN` / `SALES_DEMO_BASE_URL` を §5 の host に。
+- (b) では `SALES_DEMO_SHARE_ENABLED`・`SALES_DEMO_ARTIFACT_ORIGIN`・`SALES_DEMO_APP_ORIGIN` を**置かない** (共有は off のまま)。
 
-1. `update public.sales_demo_share_settings set versioned_sharing_enabled = true;` と、`scripts/staging/lib.mjs` の照合を on 用に変える小 PR (同時に出す)。
-2. **まず架空の店で**: 管理画面で facts の登録 → 「版を取り込む」→ PC 1440 / SP 390 のプレビュー → 品質・文章の承認 → 送信承認 → 共有 URL を cookie なしのブラウザで開く。
-   テスト宛先の guard は hosted では off のまま (on にしない) なので、**架空店は送信承認の段で止まる** (`test_recipient_fictional_shop`)。それが正しい動き。
-   共有 URL は送信承認 → 送信済みの後にしか外へ開かない (ローカルの E2E が固定) ので、**Staging の架空店では共有 URL の外部表示まで進めない**。
-   架空店で確かめられるのは、facts の登録・版の取り込み・プレビュー・品質と文章の承認・送信承認の拒否まで。共有 URL の外部表示はローカルの E2E が確かめている。
-   hosted で外部表示を見るのは最初の実店舗の段 (§5 の host が要る) で、guard を on にする近道は取らない。
-3. 実店舗は、facts の確認・DNC/重複の確認・デモと文章の承認が揃ってから (runbook B-6)。送信は人が手で行い、そのたびにオーナーの承認。
+## 7. 🛑 Staging での通し
+
+1. **prospect**: hosted の prospect は ingest からしか入らず、Staging にあるのは実店舗の prospect。**実店舗の prospect に架空の facts pack を付けない。**
+   架空店で通すなら、オーナーの承認のうえで、架空店 環 の固定の id (`lib/demo-version-package/seed-sendable.ts`) の prospect 1行を DB の所有者が SQL で入れる (入れる SQL と消す SQL を承認の時に示す)。承認が無ければ架空店の通しは省き、ローカルの E2E に任せる。
+2. **架空店**: 管理画面で facts の登録 → 「版を取り込む」→ PC 1440 / SP 390 のプレビュー → 品質・文章の承認 → 送信承認が `test_recipient_fictional_shop` で**拒否される**ことを確かめる。
+   テスト宛先の guard は hosted では off のまま (on にしない)。共有 URL は送信承認 → 送信済みの後にしか外へ開かない (ローカルの E2E が固定) ので、**架空店では共有 URL の外部表示まで進まない**。それが正しい動き。
+3. **共有スイッチ (runbook B-5)**: (a) を選び、最初の実店舗の版を共有する直前にだけ on にする (`update public.sales_demo_share_settings set versioned_sharing_enabled = true;` と、`scripts/staging/lib.mjs` の照合を on 用に変える小 PR を同時に)。(b) では on にしない。
+4. **実店舗**: facts の確認・DNC/重複の確認・デモと文章の承認が揃ってから (runbook B-6)。**Staging で実店舗へ送るかは、(a) を選んだうえでのオーナーの判断** (既定は Production の段で送る)。送信は人が手で行い、そのたびにオーナーの承認。
 
 ## 8. 片付け
 
 - Supabase の token は作業後に Revoke (`docs/STAGING.md` §2)。
+- §7.1 で架空店の prospect を入れたなら、承認時に示した SQL で、その prospect と、そこから作られたデモ・版・facts の行を消す (Storage の版のファイルも)。実店舗の行には触れない。
 - 版にならなかった `staging/` の一時ファイルは残る (配られない。runbook B-5a)。
