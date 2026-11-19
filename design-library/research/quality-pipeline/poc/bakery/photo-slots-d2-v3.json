@@ -1,0 +1,106 @@
+{
+  "schema": "photo_slots_v0",
+  "shop": "bakery",
+  "shop_id": "fictional-bakery-hoshigama",
+  "page_dir": "design-library/research/quality-pipeline/poc/bakery/fidelity/d2-v3",
+  "html_sha256": "3c3b466abd0d78c8e26f82ea6da7b1792e363015a8de87372ed542fd81bda8da",
+  "css_sha256": "091d6ef5cb0c3a2273e55329809b37d4fdc9be5bb1e4ef05c54398eb38984782",
+  "copy_sha256": "ec9c1d6b24623176315e805c3fda2f7c181dbc9d7269c6e645b0975cca9140f8",
+  "derived_by": "scripts/design-artifact/photo-slots.ts",
+  "evaluation_label": "placeholder_limited",
+  "density": 2,
+  "slots": [
+    {
+      "slot_id": "ph-mouth",
+      "role": "石窯の口",
+      "section": "mouth",
+      "board_class": "board board-mouth",
+      "board_selector": "[data-comp-section=\"mouth\"] div.board.board-mouth",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 460,
+          "height_px": 510,
+          "ratio": 0.902,
+          "min_width_px": 920,
+          "min_height_px": 1020
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 327,
+          "height_px": 363,
+          "ratio": 0.902,
+          "min_width_px": 655,
+          "min_height_px": 726
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 245,
+          "height_px": 272,
+          "ratio": 0.902,
+          "min_width_px": 491,
+          "min_height_px": 544
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 226,
+          "height_px": 375,
+          "ratio": 0.603,
+          "min_width_px": 453,
+          "min_height_px": 750
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-loaf",
+      "role": "田舎パン",
+      "section": "deep",
+      "board_class": "board board-loaf",
+      "board_selector": "[data-comp-section=\"deep\"] div.board.board-loaf",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 634,
+          "height_px": 475,
+          "ratio": 1.333,
+          "min_width_px": 1268,
+          "min_height_px": 951
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 451,
+          "height_px": 338,
+          "ratio": 1.333,
+          "min_width_px": 902,
+          "min_height_px": 676
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 338,
+          "height_px": 253,
+          "ratio": 1.333,
+          "min_width_px": 676,
+          "min_height_px": 507
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 304,
+          "height_px": 228,
+          "ratio": 1.333,
+          "min_width_px": 609,
+          "min_height_px": 457
+        }
+      ]
+    }
+  ]
+}

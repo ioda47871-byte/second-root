@@ -192,15 +192,18 @@ export const SWAP_SHOP_SPECS = deepFreeze({
     aiDemoPromptSha256: BICYCLE_PROMPT_SHA256,
   },
   // DEV-139: ほし窯 (fictional bakery) d2-v2 — AI demo photos of the approved prompt, for the owner's one run (2026-11-18).
+  // Issue #290 P1: d2-v3, the next design candidate (d2-v2 stays as it is), takes the SAME photos already taken: the same
+  // two boards and placeholder triples, the same ranges (its extra media queries inside the PC range move text only),
+  // its boards within the 2× of the intake's photos at every measured width and range edge (photo-slots-d2-v3.json).
   bakery: {
     shop: "bakery",
-    pages: ["d2-v2"],
+    pages: ["d2-v2", "d2-v3"],
     renders: [
       { viewport: "desktop_1440", width: 1440, height: 900 },
       { viewport: "mobile_390", width: 390, height: 844 },
     ],
     // the pinned d2-v2 CSS (d2-v1's plus line-box rules) has two ranges: SP ≤600 (laid out first) and PC ≥601 (`@media (min-width: 601px)`, every
-    // board sized in vw, its shape unchanged from 601 to 1920). The PC range is cut into two crop files at 1199 (the
+    // board sized in vw, its shape unchanged from 601 to 1920). d2-v3 likewise (its 601–767 and 601–1023 rules re-place text, never a board). The PC range is cut into two crop files at 1199 (the
     // measured edge, EDGE_VIEWPORTS) only so that the copy keeps the swap's three files per slot (desktop / tablet /
     // mobile, which the demo version package expects); both PC files are cut to the same board shape.
     ranges: [
@@ -209,7 +212,8 @@ export const SWAP_SHOP_SPECS = deepFreeze({
       { key: "mobile", media: "(max-width: 600px)", viewports: ["mobile_390", "mobile_600"] },
     ],
     edgeViewports: EDGE_VIEWPORTS,
-    // the oven mouth's board is nearly square at ≥601 (460/510) and tall at ≤600 (190/315); the loaf keeps 1.2 in both.
+    // the oven mouth's board is nearly square at ≥601 (460/510) and tall at ≤600 (190/315); the loaf keeps 1.2 in both
+    // (d2-v3: the same oven-mouth shapes, the SP one 1.19× larger; the loaf 4:3 in both, the photo's own shape).
     // The SP photo (when given) serves the SP range only
     spViewports: ["mobile_390", "mobile_600"],
     structure: {
