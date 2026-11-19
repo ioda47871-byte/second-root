@@ -46,3 +46,47 @@
 ## Conclusion
 
 Critical/High = 0, so the docs PR passes Fresh Review. M1/M2 are wording fixes on safety boundaries and should be applied before merge. If they are applied as proposed (text-only), they do not change the verdict. A changed head still needs CI on the latest commit before feature→develop.
+
+---
+
+## Round 2 — reviewed head `d6a34e0`
+
+**Verdict: PASS** (Critical 0 / High 0 / Medium 0 / Low 1). Same separate-context Fresh Reviewer, read-only.
+
+- Range reviewed: `f0898ee..d6a34e0`. Commit `d6a34e0` touches only `docs/design/design-first-workflow-decision.md` (+7/−8). `ba67b9a` is this record. I also re-read the whole 2026-11-19 addendum against Issue #293.
+- Merge check: `origin/develop` is still `4744cfb`, and `git merge-tree HEAD origin/develop` is clean.
+- Lint and tests: not run. The change is docs-only, and there is no `node_modules` in the worktree.
+
+### Resolution of round 1 findings
+
+| ID | Status | Note |
+|---|---|---|
+| M1 | Resolved | The capability check is now a read-only audit of code, CLI spec and history, with no model call. It must not assert capability or cost while unverified, and fails closed. |
+| M2 | Resolved | The mapping stays unopened and sealed: "開封せず、方式との対応を推測・公開もしない". The unlock condition is removed. No mapping is revealed or guessed anywhere in the doc. |
+| L1 | Resolved | "Codex" is tied to the existing WSL Codex CLI path in "G2の実行経路". Any other path needs its intake design and approval first. |
+| L2 | Resolved | The VISUAL_FIRST path now says "G1の構図の異なる2案を経る". |
+| L3 | Resolved | Used approval IDs are never reused. The d2-v3 photos are not regenerated. G2 full-page generation needs a separate approval packet. |
+| L4 | Resolved | The doc now says "オーナーが成功例として明示的に採用するまで". |
+| L5 | Resolved | Added: `MODEL_GENERATED_FULL_PAGE_COMP`, image call ID, generation time, DM/email and GitHub push of images/photos as out of scope, and reuse of the three approved photos within their rights. The double blank line is removed. |
+
+### Re-check vs Issue #293 and the rest of the policy
+
+- Each G2 point is stated and matches the Issue:
+  - full-page PC1440/SP390 model images, which are neither HTML screenshots nor photo-only images;
+  - owner adoption before implementation;
+  - visual gate of no hard fail, ≥22/25, each item ≥4, unchanged;
+  - d2-v3 is a separate comparison, not a proof, and is hidden from the G2 designer;
+  - no real calls, generation, billing or WSL work without a separate approval packet.
+- None of the new text weakens any gate, threshold or Protected Scope item. There is no contradiction with the G0–G6 table, Identity Lock or `quality-first-process.md`.
+
+### Findings
+
+- Critical: none
+- High: none
+- Medium: none
+- Low:
+  - **R2-L1 (optional)**: "P3のG2全ページ画像生成" uses the Issue's phase label "P3", which this doc never defines. Suggested text: 「Issue #293 P3のG2全ページ画像生成」. Non-blocking.
+
+### Conclusion
+
+Critical/High/Medium are all 0, so PR #294 passes Fresh Review at `d6a34e0`. CI must still pass on the latest head before feature→develop. Changing R2-L1 alone (text-only) does not need another review round.
