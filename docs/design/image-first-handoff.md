@@ -136,4 +136,8 @@ npx tsx scripts/design-artifact/image-first-check.ts --assemble <private run dir
 npx tsx scripts/design-artifact/image-first-check.ts --run <private run dir> [--impl <implementation dir>]
 ```
 
+P3 の準備（未承認）: プロンプトの決定的な組み立て（`lib/design-agent/image-first/prompt.ts`、ピンの表示
+`scripts/design-artifact/image-first-prompt.ts --direction d1|d3 --print-pin`）、承認がなければ動かない実呼び出しの入口
+（`scripts/design-artifact/image-first-generate.ts`）と、承認パケットの下書き [`image-first-hoshigama-p3-packet.md`](image-first-hoshigama-p3-packet.md)。
+
 CLI は読むだけで、ファイルを書かず、アップロードもしない。終了コード: 0 READY（または --assemble 成功）、1 REJECT / AWAITING、2 拒否。

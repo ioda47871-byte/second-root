@@ -9,6 +9,10 @@ import { describe, expect, it } from "vitest";
 const REPO = resolve(__dirname, "../../../..");
 const LIB = "lib/design-agent/image-first";
 const CLI = "scripts/design-artifact/image-first-check.ts";
+/** Issue #293 P3 (preparation): the read-only pin printer of the prompts (offline, like the check CLI). */
+const PIN_CLI = "scripts/design-artifact/image-first-prompt.ts";
+/** Issue #293 P3 (preparation, owner-run after approval only): the real-call entry and its step (checked by the phase2f-live isolation test). */
+const GENERATE_IMPORTERS = ["lib/design-agent/phase2f-live/full-page-call.ts", "scripts/design-artifact/image-first-generate.ts"];
 
 function specifiers(source: string): string[] {
   const out: string[] = [];
@@ -25,6 +29,9 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/validate.ts`]: ["../design-image/png", "../identity/identity-lock", "../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./composition", "./owner-gate", "./pixels", "./record", "node:crypto"],
   [`${LIB}/builder.ts`]: ["../design-image/png", "../impl-lane/impl-compare", "./record", "./validate", "node:crypto", "node:fs/promises", "node:path"],
   [`${LIB}/adapter.ts`]: ["../impl-lane/compare", "../impl-lane/impl-compare", "./record", "./validate", "node:crypto", "playwright"],
+  // P3 preparation: the deterministic prompt builder (pure apart from an injected reader)
+  [`${LIB}/prompt.ts`]: ["../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./record", "node:crypto"],
+  [PIN_CLI]: ["../../lib/design-agent/image-first/prompt", "node:fs/promises", "node:path"],
   [CLI]: ["../../lib/design-agent/image-first/builder", "../../lib/design-agent/image-first/validate", "../../lib/design-agent/impl-lane/impl-compare", "node:fs/promises", "node:path"],
 };
 
@@ -52,9 +59,9 @@ describe("isolation of the IMAGE_FIRST contract (offline, read only)", () => {
     }
   });
 
-  it("is imported only by its own check CLI; no package script, workflow or other script starts that CLI", () => {
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/image-first|image-first/(record|validate|builder|adapter|owner-gate|composition|pixels)", "--", "lib", "app", "components", "scripts", `:!${LIB}`], { cwd: REPO, encoding: "utf8" });
-    expect(g.stdout.trim().split("\n").filter(Boolean)).toEqual([CLI]);
+  it("is imported only by its own check CLI (P3: and the pin printer and the gated real-call entry); no package script, workflow or other script starts that CLI", () => {
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/image-first|image-first/(record|validate|builder|adapter|owner-gate|composition|pixels|prompt)", "--", "lib", "app", "components", "scripts", `:!${LIB}`], { cwd: REPO, encoding: "utf8" });
+    expect(g.stdout.trim().split("\n").filter(Boolean)).toEqual([...GENERATE_IMPORTERS, CLI, PIN_CLI].sort());
     const starts = spawnSync("git", ["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*image-first-check", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${CLI}`], { cwd: REPO, encoding: "utf8" });
     expect([starts.status, starts.stdout.trim()]).toEqual([1, ""]);
   });

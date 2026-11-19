@@ -326,14 +326,18 @@ describe("the proposed ledger kinds (DEV-150: now the ledger's own)", () => {
     const routes: ProposedRoute[] = ["A_image", "B_html_prototype", "C_hybrid"] satisfies Route[];
     expect([kinds, routes]).toEqual([[...EXISTING_CALL_KINDS], [...EXISTING_ROUTES]]);
     expect(PROPOSED_CALL_KINDS).toEqual(["design", "image", "concept_image", "direction", "page_image"]);
-    const fromLedger = (r: Receipt): ProposedReceipt => r;
+    // Issue #293 P3: the ledger's IMAGE_FIRST pair (full_page_comp / image_first) is not a three-method call
+    const fromLedger = (r: Receipt & { kind: Exclude<CallKind, "full_page_comp">; route: Exclude<Route, "image_first"> }): ProposedReceipt => r;
     expect(typeof fromLedger).toBe("function");
     expect(readFileSync(resolve(REPO, "lib/design-agent/three-methods/ledger-proposal.ts"), "utf8")).toContain(`const APPROVAL_ID = ${APPROVAL_ID.toString()};`);
     expect(readFileSync(resolve(REPO, "lib/design-agent/three-methods/ledger-proposal.ts"), "utf8")).toContain(`const PLAN_ID = ${PLAN_ID.toString()};`);
     expect(LIVE_LIMITS).toEqual({ firstCalls: 4, retries: 2, callTimeoutMs: 15 * 60 * 1000, planBudgetMs: 2 * 60 * 60 * 1000 });
     // DEV-150: the ledger now has exactly the proposed kinds and routes, with the same pairs (wired, Issue #180)
-    expect(readFileSync(resolve(REPO, "lib/design-agent/phase2f-live/ledger.ts"), "utf8")).toMatch(/^export type CallKind = "design" \| "image" \| "concept_image" \| "direction" \| "page_image";$/m);
-    expect(LEDGER_KIND_ROUTES).toEqual(KIND_ROUTES);
+    // Issue #293 P3 (additive): plus exactly the IMAGE_FIRST pair, which is not a three-method call
+    expect(readFileSync(resolve(REPO, "lib/design-agent/phase2f-live/ledger.ts"), "utf8")).toMatch(/^export type CallKind = "design" \| "image" \| "concept_image" \| "direction" \| "page_image" \| "full_page_comp";$/m);
+    const { full_page_comp: imageFirst, ...threeMethodPairs } = LEDGER_KIND_ROUTES;
+    expect(threeMethodPairs).toEqual(KIND_ROUTES);
+    expect(imageFirst).toEqual(["image_first"]);
   });
 
   it("a receipt the real ledger writes today (in a temporary state directory) is a valid proposed receipt", async () => {
