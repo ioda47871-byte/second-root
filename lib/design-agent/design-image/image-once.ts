@@ -217,6 +217,8 @@ export type ImageBatchResult = {
   stopCode: string | null;
   imageCalls: number;
   imageFailed: number;
+  /** Issue #293 (additive): the image calls' own ids from the session log (capability.ts image_call_ids), in call order. */
+  imageCallIds?: string[];
   threadId: string | null;
   cliVersion: string | null;
   model: string | null;
@@ -270,7 +272,7 @@ export async function generateImagesInOneRun(o: RunOptions & { maxImages: number
     BATCH_SESSION_LOG_BYTES,
     (stopCode, cliVersion) => result({ outcome: "not_applicable", stopCode, ...(cliVersion === null ? {} : { cliVersion }) }),
     async ({ run, facts, threadId, codexHome, base }) => {
-      const counts = { imageCalls: facts.image_tool_calls, imageFailed: facts.image_tool_failed };
+      const counts = { imageCalls: facts.image_tool_calls, imageFailed: facts.image_tool_failed, imageCallIds: [...facts.image_call_ids] };
       const taken = threadId ? await takeImages(join(codexHome, "generated_images", threadId)) : [];
       const outcomeOf = (saved: boolean) => deriveImageOutcome(facts, saved);
       if (!Array.isArray(taken)) return result({ ...base, ...counts, outcome: outcomeOf(false), stopCode: taken.code });

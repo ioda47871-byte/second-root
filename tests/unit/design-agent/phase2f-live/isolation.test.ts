@@ -19,7 +19,9 @@ const CLI_SHARED = "scripts/design-artifact/phase2f-live-cli.ts";
 /** DEV-150 (Issue #180, owner-approved exact paths): the three-method pilot's direction step and its offline steps. */
 const DIRECTION_CLI = "scripts/design-artifact/phase2f-direction.ts";
 const TM_STEPS_CLI = "scripts/design-artifact/three-methods-steps.ts";
-const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI];
+/** Issue #293 P3 (preparation; owner-run only after a per-run approval packet): one IMAGE_FIRST batch of section pictures. */
+const FULL_PAGE_CLI = "scripts/design-artifact/image-first-generate.ts";
+const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -40,6 +42,9 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/image-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../three-methods/page-assets", "../codex", "./ledger", "./steps"],
   // DEV-150: one DIRECTION_FIRST call; the answer checked by the three-method lane (pure)
   [`${LIB}/direction-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../three-methods/direction", "../codex", "./ledger", "./steps"],
+  // Issue #293 P3: one IMAGE_FIRST batch under one approval; the batch call is passed in by its CLI
+  [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./ledger", "./steps"],
+  [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
   [CLI_SHARED]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/codex`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, `${L}/protected-paths`, `${L}/sandbox`, `${L}/worker/env`],
   // DEV-124: node:os, playwright and the reference sheet make the v2 reference images before the approval is used
   // DEV-150: node:crypto for the SHA-256 of the tm0 brief that --print-pin shows
@@ -108,6 +113,11 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(named(image, `${L}/phase2f/prototype-safety`)).toEqual(["PrototypeUnsafe", "checkPrototype"]);
     expect(named(image, `${L}/three-methods/brief`)).toEqual(["FactsPack"]);
     expect(readFileSync(resolve(REPO, CLI_SHARED), "utf8")).toMatch(/prepareCodexSandbox\(\{ env, protectedPaths \}\)/);
+    // Issue #293 P3: the IMAGE_FIRST entry takes only the batch call, and calls it only in the sandbox the preflight prepared
+    const fullPage = readFileSync(resolve(REPO, FULL_PAGE_CLI), "utf8");
+    expect(fullPage).not.toMatch(/runCodexJson|generateImageOnce|\bfetch\(|anthropic|openai|child_process|spawn\(|execFile|SR_POC_|poc-approval-used/);
+    expect(named(fullPage, `${L}/design-image/image-once`)).toEqual(["cleanupActiveImageCalls", "generateImagesInOneRun"]);
+    expect(fullPage).toMatch(/const sandbox = ctx\.sandbox\(\);\n\s*if \(sandbox === null\) throw new Error\("no sandbox"\);\n\s*const r = await generateImagesInOneRun\(\{ sandbox,/);
   });
 
   it("the offline steps CLIs never reach Codex, the image tool, the sandbox or a process", () => {
@@ -119,8 +129,10 @@ describe("isolation of the Phase 2f-2 steps", () => {
   });
 
   it("is imported by nobody else (the CLIs are entry points; the shared helper only by the real-call CLIs)", () => {
-    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI].sort());
-    expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI].sort());
+    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI].sort());
+    expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI, FULL_PAGE_CLI].sort());
+    // Issue #293 P3: nothing starts the IMAGE_FIRST entry (run by hand by the owner only)
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*image-first-generate", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${FULL_PAGE_CLI}`])).toEqual([]);
     // DEV-150: no package script, workflow, unit file or other script starts the new entries (run by hand only)
     expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*(phase2f-direction|three-methods-steps)", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"])).toEqual([]);
   });
@@ -128,7 +140,8 @@ describe("isolation of the Phase 2f-2 steps", () => {
   it("only the image CLI names the image PoC's code; no file here names its approval, pin, ledger or output", () => {
     for (const file of Object.keys(ALLOWED)) {
       const source = readFileSync(resolve(REPO, file), "utf8");
-      if (file !== IMAGE_CLI) expect(source, file).not.toMatch(/design-image/);
+      // Issue #293 P3: the IMAGE_FIRST entry names only the batch call (checked above)
+      if (file !== IMAGE_CLI && file !== FULL_PAGE_CLI) expect(source, file).not.toMatch(/design-image/);
       expect(source, file).not.toMatch(/sr-design-image-poc|poc-approval-used|design-library\/poc|wagashi-a-v4-20261025-01|4e34f760/);
     }
   });

@@ -42,17 +42,23 @@ export const PLAN_ID = /^[a-z0-9][a-z0-9._-]{3,63}$/;
 /**
  * DEV-150 (Issue #180): `direction` (DIRECTION_FIRST's words-only call) and `page_image` (a picture asked for by a
  * page Claude wrote) join the existing kinds, each with its own route. Every other rule is unchanged.
+ * Issue #293 P3 (additive): `full_page_comp` (IMAGE_FIRST's one batch of PC + SP section pictures of a model-generated
+ * full-page comp) with its own route `image_first`. Limits, ID rules and the one-use rule are unchanged.
  */
-export type CallKind = "design" | "image" | "concept_image" | "direction" | "page_image";
-export type Route = "A_image" | "B_html_prototype" | "C_hybrid" | "direction_text" | "claude_page";
+export type CallKind = "design" | "image" | "concept_image" | "direction" | "page_image" | "full_page_comp";
+export type Route = "A_image" | "B_html_prototype" | "C_hybrid" | "direction_text" | "claude_page" | "image_first";
 
-/** Which route each kind may be recorded with: the existing pairs, plus one route per new kind (the same as the three-method lane's KIND_ROUTES; a test compares them). */
+/**
+ * Which route each kind may be recorded with: the existing pairs, plus one route per new kind (the three-method lane's
+ * KIND_ROUTES plus the IMAGE_FIRST pair; a test compares them).
+ */
 export const KIND_ROUTES: Readonly<Record<CallKind, readonly Route[]>> = {
   design: ["B_html_prototype", "C_hybrid"],
   image: ["C_hybrid"],
   concept_image: ["A_image"],
   direction: ["direction_text"],
   page_image: ["claude_page"],
+  full_page_comp: ["image_first"],
 };
 /** Refuses a kind and route that do not belong together (also a value that is neither). */
 function checkKindRoute(kind: CallKind, route: Route): void {

@@ -415,7 +415,8 @@ describe("DEV-187 the root grant: without it, 0 generate calls", () => {
 describe("DEV-186 isolation", () => {
   it("only the one-shot entry and the worker's guarded hook call generateImagesInOneRun; the worker reaches it only via the hook", () => {
     const grep = (re: string, ...paths: string[]) => spawnSync("git", ["grep", "--untracked", "-lE", re, "--", ...paths], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
-    expect(grep("generateImagesInOneRun", "lib", "app", "components", "scripts")).toEqual(["lib/design-agent/design-image/image-once.ts", "lib/design-agent/design-image/tsugute-photos.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
+    // Issue #293 P3 (preparation): plus the owner-run, approval-gated IMAGE_FIRST entry (never the worker)
+    expect(grep("generateImagesInOneRun", "lib", "app", "components", "scripts")).toEqual(["lib/design-agent/design-image/image-once.ts", "lib/design-agent/design-image/tsugute-photos.ts", "scripts/design-artifact/image-first-generate.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
     expect(grep("sales-design-worker/image-autorun|from \"\\./image-autorun\"", "lib", "app", "components", "scripts")).toEqual(["scripts/sales-design-worker/worker.ts"]);
     // the switch path is fixed in code: no environment variable can point it elsewhere, and run.sh passes none
     const hook = readFileSync(join(REPO, "scripts/sales-design-worker/image-autorun.ts"), "utf8");

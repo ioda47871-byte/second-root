@@ -144,7 +144,7 @@ describe("checked before the approval is used (a refusal uses nothing)", () => {
 });
 
 describe("DEV-150: the ledger refuses a kind with another kind's route, before anything is used", () => {
-  const all: [CallKind, Route][] = (Object.keys(KIND_ROUTES) as CallKind[]).flatMap((k) => (["A_image", "B_html_prototype", "C_hybrid", "direction_text", "claude_page"] as Route[]).map((r) => [k, r] as [CallKind, Route]));
+  const all: [CallKind, Route][] = (Object.keys(KIND_ROUTES) as CallKind[]).flatMap((k) => (["A_image", "B_html_prototype", "C_hybrid", "direction_text", "claude_page", "image_first"] as Route[]).map((r) => [k, r] as [CallKind, Route]));
 
   it("precheck and reserve accept exactly the existing pairs and one route per new kind", async () => {
     const ledger = openLedger(join(base, "state"));
@@ -153,7 +153,7 @@ describe("DEV-150: the ledger refuses a kind with another kind's route, before a
       const pre = await ledger.precheck({ approvalId: `fictional-pair-${kind.replace("_", "-")}-${route.replace("_", "-").toLowerCase()}`, planId: "plan-fictional-pairs", route, kind, retryOf: null }).then(() => "ok", (e: unknown) => (e instanceof LedgerStop ? e.code : "?"));
       expect(pre, `${kind} × ${route}`).toBe(ok ? "ok" : "KIND_ROUTE_MISMATCH");
     }
-    expect(Object.fromEntries(Object.entries(KIND_ROUTES))).toEqual({ design: ["B_html_prototype", "C_hybrid"], image: ["C_hybrid"], concept_image: ["A_image"], direction: ["direction_text"], page_image: ["claude_page"] });
+    expect(Object.fromEntries(Object.entries(KIND_ROUTES))).toEqual({ design: ["B_html_prototype", "C_hybrid"], image: ["C_hybrid"], concept_image: ["A_image"], direction: ["direction_text"], page_image: ["claude_page"], full_page_comp: ["image_first"] });
     // reserve checks the pair first: nothing is created for a wrong pair (the approval stays unused)
     await expect(ledger.reserve({ approval_id: "fictional-pair-wrong", plan_id: "plan-fictional-pairs", route: "C_hybrid", kind: "direction", retry_of: null, prompt_sha256: "a".repeat(64), prompt_chars: 1, commit: COMMIT, run_id: "p2f-x" })).rejects.toMatchObject({ code: "KIND_ROUTE_MISMATCH" });
     expect(ledgerFiles()).toEqual([]);

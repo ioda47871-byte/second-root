@@ -2158,7 +2158,9 @@ describe("isolation of the PoC's output", () => {
     // the image outcome vocabulary (capability.ts); never the image call (tests/unit/design-agent/image-first/isolation.test.ts)
     const imageFirst = ["lib/design-agent/image-first/builder.ts", "lib/design-agent/image-first/record.ts", "lib/design-agent/image-first/validate.ts"];
     expect(files.filter((f) => f.startsWith("lib/design-agent/image-first/"))).toEqual(imageFirst);
-    expect(files.filter((f) => !compImpl.includes(f) && !imageFirst.includes(f))).toEqual(["scripts/design-artifact/phase2f-image.ts", "scripts/sales-design-worker/design-image-poc.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
+    // Issue #293 P3 (preparation, exact path): the owner-run, approval-gated IMAGE_FIRST entry reuses only the one-run batch
+    // call (image-once.ts); kept out of the worker and the app (tests/unit/design-agent/phase2f-live/isolation.test.ts)
+    expect(files.filter((f) => !compImpl.includes(f) && !imageFirst.includes(f))).toEqual(["scripts/design-artifact/image-first-generate.ts", "scripts/design-artifact/phase2f-image.ts", "scripts/sales-design-worker/design-image-poc.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
   });
 
   it("the v2 direction, the direction files and the AI food-visual policy stay inside the PoC (worker, demo, presets, renderer, asset store never read them)", () => {

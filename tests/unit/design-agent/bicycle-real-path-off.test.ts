@@ -276,7 +276,8 @@ describe("DEV-192 root's cycle.sh: 'tsugute:6 bicycle:6' (DEV-139's 'bakery:3' r
 describe("DEV-192 the real generation is still reached only through the guarded hook", () => {
   const grep = (re: string, ...paths: string[]) => spawnSync("git", ["grep", "--untracked", "-lE", re, "--", ...paths], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
   it("only the つぐ手 one-shot entry and the worker hook call it; no 輪 run entry or CLI exists", () => {
-    expect(grep("generateImagesInOneRun", "lib", "app", "components", "scripts")).toEqual(["lib/design-agent/design-image/image-once.ts", "lib/design-agent/design-image/tsugute-photos.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
+    // Issue #293 P3 (preparation): plus the owner-run, approval-gated IMAGE_FIRST entry (never the worker)
+    expect(grep("generateImagesInOneRun", "lib", "app", "components", "scripts")).toEqual(["lib/design-agent/design-image/image-once.ts", "lib/design-agent/design-image/tsugute-photos.ts", "scripts/design-artifact/image-first-generate.ts", "scripts/sales-design-worker/image-autorun.ts", "scripts/sales-design-worker/tsugute-photos.ts"]);
     expect(readFileSync(join(REPO, "lib/design-agent/design-image/bicycle-photos.ts"), "utf8")).toMatch(/^import type \{ ImageBatchResult \} from "\.\/image-once";$/m);
     expect(readdirSync(join(REPO, "scripts/sales-design-worker")).filter((f) => /bicycle/i.test(f))).toEqual([]);
     expect(readFileSync(join(REPO, "scripts/design-artifact/bicycle-ai-intake.ts"), "utf8")).not.toMatch(/require\.main|process\.argv/);
