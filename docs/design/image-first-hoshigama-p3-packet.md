@@ -175,8 +175,8 @@ npx tsx scripts/design-artifact/image-first-generate.ts --direction d1 --out ~/s
 | 項目 | 値 |
 |---|---|
 | 状態（承認するなら `承認済み` と書く） | 未記入 |
-| 承認する方向性（`d1` / `d1,d3`） | 未記入 |
-| d1 の承認 ID（1 回限り。形式 `<店>-imagefirst-d1-<YYYYMMDD>-<NN>`） | 未記入（例: `hoshigama-imagefirst-d1-20261120-01`） |
+| 承認する方向性（`d1` / `d3` / `d1,d3`） | 未記入 |
+| d1 の承認 ID（1 回限り。d1 を承認しないなら `なし`。形式 `<店>-imagefirst-d1-<YYYYMMDD>-<NN>`） | 未記入（例: `hoshigama-imagefirst-d1-20261120-01`） |
 | d3 の承認 ID（1 回限り。d3 を承認しないなら `なし`） | 未記入（例: `hoshigama-imagefirst-d3-20261120-01`） |
 | 期限（UTC、`YYYY-MM-DDTHH:MM:SSZ`。起動の時点から 24 時間以内） | 未記入（例: `2026-11-20T09:00:00Z` = 日本時間 18:00） |
 | 計画 ID | 未記入（例: `hoshigama-imagefirst-p3-20261120`） |
