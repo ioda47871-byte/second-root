@@ -119,7 +119,7 @@ export const APPROVAL_PACKET_PATH = "docs/design/image-first-hoshigama-p3-packet
  *   - the header (the text before the first `## ` heading) still says 未承認, or does not say exactly once 状態: 承認済み;
  *   - there is not exactly one `## 10.` heading outside code fences (a fenced example never counts);
  *   - a §10 row is missing, repeated or extra, a value is empty or still 未記入, the §10 status is not 承認済み, or the
- *     direction list is not d1 / d1,d3 with an id for each approved direction and なし for the other.
+ *     direction list is not d1 / d3 / d1,d3 with an id for each approved direction and なし for the other.
  */
 export function readApprovalPacket(bytes: Buffer): ApprovalPacket | null {
   // every line outside a code fence, with its index (a fence line itself is dropped)
@@ -162,7 +162,7 @@ export function readApprovalPacket(bytes: Buffer): ApprovalPacket | null {
   if (Object.values(got).some((v) => v === null) || rows.size !== Object.keys(PACKET_FIELDS).length) return null;
   if (got.status !== PACKET_APPROVED) return null;
   const directions = got.directions!.split(",").map((d) => d.trim());
-  if (directions.join(",") !== "d1" && directions.join(",") !== "d1,d3") return null;
+  if (!["d1", "d3", "d1,d3"].includes(directions.join(","))) return null;
   for (const k of ["d1", "d3"] as const) if ((got[k] === PACKET_NONE) === directions.includes(k)) return null;
   return { status: got.status, directions, approvalIds: { d1: got.d1!, d3: got.d3! }, expires: got.expires!, planId: got.planId!, approvedBy: got.approvedBy! };
 }
