@@ -143,7 +143,7 @@ dd { word-break: keep-all; overflow-wrap: anywhere; }
 .kona { display: block; width: 84vw; height: 84vw; margin: 0 auto; overflow: visible; }
 .bowl { fill: #eadfc6; }
 .bowl-rim { fill: none; stroke: #bba27a; stroke-width: 2; }
-.kona-char { font-family: var(--mincho); font-weight: 700; font-size: 840px; text-anchor: middle; dominant-baseline: central; stroke: #5b3d22; stroke-width: 6; paint-order: stroke; letter-spacing: 0; }
+.kona-char { font-family: var(--mincho); font-weight: 700; font-size: 740px; text-anchor: middle; dominant-baseline: central; stroke: #5b3d22; stroke-width: 6; paint-order: stroke; letter-spacing: 0; }
 .flour-fact { margin-top: 8vw; font-family: var(--mincho); font-size: 7.18vw; line-height: 1.6; inline-size: calc(8.5ic + 6px); }
 
 /* visit: out of the door, to the visitor's hands */
@@ -189,11 +189,13 @@ dd { word-break: keep-all; overflow-wrap: anywhere; }
   .fig-loaf { grid-column: 2; grid-row: 1; width: auto; transform: rotate(-2deg); }
   .item-inaka { grid-column: 3; grid-row: 1; margin: 0; writing-mode: vertical-rl; font-size: clamp(40px, 5.28vw, 92px); letter-spacing: .06em; line-height: 1; }
   .deep-fact { grid-column: 4; grid-row: 1; align-self: end; margin: 0 0 2.5vw; font-size: clamp(18px, 2.2vw, 36px); line-height: 1.7; }
-  .baguette { grid-column: 2 / 5; grid-row: 2; justify-self: end; font-size: 4.17vw; margin: 6vw 2vw 0 0; transform: rotate(-4deg); }
+  .baguette { grid-column: 2 / 5; grid-row: 2; justify-self: center; font-size: 4.86vw; margin: 4.17vw 0 0; transform: rotate(-4deg); }
 
   /* fire: the sentence at the left; the floor seen from above at the right, its plate at the logs */
   .fire { min-height: 58vw; padding: 19.44vw 5.56vw 0 8.34vw; }
-  .heat { left: 32vw; top: -5vw; width: 64vw; height: 64vw; -webkit-mask-image: linear-gradient(90deg, transparent 20%, #000 40%); mask-image: linear-gradient(90deg, transparent 20%, #000 40%); }
+  /* two fades, intersected: the rings fade out before the sentence (left) AND before the section's top edge (the box
+     starts 5vw above the section, under the opaque floor above; d2-v2's lesson: no straight edge at the boundary) */
+  .heat { left: 32vw; top: -5vw; width: 64vw; height: 64vw; -webkit-mask-image: linear-gradient(90deg, transparent 20%, #000 40%), linear-gradient(transparent 8%, #000 24%); mask-image: linear-gradient(90deg, transparent 20%, #000 40%), linear-gradient(transparent 8%, #000 24%); -webkit-mask-composite: source-in; mask-composite: intersect; }
   .fire-fact { font-size: clamp(28px, 3.89vw, 64px); }
   .mark-fire { left: 77.23vw; top: 37.24vw; font-size: clamp(16px, 1.67vw, 26px); }
 
