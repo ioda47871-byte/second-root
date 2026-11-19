@@ -38,6 +38,7 @@ comp から切り抜いた写真を Web 素材に使わない（`COMP_CROP_AS_AS
   - 宣言とページ順が一致し、欠け・重複・順序違いがない（`COMP_SECTION_SEQUENCE_INVALID`）
   - `continuous` の継ぎ目の上下の帯の平均色差 ΔE ≤ 14（`COMP_SEAM_BROKEN`）
   - 1画面より長い: PC は 900px の 1.5 画面以上、SP は 844px の 2 画面以上（`COMP_HERO_ONLY`）
+  - 1枚だけ（`single`）の場合は、縦横比（高さ÷幅）が 1.6 を超えること。画像ツールの観測上の上限（約 1.5）の1枚は、1440 に拡大して高さの下限を越えても Hero・ポスターとみなす（`COMP_HERO_ONLY`）。それ以外の「Hero だけ」は、Claude の located read とオーナー評価でしか防げない
   - 比較で描ける高さ 16000px 以下（`COMP_COMPOSITE_OUT_OF_RANGE`）
   - SP が PC の縮小でない: 同じ画像のバイト、または同じ縦横比で格子 SSIM が高い（`COMP_SP_IS_PC_SCALED`）
 

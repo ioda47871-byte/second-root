@@ -59,6 +59,28 @@ describe("the adapter: an approved comp to the implementation comparison at exac
     expect(() => toImplCompareInput(JSON.parse(JSON.stringify(verdict)) as typeof verdict)).toThrow("NOT_READY_FOR_IMPLEMENTATION");
   });
 
+  it("compareImageFirst takes only an input this module issued, unchanged: a hand-built copy, swapped bytes or an edited SHA stop", async () => {
+    const { verdict } = await ready();
+    const impl = { html: PAGE.html, css: PAGE.css, assets: new Map() };
+    const copy = structuredClone(toImplCompareInput(verdict));
+    await expect(compareImageFirst(null, copy, impl)).rejects.toThrow("INPUT_NOT_ISSUED");
+    const swapped = toImplCompareInput(verdict);
+    swapped.viewports.mobile_390.png = Buffer.from(swapped.viewports.desktop_1440.png);
+    await expect(compareImageFirst(null, swapped, impl)).rejects.toThrow("INPUT_CHANGED");
+    const edited = toImplCompareInput(verdict);
+    edited.viewports.desktop_1440.png_sha256 = "f".repeat(64);
+    await expect(compareImageFirst(null, edited, impl)).rejects.toThrow("INPUT_CHANGED");
+    const mutated = toImplCompareInput(verdict);
+    mutated.viewports.desktop_1440.png[100] ^= 0xff;
+    await expect(compareImageFirst(null, mutated, impl)).rejects.toThrow("INPUT_CHANGED");
+    // the issued bytes are a copy: changing one input never changes another issued from the same verdict
+    const a = toImplCompareInput(verdict);
+    const b = toImplCompareInput(verdict);
+    a.viewports.desktop_1440.png[100] ^= 0xff;
+    expect(b.viewports.desktop_1440.png.equals(a.viewports.desktop_1440.png)).toBe(false);
+    await expect(compareImageFirst(null, b, impl)).resolves.toMatchObject({ passing: false });
+  });
+
   it("composites at exactly 1440 and 390 px wide, scales recorded, declared boxes in composite px (a continuous section is one box)", async () => {
     const { verdict } = await ready();
     const input = toImplCompareInput(verdict);

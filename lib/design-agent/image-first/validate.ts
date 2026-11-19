@@ -283,6 +283,7 @@ export function validateImageFirst(e: RunEvidence): ImageFirstVerdict {
     composites[v] = view;
     const cp = compositeProblems(view);
     if (cp.heroOnly) add("COMP_HERO_ONLY", `${v}_composite_height`);
+    if (cp.singleTooShort) add("COMP_HERO_ONLY", `${v}_single_picture_too_short`);
     if (cp.outOfRange) add("COMP_COMPOSITE_OUT_OF_RANGE", `${v}_composite_height`);
     for (const s of brokenSeams(c, view)) add("COMP_SEAM_BROKEN", `${v}_after_part_${s.after_part}`);
   }

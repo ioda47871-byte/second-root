@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { readImageFirstRun } from "@/lib/design-agent/image-first/builder";
+import { compositeProblems, type CompositeView } from "@/lib/design-agent/image-first/composition";
 import { encodePng, scaleToWidth } from "@/lib/design-agent/image-first/pixels";
 import { CODEX_STOP_CODES, REJECT_CODES, type RejectCode } from "@/lib/design-agent/image-first/record";
 import { validateImageFirst, type ImageFirstVerdict } from "@/lib/design-agent/image-first/validate";
@@ -73,6 +74,17 @@ describe("one reject code per failure (fail closed)", { timeout: 120_000 }, () =
     writeFileSync(join(dir, "manifest.json"), "{not json");
     expect(validateImageFirst(await readImageFirstRun(dir)).rejects).toEqual(["COMP_RECORD_INVALID"]);
     await rejects({ mutate: (r) => ((r as unknown as Record<string, unknown>).extra = 1) }, "COMP_RECORD_INVALID");
+  });
+
+  it("COMP_HERO_ONLY: one picture no taller than the tool's observed ~1.5 aspect is a hero / poster, even when scaled to 1440 it clears the screen floor", () => {
+    const view = (viewport: CompositeView["viewport"], width: number, height: number, parts: number) =>
+      ({ viewport, width, height, parts: Array.from({ length: parts }, (_, i) => ({ index: i + 1, sha256: "0".repeat(64), scale: 1, y: 0, height: height / parts })) }) as unknown as CompositeView;
+    // a one-shot 1024×1536 at 1440 wide is 2160 px: above 1.5 screens, still one picture of observed aspect
+    expect(compositeProblems(view("desktop_1440", 1440, 2160, 1))).toMatchObject({ heroOnly: false, singleTooShort: true });
+    expect(compositeProblems(view("mobile_390", 390, 585 * 3, 1))).toMatchObject({ singleTooShort: false });
+    // a sequence of parts is judged by the screen floor only; a single picture clearly taller than the tool's range passes
+    expect(compositeProblems(view("desktop_1440", 1440, 2160, 2))).toMatchObject({ heroOnly: false, singleTooShort: false });
+    expect(compositeProblems(view("desktop_1440", 1440, 3000, 1))).toMatchObject({ singleTooShort: false });
   });
 
   it("COMP_HERO_ONLY: one first-screen picture per viewport, or a read that never sees the lower sections / the footer", async () => {
