@@ -190,3 +190,91 @@ M1 is fixed and confirmed at every PC width. L1 and L2 are fixed. Nothing regres
 - PASS at 8237764: Critical, High, Medium and Low are all 0.
 - Still to do outside this review: the real-photo swap and the side-by-side comparison for the owner, CI, and owner adoption.
 - This commit adds only this round to the record. Nothing was pushed.
+
+---
+
+# Round 3: re-review at 96219af (with the real photos)
+
+- Range: `0dde860..96219af`. This adds two commits on top of the round-2 PASS:
+  - 0bc2f58, a merge of develop 492d1f4 (P0, PR #291)
+  - 96219af, the real-photo design pass
+- I also re-checked the whole of d2-v3 against the Issue #290 P1 requirements.
+- Reviewed SHA: 96219af
+- Reviewer: the same independent Fresh Reviewer (separate context)
+- Date: 2026-11-19
+
+## Verdict: PASS (C0 / H0 / M0 / L0 / Info 4)
+
+## The merge (0bc2f58)
+- Its parents are 0dde860 and origin/develop 492d1f4.
+- `git diff $(git merge-tree --write-tree 0dde860 origin/develop) 0bc2f58` is empty. The merge adds nothing beyond develop.
+- `git diff origin/develop 96219af` is the PR's own content: the same 16 paths as rounds 1–2 (A5, the C page, the slot files, `photo-swap-shops.ts`, the two tests and this record). No P0 file is changed relative to develop.
+
+## The real-photo pass (96219af)
+- The two style.css files (A5 and C) are still byte-identical. The pass changes three things in both:
+  - `.board-loaf` gets a box-shadow outside the board. The board box and its clip are unchanged, and `boards_intact` still passes.
+  - The drawn log ends get darker, charred colours.
+  - The fire-to-shelf ground gets an extra mid colour: 9%→22% on PC, 10vw→24vw on SP.
+- copy-review.json changes only `page_css_sha256`. The slot files change only `css_sha256`.
+- review.json adds a round n=2 (cause, protect, changed) and the new placeholder render hashes. The READMEs gain a real-photo section.
+- No words, boards or HTML changed.
+
+## Real photos (private: scratchpad only, never in git)
+- The owner's transfer archive:
+  - `sha256sum -c SHA256SUMS`: every file OK.
+  - The 3 post-intake originals match `codes/SHA256SUMS.original`: mouth-pc `87672d91…`, mouth-sp `3e7322e3…`, loaf `625725cb…`.
+- `rights.private.json`:
+  - All 3 photos are `ai_generated_demo`.
+  - Every photo has `ai_provenance.prompt_sha256` = the approved `372f7802…a8f6`.
+  - `public_web: false`, no identifiable person, no real shop, `scale_exception: null`.
+  - The focal boxes equal the `HOSHIGAMA_PHOTOS` pins.
+- I ran the swap again myself into a new directory (`p1-real-swap.ts`, with a private pipeline root built from copied files; regular files, nlink 1, mode 0600), outside the repo:
+  - **d2-v3 and d2-v2 both pass every swap gate:** rights and prompt SHA, ≥2× at the 4 measured widths and the range edges, the focal box in every crop, the strict placeholder-triple match, and the PC1440/SP390 render checks (images_loaded 2, boards_intact 2, horizontal_overflow false, caption_text_left false).
+  - Lowest densities for d2-v3: mouth desktop 2.016 (at the 1920 edge), mouth tablet 3.226, mouth mobile 2.662, loaf desktop 2.073, tablet 3.318, mobile 3.744.
+  - `exception_applied` is false for every crop. The kept area is ≥0.90.
+  - In the swapped page, `写真｜` appears 0 times. The two `<picture>` elements carry alt 石窯の口 / 田舎パン. Apart from the photos, the HTML equals the repository page.
+- **The d2-v2 reproduction matches the worker's output byte for byte:**
+  - The swapped index.html, style.css and copy.json equal the archive's `page/`.
+  - All 5 crops match `SHA256SUMS.original`. This includes the two tablet crops that the transfer copy left out (`ph-loaf-tablet 51db80aa…`, `ph-mouth-tablet 1e026808…`).
+- My run reproduces the author's `real-swap-2` byte for byte: all 6 d2-v3 crops and all 4 renders.
+- The 9-width measurement on the real-photo page (`p1-measure.mjs`, JS off, external requests blocked) is all 0 at every width from 360 to 1920. That covers edge cuts, overflow, text, board, line and ring overlaps, shelf, text under 12px, clipped text and contrast. The lowest contrast is 5.05.
+- What I looked at: the PC1440 and SP390 swap renders, plus the full pages at 601, 768 and 1024.
+  - The hero fire photo sits inside the voussoir arch on PC and SP.
+  - The hero info panel (時間・定休・所在地・電話) is readable beside the photo, and at 768 it wraps cleanly.
+  - The loaf photo's crust edge and shadow lift it off the dark ground. 架空田舎パン stands beside the board with no overlap, and the sentence is clear.
+  - The charred log ends now sit with the photographed fire. The heat rings fade with no edge.
+  - The 粉 bowl, the shelf names and the store information are unaffected.
+
+## Gates, tests and privacy
+- A5 and the C page are byte-identical. copy.json is still byte-identical to d2-v2.
+- Across `origin/develop..96219af`, nothing under d2-v2/ or d2-hearth-floor-v4/ changed, and neither did the approval, the prompt or the photo-pin files.
+- Privacy:
+  - No PNG, JPEG, WebP or archive file exists anywhere in the branch history beyond develop.
+  - No `.intake`, rights or manifest file is tracked.
+  - The added lines contain no `/tmp`, `/home` or scratchpad paths and no private photo SHA.
+- `comp-copy --audit` (A5): `approve_candidate`, round 0, codes []. The committed copy-review.json was reproduced: git status is clean afterwards.
+- `comp-lane` on A5 and on d2-v3: OK, 0 findings. Desktop 1440×4757 `8ece80aa…82fd`, mobile 390×4064 `2fc13bc9…5af8`. Both are identical to review.json.
+- `--check-review --facts`: ok.
+- `photo-slots`, with and without `--edges`: byte-identical to the committed files.
+- Tests (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers):
+  - The 3 named files: 38 passed.
+  - quality-pipeline, demo-version-package, everything that references the spec or hoshigama, the isolation tests and design-worker-cycle: 36 files, 897 of 898 passed. The one failure was `photo-swap-bicycle-d1-v9` (輪, not touched by this PR) under the full parallel load. Run on its own it passes 29/29, so it is load timing.
+- `npm run typecheck`: 0 errors. `npm run lint`: 0 errors and 1 warning (the untouched visual-first-brief test). `npm run check:secrets`: clean.
+
+## Info
+- I7: The swapped page shows no visible "AI-generated demo" label on the photos. The swap summary carries it for every photo (`label`, `demo_image: true`), and the demo frame and badges are where it is shown. Confirm it is visible in the owner comparison and in any P2 package view.
+- I8: The SP loaf picture is the whole 1752×1314 original, about 4.7MB, used without a crop because the photo and the board are both 4:3. It is shown on a 304×228 board. d2-v2 serves a file of the same size there, so this is not a regression. It is a page-weight point for P2.
+- I9: `photo-swap-bicycle-d1-v9` is flaky under heavy parallel load (see above). It is outside this PR.
+- I1–I6 from rounds 1–2 still apply. I1 (show the owner real photos) is now possible: the comparison images are in the scratchpad, private.
+
+## Disposition
+- PASS at 96219af: Critical, High, Medium and Low are all 0.
+- d2-v3 meets the P1 requirements as checked:
+  - no regeneration; the same 3 photos within 2×
+  - the arch hero and the peek into the oven are kept
+  - the 粉, 薪の火, bread-name and store-information points are addressed
+  - d2-v2 and the approval files are unchanged
+  - no gate was lowered
+  - nothing private was committed
+- Still to do: CI, the owner's look at the private real-photo comparison, and the owner's decision on adoption.
+- This commit adds only this round to the record. Nothing was pushed.
