@@ -118,7 +118,19 @@ describe("isolation", () => {
     // DEV-139: the one exception is the offline comparison CLI (exact path; its imports are pinned in the next test)
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/(handoff|compare|impl-compare)|from [\"'`]\\./(handoff|impl-compare)[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/impl-lane/**"], { cwd: repo, encoding: "utf8" });
     // DEV-150 (Issue #180): the three-method pilot's offline steps CLI builds VISUAL_FIRST's lane (prepareImplementationLane only)
-    expect([g.status, g.stdout.trim().split("\n").sort()]).toEqual([0, ["scripts/design-artifact/impl-compare.ts", "scripts/design-artifact/three-methods-steps.ts"]]);
+    // Issue #293 P1 (owner instruction 2026-11-19, exact paths): the IMAGE_FIRST contract reuses the comparison's pieces
+    // (never the hand-off): the adapter draws and compares an approved model comp, the builder and its CLI read files safely
+    const imageFirst = ["lib/design-agent/image-first/adapter.ts", "lib/design-agent/image-first/builder.ts", "scripts/design-artifact/image-first-check.ts"];
+    expect([g.status, g.stdout.trim().split("\n").sort()]).toEqual([0, [...imageFirst, "scripts/design-artifact/impl-compare.ts", "scripts/design-artifact/three-methods-steps.ts"].sort()]);
+    const pinned = (file: string) => [...readFileSync(resolve(repo, file), "utf8").matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*impl-lane[^"']*)["']/g)].map((m) => [m[2], m[1]!.split(",").map((x) => x.trim()).filter(Boolean).sort()]);
+    expect(pinned(imageFirst[0]!)).toEqual([
+      ["../impl-lane/compare", ["compareViewport", "type Box", "type ViewportCompare", "viewportDifferences"]],
+      ["../impl-lane/impl-compare", ["SECTION_ATTRIBUTES", "renderImplementation", "type Implementation", "type SectionAttribute"]],
+    ]);
+    expect(pinned(imageFirst[1]!)).toEqual([["../impl-lane/impl-compare", ["readInside"]]]);
+    expect(pinned(imageFirst[2]!)).toEqual([["../../lib/design-agent/impl-lane/impl-compare", ["insideDir"]]]);
+    // code only (comments may name the lane they do not use)
+    for (const f of imageFirst) expect(readFileSync(resolve(repo, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""), f).not.toMatch(/impl-lane\/handoff|prepareImplementationLane|readLane|compareImplementation/);
     const steps = readFileSync(resolve(repo, "scripts/design-artifact/three-methods-steps.ts"), "utf8");
     expect([...steps.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*impl-lane[^"']*)["']/g)].map((m) => [m[2], m[1]!.trim()])).toEqual([["../../lib/design-agent/impl-lane/handoff", "LaneStop, prepareImplementationLane"]]);
   });

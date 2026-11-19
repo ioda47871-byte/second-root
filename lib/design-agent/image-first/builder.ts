@@ -81,7 +81,10 @@ export async function readImplementationAssets(implDir: string): Promise<Impleme
   if (!st) return [];
   if (!st.isDirectory()) return [{ path: "assets", bytes: Buffer.alloc(0), source: "unreadable", rights_record_sha256: null }];
   const out: ImplementationAsset[] = [];
-  for (const name of (await readdir(dir)).sort().slice(0, RUN_LIMITS.assets + 1)) {
+  const names = (await readdir(dir)).sort();
+  // more assets than the comparison serves: reported (never silently cut)
+  if (names.length > RUN_LIMITS.assets) out.push({ path: "assets", bytes: Buffer.alloc(0), source: "too_many", rights_record_sha256: null });
+  for (const name of names.slice(0, RUN_LIMITS.assets)) {
     const path = `assets/${name}`;
     const bytes = /^[a-z0-9][a-z0-9_-]{0,40}\.png$/i.test(name) ? await readInside(implDir, path, RUN_LIMITS.asset) : null;
     const d = listed.get(path);

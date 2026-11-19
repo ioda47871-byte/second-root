@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compareImageFirst, ImageFirstStop, toImplCompareInput } from "@/lib/design-agent/image-first/adapter";
-import { assembleRecord, readImageFirstRun } from "@/lib/design-agent/image-first/builder";
+import { assembleRecord, readImageFirstRun, readImplementationAssets } from "@/lib/design-agent/image-first/builder";
 import { decodeRgb } from "@/lib/design-agent/image-first/pixels";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
 import { cleanup, makeRun, SHOP } from "./fixtures";
@@ -113,6 +113,20 @@ describe("the builder (read only) and the CLI", { timeout: 120_000 }, () => {
     expect(built.record).toEqual(record);
     rmSync(join(dir, "parts", "sp-03.png"));
     expect((await assembleRecord(dir)).problems).toEqual(["PART_UNREADABLE_mobile_390_3"]);
+  });
+
+  it("more implementation assets than the comparison serves are reported, never silently cut", async () => {
+    const impl = mkdtempSync(join(tmpdir(), "sr-image-first-impl-"));
+    try {
+      mkdirSync(join(impl, "assets"));
+      for (let i = 0; i < 33; i++) writeFileSync(join(impl, "assets", `a${String(i).padStart(2, "0")}.png`), "x");
+      const assets = await readImplementationAssets(impl);
+      expect(assets[0]).toMatchObject({ path: "assets", source: "too_many" });
+      expect(assets).toHaveLength(33);
+      expect(validateImageFirst({ ...(await readImageFirstRun(makeRun().dir)), implementationAssets: assets }).rejects).toContain("ASSET_RIGHTS_MISSING");
+    } finally {
+      rmSync(impl, { recursive: true, force: true });
+    }
   });
 
   it("the CLI prints the verdict, refuses a run directory inside the repository, and writes nothing", async () => {
