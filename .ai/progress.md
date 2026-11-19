@@ -1,5 +1,16 @@
 # Progress
 
+## 2026-11-19 — Issue #293 Phase 1: 画像先行（IMAGE_FIRST）を主経路として明文化（PR #294）
+
+- PR #294（head `3b233873fad7c930fc24097ba35952463a640800`、docs のみ）を develop へ merge（merge commit `1f227a05fdcf6444666fda60df2cacb2c338b08b`）。独立 Fresh Review 3回、最終 PASS C0/H0/M0（`.ai/reviews/DEV-293-docs.md`、Low 3件は 3b23387 で反映済み）。最新 head の CI 全11件 success。Protected Scope の変更なし。
+- 主経路 IMAGE_FIRST（出力種別 `MODEL_GENERATED_FULL_PAGE_COMP`）は Issue #180 の VISUAL_FIRST とは別の経路。比較経路 LAYOUT_FIRST の比較例として ほし窯 d2-v3 を保持。#180 の対応表は未開封のまま。
+- Phase 2（オフラインの受け渡し契約と失敗テスト）は別 PR で進める。実 Codex・画像生成は Phase 3 の承認パケットをオーナーが承認するまで行わない。
+
+## 2026-11-19 — DEV-139 / Issue #290 P1 ほし窯 d2-v3（実写真入り）を develop へ統合（PR #292）
+
+- PR #292 を develop へ merge（merge commit `4744cfb984c4d224dd64cc7922c3b23c3408ff76`）。Fresh Review round 3 PASS（3e56d75 で記録）、CI 全件 success。
+- d2-v3 はデザイン候補。成功例への採用はオーナー判断待ち（未登録）。非公開の写真はリポジトリに含めない。
+
 ## 2026-11-19 — DEV-139 post-run / Issue #290 P0 ほし窯の1回限り生成ルートを閉じた
 
 - PR #291（head `526ddbe7c867b081e846432ed03f93e67af0919c`）を develop へ merge（merge commit `565179312e8576c979cc508752b96677d7264f8a`）。Fresh Review PASS C0/H0/M0/L2（`.ai/reviews/DEV-139-hoshigama-run-close.md`、レビュー対象 `562c8bdf`、その後の差はレビュー記録だけ）。最新 head の CI 全11件 success。Protected Scope の変更なし（閉じる方向のみ）。
