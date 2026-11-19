@@ -66,6 +66,12 @@ export const EXCLUDED_READS: readonly RegExp[] = [
  * buildPromptPlan refuses a plan whose any prompt contains one (PROMPT_LINEAGE_TOKEN).
  */
 export const LINEAGE_TOKENS: readonly string[] = [["hea", "rth"], ["d", "2"], ["ph-", "mouth"], ["ph-", "loaf"], ["窯", "口"], ["窯の", "床"]].map((p) => p.join(""));
+/**
+ * The earlier design's own wording for the kiln's mouth (kiln + の + mouth, alongside the short form above). d1's own
+ * direction text draws the STONE kiln's mouth (石 + that word): that motif overlap is left to the owner's judgement in the
+ * approval packet (§8), so only the word not preceded by 石 refuses (PROMPT_LINEAGE_TOKEN).
+ */
+export const LINEAGE_PATTERNS: readonly RegExp[] = [new RegExp(`(?<!石)${["窯の", "口"].join("")}`)];
 
 export type Reader = (repoRelativePath: string) => Promise<Buffer>;
 
@@ -376,7 +382,7 @@ Rules for this run:
 
 ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
 `;
-  for (const t of [batchPrompt, ...all.map((x) => x.p.prompt)]) if (LINEAGE_TOKENS.some((tok) => t.toLowerCase().includes(tok.toLowerCase()))) throw new PromptStop("PROMPT_LINEAGE_TOKEN");
+  for (const t of [batchPrompt, ...all.map((x) => x.p.prompt)]) if (LINEAGE_TOKENS.some((tok) => t.toLowerCase().includes(tok.toLowerCase())) || LINEAGE_PATTERNS.some((re) => re.test(t))) throw new PromptStop("PROMPT_LINEAGE_TOKEN");
   const shop = { shop_id: inputs.facts.shop_id, display_name: factValue(inputs.facts, "name"), category_code: factValue(inputs.facts, "category") };
   const principles = PRINCIPLES.map((p) => ({ from: p.from, case_ids: inputs.principleCases[p.from]! }));
   const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: all.length };

@@ -4,12 +4,14 @@
  * one Codex run = one batch of PC + SP section pictures of ONE direction (lib/design-agent/phase2f-live/full-page-call.ts).
  *
  *   npx tsx scripts/design-artifact/image-first-generate.ts --direction d1|d3 --out <~/sr-runs/<run>>
- *     --plan-id <id> --approval-id <id> --approval-expires <YYYY-MM-DD> --packet <approval packet in the repo>
+ *     --plan-id <id> --approval-id <id> --approval-expires <YYYY-MM-DDTHH:MM:SSZ> --packet <approval packet in the repo>
  *     --expected-prompt-sha256 <sha> --expected-prompt-chars <n> --expected-plan-sha256 <sha>
  *     --expected-packet-sha256 <sha> --expected-commit <sha> --human-approval-confirmed
  *
  * Before the approval is used: the plan is rebuilt from the pinned inputs (image-first/prompt.ts) and must be the
- * approved one; the packet must be a tracked file of the repository with the approved bytes; the run directory must be
+ * approved one; the packet must be a tracked file of the repository with the approved bytes, and its own §10 is read: it
+ * must be filled in and 承認済み, and its direction, approval id, expiry (UTC, at most 24 h ahead) and plan id must be the
+ * ones given here (the commit is not in the packet: --expected-commit vs HEAD pins it); the run directory must be
  * outside the repository, new, under a real parent (phase2f-live-cli.ts liveContext); the commit pin, the sandbox
  * preflight and the ledger (one use per approval, 15 min a call, 2 h a plan). Then one generateImagesInOneRun in the
  * sandbox the preflight prepared; never retried. SIGTERM / SIGINT / SIGHUP stop the call (recorded as aborted).
@@ -48,7 +50,7 @@ async function main(): Promise<number> {
   } catch (error) {
     return (say({ status: "refused", code: error instanceof PromptStop ? error.code : "INPUT_UNREADABLE" }), 2);
   }
-  // the packet the owner approved: a tracked file of this repository (its bytes are pinned by runFullPageCall)
+  // the packet the owner approved: a tracked file of this repository (runFullPageCall pins its bytes and reads its §10)
   const packet = resolve(args.get("--packet")!);
   const packetBytes = (await trackedInRepo([packet])) ? await readFile(packet).catch(() => null) : null;
   const ctx = await liveContext(args.get("--out")!, stop);

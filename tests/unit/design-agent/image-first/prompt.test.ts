@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_BATCH_IMAGES } from "@/lib/design-agent/design-image/image-once";
 import { sequenceProblems } from "@/lib/design-agent/image-first/composition";
-import { buildPromptPlan, DIRECTIONS, EXCLUDED_READS, LINEAGE_TOKENS, loadPromptInputs, NAV_LABELS, pinOf, PROMPT_INPUTS, PromptStop, readChecked, SECTION_TEXT_KEYS, type DirectionKey, type Reader } from "@/lib/design-agent/image-first/prompt";
+import { buildPromptPlan, DIRECTIONS, EXCLUDED_READS, LINEAGE_PATTERNS, LINEAGE_TOKENS, loadPromptInputs, NAV_LABELS, pinOf, PROMPT_INPUTS, PromptStop, readChecked, SECTION_TEXT_KEYS, type DirectionKey, type Reader } from "@/lib/design-agent/image-first/prompt";
 import { Composition } from "@/lib/design-agent/image-first/record";
 
 // Issue #293 P3 (preparation): the deterministic prompt builder. Offline: the reader is injected (it reads the repo's
@@ -138,6 +138,17 @@ describe("IMAGE_FIRST P3 prompt builder: the plan", () => {
       bad.direction.sections[2]!.motif_facet += ` ${tok}`;
       expect(() => buildPromptPlan(bad), tok).toThrow(expect.objectContaining({ code: "PROMPT_LINEAGE_TOKEN" }) as Error);
     }
+  });
+
+  it("the earlier design's long wording for the kiln's mouth refuses too; d1's stone-kiln drawing is left to the owner (packet §8)", async () => {
+    const word = ["窯の", "口"].join("");
+    expect(LINEAGE_PATTERNS.some((re) => re.test(`Hero は${word}から`))).toBe(true);
+    expect(LINEAGE_PATTERNS.some((re) => re.test(`石${word}の線画`))).toBe(false);
+    const inputs = await loadPromptInputs(recordingReader().reader, "d1");
+    expect(() => buildPromptPlan(inputs)).not.toThrow();
+    const bad = structuredClone(inputs);
+    bad.direction.sections[2]!.motif_facet += ` ${word}の弧`;
+    expect(() => buildPromptPlan(bad)).toThrow(expect.objectContaining({ code: "PROMPT_LINEAGE_TOKEN" }) as Error);
   });
 
   it.each(KEYS)("%s: every allowed text is an exact fact value (or a facts-schema label in the header); nothing else is offered", async (key) => {

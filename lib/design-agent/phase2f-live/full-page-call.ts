@@ -6,9 +6,14 @@
  *
  * Before the approval is used (nothing is created, nothing is called):
  *   - the run directory is outside the repository (RUN_DIR_IN_REPO);
- *   - the approval id names this direction (APPROVAL_ID_DIRECTION_MISMATCH) and is not past its expiry (APPROVAL_EXPIRED);
+ *   - the approval id names this direction (APPROVAL_ID_DIRECTION_MISMATCH); the expiry is a real UTC instant written
+ *     YYYY-MM-DDTHH:MM:SSZ (APPROVAL_EXPIRY_INVALID), not past (APPROVAL_EXPIRED) and at most 24 hours ahead
+ *     (APPROVAL_EXPIRY_TOO_FAR);
  *   - the plan rebuilt from the pinned inputs is the approved plan (PLAN_PIN_MISMATCH), the approval packet's bytes are
  *     the approved ones (PACKET_PIN_MISMATCH);
+ *   - the packet itself is read: its §10 is filled in and says 承認済み (PACKET_NOT_APPROVED), and its direction,
+ *     approval id, expiry and plan id are the ones given to this run (PACKET_APPROVAL_MISMATCH). The commit is not in
+ *     the packet (the packet is part of that commit): it is pinned by the expected commit = HEAD check below;
  *   - steps.ts checkBeforeApproval: the owner's flag, the batch prompt's SHA-256 and length, the output place, the
  *     commit pin (HEAD = origin/develop = the approved commit, clean), the preflight (sandbox, .env) and the ledger
  *     (approval unused, a free slot, time left: 15 min a call, 2 h a plan).
@@ -18,7 +23,8 @@
  * The first failure ends the run: no retry, here or by the caller (a new approval and a new packet are needed).
  * Only a batch with no stop code, the IMAGE_SAVED outcome and exactly the planned number of pictures is a success; it
  * writes parts/<name>.png (in the planned order) and run-plan.json, the shape `image-first-check --assemble` reads.
- * A stopped batch writes call.json with its stop code and keeps any picture it returned under stopped/ (never as a part).
+ * A stopped batch writes call.json with its stop code and keeps any picture it returned under stopped/ (never as a part);
+ * so does a batch that returned after the stop signal (recorded as aborted, CODEX_ABORTED).
  *
  * No process and no network here.
  */
@@ -53,7 +59,7 @@ export type FullPageCallInput = {
   humanApprovalConfirmed: boolean;
   approvalId: string;
   planId: string;
-  /** YYYY-MM-DD, the last day the approval may be used (the owner's packet). */
+  /** YYYY-MM-DDTHH:MM:SSZ (UTC), the last instant the approval may be used; must equal the packet's §10 期限. */
   approvalExpires: string;
   expected: { promptSha256: string; promptChars: number; commit: string; planSha256: string; packetSha256: string };
   outDir: string;
@@ -71,6 +77,61 @@ export const FULL_PAGE_KIND = "full_page_comp" as const;
 export const FULL_PAGE_ROUTE = "image_first" as const;
 /** <shop words>-imagefirst-<d1|d3>-<YYYYMMDD>-<NN>: the direction is in the id, so an approval cannot run the other one. */
 const APPROVAL_FORMAT = /^[a-z0-9][a-z0-9-]{2,40}-imagefirst-(d[0-9])-(\d{8})-(\d{2})$/;
+/** An approval is used within a day of being given: an expiry further ahead than this is refused. */
+export const MAX_APPROVAL_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** A real UTC instant written exactly YYYY-MM-DDTHH:MM:SSZ (no offset, no fraction; 2026-02-31 or 24:00 refuse), or null. */
+export function parseUtcInstant(text: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/.exec(text);
+  if (!m) return null;
+  const [y, mo, d, h, mi, se] = m.slice(1).map(Number) as [number, number, number, number, number, number];
+  const ms = Date.UTC(y, mo - 1, d, h, mi, se);
+  const t = new Date(ms);
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d || t.getUTCHours() !== h || t.getUTCMinutes() !== mi || t.getUTCSeconds() !== se) return null;
+  return ms;
+}
+
+/** The §10 rows of the approval packet (the label is the text before any （…） note). */
+export const PACKET_FIELDS = { status: "状態", directions: "承認する方向性", d1: "d1 の承認 ID", d3: "d3 の承認 ID", expires: "期限", planId: "計画 ID", approvedBy: "承認日・承認者" } as const;
+export const PACKET_APPROVED = "承認済み";
+export const PACKET_PLACEHOLDER = "未記入";
+export const PACKET_NONE = "なし";
+export type ApprovalPacket = { status: string; directions: string[]; approvalIds: Record<"d1" | "d3", string>; expires: string; planId: string; approvedBy: string };
+
+/**
+ * Reads §10 of the approval packet. null (PACKET_NOT_APPROVED) when the section or a row is missing or repeated, a value
+ * is empty or still 未記入, the status is not 承認済み, or the direction list is not d1 / d1,d3 with an id for each
+ * approved direction and なし for the other.
+ */
+export function readApprovalPacket(bytes: Buffer): ApprovalPacket | null {
+  const lines = bytes.toString("utf8").split(/\r?\n/);
+  const start = lines.findIndex((l) => /^## 10\.\s/.test(l));
+  if (start < 0) return null;
+  const rest = lines.slice(start + 1);
+  const stop = rest.findIndex((l) => /^#{1,2} /.test(l));
+  const rows = new Map<string, string>();
+  for (const line of stop < 0 ? rest : rest.slice(0, stop)) {
+    if (!line.startsWith("|")) continue;
+    const cells = line.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length !== 2 || /^-+$/.test(cells[0]!) || cells[0] === "項目") continue;
+    const label = cells[0]!.split("（")[0]!.trim();
+    if (rows.has(label)) return null;
+    rows.set(label, cells[1]!);
+  }
+  const value = (label: string): string | null => {
+    const v = rows.get(label);
+    if (v === undefined || v.includes(PACKET_PLACEHOLDER)) return null;
+    const bare = v.replace(/^`([^`]*)`$/, "$1").trim();
+    return bare === "" ? null : bare;
+  };
+  const got = Object.fromEntries(Object.entries(PACKET_FIELDS).map(([k, label]) => [k, value(label)])) as Record<keyof typeof PACKET_FIELDS, string | null>;
+  if (Object.values(got).some((v) => v === null) || rows.size !== Object.keys(PACKET_FIELDS).length) return null;
+  if (got.status !== PACKET_APPROVED) return null;
+  const directions = got.directions!.split(",").map((d) => d.trim());
+  if (directions.join(",") !== "d1" && directions.join(",") !== "d1,d3") return null;
+  for (const k of ["d1", "d3"] as const) if ((got[k] === PACKET_NONE) === directions.includes(k)) return null;
+  return { status: got.status, directions, approvalIds: { d1: got.d1!, d3: got.d3! }, expires: got.expires!, planId: got.planId!, approvedBy: got.approvedBy! };
+}
 
 const within = (child: string, parent: string) => {
   const rel = relative(parent, child);
@@ -90,11 +151,18 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   if (within(i.outDir, i.repoRoot) || within(i.outDir, repo) || (parent !== null && within(parent, repo))) return refuse("RUN_DIR_IN_REPO");
   const m = APPROVAL_FORMAT.exec(i.approvalId);
   if (!m || m[1] !== plan.direction_key) return refuse("APPROVAL_ID_DIRECTION_MISMATCH");
-  const expires = /^\d{4}-\d{2}-\d{2}$/.test(i.approvalExpires) ? Date.parse(`${i.approvalExpires}T23:59:59+09:00`) : Number.NaN;
-  if (!Number.isFinite(expires) || now() > expires) return refuse("APPROVAL_EXPIRED");
+  const expires = parseUtcInstant(i.approvalExpires);
+  if (expires === null) return refuse("APPROVAL_EXPIRY_INVALID");
+  if (now() > expires) return refuse("APPROVAL_EXPIRED");
+  if (expires - now() > MAX_APPROVAL_WINDOW_MS) return refuse("APPROVAL_EXPIRY_TOO_FAR");
   if (plan.plan_sha256 !== i.expected.planSha256) return refuse("PLAN_PIN_MISMATCH");
   if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
   if (!i.packetBytes || !/^[a-f0-9]{64}$/.test(i.expected.packetSha256) || sha256(i.packetBytes) !== i.expected.packetSha256) return refuse("PACKET_PIN_MISMATCH");
+  // the packet's own §10: the owner's approval, for exactly this run (never only a SHA typed on the same command line)
+  const packet = readApprovalPacket(i.packetBytes);
+  if (!packet) return refuse("PACKET_NOT_APPROVED");
+  const key = plan.direction_key;
+  if (!packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
   if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
   const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
   if (parts.length !== plan.batch.images || parts.length < 2 || parts.length > 6) return refuse("PLAN_PIN_MISMATCH");
@@ -132,10 +200,21 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
     return { status: "stopped", code: "OUT_DIR_UNWRITABLE", stage: "call", aborted: false };
   }
 
+  // a returned picture of a run that did not complete is kept under stopped/ (never as a part), with its facts
+  const keepStopped = async (images: FullPageBatchResult["images"]) => {
+    const stopped: { file: string; sha256: string; width: number; height: number }[] = [];
+    if (images.length > 0) await mkdir(out("stopped"), { mode: 0o700 }).catch(() => undefined);
+    for (const [n, img] of images.slice(0, 6).entries()) {
+      const file = `stopped/image-${n + 1}.png`;
+      if (await writeOnce(out(file), img.png).then(() => true, () => false)) stopped.push({ file, sha256: sha256(img.png), width: img.width, height: img.height });
+    }
+    return stopped;
+  };
+  const facts = (r: FullPageBatchResult) => ({ outcome: r.outcome, stop_code: r.stopCode, image_calls: r.imageCalls, image_failed: r.imageFailed, images: r.images.length, thread_id: r.threadId });
+
   let res: FullPageBatchResult;
   try {
     res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: parts.length, ...(i.signal === undefined ? {} : { signal: i.signal }) });
-    if (i.signal?.aborted) throw new CodexAbortedError();
   } catch (error) {
     const aborted = error instanceof CodexAbortedError;
     const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";
@@ -143,19 +222,21 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
     await end(aborted ? "aborted" : "failed", code).catch(() => undefined);
     return { status: "stopped", code, stage: "call", aborted };
   }
+  if (i.signal?.aborted) {
+    // the batch returned, but the run was stopped meanwhile: aborted (never a success); what it returned is kept
+    const stopped = await keepStopped(res.images);
+    await record("aborted", "CODEX_ABORTED", { ...facts(res), stopped });
+    await end("aborted", "CODEX_ABORTED").catch(() => undefined);
+    return { status: "stopped", code: "CODEX_ABORTED", stage: "call", aborted: true };
+  }
   const finished = now();
 
   // hard stop: anything but a complete batch ends here (no retry; the approval stays used)
   const complete = res.stopCode === null && res.outcome === "IMAGE_SAVED" && res.images.length === parts.length && res.imageFailed === 0 && res.imageCalls === parts.length;
   if (!complete) {
     const code = res.stopCode ?? (res.outcome === "IMAGE_SAVED" ? "CODEX_IMAGE_COUNT_MISMATCH" : "IMAGE_TOOL_RESULT_INVALID");
-    const stopped: { file: string; sha256: string; width: number; height: number }[] = [];
-    if (res.images.length > 0) await mkdir(out("stopped"), { mode: 0o700 }).catch(() => undefined);
-    for (const [n, img] of res.images.slice(0, 6).entries()) {
-      const file = `stopped/image-${n + 1}.png`;
-      if (await writeOnce(out(file), img.png).then(() => true, () => false)) stopped.push({ file, sha256: sha256(img.png), width: img.width, height: img.height });
-    }
-    await record("failed", code, { outcome: res.outcome, stop_code: res.stopCode, image_calls: res.imageCalls, image_failed: res.imageFailed, images: res.images.length, thread_id: res.threadId, stopped });
+    const stopped = await keepStopped(res.images);
+    await record("failed", code, { ...facts(res), stopped });
     await end("failed", code).catch(() => undefined);
     return { status: "stopped", code, stage: "call", aborted: false, outcome: res.outcome };
   }

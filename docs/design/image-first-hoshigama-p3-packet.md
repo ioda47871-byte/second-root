@@ -1,7 +1,8 @@
 # IMAGE_FIRST P3 承認パケット（下書き・**未承認**）— 架空パン店 ほし窯 の全頁デザイン画像
 
 2026-11-19 作成（Issue #293 P3 の準備）。**状態: 未承認。** この文書は、Codex の実呼び出し・画像生成・課金・WSL 操作の
-どれも承認しない。オーナーがこの文書の §10 に承認 ID と期限を書き入れ、その版の SHA-256 を確定するまで、何も実行しない。
+どれも承認しない。オーナーがこの文書の §10 を記入して「承認済み」とし、その版の SHA-256 を確定するまで、何も実行しない。入口はこの文書そのものを読み、
+§10 が未記入・未承認なら、または §10 の値が起動の引数と違えば、何も使わずに拒否する（`PACKET_NOT_APPROVED` / `PACKET_APPROVAL_MISMATCH`）。
 
 - 経路: `IMAGE_FIRST`（出力 `MODEL_GENERATED_FULL_PAGE_COMP`、記録 `model_full_page_comp_v0`）。契約は
   [`image-first-handoff.md`](image-first-handoff.md)、方針は [`design-first-workflow-decision.md`](design-first-workflow-decision.md) の「2026-11-19 追補」。
@@ -129,18 +130,21 @@ npx tsx scripts/design-artifact/image-first-prompt.ts --direction d3 --print-pin
 
 ```
 npx tsx scripts/design-artifact/image-first-generate.ts --direction d1 --out ~/sr-runs/<run> \
-  --plan-id hoshigama-imagefirst-p3-20261120 --approval-id <§10 の承認 ID> --approval-expires <§10 の期限> \
+  --plan-id <§10 の計画 ID> --approval-id <§10 のその方向性の承認 ID> --approval-expires <§10 の期限> \
   --packet docs/design/image-first-hoshigama-p3-packet.md --expected-packet-sha256 <承認した版のこの文書の SHA-256> \
   --expected-prompt-sha256 <§3> --expected-prompt-chars <§3> --expected-plan-sha256 <§3> \
   --expected-commit <承認コミット> --human-approval-confirmed
 ```
 
+承認コミットはこの文書に書かない（この文書はそのコミットの一部なので、書き入れると別のコミットになる）。コミットは
+`--expected-commit` だけで渡し、入口が HEAD = origin/develop = `--expected-commit`（作業ツリーがきれい）を確かめる。
+
 ## 7. 停止条件（再試行しない）
 
 次のどれでもその場で止まり、承認 ID は使用済みになる（同じ ID は二度と使えない）。続けるには新しい承認パケットと新しい承認 ID が要る。
 
-- 承認の前（何も使わない）: `HUMAN_APPROVAL_REQUIRED`、`PLAN_PIN_MISMATCH`、`PACKET_PIN_MISMATCH`、`PROMPT_PIN_MISMATCH`、`COMMIT_PIN_MISMATCH`、
-  `APPROVAL_ID_DIRECTION_MISMATCH`、`APPROVAL_EXPIRED`、`RUN_DIR_IN_REPO`、`OUT_DIR_*`、`APPROVAL_ALREADY_USED`、`RUN_LIMIT_*`、`RUN_TIME_BUDGET`、preflight の停止（`CODEX_DOTENV_PRESENT`、サンドボックス不可）。
+- 承認の前（何も使わない）: `HUMAN_APPROVAL_REQUIRED`、`PLAN_PIN_MISMATCH`、`PACKET_PIN_MISMATCH`、`PACKET_NOT_APPROVED`、`PACKET_APPROVAL_MISMATCH`、`PROMPT_PIN_MISMATCH`、`COMMIT_PIN_MISMATCH`、
+  `APPROVAL_ID_DIRECTION_MISMATCH`、`APPROVAL_EXPIRY_INVALID`、`APPROVAL_EXPIRED`、`APPROVAL_EXPIRY_TOO_FAR`、`RUN_DIR_IN_REPO`、`OUT_DIR_*`、`APPROVAL_ALREADY_USED`、`RUN_LIMIT_*`、`RUN_TIME_BUDGET`、preflight の停止（`CODEX_DOTENV_PRESENT`、サンドボックス不可）。
 - 呼び出しの後: `CODEX_NO_IMAGE`、`CODEX_IMAGE_INVALID`、`CODEX_IMAGE_UNSUPPORTED_FORMAT`、`CODEX_QUOTA`、`CODEX_IMAGE_TOOL_FAILED`、`CODEX_TIMEOUT`、
   `CODEX_EXEC_FAILED`、`CODEX_NO_THREAD`、`CODEX_NOT_SIGNED_IN`、`CODEX_DOTENV_PRESENT`、`CODEX_RESULT_DISCARDED_DOTENV`、`CODEX_IMAGE_CALLS_EXCEEDED`、
   `CODEX_IMAGE_COUNT_MISMATCH`、`CODEX_SESSION_LOG_UNVERIFIED`、`CODEX_ABORTED`。6 枚そろわない・失敗した画像呼び出しが 1 つでもある場合も止まる。
@@ -150,7 +154,10 @@ npx tsx scripts/design-artifact/image-first-generate.ts --direction d1 --out ~/s
 
 - プロンプトの入力は facts パック・選んだ方向性オブジェクト 1 つ（d1 か d3）・成功原理の記録の 3 つだけ。方向性セット全体・既存の comp・写真・
   写真スロット・忠実度の記録・以前の承認やプロンプトは読まない（読み込み先はテストで固定し、除外パスは読む前に拒否する）。
-- プロンプトに入れてはならない語（`LINEAGE_TOKENS`。含まれたら計画ごと拒否 `PROMPT_LINEAGE_TOKEN`）: `hearth`、`d2`、`ph-mouth`、`ph-loaf`、`窯口`、`窯の床`。
+- プロンプトに入れてはならない語（`LINEAGE_TOKENS`。含まれたら計画ごと拒否 `PROMPT_LINEAGE_TOKEN`）: `hearth`、`d2`、`ph-mouth`、`ph-loaf`、`窯口`、`窯の床`、それに「石」の後ろでない `窯の口`（`LINEAGE_PATTERNS`）。
+- **オーナーが決めること（モチーフの重なり）**: d1 の方向性そのものの文（方向性セットの d1 の欄）は、Hero に「石窯の口の線画」を描かせる。
+  d2 の Hero も窯の口（の弧）である。d2 の文がプロンプトに入ることはないが、モチーフは重なる。この重なりを許すかどうかはオーナーが決める
+  （許さない場合は d1 を承認せず、方向性の文の見直しを別に頼む）。d1 のプロンプトの文はこの準備では変えていない。
 - 方向性のうち、他の案を名指す欄（checklist・references・not_used など）はプロンプトに入れない。facts の内部 ID（F10 など）も取り除く。
 
 ## 9. 実行の後
@@ -164,11 +171,18 @@ npx tsx scripts/design-artifact/image-first-generate.ts --direction d1 --out ~/s
 
 | 項目 | 値 |
 |---|---|
-| 承認する方向性 | 未記入（d1 だけ / d1 と d3） |
-| 承認 ID（1 回限り。形式 `<店>-imagefirst-<d1|d3>-<YYYYMMDD>-<NN>`） | 未記入（例: `hoshigama-imagefirst-d1-20261120-01`、d3 は `hoshigama-imagefirst-d3-20261120-01`） |
-| 期限（この日の終わりまで。日本時間） | 未記入（例: 2026-11-27） |
+| 状態（承認するなら `承認済み` と書く） | 未記入 |
+| 承認する方向性（`d1` / `d1,d3`） | 未記入 |
+| d1 の承認 ID（1 回限り。形式 `<店>-imagefirst-d1-<YYYYMMDD>-<NN>`） | 未記入（例: `hoshigama-imagefirst-d1-20261120-01`） |
+| d3 の承認 ID（1 回限り。d3 を承認しないなら `なし`） | 未記入（例: `hoshigama-imagefirst-d3-20261120-01`） |
+| 期限（UTC、`YYYY-MM-DDTHH:MM:SSZ`。起動の時点から 24 時間以内） | 未記入（例: `2026-11-20T09:00:00Z` = 日本時間 18:00） |
 | 計画 ID | 未記入（例: `hoshigama-imagefirst-p3-20261120`） |
-| 承認コミット | 未記入 |
 | 承認日・承認者 | 未記入 |
+
+- 入口はこの表を読む。どれかの欄が「未記入」のまま、または状態が `承認済み` でなければ `PACKET_NOT_APPROVED`。起動の `--direction`・
+  `--approval-id`・`--approval-expires`・`--plan-id` が表の値と一字でも違えば `PACKET_APPROVAL_MISMATCH`。どちらも何も使わない。
+- 期限は実在する UTC の時刻を `Z` 付きで書く（`2026-02-31` のような日付や、時差付きの書き方は `APPROVAL_EXPIRY_INVALID`）。過ぎていれば
+  `APPROVAL_EXPIRED`、起動の時点から 24 時間より先なら `APPROVAL_EXPIRY_TOO_FAR`。
+- 承認コミットはこの表に書かない（§6 のとおり `--expected-commit` で渡す）。
 
 使用済みの承認 ID（以前の写真生成・phase2f・DEV-185 のもの）は使わない。
