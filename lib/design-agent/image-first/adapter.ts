@@ -18,7 +18,7 @@ import { handoffOf, type ImageFirstVerdict } from "./validate";
 import { VIEWPORTS, VIEWPORT_WIDTHS, type ImageFirstViewport } from "./record";
 
 export class ImageFirstStop extends Error {
-  constructor(readonly code: "NOT_READY_FOR_IMPLEMENTATION" | "INPUT_WIDTH_MISMATCH") {
+  constructor(readonly code: "NOT_READY_FOR_IMPLEMENTATION" | "INPUT_WIDTH_MISMATCH" | "INPUT_NOT_ISSUED" | "INPUT_CHANGED") {
     super(code);
     this.name = "ImageFirstStop";
   }
@@ -36,6 +36,9 @@ export type ImageFirstImplInput = {
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
+/** The inputs this module issued, with the composite SHAs at issue time: a hand-built or edited input is refused. */
+const ISSUED = new WeakMap<ImageFirstImplInput, Record<ImageFirstViewport, string>>();
+
 /** The comparison's inputs for a READY verdict; anything else (REJECT, awaiting the owner, a copied object) is refused. */
 export function toImplCompareInput(verdict: ImageFirstVerdict): ImageFirstImplInput {
   const h = handoffOf(verdict);
@@ -44,9 +47,12 @@ export function toImplCompareInput(verdict: ImageFirstVerdict): ImageFirstImplIn
   for (const v of VIEWPORTS) {
     const c = h.composites[v];
     if (c.width !== VIEWPORT_WIDTHS[v]) throw new ImageFirstStop("INPUT_WIDTH_MISMATCH");
-    viewports[v] = { width: c.width, height: c.height, png: c.png, png_sha256: sha256(c.png), box_source: "declared", sections: c.sections.map((s) => ({ id: s.id, box: { ...s.box } })), parts: c.parts.map((p) => ({ ...p })) };
+    const png = Buffer.from(c.png);
+    viewports[v] = { width: c.width, height: c.height, png, png_sha256: sha256(png), box_source: "declared", sections: c.sections.map((s) => ({ id: s.id, box: { ...s.box } })), parts: c.parts.map((p) => ({ ...p })) };
   }
-  return { schema: "image_first_impl_input_v0", run_id: h.runId, record_sha256: h.recordSha256, viewports };
+  const input: ImageFirstImplInput = { schema: "image_first_impl_input_v0", run_id: h.runId, record_sha256: h.recordSha256, viewports };
+  ISSUED.set(input, { desktop_1440: viewports.desktop_1440.png_sha256, mobile_390: viewports.mobile_390.png_sha256 });
+  return input;
 }
 
 export type ImageFirstCompareReport = {
@@ -87,11 +93,21 @@ const firstLine = (e: unknown) =>
 /** Draws the implementation at 1440 and 390 and compares each with the comp composite. `browser` null: render_failed (never clean). */
 export async function compareImageFirst(browser: Browser | null, input: ImageFirstImplInput, impl: Implementation, launchError?: unknown, opts: { sectionAttribute?: SectionAttribute } = {}): Promise<ImageFirstCompareReport> {
   if (opts.sectionAttribute !== undefined && !(SECTION_ATTRIBUTES as readonly string[]).includes(opts.sectionAttribute)) throw new Error("unknown section attribute");
-  const viewports = {} as ImageFirstCompareReport["viewports"];
+  const issued = ISSUED.get(input);
+  if (!issued) throw new ImageFirstStop("INPUT_NOT_ISSUED");
+  const designs = {} as Record<ImageFirstViewport, Buffer>;
   for (const v of VIEWPORTS) {
     const d = input.viewports[v];
     if (d.width !== VIEWPORT_WIDTHS[v]) throw new ImageFirstStop("INPUT_WIDTH_MISMATCH");
-    const design = { composite_sha256: d.png_sha256, width: d.width, height: d.height, box_source: "declared" as const };
+    // the bytes compared are a private copy whose SHA is recomputed and must equal the SHA at issue time
+    const png = Buffer.from(d.png);
+    if (sha256(png) !== issued[v] || d.png_sha256 !== issued[v]) throw new ImageFirstStop("INPUT_CHANGED");
+    designs[v] = png;
+  }
+  const viewports = {} as ImageFirstCompareReport["viewports"];
+  for (const v of VIEWPORTS) {
+    const d = input.viewports[v];
+    const design = { composite_sha256: issued[v], width: d.width, height: d.height, box_source: "declared" as const };
     const failed = (detail: string) => ({ design, implementation: { state: "render_failed" as const, detail, png_sha256: null, height: null, scroll_width: null, blocked_requests: null }, compare: null, differences: [] });
     if (!browser) {
       viewports[v] = failed(`BROWSER_LAUNCH_FAILED: ${firstLine(launchError)}`.slice(0, 160));
@@ -99,7 +115,7 @@ export async function compareImageFirst(browser: Browser | null, input: ImageFir
     }
     try {
       const r = await renderImplementation(browser, impl, v, d.sections.map((s) => s.id), opts);
-      const compare = compareViewport(v, { png: d.png, sections: d.sections.map((s) => ({ id: s.id, box: { ...s.box } })) }, r);
+      const compare = compareViewport(v, { png: designs[v], sections: d.sections.map((s) => ({ id: s.id, box: { ...s.box } })) }, r);
       viewports[v] = { design, implementation: { state: "rendered", detail: null, png_sha256: sha256(r.png), height: r.scrollHeight, scroll_width: r.scrollWidth, blocked_requests: r.blocked }, compare, differences: viewportDifferences(compare) };
     } catch (e) {
       viewports[v] = failed(firstLine(e));

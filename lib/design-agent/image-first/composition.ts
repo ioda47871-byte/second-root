@@ -31,6 +31,12 @@ export const COMPOSITION_LIMITS = {
   seamCells: 24,
   seamMaxDeltaE: 14,
   boxEpsilon: 0.002,
+  /**
+   * A `single` picture must be taller (height / width) than anything the image tool has been seen to return (about 1.5,
+   * docs/operations/imagegen-timeout-investigation.md): a one-shot 1024×1536 is a first screen or a poster, not a page,
+   * even when scaled to 1440 it clears the screen floor.
+   */
+  singleMinAspect: 1.6,
   /** SP = PC shrunk: page aspect within this share and grid SSIM at least spScaledSsim. */
   spAspectTolerance: 0.15,
   spScaledSsim: 0.9,
@@ -127,9 +133,13 @@ const union = (a: Box, b: Box): Box => {
 };
 
 /** The composite is more than a first screen and not taller than the comparison can draw. */
-export function compositeProblems(v: CompositeView): { heroOnly: boolean; outOfRange: boolean } {
+export function compositeProblems(v: CompositeView): { heroOnly: boolean; singleTooShort: boolean; outOfRange: boolean } {
   const s = COMPOSITION_LIMITS.screens[v.viewport];
-  return { heroOnly: v.height < s.screen * s.min, outOfRange: v.height > COMPOSITION_LIMITS.maxCompositeHeight };
+  return {
+    heroOnly: v.height < s.screen * s.min,
+    singleTooShort: v.parts.length === 1 && v.height / v.width <= COMPOSITION_LIMITS.singleMinAspect,
+    outOfRange: v.height > COMPOSITION_LIMITS.maxCompositeHeight,
+  };
 }
 
 /** Mean ΔE across each `continuous` seam (bottom band of part k vs top band of part k+1, after scaling); the broken ones. */

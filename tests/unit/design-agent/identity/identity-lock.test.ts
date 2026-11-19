@@ -194,7 +194,7 @@ describe("isolation", () => {
       // design picture with the Lock's own image audit (auditIdentity) and compares names with cleanName (pinned below)
       ":!lib/design-agent/image-first/validate.ts",
       // Issue #293 P1: its isolation test pins that file's exact imports (a test, never lib)
-      ":!tests/unit/design-agent/image-first/**"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/image-first/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 
