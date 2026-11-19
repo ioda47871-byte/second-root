@@ -2,9 +2,10 @@
  * DEV-139 — OFFLINE. The import of ほし窯's (bakery, a FICTIONAL bakery) AI demo photos into the photo swap
  * (photo-swap.ts), the same steps as 輪's (bicycle-ai-intake.ts). Called without an approval record it uses
  * HOSHIGAMA_APPROVAL (the owner's one-run approval of 2026-11-18; a null record refuses every bundle with
- * RUN_PROMPT_NOT_APPROVED), and without approvalIds it accepts no run id. The worker's image auto-run calls it with the
- * job's one run approval id (autorun-shops.ts AUTORUN_SHOPS.bakery); the offline tests pass a stub approval id and the
- * stub generator.
+ * RUN_PROMPT_NOT_APPROVED), and without approvalIds it accepts no run id. The worker's image auto-run called it with the
+ * one approved run's approval id; that run is used and Issue #290 P0 took ほし窯 out of the worker (autorun-shops.ts
+ * CLOSED_SHOPS), so it is now called OFFLINE only — with the used run's id, for the photos that run already made. The
+ * offline tests pass a stub approval id and the stub generator.
  *
  * Refuses (nothing written) unless the bundle's manifest.json (hoshigama_ai_photos_v0, design-image/hoshigama-photos.ts)
  *  - is complete: 3 pictures, 3 calls, none failed, the model reported;

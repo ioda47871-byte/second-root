@@ -1,5 +1,13 @@
 # ほし窯 d2-v2 の AI 写真 3 枚を 1 回だけ本生成する — オーナー用コマンドシート（DEV-139）
 
+> **状態: 使用済み・クローズ (2026-11-19、Issue #290 P0)。** 1 回限りの実生成は実行・検証済み（Issue #139 comment 6990007019:
+> `IMAGE_GRANT_ISSUED` → `APPROVAL_RESERVED` → `GENERATED`（images=3、image_tool_calls=3）→ `DONE`、`CYCLE_IMAGE_RUN`、オーナーが `SWITCH_REMOVED` を確認）。
+> **このシートの (a)〜(f) はもう実行しない。同じ ID でも新しい ID でも再生成しない。** ほし窯は worker の `AUTORUN_SHOPS` から外し
+> （`CLOSED_SHOPS` に記録。載っていればモジュールが読み込みを拒否する）、root の `cycle.sh` は `IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'`
+> （334f771 とバイト単位で同じファイル）に戻した。worker は毎回 origin/develop を使うので merge で閉じる。root の clone は (k) でオーナーが合わせる。
+> 残すもの: `HOSHIGAMA_APPROVAL`・2 つのプロンプト SHA・差し替えの `aiDemoAllowed`・取り込み/差し替え/包み（(j)）— 生成済みの写真の照合とオフラインの包みのためだけ。
+> 以下は記録として残す（当時の手順）。
+
 > **状態: 承認済み (2026-11-18)。** 証跡: Issue #139 comment 6970468763 follow-up, owner message 2026-11-18
 > （オーナーの文: 「d2-v2 に写真を入れて続行; 写真3枚 (石窯の口PC・石窯の口SP・田舎パン); docs/design/hoshigama-ai-photo-prompt.txt の本文を
 > そのままの内容・SHAで承認; 1回限りの実生成 (最大3 image calls、Codex 1回、15分、再試行なし、ほし窯 d2-v2 のみ、WSL実行); 生成を有効化するコード変更は
@@ -229,6 +237,11 @@ root の `IMAGE_AUTORUN_SHOPS`（`cycle.sh`、`'tsugute:6 bicycle:6'` に戻す�
 `photo-swap-hoshigama.test.ts` を外した状態に合わせる（差し替えの `aiDemoAllowed` と `HOSHIGAMA_APPROVAL` は、生成済みの写真の取り込み・包みに要るので残す）。
 merge の後、オーナーが root の clone をその merge SHA に合わせる（(b) と同じ形で、差は cycle.sh の allowlist を戻す行だけ）。それまで、新しい承認 ID で (d)・(e) をやり直さない。
 
+**(g) の後続 PR = Issue #290 P0（このシートの状態欄）。** 中身: `AUTORUN_SHOPS.bakery` と worker の ほし窯 の run bundle writer を外し、`CLOSED_SHOPS` に記録、
+`cycle.sh` を 334f771 と同じバイトに戻す（`bakery:3` と DEV-139 のコメント 1 行を消す）。テストは「閉じていること」を確かめる形に変えた
+（`hoshigama-real-path.test.ts`: owner のエントリ・root の grant・新しい ID が揃っても `REFUSED_JOB_INVALID`・生成 0 回、root の matcher は `IMAGE_GRANT_SCOPE_MISMATCH`。
+`design-worker-cycle.test.ts`: 本物の cycle.sh が新しい ID の ほし窯 に grant を出さず、何も消費しない）。root の clone の更新は (k)。
+
 ### (h) 任意: Remote Control を戻す
 
 ```bash
@@ -366,6 +379,74 @@ rm -rf -- "$T"                       # 一時のコピーと包み（元の job 
 unset SERVICE_ROLE_KEY SUPABASE_SERVICE_ROLE_KEY ANON_KEY NEXT_PUBLIC_SUPABASE_ANON_KEY DB_URL SUPABASE_DB_URL ADMIN_PW
 ```
 
+### (k) クローズの後: root の clone をクローズの merge に合わせる（Issue #290 P0、オーナーが WSL で。サービスは起動しない）
+
+前提: Issue #290 P0 の PR が develop に merge されている。`<CLOSE_MERGE_SHA>` はその merge commit（40 文字）。Claude が merge 後に知らせる値をそのまま入れる。
+root の clone `/root/sr-capture-admin` は (b) で DEV-139 の merge `573e7935afa7dc7ddf66ac4fbbd81206900f9987` に合わせてある前提。違えば止まる（出力を Claude に見せる）。
+**この手順は `sr-design-cycle.service` を起動しない・スイッチを置かない・使用の印を消さない。** jail の Claude は止めなくてよい。
+
+root が動かすファイルで 573e793 から変わるのは `cycle.sh` の 2 行（DEV-139 のコメント 1 行と allowlist 1 行）を消すことだけ。その結果、`cycle.sh` は 334f771 とバイト単位で同じになる:
+
+- 差（`git diff --no-color --full-index 573e7935… <CLOSE_MERGE_SHA> -- scripts/sales-design-worker/cycle.sh` の出力）の SHA-256: `c2dc2d2058bb3db2cef0c6bd39b545b7b9cb56130d2a11c8e7c53f02c29f83e7`
+- 更新後の `cycle.sh` ファイルそのものの SHA-256: `8beb350dcc7b85a78c0ea060638d4922362d02d25e8eba1d798152fe2d146dab`（= 334f771 のもの。更新前 573e793 は `000a566b…4a58`）
+
+k-1. 読むだけの確認（何も変えない）
+
+```bash
+( set -euo pipefail
+[ "$(systemctl show sr-design-cycle.service -p ActiveState --value)" = inactive ] || { echo STOP_CYCLE_RUNNING; exit 1; }; echo CYCLE_INACTIVE
+[ "$(systemctl show sr-design-cycle.timer -p LoadState --value)" = not-found ] || { echo STOP_TIMER_PRESENT; exit 1; }; echo TIMER_NOT_FOUND
+sudo test ! -e /etc/sr-design-worker/image-autorun.json || { echo STOP_SWITCH_PRESENT; exit 1; }; echo SWITCH_ABSENT
+sudo test ! -e /var/cache/sr-design-image-grant/grant.json || { echo STOP_GRANT_PRESENT; exit 1; }; echo GRANT_ABSENT
+[ "$(sudo git --no-optional-locks -C /root/sr-capture-admin rev-parse HEAD)" = 573e7935afa7dc7ddf66ac4fbbd81206900f9987 ] || { echo STOP_CLONE_NOT_573E793; exit 1; }; echo CLONE_AT_573E793
+[ -z "$(sudo git --no-optional-locks -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" ] || { echo STOP_CLONE_DIRTY; exit 1; }; echo CLONE_CLEAN
+sudo ls /var/lib/sr-design-cycle/image-approval-used /var/lib/sr-design-cycle/image-job-used   # 使用の印（消さない）
+echo CLOSE_PREFLIGHT_OK )
+```
+
+期待: `CYCLE_INACTIVE`・`TIMER_NOT_FOUND`・`SWITCH_ABSENT`・`GRANT_ABSENT`・`CLONE_AT_573E793`・`CLONE_CLEAN`・使用の印の一覧・`CLOSE_PREFLIGHT_OK`。
+
+k-2. 照合して clone を更新（バックアップしてから）
+
+```bash
+( set -euo pipefail
+PIN=<CLOSE_MERGE_SHA>
+OLD=573e7935afa7dc7ddf66ac4fbbd81206900f9987
+PRE=334f771fed0c953158aefc3926a208adf8a8ddc5
+C=/root/sr-capture-admin
+[[ "$PIN" =~ ^[0-9a-f]{40}$ ]] || { echo STOP_PIN_NOT_40_HEX; exit 1; }
+BK=/root/sr-dev139-close-backup-$(date -u +%Y%m%dT%H%M%SZ)
+sudo install -d -o root -g root -m 0700 "$BK"
+sudo git -C "$C" rev-parse HEAD | sudo tee "$BK/clone-head" >/dev/null                # 旧 HEAD の控え
+sudo git -C "$C" fetch -q origin
+sudo git -C "$C" merge-base --is-ancestor "$OLD" "$PIN" || { echo STOP_PIN_NOT_AFTER_573E793; exit 1; }
+sudo git -C "$C" merge-base --is-ancestor "$PIN" origin/develop || { echo STOP_PIN_NOT_ON_DEVELOP; exit 1; }
+echo PIN_OK
+# root が動かすファイルの差（期待: cycle.sh の 1 ファイルだけ。unit・admin.sh・jail・ops・bridge は 0）
+sudo git -C "$C" diff --stat "$OLD" "$PIN" -- scripts/sales-design-capture scripts/sales-design-worker/cycle.sh scripts/sales-design-worker/systemd scripts/ops scripts/sales-design-bridge
+sudo git -C "$C" diff "$OLD" "$PIN" -- scripts/sales-design-worker/cycle.sh | grep '^[-+][^-+]' || true
+[ "$(sudo git -C "$C" diff --name-only "$OLD" "$PIN" -- scripts/sales-design-capture scripts/sales-design-worker/cycle.sh scripts/sales-design-worker/systemd scripts/ops scripts/sales-design-bridge)" = scripts/sales-design-worker/cycle.sh ] || { echo STOP_ROOT_FILES_NOT_ONLY_CYCLE; exit 1; }
+[ "$(sudo git -C "$C" diff --no-color --full-index "$OLD" "$PIN" -- scripts/sales-design-worker/cycle.sh | sha256sum | cut -d' ' -f1)" = c2dc2d2058bb3db2cef0c6bd39b545b7b9cb56130d2a11c8e7c53f02c29f83e7 ] || { echo STOP_CLOSE_DIFF_NOT_REVIEWED; exit 1; }; echo CLOSE_DIFF_PINNED
+sudo git -C "$C" diff --quiet "$PRE" "$PIN" -- scripts/sales-design-worker/cycle.sh || { echo STOP_CYCLE_NOT_334F771_BYTES; exit 1; }; echo CYCLE_SAME_AS_334F771
+read -r -p "差が cycle.sh から 'bakery:3' の allowlist 1 行と DEV-139 のコメント 1 行を消すだけ（追加は 'tsugute:6 bicycle:6' の 1 行）なら yes: " a; [ "$a" = yes ] || { echo NOT_CONFIRMED; exit 1; }
+sudo git -C "$C" checkout -q --detach "$PIN"
+[ "$(sudo git -C "$C" rev-parse HEAD)" = "$PIN" ] || { echo STOP_CLONE_NOT_AT_PIN; exit 1; }
+[ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] || { echo STOP_CLONE_DIRTY; exit 1; }
+[ "$(sudo sha256sum "$C/scripts/sales-design-worker/cycle.sh" | cut -d' ' -f1)" = 8beb350dcc7b85a78c0ea060638d4922362d02d25e8eba1d798152fe2d146dab ] || { echo STOP_CLOSE_CYCLE_SHA; exit 1; }; echo CYCLE_SHA_OK
+sudo cmp /etc/systemd/system/sr-design-cycle.service "$C/scripts/sales-design-worker/systemd/sr-design-cycle.service" || { echo STOP_UNIT_DIFFERS; exit 1; }; echo UNIT_SAME
+[ "$(sudo grep -c "^IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'$" "$C/scripts/sales-design-worker/cycle.sh")" = 1 ] || { echo STOP_ROOT_ALLOWLIST; exit 1; }; echo ROOT_ALLOWLIST_CLOSED
+r=0; sudo grep -q bakery "$C/scripts/sales-design-worker/cycle.sh" || r=$?; [ "$r" -eq 1 ] || { echo STOP_BAKERY_STILL_IN_CYCLE; exit 1; }; echo NO_BAKERY_IN_CYCLE
+echo "BK=$BK   # 控えておく" )
+```
+
+期待: `PIN_OK`、diff --stat は `scripts/sales-design-worker/cycle.sh | 3 +--` の 1 行だけ、`CLOSE_DIFF_PINNED`・`CYCLE_SAME_AS_334F771`・`yes`・`CYCLE_SHA_OK`・`UNIT_SAME`・`ROOT_ALLOWLIST_CLOSED`・`NO_BAKERY_IN_CYCLE`。
+出力（`STOP_*` を含め）を Claude に見せる。秘密は出ない（path と符号だけ）。
+
+- **戻し方（オーナーが決める）:** 573e793 へは戻さない（`bakery:3` が root に戻る）。戻す必要があれば 334f771（ほし窯 を載せる前・同じ cycle.sh）へ:
+  `( set -euo pipefail; sudo git -C /root/sr-capture-admin checkout -q --detach 334f771fed0c953158aefc3926a208adf8a8ddc5; [ -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" ] || { echo STOP_CLONE_DIRTY; exit 1; }; echo CLONE_AT_334F771 )`
+- worker（`sr-designgen` の checkout）は毎回 origin/develop を使うので、merge の時点で ほし窯 のジョブを `REFUSED_JOB_INVALID` で拒否する。worker 側の操作は無い。
+- `systemctl daemon-reload`・unit の入れ替え・timer の導入・スイッチの作成は**この手順に含まない**（unit は変わっていない: `UNIT_SAME`）。
+
 ## 3. この PR の差分（§4 (1)〜(6) と §5 を入れたもの）
 
 | # | ファイル | 中身 |
@@ -397,4 +478,4 @@ unset SERVICE_ROLE_KEY SUPABASE_SERVICE_ROLE_KEY ANON_KEY NEXT_PUBLIC_SUPABASE_A
 - 写真・manifest・権利の記録は私有の成果物のまま、リポジトリに入れない（`docs/design/photo-intake.md` §3）。
 - 指示書 §5 の V1〜V8 をオーナーが目で埋める。MOCK・stub の写真では 1 つも合格にしない。
 - 包みの前に、オーナーが写真ごとに描写の確認を書く（j-3）。
-- (g) の後続 PR で、ほし窯を `AUTORUN_SHOPS` と `IMAGE_AUTORUN_SHOPS` から外す。
+- (g) の後続 PR で、ほし窯を `AUTORUN_SHOPS` と `IMAGE_AUTORUN_SHOPS` から外す。→ **済み（Issue #290 P0、状態欄）。root の clone は (k)。**

@@ -6,8 +6,10 @@
  *
  * DEV-139 (owner approval 2026-11-18, one run, Issue #139 comment 6970468763 follow-up): the committed state is now the
  * APPROVED one — HOSHIGAMA_APPROVAL names exactly the committed prompt file's bytes (SHA-256 372f7802…a8f6) and the
- * built run prompt (a7b7d524…62be7f1, 2668 chars), the swap spec allows AI demo pictures of that prompt only, and ほし窯
- * is in AUTORUN_SHOPS and root's IMAGE_AUTORUN_SHOPS ('bakery:3'). If the committed bytes ever stop hashing to the
+ * built run prompt (a7b7d524…62be7f1, 2668 chars) and the swap spec allows AI demo pictures of that prompt only. The one
+ * run is USED (Issue #139 comment 6990007019): Issue #290 P0 took ほし窯 out of AUTORUN_SHOPS and root's
+ * IMAGE_AUTORUN_SHOPS again (back to 'tsugute:6 bicycle:6'); the record, the pins and the swap spec stay so the photos
+ * already made can be verified, swapped and packaged offline. If the committed bytes ever stop hashing to the
  * approved values, the tests below fail: the owner approved those exact bytes. The offline writer/intake tests still use
  * the STUB run approval id and stub generator (tests/support/hoshigama-approval-stub.ts); a null record shows the refusal.
  *
@@ -49,7 +51,7 @@ import { importHoshigamaAiPhotos } from "../../../../scripts/design-artifact/hos
 import { AI_DEMO_SHOPS, loadInventory, swapPage, SWAP_SHOPS, transformHtml } from "../../../../scripts/design-artifact/photo-swap";
 import { deriveEdges, deriveSlots } from "../../../../scripts/design-artifact/photo-slots";
 import { MAX_UPSCALE, upscaleFactor } from "../../../../scripts/design-artifact/tsugute-ai-intake";
-import { AUTORUN_SHOPS } from "../../../../scripts/sales-design-worker/autorun-shops";
+import { AUTORUN_SHOPS, CLOSED_SHOPS } from "../../../../scripts/sales-design-worker/autorun-shops";
 import { STUB_APPROVAL, STUB_RUN_APPROVAL_ID } from "../../../support/hoshigama-approval-stub";
 
 const REPO = resolve(__dirname, "../../../..");
@@ -68,16 +70,17 @@ const photo = (id: string) => HOSHIGAMA_PHOTOS.find((p) => p.photo_id === id)!;
 const launch = () => chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
 
 describe("ほし窯 d2-v2: the swap spec, pinned to the page", () => {
-  it("DEV-139 (owner approval 2026-11-18): AI demo pictures of the approved prompt only, and an auto-run shop for the one run", () => {
+  it("DEV-139 / Issue #290 P0: AI demo pictures of the approved prompt only (kept for the photos already made); no longer an auto-run shop", () => {
     expect(SWAP_SHOPS).toContain("bakery");
     expect(SPEC.aiDemoAllowed).toBe(true);
     expect(SPEC.aiDemoPromptSha256).toBe("372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6");
     expect(AI_DEMO_SHOPS.has("bakery")).toBe(true);
-    expect(Object.keys(AUTORUN_SHOPS)).toContain("bakery");
-    expect(AUTORUN_SHOPS.bakery.prompt.sha256).toBe("a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1");
+    // the one approved run is used: neither the worker's manifest nor root's allowlist lists ほし窯 any more
+    expect(Object.keys(AUTORUN_SHOPS)).not.toContain("bakery");
+    expect(CLOSED_SHOPS.bakery!.approval_record).toBe(HOSHIGAMA_APPROVAL!.approval_record);
     const cycle = readFileSync(join(REPO, "scripts/sales-design-worker/cycle.sh"), "utf8");
-    expect(cycle).toMatch(/^IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6 bakery:3'$/m);
-    expect(cycle).not.toMatch(/hoshigama/);
+    expect(cycle.split("\n").filter((l) => /^IMAGE_AUTORUN_SHOPS=/.test(l))).toEqual(["IMAGE_AUTORUN_SHOPS='tsugute:6 bicycle:6'"]);
+    expect(cycle).not.toMatch(/hoshigama|bakery/);
   });
   it("the inventory and edges pin the page's HTML, CSS and copy; two slots, both empty CSS boards", () => {
     for (const [f, h] of [["index.html", INV.html_sha256], ["style.css", INV.css_sha256], ["copy.json", INV.copy_sha256]] as const) expect(sha(readFileSync(join(REPO, PAGE, f))), f).toBe(h);
