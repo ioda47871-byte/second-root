@@ -1,0 +1,251 @@
+/* ほし窯 d2-hearth-floor v5 — full-page comp A5 (B-route, research only, not a production page, not a success case).
+   DEV-139 / Issue #290 P1. The C page fidelity/d2-v3 uses these same bytes. d2-v2 (comp A4) is kept unchanged.
+
+   Kept from A4 / d2-v2 (the owner named these as strengths): the oven mouth's arch of voussoirs with ほし窯 set in its
+   stones and the photo of the oven seen through it (the hero's HTML is byte for byte d2-v2's; PC board unchanged), the
+   separate PC and SP compositions, the one floor cooling from the back of the oven to the door with no line between
+   sections (焦げ茶 → 焼き色 → 小麦色 → 粉の白 → 生成り).
+
+   Changed, one per point of the owner's critique (Issue #290 P1):
+   - 粉: the section's subject is one huge 粉, drawn in the two flours: two dot weaves meet across the glyph in a soft
+     band (where the proportion changes), inside a bowl seen from above. No steps, scales or counts (A2 failed there).
+   - 薪の火: the rings are a legend now. 薪の火 is a label on a plate at the logs (a leader from the logs to it), the rings
+     are the heat round that fire, hot and heavy at the centre and fading outward, and they fade before the sentence.
+   - bread names: nothing overlaps a photo, a sentence or another name. 架空田舎パン stands upright beside the loaf
+     photo at its full height; the shelf breads stand ON their planks (one plank each), never across an edge.
+   - shop information: larger at every width (hours 22–44px, phone 28–44px, labels 13–14px at 7:1+ contrast); the
+     fictional-shop note sits under the name in a frame, not at the foot.
+   - typography: the section marks are upright Mincho columns placed differently per section (pillar, hanging tag,
+     door plate) instead of one small ruled label repeated five times; one display size per section.
+   Line breaks: every text is ONE text node (the server's copy check reads text nodes). word-break: auto-phrase (lang
+   ja) breaks only between phrases; the boxes are N.5 ideographic advances wide (half an advance of slack each way) so
+   that the lines end at the phrase ends wanted in any face (d2-v2's exact-N boxes put a lone 、 / す on its own line
+   when a fallback face was drawn instead of a Mincho).
+   Photo boards: placeholder boards only (role and proportion); the swap's triples are unchanged. Board shapes are
+   constant within ≤600 and within ≥601 (photo-swap-shops.ts bakery ranges); every board stays within the 2× sizes of the
+   photos already taken (no new photo, no scale exception). */
+:root {
+  --char: #120b07;
+  --char-2: #1b120c;
+  --deep: #2c1b11;
+  --bake: #8a4f26;
+  --crust: #e9b872;
+  --wheat: #dcc08e;
+  --flour: #f3eee5;
+  --kinari: #ece2cd;
+  --cream: #f3dfba;
+  --ink: #2b1a10;
+  --plank: #c99d62;
+  --mincho: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "IPAMincho", serif;
+  --gothic: "Zen Kaku Gothic New", "Noto Sans CJK JP", "IPAGothic", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--kinari); }
+body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.8; letter-spacing: .04em; }
+.page { position: relative; overflow: hidden; }
+section { position: relative; }
+h1, h2, p { word-break: keep-all; word-break: auto-phrase; overflow-wrap: anywhere; }
+/* the shop information breaks only at its spaces and before （ (keep-all), never inside 売り切れ */
+dd { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* photo placeholders: role and proportion only */
+.photo {
+  width: 100%; height: 100%;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 240, 220, .07) 0 1px, transparent 1px 12px),
+    linear-gradient(160deg, var(--tone, #6d5440), #3a2a1e);
+  box-shadow: inset 0 0 0 1px rgba(255, 230, 200, .16);
+}
+.board { position: relative; overflow: hidden; }
+.ph { margin-top: 10px; font-size: 12px; letter-spacing: .08em; line-height: 1.5; }
+/* the section marks: upright Mincho columns (each section places its own) */
+.mark { font-family: var(--mincho); font-size: 15px; line-height: 1; letter-spacing: .35em; writing-mode: vertical-rl; white-space: nowrap; }
+.item { font-family: var(--mincho); line-height: 1.1; white-space: nowrap; }
+.plank { background: repeating-linear-gradient(178deg, rgba(90, 52, 24, .12) 0 1px, transparent 1px 7px), var(--plank); box-shadow: 0 6px 12px rgba(90, 52, 24, .24); }
+
+/* ---------- SP (≤600) ---------- */
+
+/* mouth: the arch of the oven mouth, the name set in its stones (as d2-v2; the SP view into the oven is 1.19× larger) */
+.mouth { height: 153.85vw; z-index: 3; background: radial-gradient(ellipse 60vw 70vw at 54vw 80vw, rgba(154, 69, 24, .3), transparent 70%), linear-gradient(var(--char), var(--char-2)); color: var(--cream); }
+.sign { position: absolute; left: 5.13vw; top: 4.1vw; z-index: 4; }
+.name-full { font-size: 13px; font-weight: 400; letter-spacing: .3em; white-space: nowrap; }
+.kind { font-family: Georgia, serif; font-size: 12px; letter-spacing: .4em; color: #b8915f; }
+.plaque { display: none; }
+.fig-mouth { position: absolute; left: 24.87vw; top: 57.69vw; width: 58vw; z-index: 1; }
+.board-mouth { aspect-ratio: 190 / 315; border-radius: 50% 50% 0 0 / 30.16% 30.16% 0 0; --tone: #4a2a18; }
+.ph-mouth { position: absolute; top: 100%; left: 0; margin-top: 12px; color: #c9a77a; white-space: nowrap; }
+.arch { position: absolute; z-index: 2; pointer-events: none; overflow: visible; }
+.masonry { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.masonry path { fill: none; stroke: rgba(240, 200, 160, .07); stroke-width: 1; }
+.inside { position: absolute; z-index: 0; pointer-events: none; }
+.inside-pc { display: none; }
+.inside-sp { left: 0; top: 0; width: 100%; height: 153.85vw; }
+.courses path { fill: none; stroke: #c2622a; stroke-width: 2; }
+.courses path:nth-child(1) { opacity: .3; }
+.courses path:nth-child(2) { opacity: .45; }
+.courses path:nth-child(3) { opacity: .6; }
+.arch-pc { display: none; }
+.arch-sp { left: 0; top: 0; width: 100%; height: 153.85vw; }
+.stones path, .stones rect { stroke: var(--char); stroke-width: 2.5; }
+.arch-name { font-family: var(--mincho); fill: var(--cream); text-anchor: middle; dominant-baseline: central; }
+.arch-sp .arch-name { font-size: 36px; }
+
+/* deep: the back of the floor, by the fire — the loaf photo, its name beside it, the baguette below */
+.deep { z-index: 2; padding: 22vw 5.13vw 16vw; background: linear-gradient(var(--char-2), var(--deep)); color: var(--cream); }
+.mark-deep { position: absolute; right: 5.13vw; top: 22vw; color: #d2a874; }
+.fig-loaf { width: 78vw; transform: rotate(-2deg); }
+.board-loaf { aspect-ratio: 4 / 3; --tone: #7a5236; }
+.ph-loaf { color: #c79c6a; }
+.item-inaka { margin-top: 8vw; font-size: 11.28vw; color: var(--crust); }
+.deep-fact { margin-top: 6vw; font-family: var(--mincho); font-size: 6.15vw; line-height: 1.65; inline-size: calc(11.5ic + 7px); }
+/* the pill is measured in em of its own name (12em × 2.4em): the name's six full-width letters with .5em spacing sit at fixed
+   em positions, so the scoring cuts (viewBox 720 = 12em, 60 units per em) fall in the gaps between the letters in any face */
+.baguette { position: relative; display: flex; align-items: center; justify-content: center; font-family: var(--mincho); font-size: 7.2vw; line-height: 1.1; width: 12em; height: 2.4em; margin-top: 11vw; border: 2px solid var(--crust); border-radius: 999px; transform: rotate(-4deg); }
+.coupe { position: absolute; inset: 0; width: 100%; height: 100%; }
+.coupe line { stroke: var(--crust); stroke-width: 3; stroke-linecap: round; opacity: .45; vector-effect: non-scaling-stroke; }
+.coupe .end { opacity: .7; }
+.item-baguette { position: relative; font-size: 1em; letter-spacing: .5em; padding-left: .5em; color: var(--cream); }
+
+/* fire: the oven floor seen from above — the wood fire at the centre (named on its plate), its heat in rings */
+.fire { z-index: 1; min-height: 156vw; padding: 16vw 5.13vw 0; background: linear-gradient(var(--deep), var(--bake)); color: #fbe6c4; }
+.heat { position: absolute; left: -12vw; top: 46vw; width: 116vw; height: 116vw; overflow: visible; }
+.rings circle { fill: none; stroke: #f3a560; }
+.rings circle:nth-child(1) { stroke-width: 5; opacity: .85; }
+.rings circle:nth-child(2) { stroke-width: 3.6; opacity: .62; }
+.rings circle:nth-child(3) { stroke-width: 2.6; opacity: .44; }
+.rings circle:nth-child(4) { stroke-width: 1.8; opacity: .3; }
+.rings circle:nth-child(5) { stroke-width: 1.2; opacity: .18; }
+.logs circle:not(.ring) { fill: #2a170d; stroke: #ef8436; stroke-width: 3; }
+.logs .ring { fill: none; stroke: #a8562a; stroke-width: 1.5; }
+.logs .crack { stroke: #ef8436; stroke-width: 2; }
+.leader { fill: none; stroke: #ffd3a0; stroke-width: 2; }
+.fire-fact { position: relative; z-index: 2; font-family: var(--mincho); font-size: 8.72vw; line-height: 1.5; inline-size: calc(9.5ic + 6px); }
+.mark-fire { position: absolute; z-index: 2; left: 69.97vw; top: 122.56vw; transform: translateY(-50%); writing-mode: horizontal-tb; padding: .45em .25em .45em .6em; font-size: 17px; letter-spacing: .3em; color: #ffd9ab; background: #2a170d; border: 1px solid #ef8436; border-radius: 2px; }
+
+/* door: outside the oven door, the shop-front shelf — each bread stands on its own plank, never on a grid */
+.door { padding: 18vw 5.13vw 16vw; background: linear-gradient(var(--bake) 0, #c99a5e 14vw, var(--wheat) 100%); color: var(--ink); }
+.mark-door { position: absolute; right: 6vw; top: 16vw; padding: 12px 7px 8px; color: #3b2214; background: repeating-linear-gradient(88deg, rgba(90, 52, 24, .12) 0 1px, transparent 1px 6px), var(--plank); transform: rotate(2deg); box-shadow: 0 4px 8px rgba(90, 52, 24, .22); }
+.door-fact { font-family: var(--mincho); font-size: 5.38vw; line-height: 1.9; inline-size: calc(13.5ic + 9px); max-inline-size: 76vw; }
+.shelf { display: flex; flex-direction: column; gap: 10vw; margin-top: 12vw; }
+.row { display: flex; flex-direction: column; align-items: flex-start; }
+.row .plank { height: 4.6vw; width: calc(100% + 5.13vw); border-radius: 2px 0 0 2px; }
+.shelf .item { color: #3b2214; padding: 0 2vw; }
+.row-kurumi { transform: rotate(-2deg); }
+.item-kurumi { font-size: 11.5vw; }
+.row-shio { align-items: flex-end; transform: rotate(1.5deg); }
+.row-shio .plank { width: 72%; margin-right: -5.13vw; }
+.item-shio { font-size: 10vw; margin-right: 4vw; }
+.row-danish { transform: rotate(-1deg); }
+.item-danish { font-size: 5.9vw; }
+
+/* flour: beside the door — the two flours, in one 粉 */
+.flour { padding: 16vw 5.13vw 12vw; background: linear-gradient(var(--wheat), var(--flour)); color: #3a2416; }
+.kona { display: block; width: 84vw; height: 84vw; margin: 0 auto; overflow: visible; }
+.bowl { fill: #eadfc6; }
+.bowl-rim { fill: none; stroke: #bba27a; stroke-width: 2; }
+.kona-char { font-family: var(--mincho); font-weight: 700; font-size: 840px; text-anchor: middle; dominant-baseline: central; stroke: #5b3d22; stroke-width: 6; paint-order: stroke; letter-spacing: 0; }
+.flour-fact { margin-top: 8vw; font-family: var(--mincho); font-size: 7.18vw; line-height: 1.6; inline-size: calc(8.5ic + 6px); }
+
+/* visit: out of the door, to the visitor's hands */
+.visit { padding: 14vw 5.13vw 14vw; background: linear-gradient(var(--flour), var(--kinari)); color: var(--ink); }
+.mark-visit { width: fit-content; margin: 0 auto 5vw; writing-mode: horizontal-tb; padding: 8px 10px 8px 16px; font-size: 15px; color: #4a3524; border: 1px solid #4a3524; }
+.doorway { position: relative; width: 89.74vw; height: 112vw; }
+.door-line { position: absolute; inset: 0; width: 100%; height: 100%; }
+.door-line path { fill: none; stroke: #3a2416; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.door-line .inner { stroke-width: 1; opacity: .45; }
+.info dt { font-size: 13px; letter-spacing: .25em; line-height: 1.5; color: #5e4630; }
+.info dd { font-size: 17px; line-height: 1.6; }
+.info-door { position: absolute; left: 9%; right: 9%; top: 44%; display: grid; gap: 7vw; }
+.info-door .i-hours dd { font-family: var(--mincho); font-size: max(24px, 6.4vw); line-height: 1.4; }
+.info-door .i-closed dd { font-family: var(--mincho); font-size: max(22px, 5.6vw); }
+.visit-side { margin-top: 10vw; }
+.visit-name { font-family: var(--mincho); font-weight: 400; font-size: 22px; letter-spacing: .12em; line-height: 1.5; }
+.fictional { margin-top: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.7; color: #4a3524; border: 1px solid #8a6a4a; inline-size: calc(15.5ic + 9px + 26px); max-inline-size: 100%; }
+.info-side { margin-top: 7vw; }
+.info-side div { border-top: 1px solid #3a2416; padding: 12px 0; }
+.info-side .i-addr dd { font-size: 18px; }
+.info-side .i-tel dd { font-size: 30px; font-weight: 700; letter-spacing: .04em; line-height: 1.3; }
+
+/* ---------- PC (≥601): the same floor, re-placed in vw (1px of 1440 = .0694vw); every board keeps one shape to 1920 ---------- */
+@media (min-width: 601px) {
+  .mouth { height: 65.28vw; background: radial-gradient(ellipse 40vw 34vw at 62.5vw 36vw, rgba(154, 69, 24, .3), transparent 70%), linear-gradient(var(--char), var(--char-2)); }
+  .sign { left: 5.56vw; top: 3.89vw; }
+  .name-full { max-width: 18.75vw; font-family: var(--mincho); font-size: clamp(18px, 2.36vw, 36px); letter-spacing: .14em; line-height: 1.4; white-space: normal; }
+  .kind { font-size: clamp(13px, 1.25vw, 19px); font-style: italic; margin-top: 1.11vw; }
+  .plaque { display: block; position: absolute; left: 5.56vw; bottom: 4.17vw; width: 20.14vw; z-index: 4; }
+  .plaque div { border-top: 1px solid rgba(232, 210, 172, .3); padding: 9px 0 10px; }
+  .plaque dt { font-size: 13px; letter-spacing: .3em; line-height: 1.5; color: #d0aa78; }
+  .plaque dd { font-size: clamp(14px, 1.18vw, 18px); line-height: 1.7; }
+  .fig-mouth { left: 46.53vw; top: 29.86vw; width: 31.94vw; }
+  .board-mouth { aspect-ratio: 460 / 510; border-radius: 50% 50% 0 0 / 45.1% 45.1% 0 0; }
+  .arch-sp, .inside-sp { display: none; }
+  .inside-pc { display: block; left: 27.08vw; top: 1.39vw; width: 70.83vw; height: 63.89vw; }
+  .arch-pc { display: block; left: 27.08vw; top: 1.39vw; width: 70.83vw; height: 63.89vw; }
+  .arch-pc .arch-name { font-size: 78px; }
+
+  /* deep: | mark | loaf photo 4:3 | 架空田舎パン upright, the photo's height | the sentence | — the baguette below */
+  .deep { display: grid; grid-template-columns: 3vw 44vw 8vw minmax(0, 1fr); column-gap: 2.5vw; align-items: start; padding: 6.25vw 5.56vw 7.64vw; }
+  .mark-deep { position: static; grid-column: 1; grid-row: 1; font-size: clamp(15px, 1.25vw, 19px); }
+  .fig-loaf { grid-column: 2; grid-row: 1; width: auto; transform: rotate(-2deg); }
+  .item-inaka { grid-column: 3; grid-row: 1; margin: 0; writing-mode: vertical-rl; font-size: clamp(40px, 5.28vw, 92px); letter-spacing: .06em; line-height: 1; }
+  .deep-fact { grid-column: 4; grid-row: 1; align-self: end; margin: 0 0 2.5vw; font-size: clamp(18px, 2.2vw, 36px); line-height: 1.7; }
+  .baguette { grid-column: 2 / 5; grid-row: 2; justify-self: end; font-size: 4.17vw; margin: 6vw 2vw 0 0; transform: rotate(-4deg); }
+
+  /* fire: the sentence at the left; the floor seen from above at the right, its plate at the logs */
+  .fire { min-height: 58vw; padding: 19.44vw 5.56vw 0 8.34vw; }
+  .heat { left: 32vw; top: -5vw; width: 64vw; height: 64vw; -webkit-mask-image: linear-gradient(90deg, transparent 20%, #000 40%); mask-image: linear-gradient(90deg, transparent 20%, #000 40%); }
+  .fire-fact { font-size: clamp(28px, 3.89vw, 64px); }
+  .mark-fire { left: 77.23vw; top: 37.24vw; font-size: clamp(16px, 1.67vw, 26px); }
+
+  /* door: the sentence and its hanging tag at the left; three planks at the right, the lower two running off the edge */
+  .door { display: grid; grid-template-columns: 30vw minmax(0, 1fr); column-gap: 6vw; align-items: center; padding: 7.64vw 5.56vw 6.94vw; background: linear-gradient(var(--bake) 0, #c99a5e 11%, var(--wheat) 100%); }
+  .mark-door { left: 5.56vw; right: auto; top: 50%; transform: translateY(-50%) rotate(2deg); padding: 16px 9px 10px; font-size: clamp(15px, 1.25vw, 19px); }
+  .door-fact { grid-column: 1; grid-row: 1; margin: 1vw 0 0 5vw; font-size: clamp(16px, 1.81vw, 28px); max-inline-size: none; }
+  .shelf { grid-column: 2; grid-row: 1; gap: 4.17vw; margin: 0; }
+  .row .plank { height: 1.8vw; }
+  .row-kurumi { width: 82%; transform: rotate(-2deg); }
+  .row-kurumi .plank { width: 100%; border-radius: 2px; }
+  .item-kurumi { font-size: 5.56vw; padding: 0 2vw; }
+  .row-shio { align-self: flex-end; width: 58%; transform: rotate(2deg); }
+  .row-shio .plank { width: calc(100% + 5.56vw); margin-right: -5.56vw; }
+  .item-shio { font-size: 3.89vw; margin-right: 5vw; }
+  .row-danish { margin-left: 8%; transform: rotate(-1deg); }
+  .row-danish .plank { width: calc(100% + 5.56vw); }
+  .item-danish { font-size: 3.19vw; padding: 0 2vw; }
+
+  /* flour: the 粉 of two flours in its bowl, the sentence beside it */
+  .flour { display: grid; grid-template-columns: 40vw minmax(0, 1fr); column-gap: 6vw; align-items: center; padding: 5.56vw 5.56vw 5.56vw; }
+  .kona { width: 40vw; height: 40vw; margin: 0; }
+  .flour-fact { margin: 0; font-size: clamp(26px, 3.33vw, 54px); line-height: 1.7; }
+
+  /* visit: the hours in the door's arch, the name, the note and the rest beside it, all larger than d2-v2 */
+  .visit { display: grid; grid-template-columns: 42vw minmax(0, 1fr); column-gap: 7vw; align-items: end; padding: 4.17vw 5.56vw 0; }
+  .mark-visit { position: absolute; left: 5.56vw; top: 9.72vw; margin: 0; writing-mode: vertical-rl; padding: 16px 9px 12px; font-size: clamp(15px, 1.25vw, 19px); }
+  .doorway { grid-column: 1; grid-row: 1; width: auto; height: auto; aspect-ratio: 640 / 760; margin-left: 4.17vw; }
+  .info-door { top: 43%; gap: 2.5vw; }
+  .info dt { font-size: clamp(13px, .97vw, 15px); }
+  .info-door .i-hours dd { font-size: clamp(22px, 2.78vw, 44px); line-height: 1.35; }
+  .info-door .i-closed dd { font-size: clamp(20px, 2.22vw, 34px); }
+  .visit-side { grid-column: 2; grid-row: 1; margin: 0 0 8.33vw; }
+  .visit-name { font-size: clamp(22px, 2.36vw, 36px); }
+  .fictional { margin-top: 1.39vw; font-size: clamp(14px, 1.04vw, 16px); }
+  .info-side { margin-top: 2.78vw; }
+  .info-side dd { font-size: clamp(16px, 1.25vw, 19px); }
+  .info-side .i-addr dd { font-size: clamp(18px, 1.46vw, 22px); }
+  .info-side .i-tel dd { font-size: clamp(28px, 2.92vw, 44px); }
+}
+
+/* PC widths below 1024 (no board changes size or shape here): the deep section's sentence moves under the photo, the
+   fire's sentence keeps to the faded side of the rings, and the shop-front sentence stands above its shelf */
+@media (min-width: 601px) and (max-width: 1023px) {
+  .deep-fact { grid-column: 2 / 5; grid-row: 2; align-self: start; margin: 4vw 0 0 4vw; }
+  .baguette { grid-row: 3; }
+  .fire-fact { font-size: 3.89vw; }
+  .door { grid-template-columns: minmax(0, 1fr); row-gap: 6vw; align-items: start; }
+  .mark-door { top: 7.64vw; transform: rotate(2deg); }
+  .shelf { grid-column: 1; grid-row: 2; }
+}
+/* below 768 the hero's plaque would meet the name in the narrow stone face: the shop information is in the visit section */
+@media (min-width: 601px) and (max-width: 767px) {
+  .plaque { display: none; }
+}

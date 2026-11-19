@@ -470,3 +470,147 @@ describe("ほし窯 swap E2E with MOCK photos: rights → crop (2× at the edges
     }
   }, 180_000);
 });
+
+/*
+ * Issue #290 P1: ほし窯 d2-v3, the next design candidate (d2-v2 above stays unchanged and swappable). The SAME photos
+ * already taken (no new picture): the same two boards and placeholder triples, the same ranges. Mock pictures below
+ * have the intake's real sizes (the oven-mouth PC enlarged to 1370², the SP 1024×1536 as generated, the loaf enlarged
+ * to 1752×1314; runs sheet (f)), made here in os.tmpdir(), never committed.
+ */
+const PAGE3 = `${POC}/fidelity/d2-v3`;
+const INV3 = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, POC, "photo-slots-d2-v3.json"), "utf8")));
+const EDGES3 = PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, POC, "photo-slot-edges-d2-v3.json"), "utf8")));
+const EDGE_MAP3 = edgesFor(INV3, EDGES3)!;
+const slot3 = (id: string) => INV3.slots.find((s) => s.slot_id === id)!;
+const INTAKE_SIZES = { "ph-mouth-pc": { width: 1370, height: 1370 }, "ph-mouth-sp": { width: 1024, height: 1536 }, "ph-loaf": { width: 1752, height: 1314 } } as const;
+
+describe("ほし窯 d2-v3: the swap spec, pinned to the page", () => {
+  it("is a page of the bakery spec beside d2-v2, with the approval values unchanged", () => {
+    expect(SPEC.pages).toEqual(["d2-v2", "d2-v3"]);
+    expect([SPEC.aiDemoAllowed, SPEC.aiDemoPromptSha256]).toEqual([true, "372f7802101f679a519bca9ee2af57a07cbd6faf9df5371b70888e9a7ce3a8f6"]);
+    // the approval record still names d2-v2: d2-v3 reuses its photos, it is not a new generation
+    expect(HOSHIGAMA_APPROVAL!.page).toBe("d2-v2");
+  });
+  it("the inventory and edges pin the page's HTML, CSS and copy; two slots, both empty CSS boards; the comp A5 is the same bytes", () => {
+    for (const [f, h] of [["index.html", INV3.html_sha256], ["style.css", INV3.css_sha256], ["copy.json", INV3.copy_sha256]] as const) {
+      expect(sha(readFileSync(join(REPO, PAGE3, f))), f).toBe(h);
+      expect(sha(readFileSync(join(REPO, POC, "comps/d2-hearth-floor-v5", f))), `A5 ${f}`).toBe(h);
+    }
+    expect(INV3.page_dir).toBe(PAGE3);
+    expect(INV3.slots.map((s) => [s.slot_id, s.role, s.placeholder])).toEqual([["ph-mouth", "石窯の口", "css_board"], ["ph-loaf", "田舎パン", "css_board"]]);
+    expect(readFileSync(join(REPO, PAGE3, "index.html"), "utf8").match(/写真｜/g)).toHaveLength(2);
+    // the same copy record as d2-v2 (no new words)
+    expect(INV3.copy_sha256).toBe(INV.copy_sha256);
+    expect(EDGE_MAP3).not.toBeNull();
+  });
+  it("its ranges are d2-v2's (≤600, ≥601); its extra media queries sit inside the PC range and change no board", () => {
+    const css = readFileSync(join(REPO, PAGE3, "style.css"), "utf8");
+    expect(new Set([...css.matchAll(/@media[^{]*/g)].map((m) => m[0].trim()))).toEqual(new Set(["@media (min-width: 601px)", "@media (min-width: 601px) and (max-width: 1023px)", "@media (min-width: 601px) and (max-width: 767px)"]));
+    for (const block of css.split("@media").slice(2)) expect(block.slice(0, block.indexOf("\n}"))).not.toMatch(/board|fig-/);
+    for (const s of INV3.slots) {
+      const all = [...s.variants, ...EDGE_MAP3.get(s.slot_id)!];
+      expect(new Set(all.filter((v) => !v.viewport.startsWith("mobile")).map((v) => v.ratio)).size, s.slot_id).toBe(1);
+      expect(new Set(all.filter((v) => v.viewport.startsWith("mobile")).map((v) => v.ratio)).size, s.slot_id).toBe(1);
+    }
+    expect(slot3("ph-mouth").variants.find((v) => v.viewport === "mobile_390")!.ratio).toBeLessThan(0.7);
+    expect(loadInventory("bakery", PAGE3)).toMatchObject({ ok: true });
+  });
+  it("the placeholder triples are the page's exact markup, and the CSS keeps the arch clip (.board overflow)", () => {
+    const html = readFileSync(join(REPO, PAGE3, "index.html"), "utf8");
+    const st = SPEC.structure as Extract<typeof SPEC.structure, { kind: "board_before_caption" }>;
+    for (const t of st.triples) expect(html.split(`${t.container}${t.board}<div class="photo"></div></div>${t.caption}`).length - 1, t.board).toBe(1);
+    expect(readFileSync(join(REPO, PAGE3, "style.css"), "utf8")).toContain(".board { position: relative; overflow: hidden; }");
+  });
+  it("the boards stay within the 2× of the photos already taken, at every measured width and range edge (no scale exception)", () => {
+    const at = (id: keyof typeof INTAKE_SIZES) => ({ ...INTAKE_SIZES[id], focal_box: photo(id).focal_box });
+    const mouth = planSlot(slot3("ph-mouth"), { pc: at("ph-mouth-pc"), sp: at("ph-mouth-sp") }, { spViewports: SPEC.spViewports, edges: EDGE_MAP3.get("ph-mouth")! });
+    const loaf = planSlot(slot3("ph-loaf"), { pc: at("ph-loaf") }, { spViewports: SPEC.spViewports, edges: EDGE_MAP3.get("ph-loaf")! });
+    expect(mouth).toMatchObject({ ok: true, codes: [] });
+    expect(loaf).toMatchObject({ ok: true, codes: [] });
+    for (const p of [mouth, loaf]) for (const v of Object.values(p.byViewport)) expect(v!.crop.ok && !v!.crop.exception_applied && v!.crop.density >= 2).toBe(true);
+    // the SP oven-mouth board (348×577 at the 600 edge) needs the generated 1024×1536 SP photo: the brief's lower target
+    // 650×975 would be below 2× there (refused, not loosened)
+    const atTarget = planSlot(slot3("ph-mouth"), { pc: at("ph-mouth-pc"), sp: { ...photo("ph-mouth-sp").target, focal_box: photo("ph-mouth-sp").focal_box } }, { spViewports: SPEC.spViewports, edges: EDGE_MAP3.get("ph-mouth")! });
+    expect(atTarget.codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
+  });
+});
+
+describe("ほし窯 d2-v3's transform", () => {
+  const html = readFileSync(join(REPO, PAGE3, "index.html"), "utf8");
+  const slotsIn = INV3.slots.map((s) => ({ slot: s, alt: s.role, files: { desktop: `photos/${s.slot_id}-desktop.png`, tablet: `photos/${s.slot_id}-tablet.png`, mobile: `photos/${s.slot_id}-mobile.png` }, size: { width: 10, height: 10 } }));
+  it("fills both boards with a picture following the page's breakpoints, and changes nothing else", () => {
+    const out = transformHtml(html, slotsIn, SPEC);
+    expect(out).not.toContain("写真｜");
+    expect(out).not.toMatch(/<div class="photo"><\/div>/);
+    for (const s of INV3.slots)
+      expect(out).toContain(`<div class="photo"><picture data-slot="${s.slot_id}"><source media="(max-width: 600px)" srcset="photos/${s.slot_id}-mobile.png"><source media="(max-width: 1199px)" srcset="photos/${s.slot_id}-tablet.png"><img src="photos/${s.slot_id}-desktop.png" alt="${s.role}" width="10" height="10"></picture></div></div>\n  </div>`);
+    const strip = (h: string) => h.replace(/\n {4}<p class="ph ph-(?:mouth|loaf)">写真｜[\s\S]*?<\/p>|<picture[\s\S]*?<\/picture>/g, "");
+    expect(strip(out)).toBe(strip(html));
+  });
+});
+
+describe("ほし窯 d2-v3 swap E2E with MOCK photos of the intake's sizes: rights → crop → swap → PC 1440 / SP 390", () => {
+  let root: string;
+  let pipeline: string;
+  let browser: Browser;
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), "p290-swap-"));
+    pipeline = join(root, "pipeline");
+    mkdirSync(join(pipeline, ".intake", "photos"), { recursive: true });
+    browser = await launch();
+  });
+  afterAll(async () => {
+    await browser?.close();
+    if (root) rmSync(root, { recursive: true, force: true });
+  });
+  async function mock(name: string, width: number, height: number, colour: number) {
+    // noise, not a solid colour: two crops one pixel apart must not come out as the same bytes by accident
+    const buf = await sharp({ create: { width, height, channels: 3, background: { r: 0, g: 0, b: 0 }, noise: { type: "gaussian", mean: 90 + colour, sigma: 30 } } }).png().toBuffer();
+    writeFileSync(join(pipeline, ".intake", "photos", `${name}.png`), buf);
+    return { schema: "photo_rights_v0", asset_id: `photo-${name}`, sha256: sha(buf), bytes: buf.length, width, height, format: "png", source_kind: "owner_provided", owner: "mock test owner", license: "mock test only", paid: false, allowed_uses: { edit: true, crop: true, commercial: true, public_web: false }, consent_record_ref: "mock-consent", received_at: "2026-11-01", expiry: null, private_path: `.intake/photos/${name}.png`, depicts_identifiable_person: false, depicts_real_shop: false };
+  }
+
+  it("both boards show a loaded mock photo at PC 1440 and SP 390, ≥2× everywhere checked, layout intact", async () => {
+    const s = INTAKE_SIZES;
+    const slots = [
+      { slot_id: "ph-mouth", pc: { rights: await mock("v3-mouth-pc", s["ph-mouth-pc"].width, s["ph-mouth-pc"].height, 50), focal_box: photo("ph-mouth-pc").focal_box }, sp: { rights: await mock("v3-mouth-sp", s["ph-mouth-sp"].width, s["ph-mouth-sp"].height, 51), focal_box: photo("ph-mouth-sp").focal_box } },
+      { slot_id: "ph-loaf", pc: { rights: await mock("v3-loaf", s["ph-loaf"].width, s["ph-loaf"].height, 52), focal_box: photo("ph-loaf").focal_box } },
+    ];
+    const out = join(root, "out");
+    const res = await swapPage({ pageDir: PAGE3, manifest: { schema: "photo_swap_manifest_v0", shop: "bakery", slots }, out, pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN, browser });
+    if (!res.ok) throw new Error(JSON.stringify(res.refusals));
+    expect(res.renders.map((r) => r.viewport)).toEqual(["desktop_1440", "mobile_390"]);
+    for (const r of res.renders) expect(r, r.viewport).toMatchObject({ images: 2, images_loaded: 2, boards_matched: 2, caption_text_left: false, horizontal_overflow: false, boards_intact: 2 });
+    const crops = res.summary.crops as Record<string, { source: string; same_file_as?: string; density_by_viewport: Record<string, number | null>; exception_applied: boolean }>;
+    expect(["desktop", "tablet", "mobile"].map((r) => crops[`ph-mouth/${r}`]!.source)).toEqual(["pc", "pc", "sp"]);
+    for (const [k, c] of Object.entries(crops)) {
+      expect(c.exception_applied, k).toBe(false);
+      for (const [v, d] of Object.entries(c.density_by_viewport)) expect(d, `${k} ${v}`).toBeGreaterThanOrEqual(2);
+    }
+    // every photo file is distinct (the demo version package refuses duplicates); identical loaf crops share one file
+    const files = readdirSync(join(out, "page", "photos"));
+    const shas = files.map((f) => sha(readFileSync(join(out, "page", "photos", f))));
+    expect(new Set(shas).size).toBe(shas.length);
+    expect(files.filter((f) => f.startsWith("ph-mouth-")).sort()).toEqual(["ph-mouth-desktop.png", "ph-mouth-mobile.png", "ph-mouth-tablet.png"]);
+    expect(res.summary).toMatchObject({ shop: "bakery", page_dir: PAGE3, source_hashes: { html: INV3.html_sha256, css: INV3.css_sha256, copy: INV3.copy_sha256 } });
+    expect(readFileSync(join(out, "page", "style.css"), "utf8").endsWith(HOSHIGAMA_SWAP_CSS)).toBe(true);
+    expect(sha(readFileSync(join(REPO, PAGE3, "index.html")))).toBe(INV3.html_sha256);
+  }, 180_000);
+
+  it("the committed inventory and range edges are what the page measures now (within 2px)", async () => {
+    const inv = await deriveSlots(browser, "bakery", PAGE3);
+    expect({ ...inv, slots: [] }).toEqual({ ...INV3, slots: [] });
+    const edges = await deriveEdges(browser, inv);
+    expect({ ...edges, slots: [] }).toEqual({ ...EDGES3, slots: [] });
+    for (const [i, s] of inv.slots.entries()) {
+      const w = INV3.slots[i]!;
+      expect([s.slot_id, s.role, s.board_selector, s.placeholder]).toEqual([w.slot_id, w.role, w.board_selector, w.placeholder]);
+      for (const [j, v] of [...s.variants, ...edges.slots[i]!.edges].entries()) {
+        const c = [...w.variants, ...EDGES3.slots[i]!.edges][j]!;
+        expect(v.viewport).toBe(c.viewport);
+        expect(Math.abs(v.width_px - c.width_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+        expect(Math.abs(v.height_px - c.height_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+      }
+    }
+  }, 180_000);
+});
