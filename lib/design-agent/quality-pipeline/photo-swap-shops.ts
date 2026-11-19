@@ -14,12 +14,14 @@
  *
  * Adding a shop here makes its research page swappable OFFLINE with rights-checked photos. It is not an approval to
  * generate pictures for it: the image auto-run takes only scripts/sales-design-worker/autorun-shops.ts's shops (and
- * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run; DEV-139: ほし窯 likewise (2026-11-18).
+ * root's IMAGE_AUTORUN_SHOPS). DEV-192: 輪 is in both for the owner's one-time run; DEV-139: ほし窯 was likewise
+ * (2026-11-18) until its run was used — Issue #290 P0 removed it from both (autorun-shops.ts CLOSED_SHOPS).
  *
  * DEV-139: ほし窯 (bakery, a FICTIONAL bakery, research page d2-v2, the <wbr>-free version of d2-v1) is here so that its page is swappable offline with
  * rights-checked photos. From the owner's approval of 2026-11-18 (one run, Issue #139 comment 6970468763 follow-up) its
- * swap takes ai_generated_demo pictures of the approved prompt only (aiDemoPromptSha256), and it is in AUTORUN_SHOPS and
- * IMAGE_AUTORUN_SHOPS for that one run (docs/operations/hoshigama-one-time-run-sheet.md).
+ * swap takes ai_generated_demo pictures of the approved prompt only (aiDemoPromptSha256). It was in AUTORUN_SHOPS and
+ * IMAGE_AUTORUN_SHOPS for that one run only; the run is used and Issue #290 P0 removed it from both. aiDemoAllowed stays
+ * so the photos already made can be swapped and packaged offline (docs/operations/hoshigama-one-time-run-sheet.md).
  */
 import { BICYCLE_PROMPT_SHA256 } from "./bicycle-ai-photos";
 import { HOSHIGAMA_PROMPT_DRAFT_SHA256 } from "./hoshigama-ai-photos";

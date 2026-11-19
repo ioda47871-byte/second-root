@@ -2,8 +2,9 @@
  * DEV-139: the ほし窯 (bakery, a FICTIONAL bakery) run-bundle writer — the same shape as 輪's (bicycle-photos.ts), for the 3
  * photos of ../quality-pipeline/hoshigama-ai-photos.ts. It refuses unless an approval record (default HOSHIGAMA_APPROVAL,
  * the owner's one-run approval of 2026-11-18) names exactly the prompt text's bytes and the run prompt. The worker's
- * image auto-run (image-autorun.ts, bundle hoshigama_ai_photos_v0) calls writeHoshigamaPhotosForRun only after the
- * whole chain held (root switch entry, root use record, 20-minute grant, worker ledger).
+ * image auto-run called writeHoshigamaPhotosForRun for that ONE run only; the run is used (Issue #139 comment
+ * 6990007019) and Issue #290 P0 removed ほし窯 and this writer from the worker (autorun-shops.ts CLOSED_SHOPS), so
+ * nothing in the worker calls it any more. The bundle schema stays: the offline intake verifies the photos already made.
  *
  * Output (outside the repository, 0700 dir, 0600 files): <root>/hoshigama-photos-XXXXXX/ with <photo_id>.png in call order
  * (Image 1 → ph-mouth-pc, 2 → ph-mouth-sp, 3 → ph-loaf) and manifest.json (photo → slot and use, file SHA-256, pixel
@@ -91,8 +92,9 @@ export async function writeHoshigamaPhotos(o: {
 }
 
 /**
- * The worker hook's call (image-autorun.ts BUNDLE_WRITERS.hoshigama_ai_photos_v0; the same inputs as 輪's
- * writeBicyclePhotosForRun). The text is read from this checkout; unapproved bytes or no approval → it throws.
+ * The worker hook's call of the one approved run (the same inputs as 輪's writeBicyclePhotosForRun). Issue #290 P0: no
+ * longer wired into the worker (image-autorun.ts has no ほし窯 writer). The text is read from this checkout; unapproved
+ * bytes or no approval → it throws.
  */
 export async function writeHoshigamaPhotosForRun(o: { outRoot: string; batch: ImageBatchResult; commit: string; prompt: string; generatedAt: string; approvalId?: string }): Promise<{ dir: string; manifest: HoshigamaPhotosManifest }> {
   if (!o.approvalId) throw new Error("APPROVAL_ID_REQUIRED");

@@ -153,4 +153,6 @@ lower right dark and quiet. Low warm light from the top edge of the frame; short
 4. 1回限りの実生成の承認 (輪の DEV-192 と同じ: 1ジョブ・呼び出しの回数・やり直しなし・期限・承認 ID の使い切り)。
    ほし窯の差し替えで AI のデモ画像を許すこと (`photo-swap-shops.ts` の `aiDemoAllowed`・`aiDemoPromptSha256`) と、`AUTORUN_SHOPS`・
    `IMAGE_AUTORUN_SHOPS` に入れることは、その承認と一緒に行う (差分は `docs/operations/hoshigama-one-time-run-sheet.md`)。
+   **→ 2026-11-18 承認・実行済み。1 回の実生成は使用済み (Issue #139 comment 6990007019)。Issue #290 P0 で `AUTORUN_SHOPS`・
+   `IMAGE_AUTORUN_SHOPS` から外した (`CLOSED_SHOPS`)。新しい ID でも再生成しない。`aiDemoAllowed` は生成済み写真のために残す。**
 5. 実生成のあと、§5 の表をオーナーが埋める。写真・manifest・権利の記録は私有の成果物のままで、リポジトリに入れない (`docs/design/photo-intake.md` §3)。

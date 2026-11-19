@@ -13,13 +13,15 @@
  * from DEV-192 (owner GO 2026-11-07, Issue #193 comment 6689664215), 輪 for ONE approved run: the entry itself is not a
  * permission — each run still needs the owner's root config entry for one job, root's atomic use record, the boot-bound
  * 20-minute grant and the worker's one-use ledger, and the auto-run (timer) stays OFF. DEV-139 (owner approval
- * 2026-11-18, Issue #139 comment 6970468763 follow-up): ほし窯 for ONE approved run on the same terms (3 photos).
+ * 2026-11-18, Issue #139 comment 6970468763 follow-up) listed ほし窯 for ONE approved run on the same terms (3 photos);
+ * that run was done and verified (Issue #139 comment 6990007019), so Issue #290 P0 took ほし窯 out again (CLOSED_SHOPS
+ * below; root's cycle.sh is back to 'tsugute:6 bicycle:6'). Its already-generated photos stay usable OFFLINE only —
+ * hoshigama-ai-intake.ts, the photo swap and the v2 package verify them against HOSHIGAMA_APPROVAL — and nothing in the
+ * worker can build ほし窯's run prompt or write its run bundle any more.
  */
 import { importBicycleAiPhotos } from "../design-artifact/bicycle-ai-intake";
-import { importHoshigamaAiPhotos } from "../design-artifact/hoshigama-ai-intake";
 import { importTsuguteAiPhotos, MAX_UPSCALE, type IntakeResult } from "../design-artifact/tsugute-ai-intake";
 import { BICYCLE_PHOTOS, BICYCLE_PHOTOS_MAX_IMAGES, BICYCLE_RUN_PROMPT_APPROVAL, BICYCLE_RUN_PROMPT_CANDIDATE_CHARS, BICYCLE_RUN_PROMPT_CANDIDATE_SHA256, buildBicycleRunPrompt } from "../../lib/design-agent/quality-pipeline/bicycle-ai-photos";
-import { buildHoshigamaRunPrompt, HOSHIGAMA_APPROVAL, HOSHIGAMA_MAX_UPSCALE, HOSHIGAMA_PHOTOS, HOSHIGAMA_PHOTOS_MAX_IMAGES, type HoshigamaApproval } from "../../lib/design-agent/quality-pipeline/hoshigama-ai-photos";
 import { buildTsugutePhotosPrompt, TSUGUTE_PHOTOS_MAX_IMAGES, TSUGUTE_PROMPT_CHARS, TSUGUTE_PROMPT_SHA256, TSUGUTE_SLOTS } from "../../lib/design-agent/quality-pipeline/tsugute-ai-photos";
 
 export type AutorunIntake = (o: { from: string; manifestOut: string; pipelineRoot: string; approvalIds: readonly string[] }) => Promise<IntakeResult>;
@@ -44,13 +46,13 @@ export type AutorunShop = {
   /** DEV-192: photo id → swap slot of the page's inventory, when a slot takes more than one picture */
   photoToSlot?: Readonly<Record<string, string>>;
   /** DEV-192: the owner's approval record of the run prompt, when it is separate from the source */
-  promptApproval?: typeof BICYCLE_RUN_PROMPT_APPROVAL | HoshigamaApproval;
+  promptApproval?: typeof BICYCLE_RUN_PROMPT_APPROVAL;
   /** = slotIds.length; the image calls of the one run (cycle.sh's allowlist carries the same number) */
   maxImages: number;
   /** the whole prompt of the run: built in code from the owner-approved brief, pinned by SHA-256 and length */
   prompt: { source: string; brief: string; sha256: string; chars: number; build: () => string };
   /** which run-bundle writer image-autorun.ts uses (by the bundle's schema name) */
-  bundle: "tsugute_ai_photos_v0" | "bicycle_ai_photos_v0" | "hoshigama_ai_photos_v0";
+  bundle: "tsugute_ai_photos_v0" | "bicycle_ai_photos_v0";
   intake: AutorunIntake;
   /** under the worker's results root: <outRoot>/<subdir>/<job_id>/ (photos, pipeline, swap, renders) */
   out: { subdir: "image-autorun" };
@@ -63,14 +65,6 @@ export type AutorunShop = {
 
 const TSUGUTE_DIR = "design-library/research/quality-pipeline/poc/tsugute";
 const BICYCLE_DIR = "design-library/research/quality-pipeline/poc/bicycle";
-const BAKERY_DIR = "design-library/research/quality-pipeline/poc/bakery";
-
-/** DEV-139: the owner's one-run approval of ほし窯 (2026-11-18). Refuses to load the manifest without it (fail closed). */
-function hoshigamaApproval(): HoshigamaApproval {
-  if (!HOSHIGAMA_APPROVAL) throw new Error("HOSHIGAMA_APPROVAL_MISSING");
-  return HOSHIGAMA_APPROVAL;
-}
-const HOSHIGAMA_RUN_APPROVAL = hoshigamaApproval();
 
 export const AUTORUN_SHOPS = {
   tsugute: {
@@ -116,34 +110,30 @@ export const AUTORUN_SHOPS = {
     out: { subdir: "image-autorun" },
     rights: { sourceKind: "ai_generated_demo", demoOnly: true, publicWeb: false, maxUpscale: MAX_UPSCALE, upscaleMethod: "sharp-lanczos3" },
   },
-  // DEV-139 (owner approval 2026-11-18, Issue #139 comment 6970468763 follow-up): ONE run of ほし窯 d2-v2's 3 photos, the
-  // approved run prompt pinned. Removed again by the follow-up PR after the run (the run sheet's (g)).
-  bakery: {
-    shop_id: "bakery",
-    page: "d2-v2",
-    pageDir: `${BAKERY_DIR}/fidelity/d2-v2`,
-    slotInventory: `${BAKERY_DIR}/photo-slots-d2-v2.json`,
-    slotEdges: `${BAKERY_DIR}/photo-slot-edges-d2-v2.json`,
-    slotIds: HOSHIGAMA_PHOTOS.map((p) => p.photo_id),
-    photoToSlot: Object.fromEntries(HOSHIGAMA_PHOTOS.map((p) => [p.photo_id, p.slot_id])),
-    maxImages: HOSHIGAMA_PHOTOS_MAX_IMAGES,
-    prompt: {
-      source: "lib/design-agent/quality-pipeline/hoshigama-ai-photos.ts",
-      brief: "docs/design/hoshigama-ai-photo-brief.md",
-      sha256: HOSHIGAMA_RUN_APPROVAL.run_prompt_sha256,
-      chars: HOSHIGAMA_RUN_APPROVAL.run_prompt_chars,
-      build: () => buildHoshigamaRunPrompt(),
-    },
-    promptApproval: HOSHIGAMA_RUN_APPROVAL,
-    bundle: "hoshigama_ai_photos_v0",
-    intake: importHoshigamaAiPhotos,
-    out: { subdir: "image-autorun" },
-    rights: { sourceKind: "ai_generated_demo", demoOnly: true, publicWeb: false, maxUpscale: HOSHIGAMA_MAX_UPSCALE, upscaleMethod: "sharp-lanczos3" },
-  },
 } as const satisfies Record<string, AutorunShop>;
 
 export type AutorunShopId = keyof typeof AUTORUN_SHOPS;
 export const AUTORUN_SHOP_IDS = Object.keys(AUTORUN_SHOPS) as [AutorunShopId, ...AutorunShopId[]];
+
+/**
+ * Issue #290 P0: shops whose owner-approved one-time run has been USED. They never come back into AUTORUN_SHOPS or
+ * root's IMAGE_AUTORUN_SHOPS — not under a new approval id or job id either. Another generation would need a new owner
+ * approval and a new reviewed PR that also deletes the entry here (the module refuses to load while a closed shop is
+ * listed, so the two cannot both hold). A job naming one is REFUSED_JOB_INVALID (the schema's shop enum), and root
+ * answers IMAGE_GRANT_SCOPE_MISMATCH before any grant.
+ */
+export const CLOSED_SHOPS: Readonly<Record<string, { approval_record: string; consumed_on: string; evidence: string; reason: string }>> = {
+  bakery: {
+    approval_record: "hoshigama-one-time-run-20261118",
+    consumed_on: "2026-11-19",
+    evidence: "Issue #139 comment 6990007019 (the run: 3 image calls, DONE, switch OFF); Issue #290 P0",
+    reason:
+      "ほし窯 d2-v2: the owner's one approved run (3 photos) is used up. Its photos stay usable offline only (intake, swap, package); no new generation, not even under a new id",
+  },
+};
+for (const id of Object.keys(CLOSED_SHOPS)) {
+  if (Object.prototype.hasOwnProperty.call(AUTORUN_SHOPS, id)) throw new Error(`AUTORUN_SHOP_CLOSED:${id}`);
+}
 
 /**
  * Fictional shops that are known but NOT implemented (never accepted; a job naming one is REFUSED_JOB_INVALID like any
