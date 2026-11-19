@@ -60,14 +60,14 @@ Staging の Preview は Vercel のログインの内側なので、**受信者�
 
 Environment は Preview・Branch は `develop` だけ。設定後に develop を再デプロイ (`/demo/*` の `frame-src` は build 時に読む)。
 
-- (a)・(b) 共通: `SALES_DEMO_VERSIONS_ENABLED=true`、`SALES_DEMO_QUALITY_REVIEW_ENABLED=true`。
-- (a) だけ: `SALES_DEMO_SHARE_ENABLED=true`、`SALES_DEMO_VIEW_SIGNING_KEY` (Staging 専用の新しい値)、`SALES_DEMO_ARTIFACT_ORIGIN` / `SALES_DEMO_APP_ORIGIN` / `SALES_DEMO_BASE_URL` を §5 の host に。
+- (a)・(b) 共通: `SALES_DEMO_VERSIONS_ENABLED=true`、`SALES_DEMO_QUALITY_REVIEW_ENABLED=true`、`SALES_DEMO_VIEW_SIGNING_KEY` (Staging 専用の新しい値。管理画面のプレビューも署名つきの表示 token を使うので、(b) でも要る)。
+- (a) だけ: `SALES_DEMO_SHARE_ENABLED=true`、`SALES_DEMO_ARTIFACT_ORIGIN` / `SALES_DEMO_APP_ORIGIN` / `SALES_DEMO_BASE_URL` を §5 の host に。
 - (b) では `SALES_DEMO_SHARE_ENABLED`・`SALES_DEMO_ARTIFACT_ORIGIN`・`SALES_DEMO_APP_ORIGIN` を**置かない** (共有は off のまま)。
 
 ## 7. 🛑 Staging での通し
 
 1. **prospect**: hosted の prospect は ingest からしか入らず、Staging にあるのは実店舗の prospect。**実店舗の prospect に架空の facts pack を付けない。**
-   架空店で通すなら、オーナーの承認のうえで、架空店 環 の固定の id (`lib/demo-version-package/seed-sendable.ts`) の prospect 1行を DB の所有者が SQL で入れる (入れる SQL と消す SQL を承認の時に示す)。承認が無ければ架空店の通しは省き、ローカルの E2E に任せる。
+   架空店で通すなら、オーナーの承認のうえで、架空店 環 の固定の id (`lib/demo-version-package/seed-sendable.ts`) の prospect 1行を DB の所有者が SQL で入れる (入れる SQL を承認の時に示す。後で行は消さない: §8)。承認が無ければ架空店の通しは省き、ローカルの E2E に任せる。
 2. **架空店**: 管理画面で facts の登録 → 「版を取り込む」→ PC 1440 / SP 390 のプレビュー → 品質・文章の承認 → 送信承認が `test_recipient_fictional_shop` で**拒否される**ことを確かめる。
    テスト宛先の guard は hosted では off のまま (on にしない)。共有 URL は送信承認 → 送信済みの後にしか外へ開かない (ローカルの E2E が固定) ので、**架空店では共有 URL の外部表示まで進まない**。それが正しい動き。
 3. **共有スイッチ (runbook B-5)**: (a) を選び、最初の実店舗の版を共有する直前にだけ on にする (`update public.sales_demo_share_settings set versioned_sharing_enabled = true;` と、`scripts/staging/lib.mjs` の照合を on 用に変える小 PR を同時に)。(b) では on にしない。
@@ -76,5 +76,7 @@ Environment は Preview・Branch は `develop` だけ。設定後に develop を
 ## 8. 片付け
 
 - Supabase の token は作業後に Revoke (`docs/STAGING.md` §2)。
-- §7.1 で架空店の prospect を入れたなら、承認時に示した SQL で、その prospect と、そこから作られたデモ・版・facts の行を消す (Storage の版のファイルも)。実店舗の行には触れない。
+- §7.1 で架空店の prospect を入れたなら、**行は消さない**。facts・文章の監査などは追記だけの表で、DB の所有者の DELETE も trigger が拒む (外すには trigger を止めることになり、安全装置を迂回する)。
+  架空店は送信承認で止まり、共有もされないので、残しても送られない。管理画面の「営業お断り」で、その prospect を DNC にしてデモを無効にする (`disabled_at`)。
+  行や Storage の版のファイルを本当に消すなら、trigger を止める操作と Storage の削除 (取り消せない、DEV-196j) を名指した**別のオーナー承認**を取る。実店舗の行には触れない。
 - 版にならなかった `staging/` の一時ファイルは残る (配られない。runbook B-5a)。
