@@ -6,6 +6,7 @@ import { MAX_BATCH_IMAGES } from "@/lib/design-agent/design-image/image-once";
 import { sequenceProblems } from "@/lib/design-agent/image-first/composition";
 import { buildPromptPlan, DIRECTIONS, EXCLUDED_READS, LINEAGE_PATTERNS, LINEAGE_TOKENS, loadPromptInputs, NAV_LABELS, pinOf, PROMPT_INPUTS, PromptStop, readChecked, SECTION_TEXT_KEYS, type DirectionKey, type Reader } from "@/lib/design-agent/image-first/prompt";
 import { Composition } from "@/lib/design-agent/image-first/record";
+import { UNAPPROVED_PACKET_FIXTURE, UNAPPROVED_PACKET_FIXTURE_SHA256 } from "./fixtures/unapproved-packet";
 
 // Issue #293 P3 (preparation): the deterministic prompt builder. Offline: the reader is injected (it reads the repo's
 // pinned inputs, recording every path), nothing calls Codex, a model, the image tool or the network.
@@ -196,7 +197,13 @@ describe("IMAGE_FIRST P3 prompt builder: the plan", () => {
   });
 });
 
-describe("IMAGE_FIRST P3 approval packet (draft, unapproved)", () => {
+const USED_APPROVALS = new RegExp([["HOSHIGAMA_", "APPROVAL"], ["wagashi-a-v4-", "20261025-01"], ["map", "ping.json"]].map((p) => p.join("")).join("|"));
+/** The `**状態: …。**` values written before the first `## ` heading. */
+const headerStatuses = (text: string) => [...text.slice(0, text.indexOf("\n## ")).matchAll(/\*\*状態[:：]\s*([^。*\s]+)。?\*\*/g)].map((m) => m[1]);
+/** The value of the §10 状態 row (the real §10, the last `## 10.` heading). */
+const section10Status = (text: string) => /^\| 状態(?:（[^|]*)? \| (.*) \|$/m.exec(text.slice(text.lastIndexOf("\n## 10.")))?.[1];
+
+describe("IMAGE_FIRST P3 approval packet (state-independent: holds for the draft and for a correctly filled packet)", () => {
   const packet = () => readFile(resolve(REPO, "docs/design/image-first-hoshigama-p3-packet.md"), "utf8");
   it.each(KEYS)("%s: the packet shows exactly the pins the builder prints", async (key) => {
     const text = await packet();
@@ -205,11 +212,34 @@ describe("IMAGE_FIRST P3 approval packet (draft, unapproved)", () => {
     for (const p of pin.parts) expect(text).toContain(`\`${p.prompt_sha256}\` / ${p.prompt_chars}`);
   });
 
-  it("is marked unapproved, names no used approval, and carries no prompt text", async () => {
+  it("the header status and the §10 status agree (both unapproved, or both 承認済み), names no used approval, and carries no prompt text", async () => {
     const text = await packet();
+    const header = headerStatuses(text);
+    expect(header).toHaveLength(1);
+    const row = section10Status(text);
+    if (header[0] === "承認済み") expect(row).toBe("承認済み");
+    else {
+      expect(header[0]).toBe("未承認");
+      expect(row).toBe("未記入");
+    }
+    expect(text).not.toMatch(USED_APPROVALS);
+    for (const p of pinOf(await planOf("d1")).parts) expect(text).not.toContain(p.prompt.split("\n")[0]!);
+  });
+});
+
+describe("IMAGE_FIRST P3 approval packet: the unapproved test fixture (an immutable copy of the draft)", () => {
+  const fixture = () => readFile(UNAPPROVED_PACKET_FIXTURE);
+  it("is pinned by its bytes, so it cannot drift silently", async () => {
+    expect(sha(await fixture())).toBe(UNAPPROVED_PACKET_FIXTURE_SHA256);
+  });
+
+  it("is marked unapproved, names no used approval, and carries no prompt text", async () => {
+    const text = (await fixture()).toString("utf8");
     // the status line at the top carries the state (the title no longer does)
     expect(text.slice(0, text.indexOf("\n## "))).toContain("**状態: 未承認。**");
-    expect(text).not.toMatch(new RegExp([["HOSHIGAMA_", "APPROVAL"], ["wagashi-a-v4-", "20261025-01"], ["map", "ping.json"]].map((p) => p.join("")).join("|")));
+    expect(headerStatuses(text)).toEqual(["未承認"]);
+    expect(section10Status(text)).toBe("未記入");
+    expect(text).not.toMatch(USED_APPROVALS);
     for (const p of pinOf(await planOf("d1")).parts) expect(text).not.toContain(p.prompt.split("\n")[0]!);
   });
 });
