@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-11-19 — DEV-139 post-run / Issue #290 P0 ほし窯の1回限り生成ルートを閉じた
+
+- PR #291（head `526ddbe7c867b081e846432ed03f93e67af0919c`）を develop へ merge（merge commit `565179312e8576c979cc508752b96677d7264f8a`）。Fresh Review PASS C0/H0/M0/L2（`.ai/reviews/DEV-139-hoshigama-run-close.md`、レビュー対象 `562c8bdf`、その後の差はレビュー記録だけ）。最新 head の CI 全11件 success。Protected Scope の変更なし（閉じる方向のみ）。
+- `AUTORUN_SHOPS.bakery` と ほし窯 の bundle writer を撤去、`CLOSED_SHOPS.bakery` で再掲載を fail closed。root の `cycle.sh` は 334f771 とバイト単位で同じ（`tsugute:6 bicycle:6`）。生成済み写真のオフライン intake・差し替え・package と承認の証跡は維持。
+- **オーナーの WSL 作業が残る**: run sheet (k) で root clone を `565179312e8576c979cc508752b96677d7264f8a` に合わせる（サービス起動・スイッチ作成・使用の印の削除は含まない。巻き戻しは 334f771 へだけ）。Claude・クラウドからは実行しない。
+- `bicycle:6` は未変更。撤去案は PR #291 の説明にあり、オーナー判断待ち。
+- P1（d2-v3 デザイン候補）は PR #292 で別に進行中（オーナー未採用・成功例登録ではない）。
+
 ## 2026-11-16 — DEV-263k / PR #277 R4 PASSと残Low対応
 
 - R4 Fresh Review: `634438b658afd3830d81b79bdef9262f6935468a` の独立コード審査が **PASS C0/H0/M0/L2**。同一SHAのGitHub Actions CI Run `43815976366` は **completed/success、全10ジョブ成功**とGitHub connectorで独立照合。Claudeの手元の`in_progress`スナップショットは時点の違いであり、CI失敗ではない。
