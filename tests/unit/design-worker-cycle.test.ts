@@ -863,6 +863,9 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
     // DEV-192: 輪 above its 6 images, and 輪 under the consumed DEV-185 id (refused for any shop)
     ["輪 with 7 images, entry matching", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "bicycle", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob(), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 7, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["輪 under the consumed DEV-185 approval id", { entries: [{ approval_id: "tsugute-photos-20261106-01", job_id: JOB_ID, shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) }], job: { ...imageJob("tsugute-photos-20261106-01"), shop_id: "bicycle", approval_scope: { shop: "bicycle", max_images: 6, max_jobs: 1, expires_at: isoAt(T0 + 12 * 3600) } } }, "IMAGE_GRANT_APPROVAL_USED"],
+    // Issue #290 P0: ほし窯's one approved run (DEV-139) is used — 'bakery:3' is out of the allowlist again, so a ほし窯 job
+    // with the owner's matching entry under a NEW approval id and job id gets no grant either
+    ["ほし窯 (closed after its one run) under a new id, entry matching", { entries: [{ approval_id: "s0-hoshigama-photos-20261119-02", job_id: JOB_ID, shop: "bakery", max_images: 3, max_jobs: 1, expires_at: isoAt(T0 + 2 * 3600) }], job: { ...imageJob("s0-hoshigama-photos-20261119-02", T0 + 2 * 3600), shop_id: "bakery", page: "d2-v2", slot_ids: ["ph-mouth-pc", "ph-mouth-sp", "ph-loaf"], brief_sha256: "a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1", approval_scope: { shop: "bakery", max_images: 3, max_jobs: 1, expires_at: isoAt(T0 + 2 * 3600) } } }, "IMAGE_GRANT_SCOPE_MISMATCH"],
     ["an entry with max_jobs: true (a bool is not 1; L4)", { entries: [{ approval_id: APPROVAL, job_id: JOB_ID, shop: "tsugute", max_images: 6, max_jobs: true, expires_at: isoAt(T0 + 12 * 3600) }] }, "IMAGE_GRANT_SCOPE_MISMATCH"],
   ] as const)("%s: no grant, nothing used up; switch on → the cycle stops before the worker and the bridge (DEV-192 L1), switch off → it goes on as before", (_, o, code) => {
     const w = imageWorld(o as Parameters<typeof imageWorld>[0]);
@@ -878,6 +881,8 @@ ${readFileSync(sysctl, "utf8").replace(/^#!\/bin\/bash\n/, "")}`);
       expect(count(r.calls, "admin") + count(r.calls, "bridge")).toBe(0);
     }
     if (code !== "IMAGE_GRANT_APPROVAL_USED") expect(w.used("approval", APPROVAL)).toBe(false);
+    // Issue #290 P0: the closed ほし窯 case uses up nothing either (no approval or job use record)
+    expect(w.used("approval", "s0-hoshigama-photos-20261119-02")).toBe(false);
     expect(existsSync(join(w.t, "var/lib/sr-design-cycle/image-approval-used/tsugute-photos-20261106-01"))).toBe(false);
   });
 

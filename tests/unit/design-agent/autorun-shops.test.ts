@@ -4,7 +4,9 @@
  *  - root's allowlist in cycle.sh (IMAGE_AUTORUN_SHOPS) and the worker's manifest name the same shops and image counts;
  *  - every implemented entry is complete and pinned (prompt SHA-256 and length, slot inventory + edges of that page,
  *    the swap takes the shop, the rights rules are the intake's);
- *  - the known-but-unimplemented shops are not in the manifest, and the reasons recorded for them hold in the repository.
+ *  - the known-but-unimplemented shops are not in the manifest, and the reasons recorded for them hold in the repository;
+ *  - Issue #290 P0: a shop whose one approved run is used (CLOSED_SHOPS: ほし窯) is in neither list, and root's cycle.sh is
+ *    byte for byte the file before ほし窯 was listed (the root clone update after the close is checked against it).
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -14,7 +16,8 @@ import { MAX_BATCH_IMAGES } from "@/lib/design-agent/design-image/image-once";
 import { SWAP_SHOP_SPECS } from "@/lib/design-agent/quality-pipeline/photo-swap-shops";
 import { AI_DEMO_SHOPS, SWAP_SHOPS } from "../../../scripts/design-artifact/photo-swap";
 import { MAX_UPSCALE } from "../../../scripts/design-artifact/tsugute-ai-intake";
-import { AUTORUN_SHOP_IDS, AUTORUN_SHOPS, UNIMPLEMENTED_SHOPS } from "../../../scripts/sales-design-worker/autorun-shops";
+import { HOSHIGAMA_APPROVAL } from "@/lib/design-agent/quality-pipeline/hoshigama-ai-photos";
+import { AUTORUN_SHOP_IDS, AUTORUN_SHOPS, CLOSED_SHOPS, UNIMPLEMENTED_SHOPS } from "../../../scripts/sales-design-worker/autorun-shops";
 
 const REPO = resolve(__dirname, "../../..");
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -38,9 +41,9 @@ describe("DEV-188 the shop allowlist: root and worker agree", () => {
     expect(rootAllowlist()).toEqual(fromManifest);
   });
 
-  it("つぐ手, (DEV-192, owner GO 2026-11-07, one approved run) 輪 and (DEV-139, owner approval 2026-11-18, one run) ほし窯 are implemented — no other shop", () => {
-    expect(AUTORUN_SHOP_IDS).toEqual(["tsugute", "bicycle", "bakery"]);
-    expect(rootAllowlist()).toEqual({ tsugute: 6, bicycle: 6, bakery: 3 });
+  it("つぐ手 and (DEV-192, owner GO 2026-11-07, one approved run) 輪 are listed — no other shop (Issue #290 P0: ほし窯's one run is used, it is out)", () => {
+    expect(AUTORUN_SHOP_IDS).toEqual(["tsugute", "bicycle"]);
+    expect(rootAllowlist()).toEqual({ tsugute: 6, bicycle: 6 });
   });
 
   it("cycle.sh compares the job's shop with that allowlist, not with a literal", () => {
@@ -137,13 +140,50 @@ describe("DEV-188 unimplemented shops stay out (未対応)", () => {
     expect(existsSync(join(REPO, "design-library/research/quality-pipeline/poc/bicycle/photo-slot-edges-d1-v7.json"))).toBe(true);
   });
 
-  it("DEV-139 (owner approval 2026-11-18): ほし窯 for one approved run — swap, worker and root agree on d2-v2's 3 photos", () => {
+  it("Issue #290 P0: ほし窯 is closed, not unimplemented — its photos stay usable offline (swap/intake), the generation route is gone", () => {
     expect(Object.prototype.hasOwnProperty.call(UNIMPLEMENTED_SHOPS, "bakery")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(AUTORUN_SHOPS, "bakery")).toBe(false);
+    expect(rootAllowlist().bakery).toBeUndefined();
+    // kept for the already-generated photos: the swap takes ほし窯's AI demo pictures of the approved prompt only
     expect(SWAP_SHOP_SPECS.bakery.aiDemoAllowed).toBe(true);
-    const b = AUTORUN_SHOPS.bakery;
-    expect([b.page, b.slotIds, b.maxImages, b.bundle]).toEqual(["d2-v2", ["ph-mouth-pc", "ph-mouth-sp", "ph-loaf"], 3, "hoshigama_ai_photos_v0"]);
-    expect(b.photoToSlot).toEqual({ "ph-mouth-pc": "ph-mouth", "ph-mouth-sp": "ph-mouth", "ph-loaf": "ph-loaf" });
-    expect([b.prompt.sha256, b.prompt.chars]).toEqual(["a7b7d524470a6e271503ca1820db0f0693cecd28e9c51bf4b19b3543f62be7f1", 2668]);
-    expect(rootAllowlist().bakery).toBe(3);
+    expect(AI_DEMO_SHOPS.has("bakery")).toBe(true);
+  });
+});
+
+describe("Issue #290 P0 closed shops: a used one-time run never comes back, not under a new id", () => {
+  it("ほし窯 is recorded as closed with the used approval record and the run's verification report", () => {
+    expect(Object.keys(CLOSED_SHOPS)).toEqual(["bakery"]);
+    expect(CLOSED_SHOPS.bakery).toMatchObject({ approval_record: HOSHIGAMA_APPROVAL!.approval_record, consumed_on: "2026-11-19" });
+    expect(CLOSED_SHOPS.bakery!.approval_record).toBe("hoshigama-one-time-run-20261118");
+    expect(CLOSED_SHOPS.bakery!.evidence).toContain("6990007019");
+  });
+
+  it("a closed shop is in neither the worker's manifest nor root's allowlist, nor the unimplemented list", () => {
+    const root = rootAllowlist();
+    for (const id of Object.keys(CLOSED_SHOPS)) {
+      expect(Object.prototype.hasOwnProperty.call(AUTORUN_SHOPS, id), id).toBe(false);
+      expect((AUTORUN_SHOP_IDS as readonly string[]).includes(id), id).toBe(false);
+      expect(root[id], id).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(UNIMPLEMENTED_SHOPS, id), id).toBe(false);
+    }
+  });
+
+  it("the manifest refuses to load while a closed shop is listed (fail closed, not only this test)", () => {
+    const src = readFileSync(join(REPO, "scripts/sales-design-worker/autorun-shops.ts"), "utf8");
+    expect(src).toContain("if (Object.prototype.hasOwnProperty.call(AUTORUN_SHOPS, id)) throw new Error(`AUTORUN_SHOP_CLOSED:${id}`);");
+  });
+
+  it("nothing in the worker builds ほし窯's run prompt or writes its run bundle any more", () => {
+    const dir = join(REPO, "scripts/sales-design-worker");
+    for (const f of ["autorun-shops.ts", "image-autorun.ts", "worker.ts", "cycle.sh", "run.sh"]) {
+      const text = readFileSync(join(dir, f), "utf8");
+      expect(text, f).not.toMatch(/buildHoshigamaRunPrompt|writeHoshigamaPhotosForRun|hoshigama_ai_photos_v0|from "[^"]*hoshigama[^"]*"/);
+    }
+  });
+
+  it("root's cycle.sh is byte for byte the file before ほし窯 was listed (334f771, SHA-256 8beb350d…)", () => {
+    const text = readFileSync(join(REPO, "scripts/sales-design-worker/cycle.sh"));
+    expect(sha256(text.toString("utf8"))).toBe("8beb350dcc7b85a78c0ea060638d4922362d02d25e8eba1d798152fe2d146dab");
+    expect(text.toString("utf8")).not.toMatch(/bakery|hoshigama|ほし窯/);
   });
 });

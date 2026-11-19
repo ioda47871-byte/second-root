@@ -9,11 +9,10 @@
  * void if EITHER byte sequence changes: every check compares the file's bytes and the built run prompt with the pins.
  * The "_DRAFT_" names of the pins are kept: the owner approved exactly the draft's bytes, and renaming changes nothing.
  *
- * Not a standing permission. ほし窯 is in scripts/sales-design-worker/autorun-shops.ts AUTORUN_SHOPS and root's
- * IMAGE_AUTORUN_SHOPS ('bakery:3') only so that the owner's one run can be started: each run still needs the owner's
- * root switch entry for one job, root's atomic use record, the boot-bound 20-minute grant and the worker's one-use
- * ledger (no timer, no retry). The run approval id and its expiry are chosen by the owner at run time, never in code.
- * After the run a follow-up PR removes ほし窯 from both lists (docs/operations/hoshigama-one-time-run-sheet.md (g)).
+ * Not a standing permission. ほし窯 was in scripts/sales-design-worker/autorun-shops.ts AUTORUN_SHOPS and root's
+ * IMAGE_AUTORUN_SHOPS ('bakery:3') only so that the owner's one run could be started. That run is done (Issue #139
+ * comment 6990007019), and Issue #290 P0 removed ほし窯 from both lists again (CLOSED_SHOPS; the run sheet's (g)/(k)):
+ * no new generation, not under a new id either. The record and pins below stay only to verify the photos already made.
  *
  * The 3 photos (2 slots; the oven mouth takes a PC and an SP picture) follow the brief §3 recommendation. Nothing here
  * calls a model, a process or the network.
@@ -95,6 +94,9 @@ export type HoshigamaApproval = {
 /**
  * DEV-139: the owner's GO for ONE real run (2026-11-18) — its scope and both pinned byte sequences. Void if either
  * changes (every check compares the bytes with these pins). No run approval id or expiry is written in code.
+ * USED (Issue #139 comment 6990007019; Issue #290 P0): the worker and root no longer list ほし窯
+ * (scripts/sales-design-worker/autorun-shops.ts CLOSED_SHOPS). This record stays ONLY so the offline intake, the swap
+ * and the v2 package can verify the photos that run already made; it is not a permission to generate again.
  */
 export const HOSHIGAMA_APPROVAL: HoshigamaApproval | null = {
   approval_record: "hoshigama-one-time-run-20261118",
@@ -192,7 +194,8 @@ export function checkApprovedHoshigamaPrompt(text: string, approval: HoshigamaAp
 /**
  * The run prompt of the pinned text: fixed run rules (as 輪's run had), then the text from its "COMMON: " line to the
  * end, byte for byte (the file's 3-line header is left out). Its SHA-256 and length are HOSHIGAMA_RUN_PROMPT_DRAFT_*,
- * owner-approved 2026-11-18; the worker uses it only through buildHoshigamaRunPrompt, which checks the approval record.
+ * owner-approved 2026-11-18; read only through buildHoshigamaRunPrompt, which checks the approval record (Issue #290 P0:
+ * the worker no longer reads it).
  */
 export function buildHoshigamaRunPromptCandidate(draftText: string): string {
   const check = checkDraftHoshigamaPrompt(draftText);
@@ -213,7 +216,8 @@ ${check.parsed.fromCommon}`;
 
 const REPO_ROOT = resolvePath(__dirname, "../../..");
 /**
- * The approved run prompt from this checkout, for the worker — "" unless an approval record names exactly the file's
+ * The approved run prompt from this checkout (the worker used it for the one run; Issue #290 P0: no worker path reads it
+ * any more, it stays for verifying the photos already made) — "" unless an approval record names exactly the file's
  * bytes and the built prompt (default HOSHIGAMA_APPROVAL). Never throws. `o` is for tests only.
  */
 export function buildHoshigamaRunPrompt(o: { text?: string; approval?: HoshigamaApproval | null } = {}): string {
