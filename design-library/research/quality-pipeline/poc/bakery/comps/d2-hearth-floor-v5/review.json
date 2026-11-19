@@ -4,17 +4,17 @@
   "direction_id": "d2-hearth-floor-v5",
   "comp": {
     "html_sha256": "3c3b466abd0d78c8e26f82ea6da7b1792e363015a8de87372ed542fd81bda8da",
-    "css_sha256": "92d1b46de30fcb22e769be99dbd3a9da0e911664ed7e70eb1e5dbe90b4412d6b",
+    "css_sha256": "091d6ef5cb0c3a2273e55329809b37d4fdc9be5bb1e4ef05c54398eb38984782",
     "copy_sha256": "ec9c1d6b24623176315e805c3fda2f7c181dbc9d7269c6e645b0975cca9140f8"
   },
   "renders": {
     "desktop": {
-      "sha256": "478525c114b8415ae652a5e5384c869b8a3e3292b13b85c26665edb70b8a6eec",
+      "sha256": "8ece80aa6738dabbe3c0dbce5a31dc24ade3a6ba1e3e489792bef88edb9482fd",
       "width": 1440,
       "height": 4757
     },
     "mobile": {
-      "sha256": "d27dcce5fbb3ff96a2681196cdad8cea77089fd5906296db7c08b7d68676b210",
+      "sha256": "2fc13bc99806e56f7ac3aa6884d8d586e668b03664a56236f0b62f45c75b5af8",
       "width": 390,
       "height": 4064
     }
@@ -22,7 +22,7 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_01Exi6qmhHEvgGkMELxuSyXu",
-    "viewed_at": "2026-11-19T06:30:00Z",
+    "viewed_at": "2026-11-19T09:00:00Z",
     "how": "Read tool: PC 1440 at 0.6 in 4 bands, SP 390 at 1.0 in 3 bands, 768 at 0.6, beside d2-v2 drawn the same way; faces drawn: Noto Serif CJK JP / Noto Sans CJK JP; lines, boards, planks, cuts and rings measured in Chromium at 360-1920 (no overflow, overlap, text <12px; contrast >= 5.09)"
   },
   "viewed_crops": {
@@ -279,10 +279,25 @@
         "クープの線が字の箱に掛かった → 輪郭を 12em × 2.4em にして線を em の間に置いた",
         "Fresh Review M1/L1/L2: 熱の輪が窯の奥との境で直線に切れていた → 横と縦の2つの消え方を重ねた (mask-composite)。粉の字が器の縁を越えた → 740 に。窯の奥の写真の下が空いた → バゲットを中央に大きく"
       ]
+    },
+    {
+      "n": 2,
+      "cause": "実写真 (撮影済みの3枚、差し替えの出力) を入れて見ると、図と地が仮の板に合わせて作られていた: 田舎パンの写真の暗い縁が地に溶け、描いた木口が Hero の写真の火の横で漫画に見え、薪の火から店先への地の変わり目が帯に見えた",
+      "protect": [
+        "Hero のアーチと写真の板 (変えない)",
+        "板の大きさと形 (撮影済みの写真の2倍の範囲、変えない)",
+        "新しい言葉を足さない"
+      ],
+      "changed": [
+        "田舎パンの板の外側に、焼き色の細い縁と柔らかい影を付けた (板の箱と切り抜きは同じ)",
+        "描いた木口を焦げた木口にした (地を暗く、縁を細い熾火の色に、年輪を暗く)",
+        "薪の火から店先の棚への地の変わり目を、中間の色を1つ足して長くした (SP 10vw→24vw、PC 9%→22%)"
+      ],
+      "regressions_fixed": []
     }
   ],
   "remaining": [
-    "写真はすべて仮の板 (placeholder_limited)。実写真での比較は差し替え (scratchpad の p1-real-swap.ts) のあと",
+    "写真は実写真の差し替え (scratchpad の p1-real-swap.ts、写真はリポジトリの外) で PC1440・SP390 と中間の幅を見た。このファイルの描画の SHA は仮の板の描画のもの",
     "SP の窯の口の板 (600 の端で 348×577) は生成済みの 1024×1536 の SP 写真で2倍を満たす。指示書の下限 650×975 の写真では足りない (テストが固定)",
     "札の言葉と写真の札は d2-v2 と同じ創作の文で、オーナーの確認が要る。新しい言葉は足していない",
     "粉の字の点の模様と熱の輪の濃淡は飾りの図で、何を示すかは札と文に頼る。凡例の言葉 (薪・石窯 など) は足していない (提案)",

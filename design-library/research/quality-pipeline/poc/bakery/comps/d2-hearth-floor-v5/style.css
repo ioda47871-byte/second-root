@@ -94,7 +94,9 @@ dd { word-break: keep-all; overflow-wrap: anywhere; }
 .deep { z-index: 2; padding: 22vw 5.13vw 16vw; background: linear-gradient(var(--char-2), var(--deep)); color: var(--cream); }
 .mark-deep { position: absolute; right: 5.13vw; top: 22vw; color: #d2a874; }
 .fig-loaf { width: 78vw; transform: rotate(-2deg); }
-.board-loaf { aspect-ratio: 4 / 3; --tone: #7a5236; }
+/* real-photo pass: the loaf photo is dark at its edges, like the floor: a hairline of crust and a soft drop set it off
+   the ground (outside the board; the board box and its clip are unchanged) */
+.board-loaf { aspect-ratio: 4 / 3; --tone: #7a5236; box-shadow: 0 0 0 1px rgba(233, 184, 114, .22), 0 18px 36px rgba(0, 0, 0, .5); }
 .ph-loaf { color: #c79c6a; }
 .item-inaka { margin-top: 8vw; font-size: 11.28vw; color: var(--crust); }
 .deep-fact { margin-top: 6vw; font-family: var(--mincho); font-size: 6.15vw; line-height: 1.65; inline-size: calc(11.5ic + 7px); }
@@ -115,15 +117,17 @@ dd { word-break: keep-all; overflow-wrap: anywhere; }
 .rings circle:nth-child(3) { stroke-width: 2.6; opacity: .44; }
 .rings circle:nth-child(4) { stroke-width: 1.8; opacity: .3; }
 .rings circle:nth-child(5) { stroke-width: 1.2; opacity: .18; }
-.logs circle:not(.ring) { fill: #2a170d; stroke: #ef8436; stroke-width: 3; }
-.logs .ring { fill: none; stroke: #a8562a; stroke-width: 1.5; }
-.logs .crack { stroke: #ef8436; stroke-width: 2; }
+/* real-photo pass: the drawn log ends are charred, with only an ember rim, so they do not read as a cartoon beside the
+   photographed fire in the hero */
+.logs circle:not(.ring) { fill: #1c0f08; stroke: #c9682a; stroke-width: 2.2; }
+.logs .ring { fill: none; stroke: #5e3118; stroke-width: 1.4; }
+.logs .crack { stroke: #d9782f; stroke-width: 1.6; opacity: .85; }
 .leader { fill: none; stroke: #ffd3a0; stroke-width: 2; }
 .fire-fact { position: relative; z-index: 2; font-family: var(--mincho); font-size: 8.72vw; line-height: 1.5; inline-size: calc(9.5ic + 6px); }
 .mark-fire { position: absolute; z-index: 2; left: 69.97vw; top: 122.56vw; transform: translateY(-50%); writing-mode: horizontal-tb; padding: .45em .25em .45em .6em; font-size: 17px; letter-spacing: .3em; color: #ffd9ab; background: #2a170d; border: 1px solid #ef8436; border-radius: 2px; }
 
 /* door: outside the oven door, the shop-front shelf — each bread stands on its own plank, never on a grid */
-.door { padding: 18vw 5.13vw 16vw; background: linear-gradient(var(--bake) 0, #c99a5e 14vw, var(--wheat) 100%); color: var(--ink); }
+.door { padding: 18vw 5.13vw 16vw; background: linear-gradient(var(--bake) 0, #a8723f 10vw, #c99a5e 24vw, var(--wheat) 100%); color: var(--ink); }
 .mark-door { position: absolute; right: 6vw; top: 16vw; padding: 12px 7px 8px; color: #3b2214; background: repeating-linear-gradient(88deg, rgba(90, 52, 24, .12) 0 1px, transparent 1px 6px), var(--plank); transform: rotate(2deg); box-shadow: 0 4px 8px rgba(90, 52, 24, .22); }
 .door-fact { font-family: var(--mincho); font-size: 5.38vw; line-height: 1.9; inline-size: calc(13.5ic + 9px); max-inline-size: 76vw; }
 .shelf { display: flex; flex-direction: column; gap: 10vw; margin-top: 12vw; }
@@ -200,7 +204,7 @@ dd { word-break: keep-all; overflow-wrap: anywhere; }
   .mark-fire { left: 77.23vw; top: 37.24vw; font-size: clamp(16px, 1.67vw, 26px); }
 
   /* door: the sentence and its hanging tag at the left; three planks at the right, the lower two running off the edge */
-  .door { display: grid; grid-template-columns: 30vw minmax(0, 1fr); column-gap: 6vw; align-items: center; padding: 7.64vw 5.56vw 6.94vw; background: linear-gradient(var(--bake) 0, #c99a5e 11%, var(--wheat) 100%); }
+  .door { display: grid; grid-template-columns: 30vw minmax(0, 1fr); column-gap: 6vw; align-items: center; padding: 7.64vw 5.56vw 6.94vw; background: linear-gradient(var(--bake) 0, #a8723f 9%, #c99a5e 22%, var(--wheat) 100%); }
   .mark-door { left: 5.56vw; right: auto; top: 50%; transform: translateY(-50%) rotate(2deg); padding: 16px 9px 10px; font-size: clamp(15px, 1.25vw, 19px); }
   .door-fact { grid-column: 1; grid-row: 1; margin: 1vw 0 0 5vw; font-size: clamp(16px, 1.81vw, 28px); max-inline-size: none; }
   .shelf { grid-column: 2; grid-row: 1; gap: 4.17vw; margin: 0; }
