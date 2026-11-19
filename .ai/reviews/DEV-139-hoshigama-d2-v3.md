@@ -5,7 +5,7 @@
 - Reviewer: independent Fresh Reviewer (separate context)
 - Date: 2026-11-19
 
-## Verdict: FAIL (C0 / H0 / M1 / L2 / Info 4)
+## Verdict (round 1, 047d7ce): FAIL (C0 / H0 / M1 / L2 / Info 4) — superseded by Round 2 (PASS at 8237764) below
 
 The PR fails on one Medium finding. At every PC width (601 to 1920), the heat rings in the fire section are cut by a straight horizontal edge at the deep/fire boundary. d2-v2 had fixed this exact defect (the M1 of the visual-first review), and d2-v3 brings it back. It breaks the direction's protect item "節の境に線を引かない", and the README and review.json both claim that item is kept.
 
@@ -133,3 +133,60 @@ The fix is a one-line CSS change, made in both copies of the file (fidelity/d2-v
   - comp-lane, the slot files and the tests are still byte-identical or passing
 - L1 and L2 are optional.
 - This commit adds only this record. No photo was generated, fetched or committed, and nothing was pushed.
+
+---
+
+# Round 2: re-review at 8237764
+
+- Range: `573e7935..8237764`. The fix commit 8237764 sits on top of the round-1 record 9bdf61f.
+- Reviewed SHA: 8237764
+- Reviewer: the same independent Fresh Reviewer (separate context)
+- Date: 2026-11-19
+
+## Verdict: PASS (C0 / H0 / M0 / L0 / Info 3)
+
+M1 is fixed and confirmed at every PC width. L1 and L2 are fixed. Nothing regressed.
+
+## Round-1 findings
+
+### M1: fixed
+- What changed: `.heat` now carries two mask layers, intersected with `mask-composite: intersect` (`-webkit-mask-composite: source-in`):
+  - the round-1 horizontal fade, `linear-gradient(90deg, transparent 20%, #000 40%)`, which keeps the rings off the sentence
+  - a new vertical fade, `linear-gradient(transparent 8%, #000 24%)`
+- Why this removes the edge: 8% of the 64vw box is 5.12vw. The box starts 5vw above `.fire`, so the drawing is already fully transparent where it passes under `.deep`. No circle can reach the boundary.
+- Visual check: crops at 601, 768, 1024, 1199, 1440 and 1920 (JS off, external requests aborted), viewed brightened 3×. The outer ring and the glow fade out before the boundary at every width, with no flat top and no straight line.
+- Measurement script (`p1-measure.mjs`, scratchpad) on d2-v3: `section_edge_cut = 0` at all 9 widths (360 to 1920). Every other check is also 0, the smallest text is 12px, and the lowest contrast is 5.09.
+- My row-mean luminance check: the small step across the boundary at 601–1440 is the same size as d2-v2's own background step (29.33 → 29.67 at 768 in d2-v2). It is not drawing.
+- The server html-safety check accepts `mask-composite`: the audit below passes.
+
+### L1: fixed
+- `.kona-char` went from 840 to 740 viewBox units, in the base rule, so it applies at both PC and SP.
+- In the 1440 and 390 renders the whole 粉 glyph sits inside the bowl's rim, with margin on every side.
+
+### L2: fixed
+- The PC baguette is now centred under the photo row, at 4.86vw instead of 4.17vw, with a top margin of 4.17vw instead of 6vw.
+- The 1440 render no longer has the empty lower-left area: the photo, the vertical name and the sentence form the top row, and the baguette fills the width below.
+- The photo board is unchanged.
+
+## No regressions
+- Changed between rounds: the two style.css files (byte-identical to each other), README.md for d2-v3 and for A5, review.json (new render hashes and observations), copy-review.json (only `page_css_sha256`), and the css_sha256 in the two slot files.
+- A5 and the C page are byte-identical (`cmp` on index.html, style.css and copy.json). copy.json is still byte-identical to d2-v2.
+- Nothing under d2-v2/, d2-hearth-floor-v4/, `hoshigama-ai-photos.ts` or the prompt changed across `573e7935..8237764`. No PNG files.
+- `comp-copy --audit` (A5): `approve_candidate`, round 0, codes [], mayShowOwner true. The send blockers are the expected two. The committed copy-review.json was reproduced: git status is clean afterwards.
+- `comp-lane --dir` on A5 and on d2-v3: OK, 0 findings. Desktop 1440×4757 `478525c1…6eec`, mobile 390×4064 `d27dcce5…b210`. Both are identical to review.json.
+- `comp-lane --check-review --facts`: `{"ok":true,"codes":[]}`.
+- `photo-slots.ts`, with and without `--edges`: byte-identical (`cmp`) to the committed `photo-slots-d2-v3.json` and `photo-slot-edges-d2-v3.json`. The board sizes are unchanged, so the 2× analysis from round 1 still holds.
+- Tests (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers):
+  - the 3 named files: 38 passed
+  - quality-pipeline, plus every test that references the spec or hoshigama, plus the 8 isolation tests: 29 files, 653 passed
+- `npm run typecheck`: 0 errors. `npm run lint`: 0 errors and 1 warning (the untouched visual-first-brief test). `npm run check:secrets`: clean.
+
+## Info
+- I5: The new edge-cut check in `p1-measure.mjs` is not sensitive enough at small PC widths. Run on the 047d7ce CSS, it flags the cut only at 1440 and 1920, not at 601 or 768, although the box crossed the boundary there too. Its threshold (0.012) misses faint strokes. That is why the visual check above covers all six widths. If this check is ever moved into the repo, tighten it or add a box-crossing test.
+- I6: The same script flags `section_edge_cut` at the *bottom* of the fire section in d2-v2 (heat, spread 0.02–0.045). d2-v2 is frozen and not part of this PR. This only means the d2-v2 side of the owner comparison carries that artefact.
+- I1–I4 from round 1 still apply, unchanged. Most importantly, the owner comparison must use the real-photo swap output.
+
+## Disposition
+- PASS at 8237764: Critical, High, Medium and Low are all 0.
+- Still to do outside this review: the real-photo swap and the side-by-side comparison for the owner, CI, and owner adoption.
+- This commit adds only this round to the record. Nothing was pushed.
