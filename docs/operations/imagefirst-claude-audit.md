@@ -67,7 +67,8 @@ CP-003 の `learn` / `do_not_copy` の**文だけ**。**参照画像は送らな
 - ハード失格: `not_a_website`、`hero_only`、`sp_not_independent`、`other_shop`、`fabricated_text`、`invented_facts`、`store_or_people`、
   `disclosure`、`logo_or_realism`、`shop_facts`。
 - 指摘はどれも、場所（送ったラベル、元画像の行の範囲）・問題・直し方・**守るもの**を持つ。3点以下には指摘が必須、ハード失格には場所が必須。
-  見えた構造（hero / flow / 節の型）は構造記述子の語彙から選ばせ、汎用LPの型はコードが数える。
+  汎用LPの型（文と画像を左右に分けただけの Hero、中央の大見出しだけの Hero、同じ帯の積み重ね、カードの格子）は、`not_generic_template` の
+  採点の文言として平文で伝えるだけで、構造の語彙や機械的な判定は使わない（下の §5 の 10）。
 
 判定（コード）: ハード失格が1つでも → `drop`。そうでなく、5項目の合計 22/25 以上・各項目 4 以上・6点すべて 4 以上 → `show_owner`。それ以外 → `revise`。
 全体はふたつの表示幅の悪い方。
@@ -124,6 +125,8 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
 9. 成功例の登録・評価シートの確定は、監査では決してしない（オーナーだけ）。
 10. 採点の文言の違いを承知しておくこと: rubric の structure の文言は、評価テンプレートの構成 5 点の目安「商品・こだわり（2〜3 枚の visual cards）」を
     わざと採らない（カード中心は `not_generic_template` で汎用LPの型として扱う）。項目の id・順番・閾値はテンプレートのまま。
+    また、design agent の暫定の構造の語彙（構造記述子）は**わざと使わない**（import も語のリストの写しもしない）。その語彙は暫定で、使う場所が
+    門で制限されており、この監査で使うにはオーナーの承認が要る。汎用LP・頁全体の点は平文の採点の文言だけで扱う。
 
 管理画面でオーナーがプレビューを見る機能は、別の後の機能である。ChatGPT 側へ画像を返すことは、まだ**達成していない**。
 

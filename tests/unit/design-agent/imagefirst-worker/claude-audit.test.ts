@@ -105,7 +105,6 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
     const md = readFileSync(join(auditDir(s), "AUDIT.md"), "utf8");
     for (const i of rec.binding.images) expect(md).toContain(`\`${i.preview_sha256}\` | \`${i.audit_sha256}\``);
     expect(rec.derived.desktop_1440).toEqual(deriveViewport(rec.viewports.desktop_1440!));
-    expect(rec.derived.desktop_1440!.generic_patterns_seen).toEqual(["section_layout:grid_cards"]);
     expect(rec.auditor).toMatchObject({ via: "claude_cli_print_no_tools", model_reported: "fake-test-model", cli_version: "0.0.0-test", calls: 2, reasks: 0 });
     // private: 0700 directories, 0600 files; the one-use marker; AUDIT.md for the owner; nothing in the repository
     expect(statSync(auditDir(s)).mode & 0o777).toBe(0o700);

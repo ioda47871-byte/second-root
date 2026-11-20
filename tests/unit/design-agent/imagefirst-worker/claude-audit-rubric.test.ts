@@ -132,8 +132,12 @@ describe("Issue #302: the runner (copied from curiosity-media) keeps its guards"
 describe("Issue #302: module boundaries (the audit can never write a success case or an owner evaluation)", () => {
   it("imports are pinned", () => {
     expect(imports(`${W}/claude-cli.ts`)).toEqual(["../bounded-process", "../worker/env"]);
-    expect(imports(`${W}/audit-rubric.ts`)).toEqual(["../structure/descriptor", "./claude-cli", "node:crypto"]);
-    expect(imports(`${W}/audit-schema.ts`)).toEqual(["../structure/descriptor", "./audit-rubric", "zod"]);
+    expect(imports(`${W}/audit-rubric.ts`)).toEqual(["./claude-cli", "node:crypto"]);
+    expect(imports(`${W}/audit-schema.ts`)).toEqual(["./audit-rubric", "zod"]);
+    // the gated structure modules are never reached (the path is assembled, so this test does not name it either)
+    const gated = new RegExp(["struct", "ure/", "(descr", "iptor|measure|references|observe)"].join(""));
+    for (const f of ["claude-cli.ts", "audit-rubric.ts", "audit-schema.ts", "claude-audit.ts"]) expect(src(`${W}/${f}`), f).not.toMatch(gated);
+    expect(src("scripts/sales-design-worker/imagefirst-audit.ts")).not.toMatch(gated);
     expect(imports(`${W}/claude-audit.ts`)).toEqual(["../image-first/prompt", "../worker/state", "./audit-rubric", "./audit-schema", "./bundle", "./claude-cli", "./preview", "node:crypto", "node:fs", "node:fs/promises", "node:path", "sharp"]);
     expect(imports("scripts/sales-design-worker/imagefirst-audit.ts")).toEqual(["../../lib/design-agent/imagefirst-worker/claude-audit", "../../lib/design-agent/imagefirst-worker/jail-state", "../../lib/design-agent/worker/env", "node:fs/promises", "node:os", "node:path"]);
   });

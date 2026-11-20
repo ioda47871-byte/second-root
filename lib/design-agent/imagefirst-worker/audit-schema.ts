@@ -7,8 +7,7 @@
  * Only the owner adopts, revises or rejects a design, confirms a rubric sheet or registers a success case.
  */
 import { z } from "zod";
-import { GENERIC } from "../structure/descriptor";
-import { AUDIT_THRESHOLDS, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, STRUCTURE_WORDS, VIEWPORT_IDS, type AuditViewport, type CheckId, type CriterionId, type HardFailId, type SentImage } from "./audit-rubric";
+import { AUDIT_THRESHOLDS, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, VIEWPORT_IDS, type AuditViewport, type CheckId, type CriterionId, type HardFailId, type SentImage } from "./audit-rubric";
 
 export const AUDIT_SCHEMA = "imagefirst_claude_audit_v1";
 const Line = (max: number) => z.string().trim().min(1).max(max);
@@ -28,11 +27,6 @@ export const ViewportAnswer = z.strictObject({
   hard_fails: keyed(HARD_FAIL_IDS, HardFail),
   scores: keyed(CRITERION_IDS, Scored),
   checks: keyed(CHECK_IDS, Scored),
-  structure_seen: z.strictObject({
-    hero: z.enum(STRUCTURE_WORDS.hero),
-    flow: z.enum(STRUCTURE_WORDS.flow),
-    section_layouts: z.array(z.enum(STRUCTURE_WORDS.section_layout)).min(1).max(12),
-  }),
   findings: z.array(Finding).max(20),
 });
 export type ViewportAnswer = z.infer<typeof ViewportAnswer>;
@@ -65,7 +59,6 @@ export const Derived = z.strictObject({
   low_criteria: z.array(z.enum(CRITERION_IDS as [CriterionId, ...CriterionId[]])),
   low_checks: z.array(z.enum(CHECK_IDS as [CheckId, ...CheckId[]])),
   hard_fail_hits: z.array(z.enum(HARD_FAIL_IDS as [HardFailId, ...HardFailId[]])),
-  generic_patterns_seen: z.array(z.string().max(40)),
   verdict: z.enum(VERDICTS),
 });
 export type Derived = z.infer<typeof Derived>;
@@ -80,14 +73,8 @@ export function deriveViewport(a: ViewportAnswer): Derived {
   const low_criteria = CRITERION_IDS.filter((k) => a.scores[k].score < AUDIT_THRESHOLDS.minCriterion);
   const low_checks = CHECK_IDS.filter((k) => a.checks[k].score < AUDIT_THRESHOLDS.minCheck);
   const hard_fail_hits = HARD_FAIL_IDS.filter((k) => a.hard_fails[k].hit);
-  const s = a.structure_seen;
-  const generic_patterns_seen = [
-    ...(GENERIC.hero.has(s.hero) ? [`hero:${s.hero}`] : []),
-    ...(GENERIC.flow.has(s.flow) ? [`flow:${s.flow}`] : []),
-    ...[...new Set(s.section_layouts)].filter((l) => GENERIC.section_layout.has(l)).map((l) => `section_layout:${l}`),
-  ];
   const verdict: Verdict = hard_fail_hits.length > 0 ? "drop" : total >= AUDIT_THRESHOLDS.passTotal && low_criteria.length === 0 && low_checks.length === 0 ? "show_owner" : "revise";
-  return { total, lowest: Math.min(...scores), low_criteria, low_checks, hard_fail_hits, generic_patterns_seen, verdict };
+  return { total, lowest: Math.min(...scores), low_criteria, low_checks, hard_fail_hits, verdict };
 }
 
 /** The whole audit's advisory verdict: the worst of the two viewports. */

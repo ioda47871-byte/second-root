@@ -225,7 +225,7 @@ function renderAuditMd(r: AuditRecord): string {
       continue;
     }
     L.push(`- verdict: \`${d.verdict}\` · total ${d.total}/25 · lowest ${d.lowest}${d.low_criteria.length ? ` · below 4: ${d.low_criteria.join(", ")}` : ""}${d.low_checks.length ? ` · checks below 4: ${d.low_checks.join(", ")}` : ""}`);
-    L.push(`- hard fails: ${d.hard_fail_hits.length ? d.hard_fail_hits.join(", ") : "none"} · generic patterns seen: ${d.generic_patterns_seen.length ? d.generic_patterns_seen.join(", ") : "none"}`, "");
+    L.push(`- hard fails: ${d.hard_fail_hits.length ? d.hard_fail_hits.join(", ") : "none"}`, "");
     L.push("| item | score | reason |", "|---|---|---|");
     for (const k of CRITERION_IDS) L.push(`| ${k} | ${a.scores[k].score} | ${a.scores[k].reason.replace(/\|/g, "/")} |`);
     for (const k of CHECK_IDS) L.push(`| ${k} (check) | ${a.checks[k].score} | ${a.checks[k].reason.replace(/\|/g, "/")} |`);

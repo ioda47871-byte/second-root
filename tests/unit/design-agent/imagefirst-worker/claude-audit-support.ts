@@ -142,7 +142,6 @@ export function answerTemplate(o: { score?: number; hit?: string } = {}) {
     hard_fails: Object.fromEntries(HARD_FAIL_IDS.map((k) => [k, k === o.hit ? { hit: true, where: { image: "@LABEL", area: "top", y0: null, y1: null }, note: "seen" } : { hit: false, where: null, note: "" }])),
     scores: Object.fromEntries(CRITERION_IDS.map((k) => [k, { score: s, reason: "ok, see /login sign in the picture" }])),
     checks: Object.fromEntries(CHECK_IDS.map((k) => [k, { score: s, reason: "ok" }])),
-    structure_seen: { hero: "type_led", flow: "alternating_spreads", section_layouts: ["full_bleed_media", "grid_cards"] },
     findings,
   };
 }
