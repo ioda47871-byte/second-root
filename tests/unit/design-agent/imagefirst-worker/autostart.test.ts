@@ -16,7 +16,8 @@ import { cleanupTemps, commitFiles, filledPacket, git, ID, NOW, REPO, tmp, worke
 // played in-process against the fake Codex. No Codex, no model, no network, no root, no systemd.
 
 vi.setConfig({ testTimeout: 120_000 });
-afterAll(cleanupTemps);
+// removing ~30 temp worlds (each a bare origin and a clone) takes seconds under load: more than the 10 s hook default
+afterAll(cleanupTemps, 60_000);
 const SCRIPT = join(REPO, "scripts/sales-design-worker/imagefirst-autostart.sh");
 const UNIT_DIR = join(REPO, "scripts/sales-design-worker/systemd");
 const FAKE_WORKER = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/fake-worker.ts");
@@ -47,7 +48,7 @@ if [ "$1" = is-enabled ]; then [ -f '${sc}/isenabled-fail' ] && exit 1; if [ -f 
 [ -f '${sc}/show-fail' ] && exit 1; if [ -f '${sc}'/"$u" ]; then cat '${sc}'/"$u"; else echo inactive; fi`,
   );
   // the privilege drop's stand-in: records its options, then execs the command after "--" (as setpriv does: no
-  // supervising parent). A test may swap in a runuser-like supervisor to show that path loses the receipt.
+  // supervising parent). A test may swap in a runuser-like supervisor to show that path loses the worker's line.
   exe(join(bin, "setpriv"), `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${sc}/setpriv.log'; exec "$@"`);
   // pgrep: sc/pgrep = a process of the worker user; sc/pgrep-error = pgrep cannot tell
   exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0; exit 1`);
@@ -359,11 +360,20 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     const r = await p.done;
     expect(r.worker).toBeNull();
     expect(r.stdout).toContain("worker: <no line>");
-    expect(w.receipts()).toEqual([]);
-    // let the orphaned fake worker (it got the SIGTERM before its parent was killed) finish before the temp dir goes
-    // (in production systemd's KillMode=mixed SIGKILLs it here: no receipt at all)
+    // The worker's graceful stop never finished (it is held): no receipt of it. Whether a receipt exists already depends
+    // on the timeout(1) between the stand-in and node. GNU coreutils 9.4: none yet. uutils timeout (Ubuntu 26.04, the CI
+    // runner) sets the child's parent-death signal to SIGTERM, so the stand-in's SIGKILL of timeout reaches node as a
+    // second SIGTERM 2 s after the first: the worker's hard stop, which writes the receipt from what is on disk with no
+    // result of the entry (cli_exit null) and exits. Either way the poll ended without the worker's line.
+    const early = w.receipts();
+    expect(early.length).toBeLessThanOrEqual(1);
+    for (const x of early) expect(x).toMatchObject({ status: "stopped", stop_code: "WORKER_INTERRUPTED", stage: "call", interrupted: true, cli_exit: null, approval_id: ID });
+    // let the orphaned fake worker (if still running) finish before the temp dir goes
+    // (in production systemd's KillMode=mixed SIGKILLs it here)
     spawnSync("rm", ["-f", join(w.home, "fake-codex-stop-hold")]);
     await until(() => w.receipts().length === 1);
+    // the run ends exactly once: a hard stop's receipt is never replaced by a later one
+    if (early.length === 1) expect(w.receipts()).toEqual(early);
   });
 
   it("the worker's own lock held when it starts after the marker: AUTOSTART_USED_LOCKED (not RAN), nothing called", async () => {
