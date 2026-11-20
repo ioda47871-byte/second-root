@@ -2,7 +2,7 @@
 # Second Root IMAGE_FIRST review re-send (Issue #302 P3 follow-up, PR #310 review H1 / M3): root's wrapper that re-sends
 # the SAME sealed private bundle of ONE finished run to the local review inbox (~/sr-runs/review-inbox) after the
 # automatic hand-off at the end of the worker run failed. It starts the EXISTING worker CLI once in its re-send mode
-# (imagefirst-worker.ts --deliver-review <approval id>: no cycle, no claim, no ledger, no Codex, never packs again).
+# (imagefirst-worker.ts --deliver-review <approval id>: no cycle, no claim, no ledger, no Codex; packs only the first time when nothing was sealed or sent, never a second time).
 #
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-deliver-review.sh <approval id>
 #
