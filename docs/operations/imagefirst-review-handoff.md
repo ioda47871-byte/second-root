@@ -61,7 +61,11 @@
   バイトから作り直したものと完全に一致する**とき（元ファイルのパスと SHA、各プレビューの SHA、ID）だけ。同じ名前で別の bundle SHA なら
   `PREVIEWS_CONFLICT`、SHA の札だけ合わせた別物なら `PREVIEWS_NOT_FROM_BUNDLE`（PR #308 レビュー L1。黙って使い回さない）。
 - 2 つが同時に作ると、遅れた方は先の方が確保した空のディレクトリが埋まるのを待ち（最大 10 秒）、同じものなら `duplicate`。
-  埋まらなければ `PREVIEWS_BUSY`（L2）。
+  埋まらなければ `PREVIEWS_BUSY`（L2）。待つ間も毎回、そのディレクトリが自分のもので 0700 であることを確かめる（違えば `PREVIEWS_DIR_UNSAFE`）。
+- 作る途中で落ちた（OOM や kill）ときは、空の `previews/<ID>/` が残る。作られてから 120 秒より古い空のディレクトリは待たずに
+  `PREVIEWS_STALE_CLAIM` で止まる（PR #309 レビュー L3）。**直し方（手で）**: 中身が空であることを確かめてから、その空ディレクトリだけを消し、
+  もう一度作る（ダミーなら PoC をもう一度走らせる）:
+  `sudo bash $A run sr-designgen -- bash -c 'rmdir ~/sr-runs/review-inbox/previews/<ID>'`（`rmdir` は空でなければ失敗するので、中身は消えない）
 - inbox からの削除（`removeFromInbox`・保持期限の削除）は、`previews` や `.records` が symlink・他人のもの・0700 でないときは
   何も消さずに `INBOX_SUBDIR_UNSAFE` で止まる（L3）。
 
@@ -78,8 +82,8 @@ A=/root/sr-capture-admin/scripts/sales-design-capture/admin.sh
 # 0) 何も動いていないこと（読むだけ。どれか一つでも違えば、そこで止めて報告する）
 #    a) 次の 3 つの service がどれも active でない（3 行とも active 以外。inactive / failed / unknown など）
 systemctl is-active sr-jail-claude.service sr-imagefirst-autostart.service sr-design-cycle.service
-#    b) 次の 2 つの timer が install も有効化もされていない（list-unit-files が「0 unit files listed」か STATE が disabled、
-#       is-active が 2 行とも active 以外）
+#    b) 次の 2 つの timer が enable されていない（list-unit-files が「0 unit files listed」、または STATE が disabled / masked）。
+#       決め手は次の is-active: 2 行とも active 以外であること
 systemctl list-unit-files sr-design-cycle.timer sr-imagefirst-autostart.timer
 systemctl is-active sr-design-cycle.timer sr-imagefirst-autostart.timer
 #    c) sr-designgen のプロセスが無い
@@ -116,7 +120,8 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 
 うまくいかないとき: Claude が「読めない」「権限がない」と答えたら、その文言を記録して止める。**chmod や jail の設定を変えて通さない。**
 ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
-worker（`cycle.ts`）・承認の claim・自動起動の grant・受け渡しは、日付 `00000000`（と暦に無い日付）の承認 ID を拒否する（`APPROVAL_ID_RESERVED`）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
+worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant と run marker は、日付 `00000000`（と暦に無い日付）の承認 ID を拒否する
+（`APPROVAL_ID_RESERVED` など。テストで固定）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
 ## 4. 本物の run での流れ（Issue #302 P3 の続き。オフラインで実装・テスト済み、実機では未実施）
 

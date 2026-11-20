@@ -194,7 +194,7 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     nothingRan(w);
   });
 
-  it("the marker: missing, expired, too far, invalid or already used = no call", () => {
+  it("the marker: missing, expired, too far, invalid (the dummy PoC's reserved date included) or already used = no call", () => {
     const w = wsl();
     w.approve();
     w.switchOn();
@@ -203,7 +203,7 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_EXPIRED" });
     w.marker({ approval_id: ID, expires_at: "2026-11-21T01:00:01Z" });
     expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_MARKER_INVALID" });
-    for (const bad of [{ approval_id: "tsugute-imagefirst-d3-20261120-01", expires_at: "2026-11-20T09:00:00Z" }, { approval_id: ID }, { approval_id: `${ID}/../x`, expires_at: "2026-11-20T09:00:00Z" }]) {
+    for (const bad of [{ approval_id: "tsugute-imagefirst-d3-20261120-01", expires_at: "2026-11-20T09:00:00Z" }, { approval_id: ID }, { approval_id: `${ID}/../x`, expires_at: "2026-11-20T09:00:00Z" }, { approval_id: "hoshigama-imagefirst-d3-00000000-00", expires_at: "2026-11-20T09:00:00Z" }]) {
       w.marker(bad);
       expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_MARKER_INVALID" });
     }

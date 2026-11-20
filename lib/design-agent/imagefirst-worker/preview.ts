@@ -34,7 +34,7 @@ const MiB = 1024 * 1024;
 export const PREVIEW_LIMITS = { maxSide: 1568, maxBytes: 3.5 * MiB, tallRatio: 2, overlap: 64, maxTiles: 16, maxInputPixels: 40_000_000 } as const;
 export const PREVIEW_SCHEMA = "imagefirst_review_previews_v1";
 
-export type PreviewCode = "BUNDLE_UNVERIFIED" | "PREVIEWS_DIR_UNSAFE" | "PREVIEWS_CONFLICT" | "PREVIEW_TOO_LARGE" | "PREVIEW_TOO_MANY_TILES" | "PREVIEW_DECODE_FAILED" | "PREVIEW_INDEX_INVALID" | "PREVIEW_FILE_SET_MISMATCH" | "PREVIEW_SHA_MISMATCH" | "PREVIEWS_NOT_FROM_BUNDLE" | "PREVIEWS_BUSY";
+export type PreviewCode = "BUNDLE_UNVERIFIED" | "PREVIEWS_DIR_UNSAFE" | "PREVIEWS_CONFLICT" | "PREVIEW_TOO_LARGE" | "PREVIEW_TOO_MANY_TILES" | "PREVIEW_DECODE_FAILED" | "PREVIEW_INDEX_INVALID" | "PREVIEW_FILE_SET_MISMATCH" | "PREVIEW_SHA_MISMATCH" | "PREVIEWS_NOT_FROM_BUNDLE" | "PREVIEWS_BUSY" | "PREVIEWS_STALE_CLAIM";
 export class PreviewStop extends Error {
   constructor(readonly code: PreviewCode) {
     super(code);
@@ -260,6 +260,12 @@ export type BuildPreviewsOptions = {
 
 /** How long a builder waits for a concurrent builder's claimed (still empty) previews directory to be filled. */
 export const PREVIEW_WAIT = { totalMs: 10_000, stepMs: 100 } as const;
+/**
+ * An empty claimed directory older than this (by mtime) is a builder that died between claiming and renaming (OOM, a
+ * kill): refused as PREVIEWS_STALE_CLAIM at once, never waited on or reused (PR #309 review L3). Recovery is by hand
+ * (docs/operations/imagefirst-review-handoff.md §2): remove that empty directory, then build again.
+ */
+export const PREVIEW_STALE_CLAIM_MS = 120_000;
 
 /** The same index, field for field (both are plain JSON built by this module). */
 const sameIndex = (a: PreviewIndex, b: PreviewIndex) => JSON.stringify(a) === JSON.stringify(b);
@@ -275,8 +281,16 @@ async function existingPreviews(final: string, want: PreviewIndex, wait: { total
   for (let waited = 0; ; waited += wait.stepMs) {
     const info = await lstat(final).catch(() => null);
     if (!info) return stop("PREVIEWS_BUSY");
-    if (!info.isDirectory() || info.isSymbolicLink()) return stop("PREVIEWS_DIR_UNSAFE");
-    if ((await readdir(final)).length > 0) break;
+    // every pass: a real directory of ours, 0700 (PR #309 review L2); a readdir error is a fixed code, never a raw error
+    if (!(await ownPrivateDir(final))) return stop("PREVIEWS_DIR_UNSAFE");
+    let names: string[];
+    try {
+      names = await readdir(final);
+    } catch {
+      return stop("PREVIEWS_DIR_UNSAFE");
+    }
+    if (names.length > 0) break;
+    if (Date.now() - info.mtimeMs > PREVIEW_STALE_CLAIM_MS) return stop("PREVIEWS_STALE_CLAIM");
     if (waited >= wait.totalMs) return stop("PREVIEWS_BUSY");
     await new Promise((r) => setTimeout(r, wait.stepMs));
   }
