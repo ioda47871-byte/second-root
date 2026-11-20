@@ -65,7 +65,7 @@
 - 作る途中で落ちた（OOM や kill）ときは、空の `previews/<ID>/` が残る。作られてから 120 秒より古い空のディレクトリは待たずに
   `PREVIEWS_STALE_CLAIM` で止まる（PR #309 レビュー L3）。**直し方（手で）**: 中身が空であることを確かめてから、その空ディレクトリだけを消し、
   もう一度作る（ダミーなら PoC をもう一度走らせる）:
-  `sudo bash $A run sr-designgen -- bash -c 'rmdir ~/sr-runs/review-inbox/previews/<ID>'`（`rmdir` は空でなければ失敗するので、中身は消えない）
+  `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- bash -c 'rmdir ~/sr-runs/review-inbox/previews/<ID>'`（`rmdir` は空でなければ失敗するので、中身は消えない）
 - inbox からの削除（`removeFromInbox`・保持期限の削除）は、`previews` や `.records` が symlink・他人のもの・0700 でないときは
   何も消さずに `INBOX_SUBDIR_UNSAFE` で止まる（L3）。
 
@@ -120,9 +120,11 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 
 うまくいかないとき: Claude が「読めない」「権限がない」と答えたら、その文言を記録して止める。**chmod や jail の設定を変えて通さない。**
 ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
-worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant と run marker・本物の run の受け渡し（`deliver-review.ts`、§4）と
-その再送 wrapper は、日付 `00000000`（と暦に無い日付）の承認 ID を拒否する
-（`APPROVAL_ID_RESERVED` など。テストで固定）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
+worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant・本物の run の受け渡し（`deliver-review.ts`、§4）は、日付 `00000000` と
+暦に無い日付の承認 ID を拒否する（`APPROVAL_ID_RESERVED` / `APPROVAL_ID_INVALID`。テストで固定）。自動起動の run marker（`imagefirst-autostart.sh`）と
+再送 wrapper（`imagefirst-deliver-review.sh`）が見るのは日付 `00000000` だけで、暦に無い日付（例 `20261399`）はそこを通り、その後 worker が
+`GRANT_INVALID` / `APPROVAL_ID_INVALID` で止める（どれも承認を使わずに止まる。PR #309 再レビュー L-1）。ローカルの受け渡し（`local-inbox.ts`）
+そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
 ## 4. 本物の run での流れ（Issue #302 P3 の続き。オフラインで実装・テスト済み、実機では未実施）
 
