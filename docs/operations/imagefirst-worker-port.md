@@ -94,8 +94,15 @@ git checkout --quiet --force --detach origin/develop && git clean -q -f -d
 承認が未記入なら `{"status":"no_job","code":"PACKET_NOT_APPROVED",...}` で何もせずに終わる。`succeeded` なら `run_dir` と `receipt` の場所が出る。
 受け渡しは従来どおり `tar` と `SHA256SUMS` でオーナーへ（receipt の SHA と照合する）。**GitHub へは push しない**（画像・プロンプト・manifest のどれも）。
 
-停止: 端末なら Ctrl-C（入口が呼び出しを `aborted` として記録する。20 秒後に group ごと kill）。別の端末からなら
+停止: 端末なら Ctrl-C（入口が呼び出しを `aborted` として記録する）。別の端末からなら
 `pkill -TERM -f scripts/sales-design-worker/imagefirst-worker.ts`。止めても承認は使用済みのまま（作り直しには新しい承認 ID）。
+止めた実行も**必ず receipt と audit の 1 行で終わる**（停止コード `WORKER_INTERRUPTED`、`interrupted: true`。Issue #302 P0、PR #301 review L1）。
+時間の順（`cycle.ts` の `WORKER_STOP`）: 入口は自分の 20 秒の hard stop と 10 秒の後片付けで止まる → worker は 35 秒待ってから入口の group を
+SIGKILL し、receipt を書く → worker 自身が 50 秒たってもまだ待っている（または 2 回目の Ctrl-C）ときだけ、すべてを kill して、ディスク上の
+画像から receipt を書く（最大 10 秒）。どの経路でも再試行はしない。
+
+印（`claims/<承認 ID>.used`）は、`stateDir` と `claims` を `O_DIRECTORY|O_NOFOLLOW` で開いた handle に対して作る（Linux の `/proc/self/fd`
+経由。PR #303 review L1）。lstat の確認のあとで path が差し替えられても、印は外へ向かない。
 
 戻し方: adapter は状態を 3 か所にしか書かない（§3 の置き場所）。使わなくするには起動しないだけでよい（timer は無い）。
 コードを戻すときは develop で revert する。`claims/` と入口の ledger は**消さない**（消すと同じ承認 ID が再び使える状態になる）。

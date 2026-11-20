@@ -73,9 +73,10 @@ export const say = (o: object) => process.stdout.write(`${JSON.stringify(o)}\n`)
 /**
  * The stop signals, installed at once so a signal that arrives during the checks is never lost (the call then
  * does not start): the first aborts the call (it records itself as aborted), a second one or 20 s later kills
- * every process and exits.
+ * every process and exits. `hardStopMs` (default 20 s) moves that hard stop later: the IMAGE_FIRST worker waits for
+ * its child entry's own 20 s + 10 s stop before it kills anything (PR #301 review L1).
  */
-export function stopSignals(o: { cleanup?: () => Promise<void> } = {}): { controller: AbortController; stop: () => void } {
+export function stopSignals(o: { cleanup?: () => Promise<void>; hardStopMs?: number } = {}): { controller: AbortController; stop: () => void } {
   const controller = new AbortController();
   let stopping = false;
   // a hard stop still removes what a running call left (its session log and image dirs), for at most 10 s
@@ -89,7 +90,7 @@ export function stopSignals(o: { cleanup?: () => Promise<void> } = {}): { contro
     if (stopping) return hardExit();
     stopping = true;
     controller.abort();
-    setTimeout(hardExit, 20_000).unref();
+    setTimeout(hardExit, o.hardStopMs ?? 20_000).unref();
   };
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, stop);
   return { controller, stop };
