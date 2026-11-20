@@ -53,6 +53,15 @@ const APPROVAL_ID = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
 const PLAN_ID = /^hoshigama-imagefirst-p3-\d{8}$/;
 const STOP_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
 
+/**
+ * How an interrupted run still ends with a receipt (PR #301 review L1). On SIGTERM / SIGINT / SIGHUP the worker aborts
+ * the invocation: the entry's group gets SIGTERM; the entry stops its call, hard-stops 20 s later and cleans up for at
+ * most 10 s more (stopSignals in the shared CLI helper). The worker waits `graceMs` (longer than that) before SIGKILL, then
+ * writes the receipt and the audit line. Only if the worker is still waiting at `hardStopMs` (or gets a second signal)
+ * does it kill every group and write the receipt from what is on disk (`recordInterrupted`), for at most `recordMs`.
+ */
+export const WORKER_STOP = { entryStopMs: 20_000 + 10_000, graceMs: 35_000, hardStopMs: 50_000, recordMs: 10_000 } as const;
+
 export type CycleStatus = "no_job" | "locked" | "refused" | "succeeded" | "stopped";
 export type CycleReport = { status: CycleStatus; code: string | null; invoked: boolean; approval_id?: string; run_dir?: string; receipt?: string };
 export const exitCodeOf = (s: CycleStatus) => (s === "refused" ? 2 : s === "stopped" ? 1 : 0);
@@ -63,6 +72,8 @@ export type WorkerReceipt = {
   status: "succeeded" | "stopped";
   stop_code: string | null;
   stage: "precheck" | "call" | "verify" | null;
+  /** The worker was stopped by a signal while the entry ran (stop_code WORKER_INTERRUPTED unless the run completed). */
+  interrupted: boolean;
   cli_exit: number | null;
   cli_timed_out: boolean;
   shop: string;
@@ -91,6 +102,12 @@ export type CycleOptions = {
   /** Where the private run directories go (0700). Outside the repository. */
   runsDir: string;
   signal?: AbortSignal;
+  /**
+   * Called once, right after the claim and before the invocation, with a function that ends the run with a receipt
+   * (stop code WORKER_INTERRUPTED) and an audit line from what is on disk. The worker calls it when it must exit before
+   * the invocation returns; when the run has already ended it waits for that receipt instead. It never invokes anything.
+   */
+  onInvoking?: (recordInterrupted: () => Promise<void>) => void;
 };
 export type CycleDeps = {
   commit: () => Promise<CommitState>;
@@ -153,12 +170,34 @@ export function generateArgv(o: { repoRoot: string; outDir: string; planId: stri
   ];
 }
 
-/** One-use claim (ported: body-image-approvals.ts claimBodyImageApproval): "claimed" only when this call created the marker. */
-async function claim(stateDir: string, approvalId: string, at: number): Promise<"claimed" | "APPROVAL_ALREADY_CLAIMED" | "CLAIM_FAILED"> {
-  const dir = join(stateDir, "claims");
+/** A directory we may write in: a real directory, owned by this user, closed to group and others. */
+const ours = (info: { isDirectory(): boolean; uid: number; mode: number }) => info.isDirectory() && info.uid === process.getuid?.() && (info.mode & 0o077) === 0;
+const DIR_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+/** A name inside an open directory, reached through that handle (Linux /proc: the same object as openat(fd, name)). */
+const under = (dir: { fd: number }, name: string) => `/proc/self/fd/${dir.fd}/${name}`;
+type ClaimResult = "claimed" | "APPROVAL_ALREADY_CLAIMED" | "CLAIMS_DIR_UNSAFE" | "CLAIM_FAILED";
+
+/**
+ * One-use claim (ported: body-image-approvals.ts claimBodyImageApproval): "claimed" only when this call created the
+ * marker. Race-free (PR #303 review L1): `stateDir` is opened once with O_DIRECTORY|O_NOFOLLOW and checked on that
+ * handle; `claims` is made and opened the same way relative to the handle; the marker is created relative to the
+ * `claims` handle with O_EXCL|O_NOFOLLOW. A path swapped after the earlier lstat checks cannot redirect it any more.
+ * Without /proc (not Linux) nothing is created: CLAIM_FAILED, never "claimed".
+ */
+export async function claimApproval(stateDir: string, approvalId: string, at: number): Promise<ClaimResult> {
+  const handles: Awaited<ReturnType<typeof open>>[] = [];
+  const unsafe = (code: string | undefined) => code === "ELOOP" || code === "ENOTDIR";
   try {
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-    const h = await open(join(dir, `${approvalId}.used`), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    const state = await open(stateDir, DIR_FLAGS);
+    handles.push(state);
+    if (!ours(await state.stat())) return "CLAIMS_DIR_UNSAFE";
+    await mkdir(under(state, "claims"), { mode: 0o700 }).catch((e: { code?: string }) => {
+      if (e.code !== "EEXIST") throw e;
+    });
+    const claims = await open(under(state, "claims"), DIR_FLAGS);
+    handles.push(claims);
+    if (!ours(await claims.stat())) return "CLAIMS_DIR_UNSAFE";
+    const h = await open(under(claims, `${approvalId}.used`), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     try {
       await h.writeFile(`${JSON.stringify({ approval_id: approvalId, claimed_at: new Date(at).toISOString() })}\n`);
     } finally {
@@ -166,7 +205,10 @@ async function claim(stateDir: string, approvalId: string, at: number): Promise<
     }
     return "claimed";
   } catch (error) {
-    return (error as { code?: string }).code === "EEXIST" ? "APPROVAL_ALREADY_CLAIMED" : "CLAIM_FAILED";
+    const code = (error as { code?: string }).code;
+    return code === "EEXIST" ? "APPROVAL_ALREADY_CLAIMED" : unsafe(code) ? "CLAIMS_DIR_UNSAFE" : "CLAIM_FAILED";
+  } finally {
+    for (const h of handles.reverse()) await h.close().catch(() => undefined);
   }
 }
 const claimed = (stateDir: string, approvalId: string) => lstat(join(stateDir, "claims", `${approvalId}.used`)).then(() => true, (e: { code?: string }) => e.code !== "ENOENT");
@@ -203,7 +245,11 @@ const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").re
 
 export async function runImagefirstCycle(o: CycleOptions, d: CycleDeps): Promise<CycleReport> {
   const now = d.now ?? Date.now;
+  // one audit line per report (the run's end may be recorded early by recordInterrupted)
+  const audited = new WeakSet<CycleReport>();
   const audit = async (r: CycleReport) => {
+    if (audited.has(r)) return r;
+    audited.add(r);
     await appendFile(join(o.stateDir, "audit.jsonl"), `${JSON.stringify({ at: new Date(now()).toISOString(), ...r })}\n`, { mode: 0o600 }).catch(() => undefined);
     return r;
   };
@@ -215,13 +261,13 @@ export async function runImagefirstCycle(o: CycleOptions, d: CycleDeps): Promise
   }
   if (lock === undefined) return audit({ status: "locked", code: "WORKER_LOCKED", invoked: false });
   try {
-    return await audit(await locked(o, d, now));
+    return await audit(await locked(o, d, now, audit));
   } finally {
     await lock.release().catch(() => undefined);
   }
 }
 
-async function locked(o: CycleOptions, d: CycleDeps, now: () => number): Promise<CycleReport> {
+async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (r: CycleReport) => Promise<CycleReport>): Promise<CycleReport> {
   const refuse = (code: string, approvalId?: string): CycleReport => ({ status: "refused", code, invoked: false, ...(approvalId ? { approval_id: approvalId } : {}) });
   const a = IMAGEFIRST_ALLOWLIST;
 
@@ -276,77 +322,91 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number): Promise
   if (o.signal?.aborted) return refuse("WORKER_ABORTED", approvalId);
 
   // ---- the claim, then ONE invocation (never retried, whatever it returns) ----
-  const got = await claim(o.stateDir, approvalId, now());
+  const got = await claimApproval(o.stateDir, approvalId, now());
   if (got !== "claimed") return refuse(got, approvalId);
   const started = now();
   const runDir = join(o.runsDir, `${approvalId}-${stamp(started)}`);
   const packetSha256 = sha256(packetBytes);
+  const planId = packet.planId;
+
+  // ---- the end of the run, exactly once: the receipt and the audit line (also when the worker is interrupted) ----
+  let ending: Promise<CycleReport> | null = null;
+  const end = (res: BoundedResult | null, interrupted: boolean) => (ending ??= settle(res, interrupted).then(audit));
+  o.onInvoking?.(async () => {
+    await end(null, true);
+  });
+
   let res: BoundedResult | null;
   try {
-    res = await d.invoke(generateArgv({ repoRoot: o.repoRoot, outDir: runDir, planId: packet.planId, approvalId, expires: packet.expires, packetSha256, commit }), o.signal);
+    res = await d.invoke(generateArgv({ repoRoot: o.repoRoot, outDir: runDir, planId, approvalId, expires: packet.expires, packetSha256, commit }), o.signal);
   } catch {
     res = null;
   }
-  const finished = now();
+  return end(res, o.signal?.aborted === true || res?.aborted === true);
 
   // ---- read the private run back: every picture hashed on disk and compared with what the entry recorded ----
-  const out = res ? lastJson(res.stdout) : null;
-  const images = await hashFiles(runDir, "parts");
-  const stopped = await hashFiles(runDir, "stopped");
-  const call = await readFile(join(runDir, "call.json"), "utf8").then((t) => JSON.parse(t) as { status?: string; images?: unknown }, () => null);
-  // a stopped call.json records only a count of pictures (never parts): nothing to compare
-  const recorded = new Map((Array.isArray(call?.images) ? (call.images as { file?: string; sha256?: string }[]) : []).map((i) => [i.file, i.sha256]));
-  const verified = images.length > 0 && images.length === recorded.size && images.every((i) => recorded.get(i.file) === i.sha256);
-  const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
-  const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;
-  const cliOk = res?.code === 0 && !res.timedOut && out?.status === "succeeded" && call?.status === "succeeded";
-  const complete = cliOk && verified && pc === a.images.pc && sp === a.images.sp;
-  let stopCode: string | null = null;
-  let stage: WorkerReceipt["stage"] = null;
-  if (!complete) {
-    if (cliOk) [stopCode, stage] = ["BUNDLE_VERIFY_FAILED", "verify"];
-    else if (!res) [stopCode, stage] = ["CLI_NOT_STARTED", "precheck"];
-    else if (res.timedOut) [stopCode, stage] = ["CLI_TIMEOUT", "call"];
-    else {
-      stopCode = typeof out?.code === "string" && STOP_CODE.test(out.code) ? out.code : res.code === null ? "CLI_KILLED" : "CLI_RESULT_INVALID";
-      stage = out?.stage === "precheck" || res.code === 2 ? "precheck" : "call";
-    }
-  }
-  const receipt: WorkerReceipt = {
-    schema: "imagefirst_worker_receipt_v1",
-    status: complete ? "succeeded" : "stopped",
-    stop_code: stopCode,
-    stage,
-    cli_exit: res?.code ?? null,
-    cli_timed_out: res?.timedOut ?? false,
-    shop: a.shop,
-    direction: a.direction,
-    approval_id: approvalId,
-    plan_id: packet.planId,
-    commit,
-    packet_sha256: packetSha256,
-    plan_sha256: a.planSha256,
-    prompt_sha256: a.promptSha256,
-    prompt_chars: a.promptChars,
-    run_dir: runDir,
-    images,
-    stopped_images: stopped,
-    counts: { pc, sp, total: images.length, stopped: stopped.length },
-    verified,
-    timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
-  };
-  const receiptPath = join(o.runsDir, `${approvalId}-${stamp(started)}.receipt.json`);
-  const written = await open(receiptPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
-    .then(async (h) => {
-      try {
-        await h.writeFile(`${JSON.stringify(receipt, null, 2)}\n`);
-      } finally {
-        await h.close();
+  async function settle(res: BoundedResult | null, interrupted: boolean): Promise<CycleReport> {
+    const finished = now();
+    const out = res ? lastJson(res.stdout) : null;
+    const images = await hashFiles(runDir, "parts");
+    const stopped = await hashFiles(runDir, "stopped");
+    const call = await readFile(join(runDir, "call.json"), "utf8").then((t) => JSON.parse(t) as { status?: string; images?: unknown }, () => null);
+    // a stopped call.json records only a count of pictures (never parts): nothing to compare
+    const recorded = new Map((Array.isArray(call?.images) ? (call.images as { file?: string; sha256?: string }[]) : []).map((i) => [i.file, i.sha256]));
+    const verified = images.length > 0 && images.length === recorded.size && images.every((i) => recorded.get(i.file) === i.sha256);
+    const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
+    const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;
+    const cliOk = res?.code === 0 && !res.timedOut && out?.status === "succeeded" && call?.status === "succeeded";
+    const complete = cliOk && verified && pc === a.images.pc && sp === a.images.sp;
+    let stopCode: string | null = null;
+    let stage: WorkerReceipt["stage"] = null;
+    if (!complete) {
+      if (interrupted) [stopCode, stage] = ["WORKER_INTERRUPTED", "call"];
+      else if (cliOk) [stopCode, stage] = ["BUNDLE_VERIFY_FAILED", "verify"];
+      else if (!res) [stopCode, stage] = ["CLI_NOT_STARTED", "precheck"];
+      else if (res.timedOut) [stopCode, stage] = ["CLI_TIMEOUT", "call"];
+      else {
+        stopCode = typeof out?.code === "string" && STOP_CODE.test(out.code) ? out.code : res.code === null ? "CLI_KILLED" : "CLI_RESULT_INVALID";
+        stage = out?.stage === "precheck" || res.code === 2 ? "precheck" : "call";
       }
-      return true;
-    })
-    .catch(() => false);
-  const base = { invoked: true, approval_id: approvalId, run_dir: runDir, ...(written ? { receipt: receiptPath } : {}) };
-  if (!written) return { status: "stopped", code: "RECEIPT_UNWRITABLE", ...base };
-  return complete ? { status: "succeeded", code: null, ...base } : { status: "stopped", code: stopCode, ...base };
+    }
+    const receipt: WorkerReceipt = {
+      schema: "imagefirst_worker_receipt_v1",
+      status: complete ? "succeeded" : "stopped",
+      stop_code: stopCode,
+      stage,
+      interrupted,
+      cli_exit: res?.code ?? null,
+      cli_timed_out: res?.timedOut ?? false,
+      shop: a.shop,
+      direction: a.direction,
+      approval_id: approvalId,
+      plan_id: planId,
+      commit,
+      packet_sha256: packetSha256,
+      plan_sha256: a.planSha256,
+      prompt_sha256: a.promptSha256,
+      prompt_chars: a.promptChars,
+      run_dir: runDir,
+      images,
+      stopped_images: stopped,
+      counts: { pc, sp, total: images.length, stopped: stopped.length },
+      verified,
+      timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
+    };
+    const receiptPath = join(o.runsDir, `${approvalId}-${stamp(started)}.receipt.json`);
+    const written = await open(receiptPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
+      .then(async (h) => {
+        try {
+          await h.writeFile(`${JSON.stringify(receipt, null, 2)}\n`);
+        } finally {
+          await h.close();
+        }
+        return true;
+      })
+      .catch(() => false);
+    const base = { invoked: true, approval_id: approvalId, run_dir: runDir, ...(written ? { receipt: receiptPath } : {}) };
+    if (!written) return { status: "stopped", code: "RECEIPT_UNWRITABLE", ...base };
+    return complete ? { status: "succeeded", code: null, ...base } : { status: "stopped", code: stopCode, ...base };
+  }
 }

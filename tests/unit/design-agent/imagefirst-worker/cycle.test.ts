@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
 import { buildPromptPlan, loadPromptInputs, PROMPT_INPUTS, PromptStop, type DirectionKey } from "@/lib/design-agent/image-first/prompt";
-import { exitCodeOf, generateArgv, gitCommitState, IMAGEFIRST_ALLOWLIST, packetPins, runImagefirstCycle, type CycleDeps, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { claimApproval, exitCodeOf, generateArgv, gitCommitState, IMAGEFIRST_ALLOWLIST, packetPins, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { APPROVAL_PACKET_PATH, PACKET_FIELDS, runFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { CodexSandbox } from "@/lib/design-agent/sandbox";
@@ -198,7 +198,7 @@ function world(o: { repo?: string; mode?: "six" | "fail"; ledgerDir?: string; st
         return entryInProcess(argv, { repo, ledgerDir: w.ledgerDir, fake: w.fake, ...(signal ? { signal } : {}) });
       }),
   });
-  const cycle = (invoke?: CycleDeps["invoke"]) => runImagefirstCycle({ repoRoot: repo, stateDir: w.stateDir, runsDir: w.runsDir }, deps(invoke));
+  const cycle = (invoke?: CycleDeps["invoke"], extra: Pick<CycleOptions, "signal" | "onInvoking"> = {}) => runImagefirstCycle({ repoRoot: repo, stateDir: w.stateDir, runsDir: w.runsDir, ...extra }, deps(invoke));
   return { ...w, cycle };
 }
 
@@ -306,6 +306,7 @@ describe("Issue #298 IMAGE_FIRST worker adapter: fail closed (nothing invoked)",
     mkdirSync(join(loose.stateDir, "claims"), { mode: 0o700 });
     chmodSync(join(loose.stateDir, "claims"), 0o755);
     await refusedWith(loose, "refused", "CLAIMS_DIR_UNSAFE");
+    expect(readdirSync(join(loose.stateDir, "claims"))).toEqual([]);
 
     const linked = world();
     const outside = tmp("sr-ifw-untrusted-claims-");
@@ -386,5 +387,204 @@ describe("Issue #298 IMAGE_FIRST worker adapter: fail closed (nothing invoked)",
     expect(r).toMatchObject({ status: "stopped", code: "CLI_TIMEOUT", invoked: true });
     expect(await w.cycle()).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED" });
     expect(w.invoked).toHaveLength(1);
+  });
+});
+
+describe("Issue #302 P0: unsafe places are refused before the claim (PR #301 L2, PR #303 L1/L2)", () => {
+  const nothingUsed = (w: ReturnType<typeof world>) => {
+    expect(w.invoked).toHaveLength(0);
+    expect(w.fake.execs).toBe(0);
+    expect(existsSync(join(w.ledgerDir, "approvals"))).toBe(false);
+  };
+
+  it("a runs dir open to others, or a link, is RUNS_DIR_UNSAFE: nothing claimed, nothing invoked", async () => {
+    const loose = world();
+    chmodSync(loose.runsDir, 0o755);
+    expect(await loose.cycle()).toMatchObject({ status: "refused", code: "RUNS_DIR_UNSAFE", invoked: false });
+    nothingUsed(loose);
+    expect(readdirSync(join(loose.stateDir, "claims"))).toEqual([]);
+    expect(readdirSync(loose.runsDir)).toEqual([]);
+
+    const target = tmp("sr-ifw-runs-target-");
+    const link = join(tmp("sr-ifw-runs-link-"), "runs");
+    symlinkSync(target, link, "dir");
+    const linked = world({ runsDir: link });
+    expect(await linked.cycle()).toMatchObject({ status: "refused", code: "RUNS_DIR_UNSAFE", invoked: false });
+    nothingUsed(linked);
+    expect(readdirSync(join(linked.stateDir, "claims"))).toEqual([]);
+    expect(readdirSync(target)).toEqual([]);
+  });
+
+  it("a state dir open to others, or a link, is CLAIMS_DIR_UNSAFE: no marker anywhere", async () => {
+    const loose = world();
+    chmodSync(loose.stateDir, 0o755);
+    expect(await loose.cycle()).toMatchObject({ status: "refused", code: "CLAIMS_DIR_UNSAFE", invoked: false });
+    nothingUsed(loose);
+    expect(existsSync(join(loose.stateDir, "claims"))).toBe(false);
+    expect(readdirSync(loose.runsDir)).toEqual([]);
+
+    const target = tmp("sr-ifw-state-target-");
+    const link = join(tmp("sr-ifw-state-link-"), "state");
+    symlinkSync(target, link, "dir");
+    const linked = world({ stateDir: link });
+    expect(await linked.cycle()).toMatchObject({ status: "refused", code: "CLAIMS_DIR_UNSAFE", invoked: false });
+    nothingUsed(linked);
+    expect(existsSync(join(target, "claims"))).toBe(false);
+  });
+
+  it("the claim itself checks the open directory handles (a path swapped after the lstat checks cannot redirect it)", async () => {
+    // claimApproval is called here without the cycle's earlier lstat checks: only its own handle checks stand
+    const linkedClaims = tmp("sr-ifw-claim-a-");
+    const outside = tmp("sr-ifw-claim-outside-");
+    symlinkSync(outside, join(linkedClaims, "claims"), "dir");
+    expect(await claimApproval(linkedClaims, ID, NOW)).toBe("CLAIMS_DIR_UNSAFE");
+    expect(readdirSync(outside)).toEqual([]);
+
+    const looseClaims = tmp("sr-ifw-claim-b-");
+    mkdirSync(join(looseClaims, "claims"));
+    chmodSync(join(looseClaims, "claims"), 0o755);
+    expect(await claimApproval(looseClaims, ID, NOW)).toBe("CLAIMS_DIR_UNSAFE");
+    expect(readdirSync(join(looseClaims, "claims"))).toEqual([]);
+
+    const linkedState = join(tmp("sr-ifw-claim-c-"), "state");
+    const stateTarget = tmp("sr-ifw-claim-c-target-");
+    symlinkSync(stateTarget, linkedState, "dir");
+    expect(await claimApproval(linkedState, ID, NOW)).toBe("CLAIMS_DIR_UNSAFE");
+    expect(readdirSync(stateTarget)).toEqual([]);
+
+    const looseState = tmp("sr-ifw-claim-d-");
+    chmodSync(looseState, 0o755);
+    expect(await claimApproval(looseState, ID, NOW)).toBe("CLAIMS_DIR_UNSAFE");
+    expect(readdirSync(looseState)).toEqual([]);
+
+    // a private state dir: claimed once (0600 marker inside a 0700 claims dir), then already claimed
+    const good = tmp("sr-ifw-claim-e-");
+    expect(await claimApproval(good, ID, NOW)).toBe("claimed");
+    expect(statSync(join(good, "claims")).mode & 0o777).toBe(0o700);
+    expect(statSync(join(good, "claims", `${ID}.used`)).mode & 0o777).toBe(0o600);
+    expect(await claimApproval(good, ID, NOW)).toBe("APPROVAL_ALREADY_CLAIMED");
+    // the marker name itself as a dangling link: never followed
+    const dangling = tmp("sr-ifw-claim-f-");
+    mkdirSync(join(dangling, "claims"), { mode: 0o700 });
+    symlinkSync(join(outside, "planted"), join(dangling, "claims", `${ID}.used`));
+    expect(await claimApproval(dangling, ID, NOW)).toBe("APPROVAL_ALREADY_CLAIMED");
+    expect(readdirSync(outside)).toEqual([]);
+  });
+});
+
+describe("Issue #302 P0: the bundle is verified, and an interrupted run still ends with a receipt (PR #301 L1/L2)", () => {
+  it("a picture changed or missing after the entry recorded it: BUNDLE_VERIFY_FAILED, stage verify, no retry", async () => {
+    for (const damage of ["tamper", "remove"] as const) {
+      const w = world();
+      const r = await w.cycle(async (argv, signal) => {
+        w.invoked.push(argv);
+        const res = await entryInProcess(argv, { repo: w.repo, ledgerDir: w.ledgerDir, fake: w.fake, ...(signal ? { signal } : {}) });
+        const out = argv[argv.indexOf("--out") + 1]!;
+        if (damage === "tamper") writeFileSync(join(out, "parts", "pc-1.png"), colourPng(64, 64));
+        else rmSync(join(out, "parts", "sp-4.png"));
+        return res;
+      });
+      expect(r).toMatchObject({ status: "stopped", code: "BUNDLE_VERIFY_FAILED", invoked: true, approval_id: ID });
+      const receipt = JSON.parse(readFileSync(r.receipt!, "utf8")) as WorkerReceipt;
+      expect(receipt).toMatchObject({ status: "stopped", stop_code: "BUNDLE_VERIFY_FAILED", stage: "verify", cli_exit: 0, verified: false, interrupted: false });
+      expect(w.fake.execs).toBe(1);
+      expect(await w.cycle()).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED", invoked: false });
+      expect(w.invoked).toHaveLength(1);
+      expect(w.fake.execs).toBe(1);
+    }
+  });
+
+  const auditLines = (stateDir: string) =>
+    readFileSync(join(stateDir, "audit.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { status: string; code: string | null; invoked: boolean });
+
+  it("a stop signal during the run: the invocation is aborted, the receipt says WORKER_INTERRUPTED, one audit line, the claim stays used", async () => {
+    const w = world();
+    const controller = new AbortController();
+    const r = await w.cycle(
+      async (argv, signal) => {
+        w.invoked.push(argv);
+        expect(signal).toBe(controller.signal);
+        controller.abort();
+        // what runBounded returns once the aborted entry's group is gone
+        return { code: null, signal: "SIGTERM", stdout: "", stderr: "", timedOut: false, aborted: true };
+      },
+      { signal: controller.signal },
+    );
+    expect(r).toMatchObject({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true, approval_id: ID });
+    expect(exitCodeOf(r.status)).toBe(1);
+    const receipt = JSON.parse(readFileSync(r.receipt!, "utf8")) as WorkerReceipt;
+    expect(receipt).toMatchObject({ status: "stopped", stop_code: "WORKER_INTERRUPTED", stage: "call", interrupted: true, cli_exit: null, verified: false });
+    expect(auditLines(w.stateDir).filter((l) => l.code === "WORKER_INTERRUPTED")).toHaveLength(1);
+    expect(existsSync(join(w.stateDir, "claims", `${ID}.used`))).toBe(true);
+    expect(await w.cycle()).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED", invoked: false });
+    expect(w.invoked).toHaveLength(1);
+  });
+
+  it("the worker must exit before the invocation returns: recordInterrupted writes the receipt and the audit line from disk, once", async () => {
+    const w = world();
+    let record: (() => Promise<void>) | null = null;
+    let release!: (r: BoundedResult) => void;
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    const run = w.cycle(
+      async (argv) => {
+        w.invoked.push(argv);
+        // a picture the entry had already written when the worker was stopped
+        const out = argv[argv.indexOf("--out") + 1]!;
+        mkdirSync(join(out, "parts"), { recursive: true });
+        writeFileSync(join(out, "parts", "pc-1.png"), colourPng(32, 32));
+        entered();
+        return new Promise<BoundedResult>((r) => (release = r));
+      },
+      { onInvoking: (fn) => (record = fn) },
+    );
+    await inside;
+    expect(record).not.toBeNull();
+    await record!();
+    const receipts = () => readdirSync(w.runsDir).filter((n) => n.endsWith(".receipt.json"));
+    expect(receipts()).toHaveLength(1);
+    const receipt = JSON.parse(readFileSync(join(w.runsDir, receipts()[0]!), "utf8")) as WorkerReceipt;
+    expect(receipt).toMatchObject({ status: "stopped", stop_code: "WORKER_INTERRUPTED", stage: "call", interrupted: true, cli_exit: null, verified: false, counts: { pc: 1, total: 1 } });
+    expect(receipt.images[0]!.file).toBe("parts/pc-1.png");
+    expect(auditLines(w.stateDir)).toEqual([expect.objectContaining({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true })]);
+    // calling it again changes nothing
+    await record!();
+    expect(receipts()).toHaveLength(1);
+    // the invocation returning afterwards (even looking successful) is the same interrupted end: no second receipt or line
+    release({ code: 0, signal: null, stdout: `${JSON.stringify({ status: "succeeded" })}\n`, stderr: "", timedOut: false });
+    expect(await run).toMatchObject({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true });
+    expect(receipts()).toHaveLength(1);
+    expect(auditLines(w.stateDir)).toHaveLength(1);
+    expect(await w.cycle()).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED", invoked: false });
+    expect(w.invoked).toHaveLength(1);
+    expect(w.fake.execs).toBe(0);
+  });
+
+  it("recordInterrupted after the run ended waits for that receipt and writes nothing more", async () => {
+    const w = world();
+    let record: (() => Promise<void>) | null = null;
+    const r = await w.cycle(undefined, { onInvoking: (fn) => (record = fn) });
+    expect(r.status).toBe("succeeded");
+    await record!();
+    expect(readdirSync(w.runsDir).filter((n) => n.endsWith(".receipt.json"))).toHaveLength(1);
+    expect(auditLines(w.stateDir)).toEqual([expect.objectContaining({ status: "succeeded", code: null })]);
+  });
+
+  it("the stop timings: the entry's own stop fits inside the worker's grace, the grace inside the worker's hard stop", () => {
+    // the entry: 20 s hard stop + 10 s clean-up (phase2f-live-cli stopSignals), read from its source
+    const cli = readFileSync(resolve(REPO, "scripts/design-artifact/phase2f-live-cli.ts"), "utf8");
+    expect(cli).toMatch(/setTimeout\(hardExit, o\.hardStopMs \?\? 20_000\)/);
+    expect(cli).toMatch(/setTimeout\(r, 10_000\)/);
+    expect(WORKER_STOP.entryStopMs).toBe(30_000);
+    expect(WORKER_STOP.graceMs).toBeGreaterThan(WORKER_STOP.entryStopMs);
+    expect(WORKER_STOP.hardStopMs).toBeGreaterThan(WORKER_STOP.graceMs);
+    expect(WORKER_STOP.recordMs).toBe(10_000);
+    const worker = readFileSync(resolve(REPO, "scripts/sales-design-worker/imagefirst-worker.ts"), "utf8");
+    expect(worker).toMatch(/stopSignals\(\{ hardStopMs: WORKER_STOP\.hardStopMs, cleanup: /);
+    expect(worker).toMatch(/graceMs: WORKER_STOP\.graceMs/);
+    expect(worker).toMatch(/onInvoking: \(record\) => \(recordInterrupted = record\)/);
   });
 });
