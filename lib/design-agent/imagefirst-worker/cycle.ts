@@ -49,6 +49,8 @@ export const IMAGEFIRST_ALLOWLIST = {
   images: { pc: 2, sp: 4 },
 } as const;
 const APPROVAL_ID = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
+/** Fail closed before claiming: malformed values must never spend a valid one-use approval. */
+const PLAN_ID = /^hoshigama-imagefirst-p3-\d{8}$/;
 const STOP_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
 
 export type CycleStatus = "no_job" | "locked" | "refused" | "succeeded" | "stopped";
@@ -239,6 +241,7 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number): Promise
   // the fixed scope: d3 alone (d1, d1,d3 refuse), and the shop's own approval id
   if (packet.directions.join(",") !== a.direction) return refuse("SCOPE_NOT_ALLOWED");
   if (!APPROVAL_ID.test(approvalId)) return refuse("SHOP_NOT_ALLOWED");
+  if (!PLAN_ID.test(packet.planId)) return refuse("PLAN_ID_INVALID", approvalId);
   const expires = parseUtcInstant(packet.expires);
   if (expires === null) return refuse("APPROVAL_EXPIRY_INVALID", approvalId);
   if (now() > expires) return refuse("APPROVAL_EXPIRED", approvalId);
@@ -267,6 +270,8 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number): Promise
   } catch (error) {
     return refuse(error instanceof LedgerStop ? error.code : "LEDGER_UNREADABLE", approvalId);
   }
+  // Keep both the claim marker and its parents private: O_NOFOLLOW guards only the final file.
+  if (!(await privateDir(o.stateDir)) || !(await privateDir(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE", approvalId);
   if (!(await privateDir(o.runsDir))) return refuse("RUNS_DIR_UNSAFE", approvalId);
   if (o.signal?.aborted) return refuse("WORKER_ABORTED", approvalId);
 
