@@ -62,9 +62,12 @@ const STOP_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
  */
 export const WORKER_STOP = { entryStopMs: 20_000 + 10_000, graceMs: 35_000, hardStopMs: 50_000, recordMs: 10_000 } as const;
 
-export type CycleStatus = "no_job" | "locked" | "refused" | "succeeded" | "stopped";
+/** would_run: only from precheckImagefirstCycle (every check up to the claim passed; nothing was written). */
+export type CycleStatus = "no_job" | "locked" | "refused" | "succeeded" | "stopped" | "would_run";
 export type CycleReport = { status: CycleStatus; code: string | null; invoked: boolean; approval_id?: string; run_dir?: string; receipt?: string };
 export const exitCodeOf = (s: CycleStatus) => (s === "refused" ? 2 : s === "stopped" ? 1 : 0);
+/** The precheck's exit: 0 = would run, 3 = no job (not approved), 2 = refused; nothing was claimed or written either way. */
+export const precheckExitOf = (s: CycleStatus) => (s === "would_run" ? 0 : s === "no_job" ? 3 : s === "refused" ? 2 : 1);
 
 export type ReceiptImage = { file: string; sha256: string; bytes: number };
 export type WorkerReceipt = {
@@ -103,7 +106,7 @@ export type CycleOptions = {
   runsDir: string;
   signal?: AbortSignal;
   /**
-   * Called once, right after the claim and before the invocation, with a function that ends the run with a receipt
+   * Called once, right before the claim (it waits for the claim; no claim, nothing recorded), with a function that ends the run with a receipt
    * (stop code WORKER_INTERRUPTED) and an audit line from what is on disk. The worker calls it when it must exit before
    * the invocation returns; when the run has already ended it waits for that receipt instead. It never invokes anything.
    */
@@ -228,6 +231,13 @@ export async function claimApproval(stateDir: string, approvalId: string, at: nu
 }
 const claimed = (stateDir: string, approvalId: string) => lstat(join(stateDir, "claims", `${approvalId}.used`)).then(() => true, (e: { code?: string }) => e.code !== "ENOENT");
 
+/** Read only (the precheck): missing is fine (it would be created 0700); an existing one must be a private directory of ours. */
+async function privateOrMissing(path: string): Promise<boolean> {
+  const info = await lstat(path).catch((e: { code?: string }) => (e.code === "ENOENT" ? "missing" : null));
+  if (info === "missing") return true;
+  return !!info && info.isDirectory() && !info.isSymbolicLink() && info.uid === process.getuid?.() && (info.mode & 0o077) === 0;
+}
+
 /** A directory of ours: real (not a link), owned by this user, closed to group and others. Created 0700 if missing. */
 async function privateDir(path: string): Promise<boolean> {
   await mkdir(path, { recursive: true, mode: 0o700 }).catch(() => undefined);
@@ -282,7 +292,18 @@ export async function runImagefirstCycle(o: CycleOptions, d: CycleDeps): Promise
   }
 }
 
-async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (r: CycleReport) => Promise<CycleReport>): Promise<CycleReport> {
+/**
+ * Issue #302 P1: the automatic start's precheck. Every check of the cycle up to, NOT including, the claim — HEAD =
+ * origin/develop and clean, readApprovalPacket at that commit, scope, the grant, plan ID, expiry window, pins, the plan
+ * rebuilt, never claimed, the entry's ledger precheck, the places — with no lock, no audit line and no write at all.
+ * "would_run" only when the real cycle would claim and invoke now. It invokes nothing and uses nothing.
+ */
+export async function precheckImagefirstCycle(o: Pick<CycleOptions, "repoRoot" | "stateDir" | "runsDir" | "expectApprovalId">, d: Omit<CycleDeps, "invoke">): Promise<CycleReport> {
+  const deps: CycleDeps = { ...d, invoke: async () => Promise.reject(new Error("the precheck never invokes")) };
+  return locked(o, deps, d.now ?? Date.now, async (r) => r, true);
+}
+
+async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (r: CycleReport) => Promise<CycleReport>, precheckOnly = false): Promise<CycleReport> {
   const refuse = (code: string, approvalId?: string): CycleReport => ({ status: "refused", code, invoked: false, ...(approvalId ? { approval_id: approvalId } : {}) });
   const a = IMAGEFIRST_ALLOWLIST;
 
@@ -332,14 +353,17 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   } catch (error) {
     return refuse(error instanceof LedgerStop ? error.code : "LEDGER_UNREADABLE", approvalId);
   }
+  if (precheckOnly) {
+    if (!(await privateOrMissing(o.stateDir)) || !(await privateOrMissing(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE", approvalId);
+    if (!(await privateOrMissing(o.runsDir))) return refuse("RUNS_DIR_UNSAFE", approvalId);
+    return { status: "would_run", code: null, invoked: false, approval_id: approvalId };
+  }
   // Keep both the claim marker and its parents private: O_NOFOLLOW guards only the final file.
   if (!(await privateDir(o.stateDir)) || !(await privateDir(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE", approvalId);
   if (!(await privateDir(o.runsDir))) return refuse("RUNS_DIR_UNSAFE", approvalId);
   if (o.signal?.aborted) return refuse("WORKER_ABORTED", approvalId);
 
   // ---- the claim, then ONE invocation (never retried, whatever it returns) ----
-  const got = await claimApproval(o.stateDir, approvalId, now());
-  if (got !== "claimed") return refuse(got, approvalId);
   const started = now();
   const runDir = join(o.runsDir, `${approvalId}-${stamp(started)}`);
   const packetSha256 = sha256(packetBytes);
@@ -348,9 +372,14 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   // ---- the end of the run, exactly once: the receipt and the audit line (also when the worker is interrupted) ----
   let ending: Promise<CycleReport> | null = null;
   const end = (res: BoundedResult | null, interrupted: boolean) => (ending ??= settle(res, interrupted).then(audit));
+  // registered before the claim (PR #305 review L1): a hard stop during the claim waits for it, and a made claim always
+  // ends with a receipt; no claim, nothing to record
+  const claiming = claimApproval(o.stateDir, approvalId, now());
   o.onInvoking?.(async () => {
-    await end(null, true);
+    if ((await claiming) === "claimed") await end(null, true);
   });
+  const got = await claiming;
+  if (got !== "claimed") return refuse(got, approvalId);
 
   let res: BoundedResult | null;
   try {
@@ -421,7 +450,9 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
         return true;
       })
       .catch(() => false);
-    const base = { invoked: true, approval_id: approvalId, run_dir: runDir, ...(written ? { receipt: receiptPath } : {}) };
+    // runBounded aborted before the start: nothing ran (PR #305 review L2); the approval stays claimed all the same
+    const notStarted = res?.aborted === true && res.code === null && res.signal === null && res.stdout === "" && res.stderr === "";
+    const base = { invoked: !notStarted, approval_id: approvalId, run_dir: runDir, ...(written ? { receipt: receiptPath } : {}) };
     if (!written) return { status: "stopped", code: "RECEIPT_UNWRITABLE", ...base };
     return complete ? { status: "succeeded", code: null, ...base } : { status: "stopped", code: stopCode, ...base };
   }

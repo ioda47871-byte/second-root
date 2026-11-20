@@ -25,6 +25,9 @@ const exe = (path: string, body: string) => {
   chmodSync(path, 0o755);
 };
 
+const startLog = (home: string) =>
+  existsSync(join(home, "fake-worker-starts.log")) ? readFileSync(join(home, "fake-worker-starts.log"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: string[]; grant: string | null }) : [];
+
 /** One fake WSL. The origin starts with the UNAPPROVED packet; `approve()` pushes the owner's filled-in §10. */
 function wsl() {
   const t = tmp("sr-ifa-");
@@ -36,7 +39,16 @@ function wsl() {
   chmodSync(home, 0o700);
   writeFileSync(join(t, "clock"), String(NOW / 1000));
   // systemctl show -p ActiveState --value <unit>: sc/<unit> holds the state (default inactive); sc/show-fail = an error
-  exe(join(bin, "systemctl"), `echo "$*" >> '${sc}/systemctl.log'; [ -f '${sc}/show-fail' ] && exit 1; u="\${@: -1}"; if [ -f '${sc}'/"$u" ]; then cat '${sc}'/"$u"; else echo inactive; fi`);
+  // systemctl is-enabled <unit>: sc/enabled-<unit> holds the answer (default disabled, exit 1); sc/isenabled-fail = no answer
+  exe(
+    join(bin, "systemctl"),
+    `echo "$*" >> '${sc}/systemctl.log'; u="\${@: -1}"
+if [ "$1" = is-enabled ]; then [ -f '${sc}/isenabled-fail' ] && exit 1; if [ -f '${sc}'/enabled-"$u" ]; then cat '${sc}'/enabled-"$u"; exit 0; fi; echo disabled; exit 1; fi
+[ -f '${sc}/show-fail' ] && exit 1; if [ -f '${sc}'/"$u" ]; then cat '${sc}'/"$u"; else echo inactive; fi`,
+  );
+  // the privilege drop's stand-in: records its options, then execs the command after "--" (as setpriv does: no
+  // supervising parent). A test may swap in a runuser-like supervisor to show that path loses the receipt.
+  exe(join(bin, "setpriv"), `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${sc}/setpriv.log'; exec "$@"`);
   // pgrep: sc/pgrep = a process of the worker user; sc/pgrep-error = pgrep cannot tell
   exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0; exit 1`);
   exe(join(bin, "npm"), `echo "npm $*" >> '${sc}/npm.log'`);
@@ -65,11 +77,13 @@ function wsl() {
     state: join(t, "var", "lib", "sr-imagefirst-autostart"),
     switchOn: (body: object = { enabled: true }) => writeFileSync(join(etc, "imagefirst-autostart.json"), JSON.stringify(body), { mode: 0o644 }),
     marker: (body: object = { approval_id: ID, expires_at: "2026-11-20T09:00:00Z" }) => writeFileSync(join(etc, "imagefirst-run.json"), JSON.stringify(body), { mode: 0o644 }),
-    approve: () => {
-      commitFiles(src, { [APPROVAL_PACKET_PATH]: filledPacket() }, "owner approval (test)");
+    approve: (packet: Buffer = filledPacket()) => {
+      commitFiles(src, { [APPROVAL_PACKET_PATH]: packet }, "owner approval (test)");
       git(src, "push", "-q", origin, "HEAD:refs/heads/develop");
     },
-    starts: () => (existsSync(join(home, "fake-worker-starts.log")) ? readFileSync(join(home, "fake-worker-starts.log"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: string[]; grant: string | null }) : []),
+    /** worker runs (prechecks excluded) */
+    starts: () => startLog(home).filter((e) => !e.argv.includes("--precheck")),
+    prechecks: () => startLog(home).filter((e) => e.argv.includes("--precheck")),
     execs: () => (existsSync(join(home, "codex-execs.log")) ? readFileSync(join(home, "codex-execs.log"), "utf8").trim().split("\n").filter(Boolean).length : 0),
     used: () => (existsSync(join(t, "var", "lib", "sr-imagefirst-autostart", "used")) ? readdirSync(join(t, "var", "lib", "sr-imagefirst-autostart", "used")) : []),
     receipts: () => (existsSync(join(home, "sr-runs")) ? readdirSync(join(home, "sr-runs")).filter((n) => n.endsWith(".receipt.json")).map((n) => JSON.parse(readFileSync(join(home, "sr-runs", n), "utf8")) as WorkerReceipt) : []),
@@ -120,8 +134,12 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     w.marker();
     // the packet at origin/develop is not approved yet: zero calls, the owner's marker is kept for later
     const before = poll(w);
-    expect(before).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_NOT_APPROVED", phase: "before_claim", approval: ID });
+    expect(before).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_NOT_RUNNABLE", phase: "before_claim", approval: ID });
+    expect(before.stdout).toContain('"status":"no_job","code":"PACKET_NOT_APPROVED"');
     nothingRan(w);
+    // the worker's own precheck answered, with the marker's approval id, and wrote nothing
+    expect(w.prechecks()).toEqual([{ argv: ["scripts/sales-design-worker/imagefirst-worker.ts", "--precheck"], grant: ID }]);
+    expect(existsSync(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker"))).toBe(false);
     // the owner merges the filled-in §10; the next hourly poll picks it up
     w.approve();
     const run = poll(w);
@@ -200,6 +218,9 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
       ["systemctl fails", (w) => writeFileSync(join(w.sc, "show-fail"), "")],
       ["a worker-user process", (w) => writeFileSync(join(w.sc, "pgrep"), "")],
       ["pgrep cannot tell", (w) => writeFileSync(join(w.sc, "pgrep-error"), "")],
+      // as cycle.sh's DEV-187 grant: an enabled jailed Claude is started again by sr-jail-net, so it is busy even when inactive
+      ["sr-jail-claude enabled (inactive)", (w) => writeFileSync(join(w.sc, "enabled-sr-jail-claude.service"), "enabled")],
+      ["sr-jail-claude is-enabled gives no answer", (w) => writeFileSync(join(w.sc, "isenabled-fail"), "")],
     ];
     for (const [name, arrange] of cases) {
       const w = wsl();
@@ -270,12 +291,16 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     w.switchOn();
     w.marker();
     writeFileSync(join(w.home, "fake-codex-mode"), "hang");
+    // the stop takes longer than runuser's 2 s: the poll must still wait for the worker's receipt
+    writeFileSync(join(w.home, "fake-codex-stop-delay-ms"), "3500");
     const p = pollAsync(w);
     await until(() => w.execs() === 1);
     p.child.kill("SIGTERM");
     const r = await p.done;
     expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTOSTART_INTERRUPTED", phase: "after_claim" });
     expect(r.worker, r.stdout).toMatchObject({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true });
+    // the worker ran through the privilege drop's stand-in with the production options
+    expect(readFileSync(join(w.sc, "setpriv.log"), "utf8")).toMatch(/^--reuid=\d+ --regid=\d+ --init-groups --reset-env$/m);
     const [receipt] = w.receipts();
     expect(receipt).toMatchObject({ status: "stopped", stop_code: "WORKER_INTERRUPTED", interrupted: true, approval_id: ID });
     const audit = readFileSync(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker", "audit.jsonl"), "utf8");
@@ -285,6 +310,48 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_USED" });
     expect(w.starts()).toHaveLength(1);
     expect(w.execs()).toBe(1);
+  });
+
+  it("the worker's precheck says it would not run (expired, a pin mismatch, another approval id): the marker is NOT used, no call", () => {
+    const plan = "a19b6896ffd50111df9ad7029f49ded5757999ddfb31943103a206f6a44072a8";
+    const cases: [string, Buffer, object | undefined, string][] = [
+      ["expired packet", filledPacket({ expires: "`2026-11-20T00:59:59Z`" }), undefined, "APPROVAL_EXPIRED"],
+      ["pin mismatch", filledPacket({}, (t) => t.replace(`\`${plan}\``, `\`${"0".repeat(64)}\``)), undefined, "PACKET_PIN_MISMATCH"],
+      ["another approval id than the marker's", filledPacket(), { approval_id: "hoshigama-imagefirst-d3-20261120-02", expires_at: "2026-11-20T09:00:00Z" }, "APPROVAL_NOT_GRANTED"],
+    ];
+    for (const [name, packet, marker, code] of cases) {
+      const w = wsl();
+      w.approve(packet);
+      w.switchOn();
+      w.marker(marker);
+      const r = poll(w);
+      expect(r, name).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_NOT_RUNNABLE", phase: "before_claim" });
+      expect(r.stdout, name).toContain(`"code":"${code}"`);
+      nothingRan(w);
+      expect(w.prechecks(), name).toHaveLength(1);
+      expect(existsSync(join(w.home, "sr-runs")), name).toBe(false);
+    }
+  });
+
+  it("a supervising privilege drop (runuser-like: SIGKILL 2 s after passing on SIGTERM) would end the poll without the worker's line", async () => {
+    // the failure the setpriv exec avoids: shown with a stand-in, so the stop test above is known to detect it
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    w.marker();
+    writeFileSync(join(w.home, "fake-codex-mode"), "hang");
+    writeFileSync(join(w.home, "fake-codex-stop-delay-ms"), "3500");
+    exe(join(w.bin, "setpriv"), `while [ "$1" != "--" ]; do shift; done; shift; "$@" & c=$!; trap 'kill -TERM $c; sleep 2; kill -KILL $c 2>/dev/null; exit 1' TERM; wait $c; wait $c`);
+    const p = pollAsync(w);
+    await until(() => w.execs() === 1);
+    p.child.kill("SIGTERM");
+    const r = await p.done;
+    expect(r.worker).toBeNull();
+    expect(r.stdout).toContain("worker: <no line>");
+    expect(w.receipts()).toEqual([]);
+    // let the orphaned fake worker (it got the SIGTERM before its parent was killed) finish before the temp dir goes
+    // (in production systemd's KillMode=mixed SIGKILLs it here: no receipt at all)
+    await until(() => w.receipts().length === 1);
   });
 
   it("refuses arguments, and any copy outside the root-only clone without the test world", () => {
@@ -312,11 +379,15 @@ describe("Issue #302 P1 automatic start: the units are code and documentation on
     const start = Number(/^TimeoutStartSec=(\d+)$/m.exec(service)![1]);
     const stop = Number(/^TimeoutStopSec=(\d+)$/m.exec(service)![1]);
     const k = num("KILL_AFTER");
-    const worst = num("FETCH_TIMEOUT") + k + 5 * (num("GIT_TIMEOUT") + k) + num("NPM_TIMEOUT") + k + num("WORKER_TIMEOUT") + num("WORKER_KILL_AFTER");
+    const worst = num("FETCH_TIMEOUT") + k + 5 * (num("GIT_TIMEOUT") + k) + num("NPM_TIMEOUT") + k + num("PRECHECK_TIMEOUT") + k + num("WORKER_TIMEOUT") + num("WORKER_KILL_AFTER");
     expect(start).toBeGreaterThan(worst);
     // the worker's own stop (50 s hard stop + 10 s receipt) fits inside both the wrapper's kill-after and the unit's stop
     expect(num("WORKER_KILL_AFTER")).toBeGreaterThan(60);
-    expect(stop).toBeGreaterThan(60);
+    expect(stop).toBeGreaterThan(num("WORKER_KILL_AFTER"));
+    // the worker runs with no supervising parent: setpriv execs (runuser would SIGKILL it 2 s after passing on a SIGTERM)
+    expect(script).toMatch(/^AS_WORKER=\(setpriv --reuid="\$worker_uid" --regid="\$worker_gid" --init-groups --reset-env -- env -i /m);
+    expect(script.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n")).not.toMatch(/\brunuser\b/);
+    expect(script).not.toMatch(/PRECHECK_PY|python3 -I -c "\$PRECHECK/);
     for (const key of ["MemoryMax", "MemoryHigh", "CPUWeight", "TasksMax", "Nice", "IOSchedulingClass"]) expect(service).toMatch(new RegExp(`^${key}=\\S+$`, "m"));
     expect(service).toMatch(/^StateDirectory=sr-imagefirst-autostart$/m);
     expect(service).toMatch(/^StateDirectoryMode=0700$/m);

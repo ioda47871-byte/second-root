@@ -84,6 +84,27 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
   });
 });
 
+describe("Issue #302 P1: the worker's --precheck as a real process (no lock, no audit, no write)", () => {
+  it("answers the same gates with the precheck exit (2 refused / 3 no job) and creates nothing in HOME", () => {
+    const want = expectedGate();
+    const r = runCli(["--precheck"]);
+    expect(r.status).toBe(want.status === "no_job" ? 3 : 2);
+    expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
+    // nothing at all under the scratch HOME: no state dir, no audit line, no runs dir
+    expect(readdirSync(r.home)).toEqual([]);
+  });
+
+  it("--precheck with anything else is USAGE; a malformed grant is GRANT_INVALID, both before any place is touched", () => {
+    const usage = runCli(["--precheck", "--now"]);
+    expect(usage.status).toBe(2);
+    expect(usage.out).toEqual({ status: "refused", code: "USAGE", invoked: false });
+    const bad = runCli(["--precheck"], { SR_IMAGEFIRST_EXPECT_APPROVAL_ID: "tsugute-imagefirst-d3-20261120-01" });
+    expect(bad.status).toBe(2);
+    expect(bad.out).toEqual({ status: "refused", code: "GRANT_INVALID", invoked: false });
+    expect(readdirSync(bad.home)).toEqual([]);
+  });
+});
+
 describe("Issue #298 fix kept: runBounded decodes a UTF-8 character split across two pipe reads", () => {
   it("あいう×3 written in two chunks, split inside a character, comes back intact (no U+FFFD)", async () => {
     const text = "あいう".repeat(3);

@@ -8,7 +8,10 @@
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin, the same clone as cycle.sh), by a person
 # or from sr-imagefirst-autostart.service. That unit and its timer are NOT installed or enabled by anything in this
 # repository (docs/operations/imagefirst-worker-port.md §7). Root never runs git, node or a parser on files the worker
-# user controls: every command in the worker's clone runs as the worker user (runuser), as in cycle.sh.
+# user controls: every command in the worker's clone runs as the worker user, as in cycle.sh. The privileges are dropped
+# with setpriv, which execs the command (no supervising parent, unlike runuser, which SIGKILLs its child 2 s after
+# passing on a SIGTERM): a stop signal reaches timeout(1) and the worker directly, and the worker has its full 50 s
+# + 10 s to write its receipt.
 #
 # One poll, in this order; anything unexpected stops it before the marker is used (never retried, never relaxed):
 #   1. the owner's switch /etc/sr-design-worker/imagefirst-autostart.json (root's, {"enabled": true}). Absent or
@@ -18,12 +21,15 @@
 #      {"approval_id": "hoshigama-imagefirst-d3-YYYYMMDD-NN", "expires_at": "<UTC>Z"}, at most 24 h ahead); missing,
 #      expired or already used (root's state used/<approval id>, never removed): idle, exit 10
 #   4. mutual exclusion: sr-jail-claude.service and sr-design-cycle.service stopped (inactive / failed; anything else,
-#      an error included, is busy), no process of the worker user, and cycle.sh's own lock held by this poll: else exit 12
+#      an error included, is busy), sr-jail-claude.service also disabled or masked (as cycle.sh's DEV-187 grant: when it
+#      is enabled, sr-jail-net starts it again), no process of the worker user, and cycle.sh's own lock held by this poll:
+#      else exit 12
 #   5. as the worker: git fetch origin develop in the dedicated clone (failure: stop, exit 20), the tree clean, HEAD an
 #      ancestor of origin/develop, detach onto origin/develop (a fast-forward; never --force, never clean), npm ci only
 #      when package-lock.json changed (as run.sh)
-#   6. a precheck (as the worker): §10 of the packet at origin/develop says 承認済み with exactly the marker's approval id
-#      as d3 (else idle, exit 10, the marker unused: an unapproved packet costs nothing). The worker decides the rest
+#   6. the worker's own precheck (imagefirst-worker.ts --precheck, as the worker, with the marker's approval id): every
+#      check of its cycle up to, not including, the claim, writing nothing. Not "would run" (not approved, expired, a pin
+#      mismatch, another approval id, used in the ledger, ...): idle, exit 10, the marker unused. No parser of its own
 #   7. mutual exclusion again, then the marker is used up (atomic mkdir in root's 0700 state; the worker user can
 #      neither create nor remove it), then the worker runs ONCE as the worker user with the marker's approval id in
 #      SR_IMAGEFIRST_EXPECT_APPROVAL_ID (the worker refuses any other approval: APPROVAL_NOT_GRANTED)
@@ -32,7 +38,8 @@
 #
 # Output: fixed lines and codes; the worker's one JSON line. The last line is machine-readable:
 #   IMAGEFIRST_AUTOSTART <CODE> phase=<before_claim|after_claim> approval=<id|none> exit=<n>
-# Exit: 0 off / ran (see the worker line), 10 idle, 11 locked, 12 busy, 20 stopped before the marker (environment),
+# Exit: 0 off / ran (see the worker line), 10 idle (also a worker no_job after the marker: AUTOSTART_USED_NO_JOB),
+#       11 locked, 12 busy, 20 stopped before the marker (environment),
 #       2 refused (unsafe or invalid switch / marker, usage) or the worker refused, 1 the worker stopped, 40/41 signal / internal.
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
@@ -48,7 +55,7 @@ else
     NODE_EXTRA_CA_CERTS SSL_CERT_FILE SR_IMAGEFIRST_AUTOSTART_TEST_ROOT; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
-  exec env -i "${keep[@]}" bash "${BASH_SOURCE[0]}" --sr-clean-env "$@"
+  exec /usr/bin/env -i "${keep[@]}" /bin/bash "${BASH_SOURCE[0]}" --sr-clean-env "$@"
 fi
 
 SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
@@ -59,6 +66,8 @@ cd /
 KILL_AFTER=30
 FETCH_TIMEOUT=180
 GIT_TIMEOUT=60
+# the worker's precheck: git reads, the plan rebuilt, the ledger read; no call
+PRECHECK_TIMEOUT=300
 NPM_TIMEOUT=900
 # the worker: the entry's 20 min watchdog + 2 min margin + 35 s grace + the receipt (imagefirst-worker.ts)
 WORKER_TIMEOUT=1800
@@ -139,14 +148,9 @@ now() {
 }
 
 # The worker user's own commands, in its clone, with an allowlisted environment (root never runs git or node there).
-# AS_WORKER is a plain command prefix (no function, no subshell), so the worker run below can be started in the
-# background and a stop signal reaches it directly (runuser passes it on to the command).
-AS_WORKER=(env -i HOME="$WORKER_HOME" PATH="$WORKER_PATH" LANG=C.UTF-8)
-for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
-  if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
-done
-[ -n "$R" ] || AS_WORKER=(runuser -u "$WORKER_USER" -- "${AS_WORKER[@]}")
-AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
+# AS_WORKER is a plain command prefix of programs that each exec the next (setpriv → env → bash → the command): no
+# function, no subshell and no supervising parent, so the worker run below, started in the background, IS the timeout(1)
+# process, and a stop signal sent to it reaches the worker. (The test world's PATH carries a stand-in setpriv.)
 in_clone() { "${AS_WORKER[@]}" "$@" 8>&- 9>&-; }
 
 # The file and every directory above it owned by root and writable by nobody else (as cycle.sh / admin.sh).
@@ -207,29 +211,6 @@ else:
     print("OK " + a)
 '
 
-PRECHECK_PY='
-import re, sys
-approval = sys.argv[1]
-fence, in10, rows = None, False, {}
-for line in sys.stdin.read().splitlines():
-    m = re.match(r"\s{0,3}(`{3,}|~{3,})", line)
-    if m:
-        ch = m.group(1)[0]
-        fence = ch if fence is None else (None if ch == fence else fence)
-        continue
-    if fence is not None:
-        continue
-    if line.startswith("## "):
-        in10 = line.startswith("## 10.")
-        continue
-    if not in10 or not line.startswith("|"):
-        continue
-    cells = [c.strip() for c in line.split("|")[1:-1]]
-    if len(cells) == 2:
-        rows.setdefault(cells[0].split("（")[0].strip(), []).append(cells[1].strip("`").strip())
-sys.exit(0 if rows.get("状態") == ["承認済み"] and rows.get("d3 の承認 ID") == [approval] else 3)
-'
-
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
 BUSY_WHY=""
 busy() {
@@ -238,6 +219,10 @@ busy() {
     st="$(systemctl show -p ActiveState --value "$unit" 2>/dev/null)" || st=error
     if ! [[ "$st" =~ ^(inactive|failed)$ ]]; then BUSY_WHY="$unit is ${st:-unknown}"; return 0; fi
   done
+  # as cycle.sh's DEV-187 grant: the jailed Claude must also be disabled or masked (sr-jail-net's ExecStartPost starts
+  # it again while it is enabled). Any other answer, an error or no answer (not-found included) is busy.
+  st="$(systemctl is-enabled sr-jail-claude.service 2>/dev/null)" || true
+  if ! [[ "$st" =~ ^(disabled|masked)$ ]]; then BUSY_WHY="sr-jail-claude.service is not disabled or masked (${st:-no answer})"; return 0; fi
   # pgrep: 0 = a process (busy), 1 = none, 2+ = error (cannot tell: busy). Only "1" from both checks is idle.
   pgrep -U "$WORKER_USER" >/dev/null 2>&1 || pg_real=$?
   pgrep -u "$WORKER_USER" >/dev/null 2>&1 || pg_eff=$?
@@ -296,6 +281,12 @@ if [ -d "$CYCLE_STATE" ] && [ ! -L "$CYCLE_STATE" ]; then
 fi
 
 # ---------------------------------------------------------------- 5. the dedicated clone on origin/develop (as the worker)
+worker_uid="$(id -u "$WORKER_USER")" && worker_gid="$(id -g "$WORKER_USER")" || { say "AUTOSTART_STOP_NO_USER: $WORKER_USER"; finish AUTOSTART_STOP_NO_USER 20; }
+AS_WORKER=(setpriv --reuid="$worker_uid" --regid="$worker_gid" --init-groups --reset-env -- env -i HOME="$WORKER_HOME" PATH="$WORKER_PATH" LANG=C.UTF-8)
+for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
+  if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
+done
+AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 [ -d "$CLONE" ] || { say "AUTOSTART_STOP_NO_CLONE: $CLONE is missing"; finish AUTOSTART_STOP_NO_CLONE 20; }
 in_clone timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" git fetch --quiet --no-tags origin "+refs/heads/develop:refs/remotes/origin/develop" >/dev/null 2>&1 ||
   { say "git fetch failed: stopped before the marker"; finish AUTOSTART_STOP_FETCH 20; }
@@ -316,17 +307,20 @@ in_clone bash -c 'h="$(sha256sum package-lock.json | cut -d" " -f1)" || exit 1
   mkdir -p "$(dirname "$HOME/$1")" && printf "%s\n" "$h" >"$HOME/$1"' _ "$NPM_HASH_FILE" "$KILL_AFTER" "$NPM_TIMEOUT" ||
   { say "npm ci failed: stopped before the marker"; finish AUTOSTART_STOP_NPM 20; }
 
-# ---------------------------------------------------------------- 6. the packet at origin/develop shows the approval id
-# A precheck only, so that a packet not yet approved costs the owner's marker nothing: §10 (outside code fences) says
-# 承認済み and its d3 row is exactly the marker's approval id. Read by the worker user; root reads only the exit status.
-# It never approves anything: the worker parses the packet itself (readApprovalPacket) and checks every pin. If the two
-# ever disagree, the result is a used marker without a call, or no run: both fail closed.
-in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" git show --no-textconv "origin/develop:$PACKET_PATH" >"$WORK/packet" 2>/dev/null ||
-  { say "the packet is unreadable at origin/develop: stopped before the marker"; finish AUTOSTART_STOP_GIT 20; }
-if ! in_clone python3 -I -c "$PRECHECK_PY" "$APPROVAL" <"$WORK/packet" >/dev/null 2>&1; then
-  say "the packet at origin/develop does not show the marker's approval id as approved (not yet): nothing to do, the marker stays unused"
-  finish AUTOSTART_IDLE_NOT_APPROVED 10
-fi
+# ---------------------------------------------------------------- 6. the worker's own precheck (nothing used, nothing written)
+set +e
+"${AS_WORKER[@]}" timeout --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
+  ./node_modules/.bin/tsx scripts/sales-design-worker/imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
+prc=$?
+set -e
+pline="$(tail -n 1 "$WORK/precheck" | tr -d '\000-\037' | cut -c1-2000)"
+say "precheck: ${pline:-<no line>}"
+case "$prc" in
+  0) ;;
+  2 | 3) say "the worker would not run now (not approved yet, expired, another approval id, a pin, the ledger, ...): nothing to do, the marker stays unused"
+    finish AUTOSTART_IDLE_NOT_RUNNABLE 10 ;;
+  *) say "the precheck did not answer (exit $prc): stopped before the marker"; finish AUTOSTART_STOP_PRECHECK 20 ;;
+esac
 
 # ---------------------------------------------------------------- 7. the marker is used up, then ONE worker run
 if busy; then say "busy: $BUSY_WHY"; finish AUTOSTART_BUSY 12; fi
@@ -359,7 +353,11 @@ if [ "$rc" -ne 0 ]; then
 fi
 if [ "$INTERRUPTED" = 1 ]; then finish AUTOSTART_INTERRUPTED 1; fi
 case "$rc" in
-  0) finish AUTOSTART_RAN 0 ;;
+  0) if [[ "$line" == *'"status":"no_job"'* ]]; then
+       say "the worker found no job after the marker was used (the packet changed in between?); the marker stays used"
+       finish AUTOSTART_USED_NO_JOB 10
+     fi
+     finish AUTOSTART_RAN 0 ;;
   2) finish AUTOSTART_WORKER_REFUSED 2 ;;
   124 | 137) finish AUTOSTART_WORKER_TIMEOUT 1 ;;
   *) finish AUTOSTART_WORKER_STOPPED 1 ;;

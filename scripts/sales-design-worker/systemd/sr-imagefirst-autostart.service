@@ -4,7 +4,7 @@
 #
 # Runs as root (no User=), like sr-design-cycle.service: only root may use up the owner's one-use marker (its state
 # directory below, 0700). Every command in the worker's clone (git, npm, the worker itself) runs as the dedicated worker
-# user sr-designgen through runuser, in its own home, where its ChatGPT sign-in of Codex lives. Modeled on
+# user sr-designgen through setpriv (no supervising parent), in its own home, where its ChatGPT sign-in of Codex lives. Modeled on
 # curiosity-media's kaii-image-worker.service (one oneshot per hourly start, TimeoutStartSec inside the hour).
 [Unit]
 Description=Second Root IMAGE_FIRST automatic start (one owner-approved hoshigama d3 run at most)
@@ -17,12 +17,14 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/
 ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autostart.sh
-# fetch 210 s + git steps + npm ci 930 s + the worker 1800 s (+ 90 s to stop) all end inside this
-TimeoutStartSec=3600
-# SIGTERM goes to the script only (KillMode=mixed); it passes it on to the worker once, and the worker ends with its
-# receipt (its own 50 s hard stop + 10 s) before the rest gets SIGKILL
+# fetch 210 s + git steps + npm ci 930 s + the precheck 330 s + the worker 1800 s (+ 90 s to stop) all end inside this
+TimeoutStartSec=3900
+# SIGTERM goes to the script only (KillMode=mixed); it passes it on once to timeout(1), which passes it to the worker
+# (setpriv execs, so no runuser parent cuts it off after 2 s). The worker ends with its receipt (entry 20 s + 10 s inside
+# its 35 s grace; at worst its 50 s hard stop + 10 s), timeout's own SIGKILL comes only after 90 s, and the script waits
+# for it. TimeoutStopSec is longer than all of that, so systemd's SIGKILL of the rest never comes first.
 KillMode=mixed
-TimeoutStopSec=90
+TimeoutStopSec=120
 # 10 = idle (no marker, used, expired, not approved yet), 11 = another poll runs, 12 = busy: not failures
 SuccessExitStatus=10 11 12
 # The lock and the used markers (never removed: a used approval id never runs again)
@@ -59,4 +61,4 @@ TasksMax=512
 #   PrivateDevices: bubblewrap sets up its own /dev.
 #   PrivateNetwork / IPAddressDeny: git fetch, npm ci and Codex need the network.
 #   MemoryDenyWriteExecute: node (JIT).
-#   CapabilityBoundingSet: runuser needs CAP_SETUID / CAP_SETGID.
+#   CapabilityBoundingSet: setpriv needs CAP_SETUID / CAP_SETGID.

@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { PROMPT_INPUTS } from "@/lib/design-agent/image-first/prompt";
-import { claimApproval, exitCodeOf, generateArgv, gitCommitState, grantFromEnv, GRANT_ENV, IMAGEFIRST_ALLOWLIST, packetPins, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { claimApproval, exitCodeOf, generateArgv, gitCommitState, grantFromEnv, GRANT_ENV, IMAGEFIRST_ALLOWLIST, packetPins, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { APPROVAL_PACKET_PATH } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import { acquireLock } from "@/lib/design-agent/worker/state";
@@ -455,5 +455,73 @@ describe("Issue #302 P1: root's grant (the automatic start) only narrows the job
     expect(grantFromEnv({} as NodeJS.ProcessEnv)).toBeUndefined();
     expect(grantFromEnv({ [GRANT_ENV]: ID } as unknown as NodeJS.ProcessEnv)).toBe(ID);
     for (const bad of ["", "tsugute-imagefirst-d3-20261120-01", `${ID}\n`, "--approval-id", "hoshigama-imagefirst-d1-20261120-01"]) expect(grantFromEnv({ [GRANT_ENV]: bad } as unknown as NodeJS.ProcessEnv)).toBeNull();
+  });
+});
+
+describe("Issue #302 P1: the precheck (every check up to the claim, nothing written)", () => {
+  const precheck = (w: ReturnType<typeof world>, expectApprovalId?: string) =>
+    precheckImagefirstCycle(
+      { repoRoot: w.repo, stateDir: w.stateDir, runsDir: w.runsDir, ...(expectApprovalId ? { expectApprovalId } : {}) },
+      { commit: () => gitCommitState(w.repo, ENV), fileAt: (commit, rel) => fileAtCommit(commit, rel, w.repo), ledger: openLedger(w.ledgerDir), now: () => NOW },
+    );
+  const nothingWritten = (w: ReturnType<typeof world>) => {
+    expect(readdirSync(w.stateDir)).toEqual([]);
+    expect(readdirSync(w.runsDir)).toEqual([]);
+    expect(readdirSync(w.ledgerDir)).toEqual([]);
+    expect(w.fake.execs).toBe(0);
+  };
+
+  it("an approved, unused d3 job: would_run (exit 0), no lock, claim, audit or ledger entry; the real cycle then runs once", async () => {
+    const w = world();
+    const r = await precheck(w, ID);
+    expect(r).toEqual({ status: "would_run", code: null, invoked: false, approval_id: ID });
+    expect(precheckExitOf(r.status)).toBe(0);
+    nothingWritten(w);
+    expect((await w.cycle()).status).toBe("succeeded");
+    expect(await precheck(w, ID)).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED" });
+  });
+
+  it("not approved / expired / pin mismatch / another grant / used in the ledger: not would_run, and nothing written", async () => {
+    const plan = IMAGEFIRST_ALLOWLIST.planSha256;
+    const cases: [ReturnType<typeof world>, string | undefined, string, string][] = [
+      [world({ repo: workerRepo(readFileSync(UNAPPROVED_PACKET_FIXTURE)) }), ID, "no_job", "PACKET_NOT_APPROVED"],
+      [world({ repo: workerRepo(filledPacket({ expires: "`2026-11-20T00:59:59Z`" })) }), ID, "refused", "APPROVAL_EXPIRED"],
+      [world({ repo: workerRepo(filledPacket({}, (t) => t.replace(`\`${plan}\``, `\`${"0".repeat(64)}\``))) }), ID, "refused", "PACKET_PIN_MISMATCH"],
+      [world(), "hoshigama-imagefirst-d3-20261120-02", "refused", "APPROVAL_NOT_GRANTED"],
+    ];
+    for (const [w, grant, status, code] of cases) {
+      const r = await precheck(w, grant);
+      expect(r, code).toMatchObject({ status, code, invoked: false });
+      expect(precheckExitOf(r.status)).toBe(status === "no_job" ? 3 : 2);
+      nothingWritten(w);
+    }
+    const first = world();
+    expect((await first.cycle()).status).toBe("succeeded");
+    const other = world({ repo: first.repo, ledgerDir: first.ledgerDir });
+    expect(await precheck(other)).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_USED" });
+    expect(readdirSync(other.stateDir)).toEqual([]);
+  });
+
+  it("an unsafe existing place is refused read-only; missing places are fine (they would be created 0700)", async () => {
+    const w = world();
+    chmodSync(w.runsDir, 0o755);
+    expect(await precheck(w)).toMatchObject({ status: "refused", code: "RUNS_DIR_UNSAFE" });
+    const missing = world({ stateDir: join(tmp("sr-ifw-pre-"), "state"), runsDir: join(tmp("sr-ifw-pre-"), "runs") });
+    expect(await precheck(missing)).toMatchObject({ status: "would_run" });
+    expect(existsSync(missing.stateDir)).toBe(false);
+    expect(existsSync(missing.runsDir)).toBe(false);
+  });
+});
+
+describe("Issue #302 (PR #305 review L2): an invocation that never started", () => {
+  it("an invocation aborted before it started is reported as not invoked; the approval stays claimed, a receipt is written", async () => {
+    const w = world();
+    const r = await w.cycle(async (argv) => {
+      w.invoked.push(argv);
+      return { code: null, signal: null, stdout: "", stderr: "", timedOut: false, aborted: true };
+    });
+    expect(r).toMatchObject({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: false });
+    expect(existsSync(r.receipt!)).toBe(true);
+    expect(await w.cycle()).toMatchObject({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED" });
   });
 });

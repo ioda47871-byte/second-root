@@ -91,7 +91,7 @@ export const pointOrigin = (repo: string) => git(repo, "update-ref", "refs/remot
 // ---- the fake Codex (the image-once tests' in-process sandbox) ----------------------------------------------------
 export type Fake = { execs: number; codexHome: string; tmpBase: string; sandbox: CodexSandbox };
 export const ok = (stdout = ""): BoundedResult => ({ code: 0, signal: null, stdout, stderr: "", timedOut: false });
-export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-ifw-codex-"), onExec: () => void = () => undefined): Fake {
+export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-ifw-codex-"), onExec: () => void = () => undefined, stopDelayMs = 0): Fake {
   const codexHome = join(root, "home", ".codex");
   const tmpBase = join(root, "tmp");
   for (const d of [codexHome, tmpBase]) mkdirSync(d, { recursive: true });
@@ -111,6 +111,8 @@ export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-
           // interval keeps the process alive meanwhile, as the real CLI's child process does
           const alive = setInterval(() => undefined, 1_000);
           await new Promise<void>((resolve) => (o.signal?.aborted ? resolve() : o.signal?.addEventListener("abort", () => resolve(), { once: true })));
+          // a CLI (and an entry) that takes a while to stop, as the real one may (the entry has 20 s + 10 s)
+          if (stopDelayMs > 0) await new Promise((r) => setTimeout(r, stopDelayMs));
           clearInterval(alive);
           return { code: null, signal: "SIGTERM", stdout: "", stderr: "", timedOut: false, aborted: true };
         }
