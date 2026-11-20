@@ -14,7 +14,12 @@ const PIN_CLI = "scripts/design-artifact/image-first-prompt.ts";
 /** Issue #293 P3 (preparation, owner-run after approval only): the real-call entry and its step (checked by the phase2f-live isolation test). */
 const GENERATE_IMPORTERS = ["lib/design-agent/phase2f-live/full-page-call.ts", "scripts/design-artifact/image-first-generate.ts"];
 /** Issue #298 P1: the worker adapter rebuilds the d3 plan from the inputs at the approved commit (prompt.ts only; phase2f-live isolation test). */
-const WORKER_IMPORTERS = ["lib/design-agent/imagefirst-worker/cycle.ts"];
+const WORKER_IMPORTERS = [
+  "lib/design-agent/imagefirst-worker/cycle.ts",
+  // Issue #302 (exact path): the manual Claude CLI audit reads the facts pack and the d3 direction text through
+  // loadPromptInputs only (every pin applies); it builds no plan and starts nothing (imagefirst-worker/claude-audit-rubric.test.ts)
+  "lib/design-agent/imagefirst-worker/claude-audit.ts",
+];
 
 function specifiers(source: string): string[] {
   const out: string[] = [];
