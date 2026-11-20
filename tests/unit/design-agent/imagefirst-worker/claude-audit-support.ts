@@ -48,13 +48,28 @@ async function tall(width: number, height: number, n: number): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: "#ffffff" } }).composite(layers).removeAlpha().png({ compressionLevel: 9 }).toBuffer();
 }
 
+/**
+ * PR #311 review M2: a photo-like tall PC page (1440 × height): in every 1504 rows (the tile step), 600 rows of grainy, photographic
+ * texture (incompressible for PNG) then a flat colour, so every 1568-row preview tile stays LOSSLESS at about 2.5 MiB
+ * (just under preview.ts's 3.5 MiB) — the realistic worst case for the PNG previews' total.
+ */
+export async function photoLikeComposite(width: number, height: number): Promise<Buffer> {
+  const lo = await sharp({ create: { width: 180, height: Math.round((height * 180) / width), channels: 3, background: "#808080", noise: { type: "gaussian", mean: 128, sigma: 60 } } }).png().toBuffer();
+  const raw = await sharp(lo).resize(width, height, { kernel: "cubic" }).raw().toBuffer();
+  const row = width * 3;
+  for (let y = 0; y < height; y++) {
+    if (y % 1504 >= 600) raw.fill(0xd8, y * row, (y + 1) * row);
+  }
+  return sharp(raw, { raw: { width, height, channels: 3 } }).png({ compressionLevel: 9 }).toBuffer();
+}
+
 export type Delivered = { work: string; runs: string; state: string; inbox: string; bundleSha: string; id: string };
 
 /**
  * A finished "run" (6 dummy parts, a tall 1440 × 9000 PC composite, a 390-wide SP composite, a receipt in the worker's
  * shape) → packBundle → handOffToLocalInbox (the real delivery job in <state>/deliveries, the receiver's record, previews).
  */
-export async function makeDelivered(o: { id?: string; pcHeight?: number } = {}): Promise<Delivered> {
+export async function makeDelivered(o: { id?: string; pcHeight?: number; pc?: Buffer } = {}): Promise<Delivered> {
   const id = o.id ?? ID;
   const work = tmp("sr-audit-work-");
   const runs = join(work, "sr-runs");
@@ -73,7 +88,7 @@ export async function makeDelivered(o: { id?: string; pcHeight?: number } = {}):
     images.push({ file: `parts/${name}.png`, sha256: sha(png), bytes: png.length });
     if (name.startsWith("sp-")) sp.push(png);
   }
-  const pc = await tall(1440, o.pcHeight ?? 9000, 4);
+  const pc = o.pc ?? (await tall(1440, o.pcHeight ?? 9000, 4));
   const spScaled = await Promise.all(sp.map((p) => sharp(p).resize({ width: 390 }).png().toBuffer()));
   const spComp = await sharp({ create: { width: 390, height: 780 * 4, channels: 3, background: "#ffffff" } }).composite(spScaled.map((b, i) => ({ input: b, top: i * 780, left: 0 }))).removeAlpha().png().toBuffer();
   await write0600(join(runDir, "composites", "pc.png"), pc);
@@ -145,7 +160,7 @@ if (args[0] === "auth" && args[1] === "status") {
   const mode = cfg.auth || "ok";
   if (mode === "signedout") { console.log(JSON.stringify({ loggedIn: false })); process.exit(1); }
   if (mode === "garbled") { console.log("???"); process.exit(0); }
-  console.log(JSON.stringify({ loggedIn: true, authMethod: mode === "apikey" ? "api_key" : "claude.ai" }));
+  console.log(JSON.stringify({ loggedIn: true, authMethod: mode === "apikey" ? "api_key" : mode === "ok" ? "claude.ai" : mode === "missing" ? undefined : mode }));
   process.exit(0);
 }
 let input = "";

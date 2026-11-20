@@ -30,7 +30,7 @@ const BLOCKED_PREFIX = /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_)/;
 /** The exact arguments of one call (no model flag: the account's default model answers). */
 export const CLAUDE_PRINT_ARGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", ""] as const;
 
-export type ClaudeFailureCode = "CLAUDE_NOT_INSTALLED" | "CLAUDE_NOT_SIGNED_IN" | "CLAUDE_API_KEY_AUTH" | "CLAUDE_EXEC_FAILED" | "CLAUDE_TIMEOUT" | "CLAUDE_NO_JSON" | "CLAUDE_QUOTA" | "CLAUDE_ABORTED";
+export type ClaudeFailureCode = "CLAUDE_NOT_INSTALLED" | "CLAUDE_NOT_SIGNED_IN" | "CLAUDE_API_KEY_AUTH" | "CLAUDE_AUTH_METHOD_REFUSED" | "CLAUDE_EXEC_FAILED" | "CLAUDE_TIMEOUT" | "CLAUDE_NO_JSON" | "CLAUDE_QUOTA" | "CLAUDE_ABORTED";
 
 export class ClaudeCallError extends Error {
   constructor(readonly code: ClaudeFailureCode) {
@@ -57,12 +57,20 @@ async function run(bin: string, args: readonly string[], o: RunOptions): Promise
 }
 
 /**
- * Signed in with the subscription (`claude auth status`), never with an API key (CLAUDE_API_KEY_AUTH). A pass does not
- * prove the login still works (an expired login may still read loggedIn: true); the first call then fails with
- * CLAUDE_NOT_SIGNED_IN.
+ * The only `authMethod` accepted (fail closed, PR #311 review L3): the claude.ai subscription login, the value
+ * curiosity-media's worker sees for a subscription sign-in. An API key is CLAUDE_API_KEY_AUTH; any other or unknown
+ * method (a Console login, a long-lived token: not used here) is CLAUDE_AUTH_METHOD_REFUSED.
+ */
+export const CLAUDE_ALLOWED_AUTH_METHODS = ["claude.ai"] as const;
+/** `auth status` with the same settings isolation as the call (no user / project / local settings). */
+export const CLAUDE_AUTH_STATUS_ARGS = ["auth", "status", "--setting-sources", ""] as const;
+
+/**
+ * Signed in with the subscription (`claude auth status`), never with an API key. A pass does not prove the login still
+ * works (an expired login may still read loggedIn: true); the first call then fails with CLAUDE_NOT_SIGNED_IN.
  */
 export async function assertClaudeSignedIn(o: { claudeBin: string; env: NodeJS.ProcessEnv; cwd: string; signal?: AbortSignal }): Promise<void> {
-  const r = await run(o.claudeBin, ["auth", "status"], { env: o.env, cwd: o.cwd, timeoutMs: 30_000, ...(o.signal ? { signal: o.signal } : {}) });
+  const r = await run(o.claudeBin, CLAUDE_AUTH_STATUS_ARGS, { env: o.env, cwd: o.cwd, timeoutMs: 30_000, ...(o.signal ? { signal: o.signal } : {}) });
   if (r.aborted) throw new ClaudeCallError("CLAUDE_ABORTED");
   let status: { loggedIn?: unknown; authMethod?: unknown } = {};
   try {
@@ -72,6 +80,7 @@ export async function assertClaudeSignedIn(o: { claudeBin: string; env: NodeJS.P
   }
   if (typeof status?.authMethod === "string" && /api[_-]?key/i.test(status.authMethod)) throw new ClaudeCallError("CLAUDE_API_KEY_AUTH");
   if (r.code !== 0 || status?.loggedIn !== true) throw new ClaudeCallError("CLAUDE_NOT_SIGNED_IN");
+  if (!(CLAUDE_ALLOWED_AUTH_METHODS as readonly unknown[]).includes(status.authMethod)) throw new ClaudeCallError("CLAUDE_AUTH_METHOD_REFUSED");
 }
 
 /** The CLI's own wording for a login that has expired or cannot be confirmed (curiosity-media DEV-139, review M3). */
@@ -79,7 +88,7 @@ export const CLAUDE_AUTH_FAILURE_SIGN =
   /please run \/login|not logged in|invalid api key|oauth token (?:has )?(?:expired|been revoked)|oauth token revoked|token (?:has been|was) revoked|api error: 401\b|"type"\s*:\s*"authentication_error"/i;
 export const CLAUDE_QUOTA_SIGN = /usage limit|rate limit|quota|too many requests|overloaded|\b429\b/i;
 
-export type ClaudeImage = { label: string; bytes: Buffer; mediaType: "image/png" };
+export type ClaudeImage = { label: string; bytes: Buffer; mediaType: "image/png" | "image/jpeg" };
 export type ClaudeAnswer = { answer: string; model: string | null; cliVersion: string | null };
 
 /** The one stream-json user message: for each image a text label then the image, then the request text. */

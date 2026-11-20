@@ -30,15 +30,27 @@ Codex で生成（承認1件 = 1回、cycle.ts）→ 封入・検証済みの bu
    同じ bundle SHA を指す。無ければ `AUDIT_NOT_DELIVERED`、食い違えば `DELIVERY_MISMATCH`。
 2. `verifyBundleDir(~/sr-runs/review-inbox/<ID>)` が、その SHA になる（違えば・symlink なら `BUNDLE_UNVERIFIED`）。
 3. `verifyPreviews(~/sr-runs/review-inbox/previews/<ID>)` がその SHA のもので、各プレビューの元 SHA が bundle のファイルの SHA と一致する。
-4. 送るプレビューをもう一度だけ読み、その SHA が `INDEX.json` の値と一致したバイト列**そのもの**を添える（違えば `PREVIEW_SHA_MISMATCH`）。
-   添えた画像の SHA は worker が自分で計算して記録する（モデルにハッシュを書かせない）。
+4. 送るプレビューをもう一度だけ読み、その SHA が `INDEX.json` の値と一致することを確かめる（検証の後に差し替えられていれば `PREVIEW_SHA_MISMATCH`）。
+   そのバイト列**そのもの**から、メモリの中で監査用の層（§2a）を作って添える。`INDEX.json` の SHA は `verifyPreviews` が検めたバイト列から取る。
+   プレビューの SHA と、実際に送った層の SHA の両方を worker が自分で計算して記録する（モデルにハッシュを書かせない）。
 
 送る画像: 表示幅ごとに1回の呼び出し。PC 1440 は `composites/pc.png` の全体図（overview）→ 縦の tile を順に、SP 390 は `composites/sp.png` 同様
 （合成が無いときだけ parts）。各画像の直前に、ファイル名・種類・元ファイルを書いたラベルを置く。
 
-**上限（1回の呼び出しあたり）: 画像 20 枚まで、PNG の生のバイト数の合計 18 MiB まで**（base64 で約 24 MiB）。各プレビューは既に長辺 1568 px・
-3.5 MiB 以下（`preview.ts`）。超えたら `AUDIT_INPUT_TOO_LARGE` で止まり、**黙って縮めない**（質を下げるなら `preview.ts` の見える変更として行う）。
-PC の合成 1440 × 16000 は tile 約 11 枚 + 全体図。
+### 2a. 監査用の層（audit tier）とその理由（PR #311 レビュー M2）
+
+プレビューは PNG（可逆。可逆で 3.5 MiB を超えるときだけパレット）なので、写真の多い縦長の PC 頁（1440 × 16000 → tile 11 枚 + 全体図）は
+合計 25〜40 MiB になりうる。1回の呼び出しで運べる量を超え、本物の bundle は毎回 `AUDIT_INPUT_TOO_LARGE` で止まってしまう
+（テストの写真風の合成: PNG 33.7 MiB）。そこで送る画像は、**同じ画素・同じ大きさ**（長辺 1568 px 以下のまま。縮めない）を、決まった設定で
+1回だけ JPEG に符号化し直したものにする（`AUDIT_TIER` = `jpeg-q85-444-v1`: 品質 85、色差の間引きなし 4:4:4（文字が滲まない）、透明は白で埋める。
+リポジトリの `sharp` で、設定は固定なので同じ入力からは同じバイト列）。同じテストの合成で 4.0 MiB。
+WebP ではなく JPEG にしたのは、CLI と API が確実に受け付ける形式で、この大きさでは差が小さいため。
+
+- 記録: `audit.json` の各画像に `preview_sha256`（元のプレビュー）と `audit_sha256` / `audit_bytes`（送った層）、`media_type`。`AUDIT.md` の表にも両方。
+- **上限（1回の呼び出しあたり、送る層のバイト数）: 画像 20 枚まで、合計 18 MiB まで**（base64 で約 24 MiB）。層でも超えれば
+  `AUDIT_INPUT_TOO_LARGE` で止まる（それ以上は縮めない）。呼び出す側は上限を下げられるだけ。
+- `--dry-run` が表示幅ごとの枚数・送る層のバイト数（`bytes`）・プレビューのバイト数（`preview_bytes`）・上限（`limits`）を出す。
+  **本物の bundle で呼び出しを承認する前に、オーナーが `--dry-run` で収まることを確かめる。**
 
 文字の資料: 事実パック（キーと値）、ほし窯 d3 の方向案の concept と守るもの（IMAGE_FIRST の prompt builder の読み込みを使い、SHA-256 の固定がそのまま効く）、
 CP-003 の `learn` / `do_not_copy` の**文だけ**。**参照画像は送らない**（送るかはオーナー判断）。資料は `<` `>` を全角にして依頼文の最後に置き、
@@ -74,13 +86,18 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
 # ダミー PoC（imagefirst-review-poc.ts の後）の bundle を監査する: <承認 ID> の代わりに --dummy
 ```
 
-- 出力は1行の JSON（コード・枚数・SHA・判定だけ。指摘の本文は出さない）。終了コード: 0 完了 / 計画、1 marker の後で停止（コードを記録）、2 拒否（何も使っていない）。
+- 出力は1行の JSON（コード・枚数・SHA・判定・計画だけ。指摘の本文は出さない）。終了コード: 0 完了 / 計画、1 marker の後で停止
+  （**使った**扱い。記録が書ければコードを記録）、2 拒否（何も使っていない）。
 - 結果: `~/sr-runs/review-inbox/audits/<ID>/audit.json` と `AUDIT.md`（0700 / 0600、bundle とプレビューの隣）。GitHub・spool・公開ストレージへは何も出さない。
 - 1回きり: 最初の呼び出しの直前に `<state>/audits/<bundle SHA>.<rubric SHA>.used` を作る。2回目は `AUDIT_ALREADY_SPENT`（結果があれば `AUDIT_EXISTS`）。
   やり直すときは、オーナーが手でその marker と `audits/<ID>/` を消す。
 - 失敗: 答えの形が使えなければ、同じバイト列で**1回だけ**聞き直す（全体で最大3回の呼び出し）。2回目も使えなければ `AUDIT_SCHEMA`。
   サインイン切れ（`CLAUDE_NOT_SIGNED_IN`）・利用枠（`CLAUDE_QUOTA`）・時間切れ（`CLAUDE_TIMEOUT`、1回 10 分）・異常終了（`CLAUDE_EXEC_FAILED`）・中断は
-  コードを `audit.json`（`status: "stopped"`）に残して止まる。再試行しない。API キーのサインインは `CLAUDE_API_KEY_AUTH` で拒否（何も使わない）。
+  コードを `audit.json`（`status: "stopped"`）に残して止まる。再試行しない。jail は呼び出しのたびに確かめ直し、途中で動き出していれば
+  `JAIL_ACTIVE` / `JAIL_STATE_UNKNOWN` で止まる（marker の後なので使った扱い）。記録そのものが書けないとき（`AUDIT_EXISTS`・`AUDIT_DIR_UNSAFE`・
+  `AUDIT_WRITE_FAILED`）も `stopped`・終了コード 1 で、「何も使っていない」とは言わない。
+- サインイン: `claude auth status --setting-sources ""`（呼び出しと同じ設定の切り離し・同じ環境）で、`authMethod` が `claude.ai`（サブスクリプション）の
+  ときだけ通す。API キーは `CLAUDE_API_KEY_AUTH`、それ以外・不明（Console のサインイン、長期 token など）は `CLAUDE_AUTH_METHOD_REFUSED` で拒否（何も使わない）。
 - 呼び出し: `claude -p --input-format stream-json --output-format stream-json --verbose --tools "" --strict-mcp-config --no-session-persistence --setting-sources ""`、
   作業ディレクトリは state の下の空の一時ディレクトリ（リポジトリの外。終わったら消す）、環境は worker の許可リストから `ANTHROPIC_*` と
   `CLAUDE_CODE_OAUTH_*` を除いたもの。`--model` は付けない（アカウントの既定。報告されたモデル名を記録するだけ）。
@@ -88,7 +105,9 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
 ## 5. オーナーの承認が要ること（このコードの merge には要らない）
 
 1. **最初の本物の `claude` の呼び出し**（オーナーの契約を使い、デザイン画像を Anthropic へ送る）。最初は bundle ごとに承認。
-2. **WSL での確認**: `sr-designgen` で `claude auth status` が loggedIn で、API キーでないこと。jail の外で `claude` が PATH にあること（**未確認**）。
+2. **WSL での確認**: `sr-designgen` で `claude auth status --setting-sources ""` が受け付けられ、loggedIn で `authMethod` が `claude.ai` であること
+   （この形の `auth status` を CLI が受け付けるかも**未確認**。受け付けなければ `CLAUDE_NOT_SIGNED_IN` で止まり、何も使わない）。jail の外で `claude` が PATH にあること（**未確認**）。
+   本物の bundle で `--dry-run` が上限に収まること。
 3. モデルを固定するか（いまは固定しない。リポジトリにモデル名を書かない）。
 4. CP-003 の参照画像を送るか（いまは文だけ）。
 5. 自動起動や worker へつなぐか（いまは手動だけ）。

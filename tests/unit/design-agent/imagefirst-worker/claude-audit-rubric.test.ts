@@ -92,7 +92,7 @@ describe("Issue #302: the schema and the verdict computed in code", () => {
   it("the record is advisory only: confirmation, success case and owner-evaluation flags are fixed literals", () => {
     const rec = {
       schema: "imagefirst_claude_audit_v1", status: "stopped", stop_code: "CLAUDE_QUOTA",
-      binding: { approval_id: "a", bundle_id: "a", bundle_sha256: "a".repeat(64), plan_id: "p", commit: "0".repeat(40), previews_index_sha256: "b".repeat(64), rubric_version: "v", rubric_sha256: "c".repeat(64), request_sha256: { desktop_1440: null, mobile_390: null }, images: [{ viewport: "desktop_1440", label: "l", preview_file: "composite-pc.png", preview_sha256: "d".repeat(64), kind: "full", source: "composites/pc.png", source_sha256: "e".repeat(64), bytes: 1, y0: 0, y1: 1 }] },
+      binding: { approval_id: "a", bundle_id: "a", bundle_sha256: "a".repeat(64), plan_id: "p", commit: "0".repeat(40), previews_index_sha256: "b".repeat(64), rubric_version: "v", rubric_sha256: "c".repeat(64), audit_tier: "jpeg-q85-444-v1", request_sha256: { desktop_1440: null, mobile_390: null }, images: [{ viewport: "desktop_1440", label: "l", preview_file: "composite-pc.png", preview_sha256: "d".repeat(64), preview_bytes: 2, audit_sha256: "f".repeat(64), audit_bytes: 1, media_type: "image/jpeg", kind: "full", source: "composites/pc.png", source_sha256: "e".repeat(64), y0: 0, y1: 1 }] },
       auditor: { via: "claude_cli_print_no_tools", cli_version: null, model_reported: null, started_at: "2026-11-20T00:00:00.000Z", finished_at: "2026-11-20T00:00:00.000Z", calls: 1, reasks: 0 },
       viewports: { desktop_1440: null, mobile_390: null },
       derived: { desktop_1440: null, mobile_390: null, verdict: null },
@@ -112,7 +112,9 @@ describe("Issue #302: the runner (copied from curiosity-media) keeps its guards"
     expect(env.HOME).toBe("/h");
     expect(CLAUDE_BLOCKED_ENV).toEqual(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN"]);
     expect([...CLAUDE_PRINT_ARGS]).toEqual(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", ""]);
-    expect(code(`${W}/claude-cli.ts`)).not.toMatch(/--model|--mcp-config|--allowed|--dangerously|claude-(opus|sonnet|haiku)/);
+    expect(code(`${W}/claude-cli.ts`)).not.toMatch(/--model|--mcp-config|--allowed|--dangerously/);
+    // no model is named or pinned anywhere in the audit code: no model-id-shaped literal (the record only keeps what the CLI reports)
+    for (const m of ["claude-cli.ts", "claude-audit.ts", "audit-rubric.ts", "audit-schema.ts"]) expect(code(`${W}/${m}`), m).not.toMatch(/["'`]claude-[a-z]+-\d/);
   });
 
   it("one user message: a label before each image, the request last; JSON extraction prefers a fence", () => {
@@ -131,7 +133,7 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     expect(imports(`${W}/claude-cli.ts`)).toEqual(["../bounded-process", "../worker/env"]);
     expect(imports(`${W}/audit-rubric.ts`)).toEqual(["../structure/descriptor", "./claude-cli", "node:crypto"]);
     expect(imports(`${W}/audit-schema.ts`)).toEqual(["../structure/descriptor", "./audit-rubric", "zod"]);
-    expect(imports(`${W}/claude-audit.ts`)).toEqual(["../image-first/prompt", "../worker/state", "./audit-rubric", "./audit-schema", "./bundle", "./claude-cli", "./preview", "node:crypto", "node:fs", "node:fs/promises", "node:path"]);
+    expect(imports(`${W}/claude-audit.ts`)).toEqual(["../image-first/prompt", "../worker/state", "./audit-rubric", "./audit-schema", "./bundle", "./claude-cli", "./preview", "node:crypto", "node:fs", "node:fs/promises", "node:path", "sharp"]);
     expect(imports("scripts/sales-design-worker/imagefirst-audit.ts")).toEqual(["../../lib/design-agent/imagefirst-worker/claude-audit", "../../lib/design-agent/imagefirst-worker/jail-state", "../../lib/design-agent/worker/env", "node:fs/promises", "node:os", "node:path"]);
   });
 

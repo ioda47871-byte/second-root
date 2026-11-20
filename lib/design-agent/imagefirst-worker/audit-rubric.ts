@@ -3,7 +3,12 @@
  * Pure: no file, no process, no network. The ids here are the schema's keys (audit-schema.ts), so the guide text and the
  * schema cannot drift; the rubric's SHA-256 (RUBRIC_SHA256) is recorded with every audit and keys its one-use marker.
  *
- * Sources (copied as text; a test pins each copy against its source so a change there fails here):
+ * Sources. What a test pins against its source (claude-audit-rubric.test.ts): the criterion ids and their order
+ * (EVAL_CRITERIA), the thresholds (EVAL_PASS_TOTAL, EVAL_MIN_CRITERION), the hard-fail ids (IMAGE_FIRST_HARD_FAILS +
+ * the design-image rubric's hard_fails keys), the structure words (the descriptor's VOCABULARY, imported) and the CP-003
+ * text (verbatim). NOT pinned: the guide / anchor wording of CRITERIA, CHECKS and HARD_FAILS, which is written here for
+ * a web page (e.g. the eval template's structure anchor 5 asks for "2–3 visual cards", which the not_generic_template
+ * check deliberately does not reward); a change of that wording changes RUBRIC_SHA256 and so the one-use marker:
  *   - the owner-adopted design-image rubric (docs/operations/design-image-eval-template.md; the comp loader's
  *     EVAL_CRITERIA, EVAL_PASS_TOTAL = 22, EVAL_MIN_CRITERION = 4): beauty, fit, originality, structure, implementability;
  *   - the hard fails the owner answers for an IMAGE_FIRST run (the IMAGE_FIRST record's IMAGE_FIRST_HARD_FAILS, plus the

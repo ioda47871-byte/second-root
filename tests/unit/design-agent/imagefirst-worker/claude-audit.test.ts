@@ -1,16 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { REASK_LINE, RUBRIC_SHA256 } from "@/lib/design-agent/imagefirst-worker/audit-rubric";
 import { AuditRecord, deriveViewport } from "@/lib/design-agent/imagefirst-worker/audit-schema";
 import { CLAUDE_PRINT_ARGS } from "@/lib/design-agent/imagefirst-worker/claude-cli";
-import { auditIdCheck, AuditStop, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit, type ClaudeAuditOptions } from "@/lib/design-agent/imagefirst-worker/claude-audit";
+import { AUDIT_LIMITS, AUDIT_TIER, auditIdCheck, AuditStop, auditTierOf, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit, type ClaudeAuditOptions } from "@/lib/design-agent/imagefirst-worker/claude-audit";
 import { checkRealApprovalId } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { verifyPreviews } from "@/lib/design-agent/imagefirst-worker/preview";
 import { DUMMY_ID, DUMMY_RECORD, runReviewPoc } from "@/lib/design-agent/imagefirst-worker/review-poc";
 import { readFile } from "node:fs/promises";
-import { answerTemplate, cleanupTemps, copyDelivered, fakeClaude, ID, makeDelivered, readLog, REPO, sha, tmp, treeHashes, type Delivered } from "./claude-audit-support";
+import { answerTemplate, cleanupTemps, copyDelivered, fakeClaude, ID, makeDelivered, photoLikeComposite, readLog, REPO, sha, tmp, treeHashes, type Delivered } from "./claude-audit-support";
 
 // Issue #302: the IMAGE_FIRST design-image audit by the Claude CLI without Remote Control (claude-audit.ts), offline. A
 // fake `claude` (a node script) stands in for the CLI; the bundle and previews are made by the real pack → inbox →
@@ -50,31 +50,39 @@ const nothingSpent = (s: Setup) => {
   expect(existsSync(join(s.d.inbox, "audits"))).toBe(false);
 };
 const previewsDir = (d: Delivered) => join(d.inbox, "previews", d.id);
-const indexOf = (d: Delivered) => JSON.parse(readFileSync(join(previewsDir(d), "INDEX.json"), "utf8")) as { previews: { file: string; kind: string; source: string; preview_sha256: string; tile?: { index: number } }[] };
+type IxEntry = { file: string; kind: string; source: string; preview_sha256: string; bytes: number; width: number; height: number; tile?: { index: number } };
+const indexOf = (d: Delivered) => JSON.parse(readFileSync(join(previewsDir(d), "INDEX.json"), "utf8")) as { previews: IxEntry[] };
 const git = (...a: string[]) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" }).stdout;
+/** PR #311 review L7: the repository paths this change's code could ever write to (a fixed set; parallel tests elsewhere cannot flake it). */
+const repoOwn = () => git("status", "--porcelain", "--untracked-files=all", "--", "lib/design-agent/imagefirst-worker", "scripts/sales-design-worker", "design-library", "docs/operations");
+/** The composite's previews in send order: overview first, then the tiles. */
+const inOrder = (ix: { previews: IxEntry[] }, src: string) => ix.previews.filter((p) => p.source === src).sort((a, b) => (a.kind === "overview" ? -1 : b.kind === "overview" ? 1 : (a.tile?.index ?? 0) - (b.tile?.index ?? 0)));
 
 describe("Issue #302: the Claude CLI audit, happy path", () => {
   it("one call per viewport, exactly the verified preview bytes, the no-tools flags, no credential in the child, a valid record with the verdict computed in code", async () => {
     const s = setup();
-    const repoBefore = git("status", "--porcelain", "--untracked-files=all");
+    const repoBefore = repoOwn();
     const r = await runClaudeAudit(s.opts);
     expect(r).toMatchObject({ status: "completed", code: null, approval_id: s.d.id, bundle_sha256: s.d.bundleSha, verdict: "show_owner", calls: 2 });
     const log = readLog(s.log);
     expect(log.map((l) => l.bin)).toEqual(["auth", "claude", "claude"]);
     const calls = log.filter((l) => l.bin === "claude");
     expect(calls.map((c) => c.viewport)).toEqual(["desktop_1440", "mobile_390"]);
-    // the decoded image bytes are the INDEX.json previews of each composite: overview first, then the tiles in order
+    // the decoded image bytes are the audit tier of the INDEX.json previews of each composite, overview first, then the
+    // tiles in order: recomputed here from the preview files (same pixels and size, deterministic)
     const ix = indexOf(s.d);
-    const want = (src: string) => ix.previews.filter((p) => p.source === src).sort((a, b) => (a.kind === "overview" ? -1 : b.kind === "overview" ? 1 : (a.tile?.index ?? 0) - (b.tile?.index ?? 0)));
-    const pc = want("composites/pc.png");
+    const pc = inOrder(ix, "composites/pc.png");
+    const sp = inOrder(ix, "composites/sp.png");
     expect(pc.length).toBe(7); // 1440 × 9000 → 6 tiles + 1 overview
-    expect(calls[0]!.shas).toEqual(pc.map((p) => p.preview_sha256));
-    expect(calls[1]!.shas).toEqual(want("composites/sp.png").map((p) => p.preview_sha256));
+    const tierShas = async (list: IxEntry[]) => Promise.all(list.map(async (p) => sha(await auditTierOf(readFileSync(join(previewsDir(s.d), p.file)), p.width, p.height))));
+    expect(calls[0]!.shas).toEqual(await tierShas(pc));
+    expect(calls[1]!.shas).toEqual(await tierShas(sp));
     for (const c of calls) {
       expect(c.argv).toEqual([...CLAUDE_PRINT_ARGS]);
       expect((c.argv as string[]).some((a) => /model/i.test(a))).toBe(false);
-      expect(new Set(c.media as string[])).toEqual(new Set(["image/png"]));
+      expect(new Set(c.media as string[])).toEqual(new Set([AUDIT_TIER.mediaType]));
     }
+    expect(log[0]!.argv).toEqual(["auth", "status", "--setting-sources", ""]);
     for (const l of log) {
       expect(l.forbidden).toEqual([]);
       expect(l.envKeys).not.toContain("OPENAI_API_KEY");
@@ -85,9 +93,16 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
     // the record: strict, bound to the bytes the worker attached, the verdict derived (the answer has no verdict)
     const rec = readRecord(s);
     expect(rec).toMatchObject({ status: "completed", stop_code: null, advisory_only: true, human_confirmed: false, registers_success_case: false, not_owner_evaluation: true });
-    expect(rec.binding).toMatchObject({ approval_id: s.d.id, bundle_sha256: s.d.bundleSha, rubric_sha256: RUBRIC_SHA256, previews_index_sha256: sha(readFileSync(join(previewsDir(s.d), "INDEX.json"))) });
-    expect(rec.binding.images.filter((i) => i.viewport === "desktop_1440").map((i) => i.preview_sha256)).toEqual(calls[0]!.shas);
-    expect(rec.binding.images.filter((i) => i.viewport === "mobile_390").map((i) => i.preview_sha256)).toEqual(calls[1]!.shas);
+    expect(rec.binding).toMatchObject({ approval_id: s.d.id, bundle_sha256: s.d.bundleSha, rubric_sha256: RUBRIC_SHA256, audit_tier: AUDIT_TIER.id, previews_index_sha256: sha(readFileSync(join(previewsDir(s.d), "INDEX.json"))) });
+    // each image: the verified preview's SHA (INDEX.json) and the SHA of the audit-tier bytes that were sent
+    const of = (vp: string) => rec.binding.images.filter((i) => i.viewport === vp);
+    expect(of("desktop_1440").map((i) => i.preview_sha256)).toEqual(pc.map((p) => p.preview_sha256));
+    expect(of("desktop_1440").map((i) => i.audit_sha256)).toEqual(calls[0]!.shas);
+    expect(of("mobile_390").map((i) => i.preview_sha256)).toEqual(sp.map((p) => p.preview_sha256));
+    expect(of("mobile_390").map((i) => i.audit_sha256)).toEqual(calls[1]!.shas);
+    expect(rec.binding.images.every((i) => i.media_type === "image/jpeg" && i.preview_bytes > 0 && i.audit_bytes > 0)).toBe(true);
+    const md = readFileSync(join(auditDir(s), "AUDIT.md"), "utf8");
+    for (const i of rec.binding.images) expect(md).toContain(`\`${i.preview_sha256}\` | \`${i.audit_sha256}\``);
     expect(rec.derived.desktop_1440).toEqual(deriveViewport(rec.viewports.desktop_1440!));
     expect(rec.derived.desktop_1440!.generic_patterns_seen).toEqual(["section_layout:grid_cards"]);
     expect(rec.auditor).toMatchObject({ via: "claude_cli_print_no_tools", model_reported: "fake-test-model", cli_version: "0.0.0-test", calls: 2, reasks: 0 });
@@ -99,7 +114,7 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
     expect(readFileSync(join(auditDir(s), "AUDIT.md"), "utf8")).toMatch(/Advisory only\.[\s\S]*show_owner/);
     expect(readdirSync(markerDir(s))).toEqual([`${s.d.bundleSha}.${RUBRIC_SHA256}.used`]);
     expect(statSync(markerDir(s)).mode & 0o777).toBe(0o700);
-    expect(git("status", "--porcelain", "--untracked-files=all")).toBe(repoBefore);
+    expect(repoOwn()).toBe(repoBefore);
   });
 
   it("never touches claims, the ledger, the sealed bundle, the inbox copy, the previews or Codex (content hashes)", async () => {
@@ -254,7 +269,10 @@ describe("Issue #302: refusals before anything is spent", () => {
     nothingSpent(b);
     // a caller may only lower the limits
     const c = setup({}, { limits: { maxImages: 999, maxBytes: 999 * 1024 * 1024 }, dryRun: true });
-    expect((await runClaudeAudit(c.opts)).status).toBe("planned");
+    const planned = await runClaudeAudit(c.opts);
+    expect(planned.status).toBe("planned");
+    expect(planned.limits).toEqual(AUDIT_LIMITS);
+    expect((await runClaudeAudit({ ...c.opts, limits: { maxImages: 9, maxBytes: 9 * 1024 * 1024 } })).limits).toEqual({ maxImages: 9, maxBytes: 9 * 1024 * 1024 });
   });
 
   it("a second run is blocked by the one-use marker (and the audit is never overwritten)", async () => {
@@ -333,6 +351,115 @@ describe("Issue #302: failures after the marker are recorded and stop (no retry)
     const s = setup({}, { signal: ac.signal });
     await refused(runClaudeAudit(s.opts), "AUDIT_ABORTED");
     nothingSpent(s);
+  });
+});
+
+describe("PR #311 review: the audit tier, swapped bytes, ownership seams, writes after the marker, the jail, the login", () => {
+  it("M2: a realistic tall PC page (1440 × 16000, lossless ~2.5 MiB tiles) is over the cap as PNG but fits as the audit tier", async () => {
+    const d = await makeDelivered({ id: "hoshigama-imagefirst-d3-20261120-02", pc: await photoLikeComposite(1440, 16000) });
+    const home = tmp("sr-audit-tall-home-");
+    const { bin, log } = fakeClaude(home, {});
+    const opts: ClaudeAuditOptions = { approvalId: d.id, runsDir: d.runs, stateDir: d.state, material, claudeBin: bin, env: { PATH: process.env.PATH, HOME: home }, jailIdle: async () => true };
+    const r = await runClaudeAudit({ ...opts, dryRun: true });
+    const pcPlan = r.plan.find((p) => p.viewport === "desktop_1440")!;
+    expect(pcPlan.images).toBe(12); // 11 tiles + 1 overview
+    expect(pcPlan.preview_bytes).toBeGreaterThan(AUDIT_LIMITS.maxBytes); // the PNG previews alone would never fit one call
+    expect(pcPlan.bytes).toBeLessThanOrEqual(AUDIT_LIMITS.maxBytes);
+    expect(pcPlan.bytes).toBeLessThan(pcPlan.preview_bytes / 2);
+    expect(readLog(log)).toEqual([]);
+    // the tier is deterministic: the same preview gives the same bytes, at the same size
+    const ix = indexOf(d);
+    const tile = ix.previews.find((p) => p.kind === "tile")!;
+    const png = readFileSync(join(previewsDir(d), tile.file));
+    const a = await auditTierOf(png, tile.width, tile.height);
+    expect(sha(await auditTierOf(png, tile.width, tile.height))).toBe(sha(a));
+    await expect(auditTierOf(png, tile.width + 1, tile.height)).rejects.toMatchObject({ code: "AUDIT_TIER_FAILED" });
+    // and the real (fake) call goes through
+    expect(await runClaudeAudit(opts)).toMatchObject({ status: "completed", calls: 2 });
+  });
+
+  it("M1: a preview swapped AFTER verifyPreviews returned is caught by the re-read (PREVIEW_SHA_MISMATCH), nothing spent", async () => {
+    const s = setup();
+    const tile = indexOf(s.d).previews.find((p) => p.kind === "tile")!;
+    const other = indexOf(s.d).previews.find((p) => p.kind === "overview")!;
+    s.opts.testSeams = {
+      afterVerify: () => {
+        // a valid PNG of ours, 0600, but other bytes than INDEX.json names
+        const f = join(previewsDir(s.d), tile.file);
+        rmSync(f);
+        writeFileSync(f, readFileSync(join(previewsDir(s.d), other.file)), { mode: 0o600 });
+      },
+    };
+    await refused(runClaudeAudit(s.opts), "PREVIEW_SHA_MISMATCH");
+    nothingSpent(s);
+  });
+
+  it("L2: ownership checks: the runs directory's mode and owner, the record's mode, owner and link count", async () => {
+    const uid = process.getuid!();
+    const a = setup();
+    chmodSync(a.d.runs, 0o755);
+    await refused(runClaudeAudit(a.opts), "RUNS_DIR_UNSAFE");
+    nothingSpent(a);
+    const b = setup({}, { testSeams: { dirUid: uid + 1 } });
+    await refused(runClaudeAudit(b.opts), "RUNS_DIR_UNSAFE");
+    nothingSpent(b);
+    const c = setup({}, { testSeams: { fileUid: uid + 1 } });
+    await refused(runClaudeAudit(c.opts), "DELIVERY_RECORD_INVALID");
+    nothingSpent(c);
+    const e = setup();
+    chmodSync(join(e.d.inbox, ".records", `${e.d.id}.json`), 0o644);
+    await refused(runClaudeAudit(e.opts), "DELIVERY_RECORD_INVALID");
+    nothingSpent(e);
+    const f = setup();
+    linkSync(join(f.d.inbox, ".records", `${f.d.id}.json`), join(f.d.work, "second-name.json"));
+    await refused(runClaudeAudit(f.opts), "DELIVERY_RECORD_INVALID");
+    nothingSpent(f);
+  });
+
+  it("L1 / L2: after the marker, an audit directory appearing under the final name is AUDIT_EXISTS — stopped and spent, never replaced", async () => {
+    const s = setup();
+    // an EMPTY directory: rename(2) would silently replace it, so only the explicit check stops it
+    s.opts.testSeams = { beforeWrite: () => void mkdirSync(join(s.d.inbox, "audits", s.d.id), { recursive: true, mode: 0o700 }) };
+    const r = await runClaudeAudit(s.opts);
+    expect(r).toMatchObject({ status: "stopped", code: "AUDIT_EXISTS", calls: 2, dir: null });
+    expect(readdirSync(auditDir(s))).toEqual([]);
+    expect(readdirSync(markerDir(s)).length).toBe(1);
+    expect(readdirSync(join(s.d.inbox, "audits"))).toEqual([s.d.id]); // no temporary directory left
+  });
+
+  it("L1 / L2: after the marker, an unsafe audits directory or a failed write is stopped (AUDIT_DIR_UNSAFE / AUDIT_WRITE_FAILED), never refused", async () => {
+    const a = setup();
+    a.opts.testSeams = { beforeWrite: () => void mkdirSync(join(a.d.inbox, "audits"), { mode: 0o755 }) };
+    const ra = await runClaudeAudit(a.opts);
+    expect(ra).toMatchObject({ status: "stopped", code: "AUDIT_DIR_UNSAFE", calls: 2 });
+    const b = setup();
+    b.opts.testSeams = {
+      beforeWrite: () => {
+        throw new Error("ENOSPC");
+      },
+    };
+    expect(await runClaudeAudit(b.opts)).toMatchObject({ status: "stopped", code: "AUDIT_WRITE_FAILED", calls: 2, dir: null });
+    expect(readdirSync(markerDir(b)).length).toBe(1);
+  });
+
+  it("L4: the jail is asked again before every call; started during the run → stopped (spent) with JAIL_ACTIVE", async () => {
+    let asked = 0;
+    const s = setup({}, { jailIdle: async () => ++asked <= 2 });
+    expect(await runClaudeAudit(s.opts)).toMatchObject({ status: "stopped", code: "JAIL_ACTIVE", calls: 1 });
+    expect(readLog(s.log).filter((l) => l.bin === "claude").length).toBe(1);
+    expect(readRecord(s).stop_code).toBe("JAIL_ACTIVE");
+    let n = 0;
+    const u = setup({}, { jailIdle: async () => (++n <= 1 ? true : null) });
+    expect(await runClaudeAudit(u.opts)).toMatchObject({ status: "stopped", code: "JAIL_STATE_UNKNOWN", calls: 0 });
+  });
+
+  it("L3: only the claude.ai subscription login is accepted (a console login or a token is refused before anything is spent)", async () => {
+    for (const auth of ["console", "oauth_token", "missing"]) {
+      const s = setup({ auth });
+      await refused(runClaudeAudit(s.opts), "CLAUDE_AUTH_METHOD_REFUSED");
+      expect(readLog(s.log).map((l) => l.bin)).toEqual(["auth"]);
+      expect(existsSync(markerDir(s))).toBe(false);
+    }
   });
 });
 

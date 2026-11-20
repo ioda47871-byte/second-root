@@ -8,7 +8,8 @@
  *   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts <approval id> [--dry-run]
  *   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts --dummy [--dry-run]     (the review PoC's dummy bundle)
  *
- * --dry-run verifies everything and prints the plan (images and bytes per call); it starts no claude process and writes
+ * --dry-run verifies everything and prints the plan (per viewport: images, audit-tier bytes sent, preview bytes, and the
+ * per-call cap); it starts no claude process and writes
  * nothing. The facts pack and the direction text are read from this clone, pinned by SHA-256. Places (outside the
  * repository, refused otherwise): runs ~/sr-runs (its review-inbox), state $XDG_STATE_HOME/sr-design-worker/imagefirst-worker.
  *
@@ -61,7 +62,8 @@ async function main(): Promise<number> {
   try {
     const material = await loadAuditMaterial((rel) => readFile(join(REPO, rel)));
     const r = await runClaudeAudit({ approvalId, runsDir, stateDir, material, claudeBin, env: process.env, jailIdle: () => jailIdle(env, systemctl), dummy, dryRun, signal: controller.signal });
-    say({ status: r.status, code: r.code, approval_id: r.approval_id, bundle_sha256: r.bundle_sha256, verdict: r.verdict, calls: r.calls, plan: r.plan, dir: r.dir });
+    // the plan: per viewport the image count, the bytes sent (audit tier) and the preview bytes, against the cap
+    say({ status: r.status, code: r.code, approval_id: r.approval_id, bundle_sha256: r.bundle_sha256, verdict: r.verdict, calls: r.calls, plan: r.plan, limits: r.limits, tier: r.tier, dir: r.dir });
     return r.status === "stopped" ? 1 : 0;
   } catch (error) {
     const code = error instanceof AuditStop ? error.code : typeof (error as { code?: unknown })?.code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test((error as { code: string }).code) ? (error as { code: string }).code : "AUDIT_UNEXPECTED";

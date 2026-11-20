@@ -216,10 +216,18 @@ async function readSmall(path: string, max: number): Promise<Buffer> {
  * size and limits, and (when given) that it belongs to this bundle SHA. Returns the index.
  */
 export async function verifyPreviews(dir: string, o: { bundle_sha256?: string } = {}): Promise<PreviewIndex> {
+  return (await verifyPreviewsDetailed(dir, o)).index;
+}
+
+/** verifyPreviews, plus the SHA-256 of the exact INDEX.json bytes it checked (Issue #302: the audit records that hash). */
+export async function verifyPreviewsDetailed(dir: string, o: { bundle_sha256?: string } = {}): Promise<{ index: PreviewIndex; index_sha256: string }> {
   if (!(await ownPrivateDir(dir))) stop("PREVIEWS_DIR_UNSAFE");
   let ix: PreviewIndex;
+  let indexSha: string;
   try {
-    ix = JSON.parse((await readSmall(join(dir, "INDEX.json"), 1 * MiB)).toString("utf8")) as PreviewIndex;
+    const indexBytes = await readSmall(join(dir, "INDEX.json"), 1 * MiB);
+    indexSha = sha256(indexBytes);
+    ix = JSON.parse(indexBytes.toString("utf8")) as PreviewIndex;
   } catch (error) {
     if (error instanceof PreviewStop) throw error;
     return stop("PREVIEW_INDEX_INVALID");
@@ -244,7 +252,7 @@ export async function verifyPreviews(dir: string, o: { bundle_sha256?: string } 
   }
   const md = (await readSmall(join(dir, "INDEX.md"), 1 * MiB)).toString("utf8");
   if (md !== renderIndexMd(ix)) stop("PREVIEW_INDEX_INVALID");
-  return ix;
+  return { index: ix, index_sha256: indexSha };
 }
 
 export type BuildPreviewsOptions = {
