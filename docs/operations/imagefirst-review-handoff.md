@@ -120,11 +120,14 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 
 うまくいかないとき: Claude が「読めない」「権限がない」と答えたら、その文言を記録して止める。**chmod や jail の設定を変えて通さない。**
 ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
-worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant・本物の run の受け渡し（`deliver-review.ts`、§4）は、日付 `00000000` と
-暦に無い日付の承認 ID を拒否する（`APPROVAL_ID_RESERVED` / `APPROVAL_ID_INVALID`。テストで固定）。自動起動の run marker（`imagefirst-autostart.sh`）と
-再送 wrapper（`imagefirst-deliver-review.sh`）が見るのは日付 `00000000` だけで、暦に無い日付（例 `20261399`）はそこを通り、その後 worker が
-`GRANT_INVALID` / `APPROVAL_ID_INVALID` で止める（どれも承認を使わずに止まる。PR #309 再レビュー L-1）。ローカルの受け渡し（`local-inbox.ts`）
-そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
+worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant・本物の run の受け渡し（`deliver-review.ts`、§4）は、日付 `00000000`・
+暦に無い日付・2000 年より前の年の承認 ID を拒否する（`checkRealApprovalId` が `APPROVAL_ID_RESERVED` / `APPROVAL_ID_INVALID` を返し、grant の経路
+では worker が `GRANT_INVALID` で止まる。テストで固定）。
+自動起動の run marker の検査（`imagefirst-autostart.sh` の MARKER_PY）が見るのは日付 `00000000` だけ。暦に無い日付（例 `20261399`）の marker は
+その検査を通るが、続く worker の `--precheck` が `GRANT_INVALID`（exit 2）を返し、自動起動は `AUTOSTART_IDLE_NOT_RUNNABLE`（exit 10）で終わる。
+承認は使われず marker も残るので、以後の poll は毎回同じ結果で止まる。**オーナーがその marker を手で消すまで続く**（PR #309 再レビュー L-1）。
+再送 wrapper（`imagefirst-deliver-review.sh`）も日付 `00000000` だけを見て、暦に無い日付は worker の `--deliver-review` が `APPROVAL_ID_INVALID`
+（exit 2）で止める（何も書かない）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
 ## 4. 本物の run での流れ（Issue #302 P3 の続き。オフラインで実装・テスト済み、実機では未実施）
 
