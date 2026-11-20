@@ -108,7 +108,22 @@ export type CycleOptions = {
    * the invocation returns; when the run has already ended it waits for that receipt instead. It never invokes anything.
    */
   onInvoking?: (recordInterrupted: () => Promise<void>) => void;
+  /**
+   * Issue #302 P1 (automatic start): the approval id root's one-use run marker names. When given, the packet's d3
+   * approval id must be exactly this one (APPROVAL_NOT_GRANTED otherwise), checked before the claim. It only narrows:
+   * the packet, its §10, the pins, the claim and the entry's ledger decide as before. Absent (a run by hand): unchanged.
+   */
+  expectApprovalId?: string;
 };
+
+/** The automatic start's grant, as root passes it to the worker (environment, set only by imagefirst-autostart.sh). */
+export const GRANT_ENV = "SR_IMAGEFIRST_EXPECT_APPROVAL_ID";
+/** undefined = no grant (a run by hand); null = a grant that is not a ほし窯 d3 approval id (refused before anything). */
+export function grantFromEnv(env: NodeJS.ProcessEnv): string | null | undefined {
+  const v = env[GRANT_ENV];
+  if (v === undefined) return undefined;
+  return APPROVAL_ID.test(v) ? v : null;
+}
 export type CycleDeps = {
   commit: () => Promise<CommitState>;
   /** A file's bytes as committed (`git show <commit>:<path>`); null when unreadable. */
@@ -287,6 +302,7 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   // the fixed scope: d3 alone (d1, d1,d3 refuse), and the shop's own approval id
   if (packet.directions.join(",") !== a.direction) return refuse("SCOPE_NOT_ALLOWED");
   if (!APPROVAL_ID.test(approvalId)) return refuse("SHOP_NOT_ALLOWED");
+  if (o.expectApprovalId !== undefined && approvalId !== o.expectApprovalId) return refuse("APPROVAL_NOT_GRANTED", approvalId);
   if (!PLAN_ID.test(packet.planId)) return refuse("PLAN_ID_INVALID", approvalId);
   const expires = parseUtcInstant(packet.expires);
   if (expires === null) return refuse("APPROVAL_EXPIRY_INVALID", approvalId);

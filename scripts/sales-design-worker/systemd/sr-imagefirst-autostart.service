@@ -1,0 +1,62 @@
+# Second Root IMAGE_FIRST automatic start (Issue #302 P1). NOT installed or enabled by anything in this repository:
+# the owner installs it from the root-only admin clone after a separate approval (docs/operations/imagefirst-worker-port.md §7).
+# OFF by default even when installed: without the owner's root-owned switch and one-use run marker it does nothing.
+#
+# Runs as root (no User=), like sr-design-cycle.service: only root may use up the owner's one-use marker (its state
+# directory below, 0700). Every command in the worker's clone (git, npm, the worker itself) runs as the dedicated worker
+# user sr-designgen through runuser, in its own home, where its ChatGPT sign-in of Codex lives. Modeled on
+# curiosity-media's kaii-image-worker.service (one oneshot per hourly start, TimeoutStartSec inside the hour).
+[Unit]
+Description=Second Root IMAGE_FIRST automatic start (one owner-approved hoshigama d3 run at most)
+After=network-online.target
+Wants=network-online.target
+# No Conflicts= with sr-jail-claude / sr-design-cycle: that would stop them in the middle. The script refuses to start
+# while either is active (busy, exit 12) and holds cycle.sh's lock while it runs.
+
+[Service]
+Type=oneshot
+WorkingDirectory=/
+ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autostart.sh
+# fetch 210 s + git steps + npm ci 930 s + the worker 1800 s (+ 90 s to stop) all end inside this
+TimeoutStartSec=3600
+# SIGTERM goes to the script only (KillMode=mixed); it passes it on to the worker once, and the worker ends with its
+# receipt (its own 50 s hard stop + 10 s) before the rest gets SIGKILL
+KillMode=mixed
+TimeoutStopSec=90
+# 10 = idle (no marker, used, expired, not approved yet), 11 = another poll runs, 12 = busy: not failures
+SuccessExitStatus=10 11 12
+# The lock and the used markers (never removed: a used approval id never runs again)
+StateDirectory=sr-imagefirst-autostart
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# The worker's home (its clone, ~/.local/state, ~/sr-runs, ~/.codex) and cycle.sh's lock (absent when not installed)
+ReadWritePaths=/home/sr-designgen -/var/lib/sr-design-cycle
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+# AF_UNIX: systemctl talks to systemd. AF_INET(6): git fetch, npm ci, Codex. AF_NETLINK: id / getent lookups.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Resource limits: one Codex run (node + the CLI), kept behind interactive work. Check them against the WSL budget
+# (docs/operations/wsl-resource-preflight.md) before installing.
+Nice=10
+CPUWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryHigh=3G
+MemoryMax=4G
+TasksMax=512
+# Not set, on purpose:
+#   RestrictNamespaces / PrivateUsers: Codex runs inside the bubblewrap jail (lib/design-agent/sandbox.ts), which needs
+#     user namespaces.
+#   PrivateDevices: bubblewrap sets up its own /dev.
+#   PrivateNetwork / IPAddressDeny: git fetch, npm ci and Codex need the network.
+#   MemoryDenyWriteExecute: node (JIT).
+#   CapabilityBoundingSet: runuser needs CAP_SETUID / CAP_SETGID.

@@ -1,0 +1,17 @@
+# Second Root IMAGE_FIRST automatic start (Issue #302 P1). NOT installed or enabled by anything in this repository;
+# enabling it is a separate owner decision (docs/operations/imagefirst-worker-port.md §7).
+[Unit]
+Description=Second Root IMAGE_FIRST automatic start (hourly poll)
+
+[Timer]
+# Once an hour, as curiosity-media's kaii-image-worker.timer, away from sr-design-cycle.timer (:17). A start while the
+# previous poll still runs is skipped by systemd, and the script's lock would refuse it too.
+OnCalendar=*-*-* *:41:00
+RandomizedDelaySec=10min
+AccuracySec=1min
+# A poll missed while the PC was off runs once after boot: the marker's expires_at and the packet's own expiry still
+# decide (an expired or used marker does nothing).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

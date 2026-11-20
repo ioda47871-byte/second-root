@@ -1,7 +1,10 @@
 /**
  * Issue #298 P1: one cycle of the IMAGE_FIRST worker adapter (lib/design-agent/imagefirst-worker/cycle.ts). Started by
  * hand by the owner as the worker user (sr-designgen) in the worker's clone, after that clone was put on origin/develop
- * (docs/operations/imagefirst-worker-port.md §5). No timer or unit starts it.
+ * (docs/operations/imagefirst-worker-port.md §5). Issue #302 P1: or once by root's wrapper imagefirst-autostart.sh (pull
+ * model, OFF by default; its unit and timer are NOT installed or enabled by anything in this repository), which passes
+ * the approval id of root's one-use run marker in GRANT_ENV: the packet's d3 approval id must then be exactly that one
+ * (APPROVAL_NOT_GRANTED). A malformed grant is refused (GRANT_INVALID) before anything. Nothing else changes.
  *
  *   ./node_modules/.bin/tsx scripts/sales-design-worker/imagefirst-worker.ts
  *
@@ -22,7 +25,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runBounded } from "../../lib/design-agent/bounded-process";
-import { exitCodeOf, GENERATE_ENTRY, gitCommitState, runImagefirstCycle, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
+import { exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, runImagefirstCycle, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { expand, fileAtCommit, insideRepo, REPO, runMain, say, stopSignals } from "../design-artifact/phase2f-live-cli";
@@ -40,6 +43,8 @@ const INVOKE_TIMEOUT_MS = WATCHDOG_MS + 2 * 60_000;
 
 async function main(): Promise<number> {
   if (process.argv.length > 2) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  const grant = grantFromEnv(process.env);
+  if (grant === null) return (say({ status: "refused", code: "GRANT_INVALID", invoked: false }), 2);
   const env = childEnvironment(process.env);
   const stateDir = join(expand(process.env.XDG_STATE_HOME ?? "~/.local/state"), "sr-design-worker", "imagefirst-worker");
   const runsDir = join(homedir(), "sr-runs");
@@ -47,7 +52,7 @@ async function main(): Promise<number> {
   const ledgerDir = defaultLedgerDir(env, homedir());
   for (const p of [stateDir, runsDir, ledgerDir]) if (await insideRepo(p)) return (say({ status: "refused", code: "PLACE_INSIDE_REPO", invoked: false }), 2);
   const report = await runImagefirstCycle(
-    { repoRoot: REPO, stateDir, runsDir, signal: controller.signal, onInvoking: (record) => (recordInterrupted = record) },
+    { repoRoot: REPO, stateDir, runsDir, signal: controller.signal, onInvoking: (record) => (recordInterrupted = record), ...(grant ? { expectApprovalId: grant } : {}) },
     {
       commit: () => gitCommitState(REPO, env),
       fileAt: (commit, rel) => fileAtCommit(commit, rel),

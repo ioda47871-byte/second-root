@@ -1,0 +1,338 @@
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import type { WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { APPROVAL_PACKET_PATH } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { UNAPPROVED_PACKET_FIXTURE } from "../image-first/fixtures/unapproved-packet";
+import { cleanupTemps, commitFiles, filledPacket, git, ID, NOW, REPO, tmp, workerRepo } from "./support";
+
+// Issue #302 P1: the automatic start (scripts/sales-design-worker/imagefirst-autostart.sh), the real file, against a fake
+// WSL under SR_IMAGEFIRST_AUTOSTART_TEST_ROOT: temp dirs stand in for /etc/sr-design-worker (the owner's switch and
+// one-use run marker), /var/lib (root's state, cycle.sh's lock) and the worker's home with its dedicated clone of a
+// temporary bare origin (git fetch here never leaves this machine). systemctl, pgrep and npm are stubs. The clone's
+// node_modules/.bin/tsx runs fixtures/fake-worker.ts: the real worker's main() over the real cycle, with the entry
+// played in-process against the fake Codex. No Codex, no model, no network, no root, no systemd.
+
+vi.setConfig({ testTimeout: 120_000 });
+afterAll(cleanupTemps);
+const SCRIPT = join(REPO, "scripts/sales-design-worker/imagefirst-autostart.sh");
+const UNIT_DIR = join(REPO, "scripts/sales-design-worker/systemd");
+const REAL_TSX = join(REPO, "node_modules/.bin/tsx");
+const FAKE_WORKER = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/fake-worker.ts");
+const exe = (path: string, body: string) => {
+  writeFileSync(path, `#!/bin/bash\n${body}\n`);
+  chmodSync(path, 0o755);
+};
+
+/** One fake WSL. The origin starts with the UNAPPROVED packet; `approve()` pushes the owner's filled-in §10. */
+function wsl() {
+  const t = tmp("sr-ifa-");
+  const etc = join(t, "etc", "sr-design-worker");
+  const home = join(t, "home", "sr-designgen");
+  const sc = join(t, "sc");
+  const bin = join(t, "bin");
+  for (const d of [etc, join(t, "var", "lib"), home, sc, bin]) mkdirSync(d, { recursive: true });
+  chmodSync(home, 0o700);
+  writeFileSync(join(t, "clock"), String(NOW / 1000));
+  // systemctl show -p ActiveState --value <unit>: sc/<unit> holds the state (default inactive); sc/show-fail = an error
+  exe(join(bin, "systemctl"), `echo "$*" >> '${sc}/systemctl.log'; [ -f '${sc}/show-fail' ] && exit 1; u="\${@: -1}"; if [ -f '${sc}'/"$u" ]; then cat '${sc}'/"$u"; else echo inactive; fi`);
+  // pgrep: sc/pgrep = a process of the worker user; sc/pgrep-error = pgrep cannot tell
+  exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0; exit 1`);
+  exe(join(bin, "npm"), `echo "npm $*" >> '${sc}/npm.log'`);
+  // the approved code at origin/develop: the prompt inputs, the packet, a lockfile, node_modules ignored
+  const src = workerRepo(readFileSync(UNAPPROVED_PACKET_FIXTURE));
+  commitFiles(src, { ".gitignore": Buffer.from("node_modules\n"), "package-lock.json": Buffer.from("{}\n") }, "lockfile (test)");
+  const origin = join(t, "origin.git");
+  git(t, "init", "-q", "--bare", origin);
+  git(src, "push", "-q", origin, "HEAD:refs/heads/develop");
+  const clone = join(home, "imagefirst", "second-root");
+  mkdirSync(join(home, "imagefirst"));
+  git(t, "clone", "-q", "--branch", "develop", origin, clone);
+  mkdirSync(join(clone, "node_modules", ".bin"), { recursive: true });
+  exe(join(clone, "node_modules", ".bin", "tsx"), `exec '${REAL_TSX}' '${FAKE_WORKER}' "$@"`);
+  writeFileSync(join(home, "fake-codex-mode"), "six");
+  const w = {
+    t,
+    etc,
+    home,
+    sc,
+    bin,
+    src,
+    origin,
+    clone,
+    env: { PATH: `${bin}:${process.env.PATH}`, SR_IMAGEFIRST_AUTOSTART_TEST_ROOT: t, OPENAI_API_KEY: "should-not-pass" } as unknown as NodeJS.ProcessEnv,
+    state: join(t, "var", "lib", "sr-imagefirst-autostart"),
+    switchOn: (body: object = { enabled: true }) => writeFileSync(join(etc, "imagefirst-autostart.json"), JSON.stringify(body), { mode: 0o644 }),
+    marker: (body: object = { approval_id: ID, expires_at: "2026-11-20T09:00:00Z" }) => writeFileSync(join(etc, "imagefirst-run.json"), JSON.stringify(body), { mode: 0o644 }),
+    approve: () => {
+      commitFiles(src, { [APPROVAL_PACKET_PATH]: filledPacket() }, "owner approval (test)");
+      git(src, "push", "-q", origin, "HEAD:refs/heads/develop");
+    },
+    starts: () => (existsSync(join(home, "fake-worker-starts.log")) ? readFileSync(join(home, "fake-worker-starts.log"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: string[]; grant: string | null }) : []),
+    execs: () => (existsSync(join(home, "codex-execs.log")) ? readFileSync(join(home, "codex-execs.log"), "utf8").trim().split("\n").filter(Boolean).length : 0),
+    used: () => (existsSync(join(t, "var", "lib", "sr-imagefirst-autostart", "used")) ? readdirSync(join(t, "var", "lib", "sr-imagefirst-autostart", "used")) : []),
+    receipts: () => (existsSync(join(home, "sr-runs")) ? readdirSync(join(home, "sr-runs")).filter((n) => n.endsWith(".receipt.json")).map((n) => JSON.parse(readFileSync(join(home, "sr-runs", n), "utf8")) as WorkerReceipt) : []),
+  };
+  return w;
+}
+type W = ReturnType<typeof wsl>;
+
+type Poll = { status: number | null; stdout: string; code: string; phase: string; approval: string; worker: { status?: string; code?: string | null; invoked?: boolean } | null };
+function parse(status: number | null, stdout: string): Poll {
+  const last = stdout.trim().split("\n").pop() ?? "";
+  const m = /^IMAGEFIRST_AUTOSTART (\S+) phase=(\S+) approval=(\S+) exit=(\d+)$/.exec(last);
+  expect(m, stdout).not.toBeNull();
+  expect(Number(m![4])).toBe(status);
+  const workerLine = /^imagefirst-autostart: worker: (\{.*\})$/m.exec(stdout);
+  return { status, stdout, code: m![1]!, phase: m![2]!, approval: m![3]!, worker: workerLine ? (JSON.parse(workerLine[1]!) as Poll["worker"]) : null };
+}
+const poll = (w: W, args: string[] = []): Poll => {
+  const r = spawnSync("bash", [SCRIPT, ...args], { env: w.env, encoding: "utf8", timeout: 100_000 });
+  return parse(r.status, r.stdout);
+};
+function pollAsync(w: W): { child: ChildProcess; done: Promise<Poll> } {
+  const child = spawn("bash", [SCRIPT], { env: w.env, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  child.stdout!.on("data", (b: Buffer) => (out += b.toString()));
+  const done = new Promise<Poll>((res) => child.on("close", (code) => res(parse(code, out))));
+  return { child, done };
+}
+const until = async (cond: () => boolean, ms = 60_000) => {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error("timed out waiting");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+};
+/** Nothing was started and the marker is unused. */
+const nothingRan = (w: W) => {
+  expect(w.starts()).toEqual([]);
+  expect(w.execs()).toBe(0);
+  expect(w.used()).toEqual([]);
+  expect(w.receipts()).toEqual([]);
+};
+
+describe("Issue #302 P1 automatic start: owner-approved commit → poll → single call → receipt (fake WSL, fake Codex)", () => {
+  it("unapproved: no job and the marker stays unused; approved: one call, a receipt; the next poll: nothing", async () => {
+    const w = wsl();
+    w.switchOn();
+    w.marker();
+    // the packet at origin/develop is not approved yet: zero calls, the owner's marker is kept for later
+    const before = poll(w);
+    expect(before).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_NOT_APPROVED", phase: "before_claim", approval: ID });
+    nothingRan(w);
+    // the owner merges the filled-in §10; the next hourly poll picks it up
+    w.approve();
+    const run = poll(w);
+    expect(run).toMatchObject({ status: 0, code: "AUTOSTART_RAN", phase: "after_claim", approval: ID });
+    expect(run.worker).toMatchObject({ status: "succeeded", code: null, invoked: true });
+    expect(w.starts()).toEqual([{ argv: ["scripts/sales-design-worker/imagefirst-worker.ts"], grant: ID }]);
+    expect(w.execs()).toBe(1);
+    expect(w.used()).toEqual([ID]);
+    expect(statSync(join(w.state, "used", ID)).mode & 0o777).toBe(0o700);
+    expect(readFileSync(join(w.state, "used", ID, "used"), "utf8")).toContain(`approval_id=${ID}\ncommit=${git(w.src, "rev-parse", "HEAD")}`);
+    const [receipt] = w.receipts();
+    expect(receipt).toMatchObject({ status: "succeeded", approval_id: ID, verified: true, counts: { pc: 2, sp: 4, total: 6 }, commit: git(w.src, "rev-parse", "HEAD") });
+    // the clone was fast-forwarded onto origin/develop, nothing changed in it
+    expect(git(w.clone, "rev-parse", "HEAD")).toBe(git(w.src, "rev-parse", "HEAD"));
+    expect(git(w.clone, "status", "--porcelain", "--untracked-files=all")).toBe("");
+    // npm ci ran once for the new lockfile, never with an API key in the environment
+    expect(readFileSync(join(w.sc, "npm.log"), "utf8").trim().split("\n")).toEqual(["npm ci --no-audit --no-fund --loglevel=error"]);
+    expect(run.stdout).not.toContain("should-not-pass");
+    // second poll: the marker is used: no call
+    expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_USED" });
+    expect(w.starts()).toHaveLength(1);
+    expect(w.execs()).toBe(1);
+    // even a fresh marker for the same approval id: used (the worker's claim and the entry's ledger would refuse too)
+    w.marker();
+    expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_USED" });
+    expect(w.execs()).toBe(1);
+  });
+
+  it("the switch: absent = OFF and nothing touched; enabled:false = OFF; unsafe or invalid = refused; no call in any case", () => {
+    const w = wsl();
+    w.approve();
+    w.marker();
+    expect(poll(w)).toMatchObject({ status: 0, code: "AUTOSTART_OFF", approval: "none" });
+    expect(existsSync(w.state)).toBe(false);
+    w.switchOn({ enabled: false });
+    expect(poll(w)).toMatchObject({ status: 0, code: "AUTOSTART_OFF" });
+    w.switchOn({ enabled: "yes" });
+    expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_SWITCH_INVALID" });
+    w.switchOn({ enabled: true, extra: 1 });
+    expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_SWITCH_INVALID" });
+    w.switchOn();
+    chmodSync(join(w.etc, "imagefirst-autostart.json"), 0o666);
+    expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_SWITCH_UNSAFE" });
+    nothingRan(w);
+  });
+
+  it("the marker: missing, expired, too far, invalid or already used = no call", () => {
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_NO_MARKER" });
+    w.marker({ approval_id: ID, expires_at: "2026-11-20T00:59:59Z" });
+    expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_EXPIRED" });
+    w.marker({ approval_id: ID, expires_at: "2026-11-21T01:00:01Z" });
+    expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_MARKER_INVALID" });
+    for (const bad of [{ approval_id: "tsugute-imagefirst-d3-20261120-01", expires_at: "2026-11-20T09:00:00Z" }, { approval_id: ID }, { approval_id: `${ID}/../x`, expires_at: "2026-11-20T09:00:00Z" }]) {
+      w.marker(bad);
+      expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_MARKER_INVALID" });
+    }
+    w.marker();
+    chmodSync(join(w.etc, "imagefirst-run.json"), 0o664);
+    expect(poll(w)).toMatchObject({ status: 2, code: "AUTOSTART_MARKER_UNSAFE" });
+    nothingRan(w);
+    // used before (root's state): no call
+    chmodSync(join(w.etc, "imagefirst-run.json"), 0o644);
+    mkdirSync(join(w.state, "used", ID), { recursive: true });
+    expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_USED" });
+    expect(w.starts()).toEqual([]);
+    expect(w.execs()).toBe(0);
+  });
+
+  it("the jailed Claude or a design cycle running (or unknown), or any worker-user process: busy, no call, marker unused", async () => {
+    const cases: [string, (w: W) => void | Promise<void>][] = [
+      ["sr-jail-claude active", (w) => writeFileSync(join(w.sc, "sr-jail-claude.service"), "active")],
+      ["sr-design-cycle activating", (w) => writeFileSync(join(w.sc, "sr-design-cycle.service"), "activating")],
+      ["systemctl fails", (w) => writeFileSync(join(w.sc, "show-fail"), "")],
+      ["a worker-user process", (w) => writeFileSync(join(w.sc, "pgrep"), "")],
+      ["pgrep cannot tell", (w) => writeFileSync(join(w.sc, "pgrep-error"), "")],
+    ];
+    for (const [name, arrange] of cases) {
+      const w = wsl();
+      w.approve();
+      w.switchOn();
+      w.marker();
+      await arrange(w);
+      expect(poll(w), name).toMatchObject({ status: 12, code: "AUTOSTART_BUSY" });
+      nothingRan(w);
+    }
+    // cycle.sh's own lock held by a running cycle
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    w.marker();
+    const cycleState = join(w.t, "var", "lib", "sr-design-cycle");
+    mkdirSync(cycleState, { mode: 0o700 });
+    const ready = join(w.sc, "cycle-holds");
+    const holder = spawn("flock", [join(cycleState, "cycle.lock"), "bash", "-c", `touch '${ready}'; sleep 30`], { stdio: "ignore" });
+    await until(() => existsSync(ready));
+    expect(poll(w)).toMatchObject({ status: 12, code: "AUTOSTART_BUSY" });
+    nothingRan(w);
+    holder.kill("SIGKILL");
+  });
+
+  it("git fetch fails, or the clone is dirty / diverged: stopped before the marker, no call", () => {
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    w.marker();
+    renameSync(w.origin, `${w.origin}.gone`);
+    expect(poll(w)).toMatchObject({ status: 20, code: "AUTOSTART_STOP_FETCH", phase: "before_claim" });
+    nothingRan(w);
+    renameSync(`${w.origin}.gone`, w.origin);
+    writeFileSync(join(w.clone, "stray.txt"), "x");
+    expect(poll(w)).toMatchObject({ status: 20, code: "AUTOSTART_STOP_TREE_DIRTY" });
+    nothingRan(w);
+    expect(existsSync(join(w.clone, "stray.txt"))).toBe(true);
+    const diverged = wsl();
+    diverged.approve();
+    diverged.switchOn();
+    diverged.marker();
+    commitFiles(diverged.clone, { "local.txt": Buffer.from("x") }, "a local commit (test)");
+    expect(poll(diverged)).toMatchObject({ status: 20, code: "AUTOSTART_STOP_NOT_FAST_FORWARD" });
+    nothingRan(diverged);
+  });
+
+  it("two polls at once: one wins (the other is locked), one call", async () => {
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    w.marker();
+    writeFileSync(join(w.home, "fake-worker-hold"), "");
+    const first = pollAsync(w);
+    await until(() => w.starts().length === 1);
+    expect(poll(w)).toMatchObject({ status: 11, code: "AUTOSTART_LOCKED" });
+    // remove the hold: the first poll's single run finishes
+    spawnSync("rm", ["-f", join(w.home, "fake-worker-hold")]);
+    expect(await first.done).toMatchObject({ status: 0, code: "AUTOSTART_RAN" });
+    expect(w.starts()).toHaveLength(1);
+    expect(w.execs()).toBe(1);
+    expect(w.used()).toEqual([ID]);
+  });
+
+  it("a stop signal during the run: passed on to the worker, which ends with its WORKER_INTERRUPTED receipt; no retry", async () => {
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    w.marker();
+    writeFileSync(join(w.home, "fake-codex-mode"), "hang");
+    const p = pollAsync(w);
+    await until(() => w.execs() === 1);
+    p.child.kill("SIGTERM");
+    const r = await p.done;
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTOSTART_INTERRUPTED", phase: "after_claim" });
+    expect(r.worker, r.stdout).toMatchObject({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true });
+    const [receipt] = w.receipts();
+    expect(receipt).toMatchObject({ status: "stopped", stop_code: "WORKER_INTERRUPTED", interrupted: true, approval_id: ID });
+    const audit = readFileSync(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker", "audit.jsonl"), "utf8");
+    expect(audit).toContain('"code":"WORKER_INTERRUPTED"');
+    // the next poll: nothing (the marker is used; the worker's claim would refuse too)
+    writeFileSync(join(w.home, "fake-codex-mode"), "six");
+    expect(poll(w)).toMatchObject({ status: 10, code: "AUTOSTART_IDLE_MARKER_USED" });
+    expect(w.starts()).toHaveLength(1);
+    expect(w.execs()).toBe(1);
+  });
+
+  it("refuses arguments, and any copy outside the root-only clone without the test world", () => {
+    const w = wsl();
+    expect(poll(w, ["--now"])).toMatchObject({ status: 2, code: "AUTOSTART_USAGE" });
+    const r = spawnSync("bash", [SCRIPT], { env: { PATH: process.env.PATH } as unknown as NodeJS.ProcessEnv, encoding: "utf8" });
+    expect(parse(r.status, r.stdout)).toMatchObject({ status: 2, code: "AUTOSTART_USAGE" });
+    expect(r.stdout).toContain("run from the root-only clone");
+  });
+});
+
+describe("Issue #302 P1 automatic start: the units are code and documentation only (never installed or enabled here)", () => {
+  const service = readFileSync(join(UNIT_DIR, "sr-imagefirst-autostart.service"), "utf8");
+  const timer = readFileSync(join(UNIT_DIR, "sr-imagefirst-autostart.timer"), "utf8");
+  const script = readFileSync(SCRIPT, "utf8");
+  const num = (name: string) => Number(new RegExp(`^${name}=(\\d+)$`, "m").exec(script)![1]);
+
+  it("the service: root's script from the root-only clone, hourly oneshot, budgets inside its limits, resource limits", () => {
+    for (const unit of [service, timer]) expect(unit.split("\n")[0]).toMatch(/NOT installed or enabled/);
+    expect(service).toMatch(/^ExecStart=\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autostart\.sh$/m);
+    expect(service).not.toMatch(/^User=/m);
+    expect(service).toMatch(/^Type=oneshot$/m);
+    expect(service).toMatch(/^SuccessExitStatus=10 11 12$/m);
+    expect(service).toMatch(/^KillMode=mixed$/m);
+    const start = Number(/^TimeoutStartSec=(\d+)$/m.exec(service)![1]);
+    const stop = Number(/^TimeoutStopSec=(\d+)$/m.exec(service)![1]);
+    const k = num("KILL_AFTER");
+    const worst = num("FETCH_TIMEOUT") + k + 5 * (num("GIT_TIMEOUT") + k) + num("NPM_TIMEOUT") + k + num("WORKER_TIMEOUT") + num("WORKER_KILL_AFTER");
+    expect(start).toBeGreaterThan(worst);
+    // the worker's own stop (50 s hard stop + 10 s receipt) fits inside both the wrapper's kill-after and the unit's stop
+    expect(num("WORKER_KILL_AFTER")).toBeGreaterThan(60);
+    expect(stop).toBeGreaterThan(60);
+    for (const key of ["MemoryMax", "MemoryHigh", "CPUWeight", "TasksMax", "Nice", "IOSchedulingClass"]) expect(service).toMatch(new RegExp(`^${key}=\\S+$`, "m"));
+    expect(service).toMatch(/^StateDirectory=sr-imagefirst-autostart$/m);
+    expect(service).toMatch(/^StateDirectoryMode=0700$/m);
+    expect(service).toMatch(/^NoNewPrivileges=yes$/m);
+    expect(timer).toMatch(/^OnCalendar=\*-\*-\* \*:\d{2}:00$/m);
+    expect(timer).toMatch(/^RandomizedDelaySec=/m);
+  });
+
+  it("nothing in the repository installs, enables or starts it; only the runbook shows the owner's commands", () => {
+    const grep = (pattern: string) => spawnSync("git", ["grep", "--untracked", "-lE", pattern, "--", ".", ":!tests/**"], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
+    expect(grep("systemctl.*(enable|start).*sr-imagefirst-autostart")).toEqual(["docs/operations/imagefirst-worker-port.md"]);
+    // only the service names the script; only the script names the worker on a command line
+    expect(grep("(bash|sh|ExecStart)\\b.*imagefirst-autostart\\.sh").filter((p) => !p.startsWith("docs/"))).toEqual(["scripts/sales-design-worker/imagefirst-autostart.sh", "scripts/sales-design-worker/systemd/sr-imagefirst-autostart.service"]);
+    expect(service).not.toMatch(/imagefirst-worker\.ts/);
+    // the existing cycle units are untouched by this change: still their own script, never the automatic start
+    const cycle = readFileSync(join(UNIT_DIR, "sr-design-cycle.service"), "utf8");
+    expect(cycle).not.toMatch(/imagefirst/);
+  });
+});

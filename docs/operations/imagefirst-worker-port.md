@@ -20,6 +20,7 @@ worker は何も呼ばない（`no_job`）。実機への導入と最初の実�
 | (d) 一度だけの消費 | `body-image-approvals.ts` `claimBodyImageApproval`（使う直前に state dir へ `O_EXCL` の印。EEXIST = 使用済み、他の失敗も OFF） | **移植**: `cycle.ts` `claim`（`<state>/claims/<承認 ID>.used`、`O_EXCL|O_NOFOLLOW`、0600）。印は入口を起動する直前に作り、結果にかかわらず消さない。入口の ledger（`phase2f-live/ledger.ts`、atomic mkdir）は**そのまま**で、adapter はその `precheck` を読むだけ。二重の一度使い切り（adapter の印 + 入口の ledger） |
 | (e) 出力と検証 | `codex-image-diagnostics.ts`（セッション記録から画像ツールの事実）、`entry-image-worker.ts` の検査と記録 | **移植しない: 既にある。** `lib/design-agent/design-image/capability.ts`・`diagnostics.ts`・`image-once.ts`（セッション記録の読み取り、PNG 検査、停止コード）。adapter が足したのは**非公開の受け取り**だけ: run ディレクトリ（`~/sr-runs/<承認 ID>-<UTC>/`、0700、入口が作る）を読み直し、各画像の SHA-256 をディスク上で計算して入口の `call.json` の SHA と照合し、`<承認 ID>-<UTC>.receipt.json`（0600）にコード・SHA・枚数・時刻だけを書く（プロンプト文も秘密も書かない） |
 | GitHub の認証 | `scripts/worker-github-client.mts`（App の短期 token / PAT） | **移植しない。** adapter は GitHub に何も書かない（画像・PR・Issue なし）。読むのは `git fetch` だけで、既存の worker clone の手順（`run.sh` と同じ）を使う |
+| (f) 毎時の起動（Issue #302 P1） | `docs/operations/kaii-image-worker-wsl.md` §6: `~/kaii-image-worker/run.sh`（`flock -n`、`timeout` で各段を切る、`git fetch` → detach → install → worker）、`kaii-image-worker.service`（oneshot、`TimeoutStartSec=3600`）と `.timer`（毎時 `:17`、`Persistent=true`）。原本は unit をリポジトリに置かず runbook に書く | **形を再利用、置き場所と権限を変えた（§6）。** wrapper `scripts/sales-design-worker/imagefirst-autostart.sh`（`flock -n`・各段の `timeout`・fetch → 早送り → 必要なら `npm ci` → worker 1 回、は原本と `run.sh` の形）。unit/timer `scripts/sales-design-worker/systemd/sr-imagefirst-autostart.{service,timer}`（oneshot・`TimeoutStartSec=3600`・毎時・`Persistent=true` は原本どおり。user unit ではなく root の system unit にしたのは、使い切りの印を worker が作れない場所に置くため。**install も enable もしない**） |
 
 ### 移植しないもの（Issue #298 の指定）
 
@@ -70,6 +71,7 @@ run ディレクトリを読み直して receipt → unlock。拒否はどれも
 ## 5. オーナーの手順（P2 の承認の後だけ。いまは読むだけ）
 
 **timer も systemd unit も作らない・enable しない。** root 所有の script と許可一覧（`image-autorun` の grant、`cycle.sh`）は変えない。
+（Issue #302 P1 で、OFF のままの自動起動を §6・§7 に足した。手で起動するこの手順はそのまま使える。）
 
 読むだけの確認（何も変えない。WSL の `sr-designgen` で）:
 
@@ -106,3 +108,120 @@ SIGKILL し、receipt を書く → worker 自身が 50 秒たってもまだ待
 
 戻し方: adapter は状態を 3 か所にしか書かない（§3 の置き場所）。使わなくするには起動しないだけでよい（timer は無い）。
 コードを戻すときは develop で revert する。`claims/` と入口の ledger は**消さない**（消すと同じ承認 ID が再び使える状態になる）。
+
+## 6. 自動起動（Issue #302 P1、pull 方式、既定で OFF）
+
+**状態: コードと手順だけ。WSL には install も enable もしていない。** この節のコードが develop に入っても、オーナーが §7 の手順を
+WSL の root で行うまで何も動かない。入れたあとも、オーナーの switch と使い切りの印（どちらも root 所有）が無ければ何もしない。
+実 Codex での最初の生成は、従来どおり承認パケット §10 と P3 の個別承認が要る。
+
+クラウドの Claude は WSL に入らない（SSH・公開ポート・self-hosted runner なし）。WSL 側の timer が毎時、GitHub の `origin/develop` を
+自分で取りに行き、オーナーが §10 を記入して develop に入れたコミットを見つけたときだけ、既存の worker（`imagefirst-worker.ts`）を 1 回起動する。
+
+```
+sr-imagefirst-autostart.timer（毎時 :41 + 最大 10 分の揺らぎ、Persistent=true）
+  → sr-imagefirst-autostart.service（root、oneshot）
+  → /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autostart.sh（root 専用の admin clone。cycle.sh と同じ場所）
+      1. switch /etc/sr-design-worker/imagefirst-autostart.json   無い・{"enabled": false} → OFF、exit 0、何も触らない
+      2. lock（2 本目は exit 11）
+      3. 使い切りの印 /etc/sr-design-worker/imagefirst-run.json    無い・期限切れ・使用済み → exit 10
+      4. 排他: sr-jail-claude.service と sr-design-cycle.service が止まっている（inactive / failed 以外・エラーは busy）、
+         sr-designgen のプロセスが 1 つも無い、cycle.sh の lock をこの実行の間ずっと持つ → どれか欠ければ exit 12
+      5. sr-designgen として: 専用 clone で git fetch origin develop（失敗は exit 20、印は使わない）→ 作業木がきれい →
+         HEAD が origin/develop の祖先 → origin/develop へ detach（早送り。--force も clean もしない）→ lockfile が変わったときだけ npm ci
+      6. 事前確認（sr-designgen として）: origin/develop のパケット §10 が 承認済み で、d3 の承認 ID が印と同じ → 違えば exit 10、印は使わない
+      7. 排他をもう一度 → 印を使い切る（root の state に atomic mkdir、消さない）→ worker を sr-designgen として 1 回
+         （SR_IMAGEFIRST_EXPECT_APPROVAL_ID = 印の承認 ID。パケットの承認 ID が違えば worker が APPROVAL_NOT_GRANTED で拒否）
+```
+
+- **再試行はどこにも無い。** 印は worker の結果にかかわらず使用済みのまま。worker 自身の claim と入口の ledger も 1 回限り（三重）。
+- **未承認なら 0 回・0 課金**: §10 が未記入なら 6 で止まり、印も残る（§10 が入った次の毎時の実行で動く）。
+- **権限の分離**: switch と印は root 所有（`/etc` から上のすべての dir が root 所有で、group / other が書けないこと）。使用済みの記録は
+  `/var/lib/sr-imagefirst-autostart/used/<承認 ID>/`（root、0700）。sr-designgen は印を作れず、使用済みを消せない。root は sr-designgen の
+  clone で git・node・パーサを動かさない（すべて `runuser -u sr-designgen`。cycle.sh の約束と同じ）。
+- **止める信号**: `systemctl stop` の SIGTERM は script だけに届き（`KillMode=mixed`）、script が worker へ 1 回渡して待つ。worker は
+  receipt（`WORKER_INTERRUPTED`）と audit の 1 行で終わる（§5 の時間の順）。`TimeoutStopSec=90` はその 60 秒より長い。
+- **出力**: journal に固定の行と worker の JSON 1 行。最後の行は
+  `IMAGEFIRST_AUTOSTART <CODE> phase=<before_claim|after_claim> approval=<id|none> exit=<n>`。
+  exit: 0 = OFF / 実行した（worker の行を見る）、10 = 何もすること無し、11 = 別の実行中、12 = busy、20 = 印の前に環境で停止、
+  2 = switch / 印が不正・危険、または worker が拒否、1 = worker が止まった、40 / 41 = signal / 内部エラー。unit は 10・11・12 を成功扱い。
+
+置き場所: switch `/etc/sr-design-worker/imagefirst-autostart.json`、印 `/etc/sr-design-worker/imagefirst-run.json`、
+root の state `/var/lib/sr-imagefirst-autostart/`（lock、`used/`）、専用 clone `/home/sr-designgen/imagefirst/second-root`
+（旧 worker の clone とは別。run.sh の fetch と混ざらない）。worker 側は §3 のまま（`~/.local/state/sr-design-worker/`、`~/sr-runs/`）。
+
+偽 WSL の E2E（`tests/unit/design-agent/imagefirst-worker/autostart.test.ts`）: 本物の wrapper を、一時 dir の /etc・/var/lib・home と
+一時の bare origin（fetch はこの機械の中だけ）、systemctl・pgrep・npm の stub、偽 Codex の worker（`fixtures/fake-worker.ts`、本物の
+cycle を使う）で走らせる。確かめること: 未承認 → 0 回・印は残る、承認コミット → poll → 1 回 → receipt、2 回目 → 0 回、switch OFF・不正、
+印なし・期限切れ・使用済み・不正、jail / cycle が動いている・不明、sr-designgen のプロセス、cycle.sh の lock、fetch 失敗・作業木の変更・
+分岐 → 印の前に停止、同時 2 本 → 1 本だけ、実行中の SIGTERM → worker の receipt（`WORKER_INTERRUPTED`）・再試行なし。unit の予算と
+上限、リポジトリの中に install / enable するものが無いことも検査する。
+
+## 7. オーナーの手順（自動起動。別のオーナー承認の後だけ。いまは読むだけ）
+
+**ここに書いた操作は、まだ誰も行っていない。** Claude はクラウドから root で操作しない。すべてオーナーが WSL で、一度だけ行う。
+
+### 7.1 読むだけの事前確認（何も変えない）
+
+```
+sudo bash /root/sr-capture-admin/scripts/ops/wsl-resource-preflight.sh     # STOP なら入れない
+sudo git -C /root/sr-capture-admin fetch --quiet origin develop && sudo git -C /root/sr-capture-admin status -sb   # admin clone が承認済みの develop か
+systemctl list-timers --all | grep -i sr- || true                           # 何が enable されているか（sr-design-cycle.timer の時刻 :17 と重ならないこと）
+systemctl show -p ActiveState --value sr-jail-claude.service sr-design-cycle.service   # どちらも inactive か failed
+sudo -u sr-designgen -H bash -c 'command -v node git npm python3 && codex login status'   # /usr/local/bin か /usr/bin の node、ChatGPT サインイン
+ls -ld /etc/sr-design-worker /home/sr-designgen/imagefirst/second-root 2>&1   # まだ無ければ 7.2 で作る
+free -h && nproc                                                            # unit の MemoryMax=4G・CPUWeight=20 が合うか
+```
+
+### 7.2 一度だけの設置（WSL の root で）
+
+```
+# 専用 clone（sr-designgen の。旧 worker の clone とは別）
+sudo -u sr-designgen -H git clone --branch develop https://github.com/<owner>/<repo>.git /home/sr-designgen/imagefirst/second-root
+sudo -u sr-designgen -H bash -c 'cd ~/imagefirst/second-root && npm ci --no-audit --no-fund'
+
+# unit と timer（root 専用の admin clone から写す。enable はまだしない）
+sudo install -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-imagefirst-autostart.service /etc/systemd/system/
+sudo install -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-imagefirst-autostart.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# switch（root 所有、0644。dir も root 所有で group / other が書けないこと）
+sudo install -d -o root -g root -m 0755 /etc/sr-design-worker
+echo '{"enabled": true}' | sudo tee /etc/sr-design-worker/imagefirst-autostart.json >/dev/null
+sudo chmod 0644 /etc/sr-design-worker/imagefirst-autostart.json
+```
+
+### 7.3 1 回の実行を許す（承認ごとに。§10 を develop に入れたあと）
+
+```
+# 印: §10 の d3 承認 ID と、§10 の期限（24 時間以内）。使い切ると二度と動かない
+printf '{"approval_id": "%s", "expires_at": "%s"}\n' hoshigama-imagefirst-d3-YYYYMMDD-NN YYYY-MM-DDTHH:MM:SSZ | sudo tee /etc/sr-design-worker/imagefirst-run.json >/dev/null
+sudo chmod 0644 /etc/sr-design-worker/imagefirst-run.json
+sudo systemctl enable --now sr-imagefirst-autostart.timer        # 毎時の poll を始める（すぐ 1 回試すなら次の行）
+sudo systemctl start sr-imagefirst-autostart.service
+journalctl -u sr-imagefirst-autostart.service -n 30 --no-pager    # 最後の行 IMAGEFIRST_AUTOSTART ... と worker の JSON
+```
+
+PC が止まっていた場合は、起動後の最初の poll で動く（`Persistent=true`）。印の期限か §10 の期限を過ぎていれば何もしない。
+
+### 7.4 止める・戻す
+
+| したいこと | すること |
+|---|---|
+| 毎時の poll を止める（すぐ） | `sudo systemctl disable --now sr-imagefirst-autostart.timer` |
+| 実行中の 1 回を止める | `sudo systemctl stop sr-imagefirst-autostart.service`（worker が receipt を書いて終わる。承認は使用済みのまま） |
+| OFF にする（timer は残す） | `echo '{"enabled": false}' \| sudo tee /etc/sr-design-worker/imagefirst-autostart.json` か、switch を消す |
+| 1 回の許可を取り消す | `sudo rm /etc/sr-design-worker/imagefirst-run.json` |
+| すべて外す | timer を disable → `sudo rm /etc/systemd/system/sr-imagefirst-autostart.{service,timer}` → `sudo systemctl daemon-reload` |
+
+`/var/lib/sr-imagefirst-autostart/used/`、worker の `claims/`、入口の ledger は**消さない**（消すと同じ承認 ID がもう一度使える状態になる）。
+コードを戻すときは develop で revert する。
+
+### 7.5 何もしていないときの負荷
+
+毎時 1 回、switch が無い（OFF）ならファイルを 1 つ見て終わる（1 秒未満、ネットワークなし、state も作らない）。switch が ON で印が無い・
+使用済み・期限切れなら、lock と JSON の確認だけで終わる（python3 を 1〜2 回、1 秒程度）。印が有効なときだけ `git fetch`（数秒）と §10 の
+事前確認をする。Codex・node の worker が動くのは、§10 と印がそろった 1 回だけ（上限 30 分、unit の `MemoryMax=4G`・`CPUWeight=20`・`Nice=10`）。
+
+注意: W0 の窓の確認（`docs/operations/passt-update-plan.md` の `sr_w0_facts`）は、未知の `sr-*` timer を `UNKNOWN` として保留にする。timer を入れたら、
+その確認の一覧に足すかは別に判断する（この変更では触っていない）。

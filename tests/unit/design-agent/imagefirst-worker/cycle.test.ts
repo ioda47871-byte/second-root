@@ -1,186 +1,28 @@
-import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
-import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
-import { buildPromptPlan, loadPromptInputs, PROMPT_INPUTS, PromptStop, type DirectionKey } from "@/lib/design-agent/image-first/prompt";
-import { claimApproval, exitCodeOf, generateArgv, gitCommitState, IMAGEFIRST_ALLOWLIST, packetPins, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
-import { APPROVAL_PACKET_PATH, PACKET_FIELDS, runFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { PROMPT_INPUTS } from "@/lib/design-agent/image-first/prompt";
+import { claimApproval, exitCodeOf, generateArgv, gitCommitState, grantFromEnv, GRANT_ENV, IMAGEFIRST_ALLOWLIST, packetPins, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { APPROVAL_PACKET_PATH } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
-import type { CodexSandbox } from "@/lib/design-agent/sandbox";
-import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { acquireLock } from "@/lib/design-agent/worker/state";
 import { fileAtCommit, parseArgs } from "@/scripts/design-artifact/phase2f-live-cli";
 import { colourPng } from "../phase2f/fixtures";
 import { UNAPPROVED_PACKET_FIXTURE } from "../image-first/fixtures/unapproved-packet";
+import { cleanupTemps, commitFiles, ENV, entryInProcess, fakeCodex, FLAGS, filledPacket, git, ID, NOW, PLAN_ID, pointOrigin, REPO, sha, tmp, VALUES, workerRepo } from "./support";
 
 // Issue #298 P1: the IMAGE_FIRST worker adapter, end to end against a FAKE Codex. The worker cycle runs against a
 // temporary git repository (its own origin/develop) holding a filled-in d3 packet built here (never committed to this
 // repository) and the three prompt inputs. The existing entry is played in-process exactly as
 // scripts/design-artifact/image-first-generate.ts main() does (same flags, same runFullPageCall, same batch mapping),
 // with generateImagesInOneRun driven by the in-process fake sandbox the image-once tests use. No Codex, no model, no
-// image tool, no network, no bubblewrap.
+// image tool, no network, no bubblewrap. (Issue #302 P1: the helpers live in ./support, shared with the automatic
+// start's fake worker.)
 
-const REPO = resolve(__dirname, "../../../..");
 vi.setConfig({ testTimeout: 60_000 });
-const temps: string[] = [];
-const tmp = (prefix: string) => {
-  const d = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  temps.push(d);
-  return d;
-};
-afterAll(() => {
-  for (const d of temps) rmSync(d, { recursive: true, force: true });
-});
-const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
-const NOW = Date.parse("2026-11-20T01:00:00Z");
-const ID = "hoshigama-imagefirst-d3-20261120-01";
-const PLAN_ID = "hoshigama-imagefirst-p3-20261120";
-const THREAD = "0f0e0d0c-0b0a-4908-8706-050403020100";
-const ENV = childEnvironment(process.env);
+afterAll(cleanupTemps);
 
-/** The entry's flag sets, read from its source (a drift between the adapter's arguments and the entry fails here). */
-const ENTRY = readFileSync(resolve(REPO, "scripts/design-artifact/image-first-generate.ts"), "utf8");
-const setOf = (name: string) => new Set([...(new RegExp(`const ${name} = new Set\\(\\[([^\\]]*)\\]\\)`).exec(ENTRY)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]!));
-const FLAGS = setOf("FLAGS");
-const VALUES = setOf("VALUES");
-
-// ---- the filled-in packet (in memory; written only into the temporary repository) ----------------------------------
-type Fill = Record<keyof typeof PACKET_FIELDS, string>;
-const D3: Fill = { status: "`承認済み`", directions: "`d3`", d1: "`なし`", d3: `\`${ID}\``, expires: "`2026-11-20T09:00:00Z`", planId: `\`${PLAN_ID}\``, approvedBy: "2026-11-20 owner (test)" };
-function filledPacket(values: Partial<Fill> = {}, edit: (t: string) => string = (t) => t): Buffer {
-  let text = readFileSync(UNAPPROVED_PACKET_FIXTURE, "utf8").replace("**状態: 未承認。**", "**状態: 承認済み。**");
-  const at = text.indexOf("## 10. 承認欄");
-  let section = text.slice(at);
-  for (const [k, label] of Object.entries(PACKET_FIELDS) as [keyof Fill, string][]) {
-    const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
-    expect(re.test(section), label).toBe(true);
-    section = section.replace(re, `$1${values[k] ?? D3[k]}$2`);
-  }
-  text = text.slice(0, at) + section;
-  return Buffer.from(edit(text));
-}
-
-// ---- the temporary worker clone ----------------------------------------------------------------------------------
-const git = (cwd: string, ...a: string[]) => {
-  const r = spawnSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@example.invalid", ...a], { cwd, encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`git ${a.join(" ")}: ${r.stderr}`);
-  return r.stdout.trim();
-};
-function commitFiles(repo: string, files: Record<string, Buffer>, msg: string) {
-  for (const [rel, bytes] of Object.entries(files)) {
-    mkdirSync(dirname(join(repo, rel)), { recursive: true });
-    writeFileSync(join(repo, rel), bytes);
-  }
-  git(repo, "add", "-A");
-  git(repo, "commit", "-q", "-m", msg);
-  return git(repo, "rev-parse", "HEAD");
-}
-function workerRepo(packet: Buffer = filledPacket()): string {
-  const repo = tmp("sr-ifw-repo-");
-  git(repo, "init", "-q");
-  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path];
-  for (const p of inputs) {
-    mkdirSync(dirname(join(repo, p)), { recursive: true });
-    cpSync(resolve(REPO, p), join(repo, p));
-  }
-  const head = commitFiles(repo, { [APPROVAL_PACKET_PATH]: packet }, "approved packet (test)");
-  git(repo, "update-ref", "refs/remotes/origin/develop", head);
-  return repo;
-}
-const pointOrigin = (repo: string) => git(repo, "update-ref", "refs/remotes/origin/develop", git(repo, "rev-parse", "HEAD"));
-
-// ---- the fake Codex (the image-once tests' in-process sandbox) ----------------------------------------------------
-type Fake = { execs: number; codexHome: string; tmpBase: string; sandbox: CodexSandbox };
-const ok = (stdout = ""): BoundedResult => ({ code: 0, signal: null, stdout, stderr: "", timedOut: false });
-function fakeCodex(mode: "six" | "fail"): Fake {
-  const root = tmp("sr-ifw-codex-");
-  const codexHome = join(root, "home", ".codex");
-  const tmpBase = join(root, "tmp");
-  for (const d of [codexHome, tmpBase]) mkdirSync(d, { recursive: true });
-  const f: Fake = {
-    execs: 0,
-    codexHome,
-    tmpBase,
-    sandbox: {
-      env: { HOME: join(root, "home"), CODEX_HOME: codexHome },
-      async run(a, o) {
-        if (a[0] === "login") return ok("Logged in using ChatGPT\n");
-        if (a[0] === "--version") return ok("codex-cli 0.163.0\n");
-        f.execs += 1;
-        if (mode === "fail") return { ...ok(), code: 1, stderr: "fake failure" };
-        // what the CLI leaves: a session log with one completed image call per picture, and the pictures (PC 2 + SP 4)
-        const sessions = join(codexHome, "sessions", "2026", "11", "20");
-        mkdirSync(sessions, { recursive: true });
-        const recs = [
-          { type: "session_meta", payload: { id: THREAD, cwd: o.workDir, cli_version: "0.163.0", model_provider: "fake" } },
-          { type: "turn_context", payload: { cwd: o.workDir, model: "fake-session" } },
-          ...Array.from({ length: 6 }, (_, i) => ({ type: "response_item", payload: { type: "image_generation_call", id: `ig_${i}`, status: "completed" } })),
-        ];
-        writeFileSync(join(sessions, `rollout-2026-11-20T01-00-00-${THREAD}.jsonl`), recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
-        const dir = join(codexHome, "generated_images", THREAD);
-        mkdirSync(dir, { recursive: true });
-        for (let i = 0; i < 6; i++) {
-          const p = join(dir, `ig_${i}.png`);
-          writeFileSync(p, colourPng(1024 + i, 1536));
-          const t = new Date(Date.UTC(2026, 10, 20, 1, 0, i));
-          utimesSync(p, t, t);
-        }
-        return ok(`${JSON.stringify({ type: "thread.started", thread_id: THREAD })}\n`);
-      },
-    },
-  };
-  return f;
-}
-
-/** image-first-generate.ts main(), in-process: the same flags, checks, runFullPageCall and batch mapping; exit 0 / 2 / 1. */
-async function entryInProcess(argv: string[], w: { repo: string; ledgerDir: string; fake: Fake; signal?: AbortSignal }): Promise<BoundedResult> {
-  const line = (o: object, code: number): BoundedResult => ({ code, signal: null, stdout: `${JSON.stringify(o)}\n`, stderr: "", timedOut: false });
-  const args = parseArgs(argv, FLAGS, VALUES);
-  const chars = Number(args?.get("--expected-prompt-chars"));
-  const key = args?.get("--direction");
-  if (!args || [...VALUES].some((f) => !args.has(f)) || !Number.isInteger(chars) || (key !== "d1" && key !== "d3")) return line({ status: "refused", code: "USAGE" }, 2);
-  let inputs;
-  let plan;
-  try {
-    inputs = await loadPromptInputs((p) => readFile(resolve(w.repo, p)), key as DirectionKey);
-    plan = buildPromptPlan(inputs);
-  } catch (error) {
-    return line({ status: "refused", code: error instanceof PromptStop ? error.code : "INPUT_UNREADABLE" }, 2);
-  }
-  const result = await runFullPageCall(
-    {
-      plan,
-      inputs,
-      packetPath: resolve(args.get("--packet")!),
-      humanApprovalConfirmed: args.has("--human-approval-confirmed"),
-      approvalId: args.get("--approval-id")!,
-      planId: args.get("--plan-id")!,
-      approvalExpires: args.get("--approval-expires")!,
-      expected: { promptSha256: args.get("--expected-prompt-sha256")!, promptChars: chars, commit: args.get("--expected-commit")!, planSha256: args.get("--expected-plan-sha256")!, packetSha256: args.get("--expected-packet-sha256")! },
-      outDir: args.get("--out")!,
-      repoRoot: w.repo,
-      ...(w.signal ? { signal: w.signal } : {}),
-    },
-    {
-      ledger: openLedger(w.ledgerDir),
-      commit: () => gitCommitState(w.repo, ENV),
-      packetAt: (commit, rel) => fileAtCommit(commit, rel, w.repo),
-      preflight: async () => null,
-      now: () => NOW,
-      batch: async (o) => {
-        const r = await generateImagesInOneRun({ sandbox: w.fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: w.fake.tmpBase, maxImages: o.maxImages, ...(o.signal === undefined ? {} : { signal: o.signal }) });
-        return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
-      },
-    },
-  );
-  if (result.status === "succeeded") return line({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.runId, images: result.images }, 0);
-  return line({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call" }, result.stage === "precheck" ? 2 : 1);
-}
 
 /** One worker world: a clone, a state dir, a runs dir, a ledger, a fake Codex, and a counter of invocations. */
 function world(o: { repo?: string; mode?: "six" | "fail"; ledgerDir?: string; stateDir?: string; runsDir?: string } = {}) {
@@ -198,7 +40,7 @@ function world(o: { repo?: string; mode?: "six" | "fail"; ledgerDir?: string; st
         return entryInProcess(argv, { repo, ledgerDir: w.ledgerDir, fake: w.fake, ...(signal ? { signal } : {}) });
       }),
   });
-  const cycle = (invoke?: CycleDeps["invoke"], extra: Pick<CycleOptions, "signal" | "onInvoking"> = {}) => runImagefirstCycle({ repoRoot: repo, stateDir: w.stateDir, runsDir: w.runsDir, ...extra }, deps(invoke));
+  const cycle = (invoke?: CycleDeps["invoke"], extra: Pick<CycleOptions, "signal" | "onInvoking" | "expectApprovalId"> = {}) => runImagefirstCycle({ repoRoot: repo, stateDir: w.stateDir, runsDir: w.runsDir, ...extra }, deps(invoke));
   return { ...w, cycle };
 }
 
@@ -586,5 +428,32 @@ describe("Issue #302 P0: the bundle is verified, and an interrupted run still en
     expect(worker).toMatch(/stopSignals\(\{ hardStopMs: WORKER_STOP\.hardStopMs, cleanup: /);
     expect(worker).toMatch(/graceMs: WORKER_STOP\.graceMs/);
     expect(worker).toMatch(/onInvoking: \(record\) => \(recordInterrupted = record\)/);
+  });
+});
+
+describe("Issue #302 P1: root's grant (the automatic start) only narrows the job", () => {
+  it("the grant names the packet's approval id: the same single run", async () => {
+    const w = world();
+    expect(await w.cycle(undefined, { expectApprovalId: ID })).toMatchObject({ status: "succeeded", invoked: true, approval_id: ID });
+    expect(w.fake.execs).toBe(1);
+  });
+
+  it("the grant names another approval id: APPROVAL_NOT_GRANTED before the claim, nothing used", async () => {
+    const w = world();
+    expect(await w.cycle(undefined, { expectApprovalId: "hoshigama-imagefirst-d3-20261120-02" })).toMatchObject({ status: "refused", code: "APPROVAL_NOT_GRANTED", invoked: false });
+    expect(w.invoked).toHaveLength(0);
+    expect(w.fake.execs).toBe(0);
+    expect(existsSync(join(w.stateDir, "claims"))).toBe(false);
+    expect(existsSync(join(w.ledgerDir, "approvals"))).toBe(false);
+    // an unapproved packet stays no_job with or without a grant (zero calls)
+    const unapproved = world({ repo: workerRepo(readFileSync(UNAPPROVED_PACKET_FIXTURE)) });
+    expect(await unapproved.cycle(undefined, { expectApprovalId: ID })).toMatchObject({ status: "no_job", code: "PACKET_NOT_APPROVED", invoked: false });
+    expect(unapproved.fake.execs).toBe(0);
+  });
+
+  it("grantFromEnv: absent = a run by hand, a ほし窯 d3 id = that grant, anything else = refused", () => {
+    expect(grantFromEnv({} as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(grantFromEnv({ [GRANT_ENV]: ID } as unknown as NodeJS.ProcessEnv)).toBe(ID);
+    for (const bad of ["", "tsugute-imagefirst-d3-20261120-01", `${ID}\n`, "--approval-id", "hoshigama-imagefirst-d1-20261120-01"]) expect(grantFromEnv({ [GRANT_ENV]: bad } as unknown as NodeJS.ProcessEnv)).toBeNull();
   });
 });
