@@ -356,8 +356,12 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     exe(join(w.bin, "setpriv"), `while [ "$1" != "--" ]; do shift; done; shift; "$@" & c=$!; trap 'kill -TERM $c; sleep 2; kill -KILL $c 2>/dev/null; exit 1' TERM; wait $c; wait $c`);
     const p = pollAsync(w);
     await until(() => w.execs() === 1);
+    const signalledAt = Date.now();
     p.child.kill("SIGTERM");
     const r = await p.done;
+    // the supervisor's SIGKILL (2 s) ends the poll: far inside the worker's own stop windows (graceful 35 s, hard 50 s).
+    // Without the supervisor the poll would wait for the worker's hard stop (~50 s) and fail here.
+    expect(Date.now() - signalledAt).toBeLessThan(15_000);
     expect(r.worker).toBeNull();
     expect(r.stdout).toContain("worker: <no line>");
     // The worker's graceful stop never finished (it is held): no receipt of it. Whether a receipt exists already depends
