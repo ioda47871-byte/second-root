@@ -121,8 +121,12 @@ describe("pack → sealed → delivered → receiver verifies (success)", () => 
     expect(m).toMatchObject({ approval_id: ID, plan_id: PLAN_ID, commit: COMMIT, counts: { pc: 2, sp: 4, composites: 2, files: 9 }, access: { visibility: "private", retrieval_ttl_seconds: 900 }, retention: { retain_days: 7, delete_after: "2026-11-27T04:00:00.000Z" } });
     for (const i of r.receipt.images) expect(m.files).toContainEqual({ path: i.file, role: "part", sha256: i.sha256, bytes: i.bytes });
     expect(m.files).toContainEqual({ path: "composites/pc.png", role: "composite", sha256: r.comps.pc, bytes: expect.any(Number) });
-    expect(m.receipt_sha256).toBe(sha(readFileSync(r.receiptPath)));
-    expect(readFileSync(join(sealed.dir, "receipt.json"))).toEqual(readFileSync(r.receiptPath));
+    // the bundled receipt is the original with the local run_dir redacted; the original bytes' SHA is kept in the manifest
+    const bundledReceipt = readFileSync(join(sealed.dir, "receipt.json"));
+    expect(m.receipt_original_sha256).toBe(sha(readFileSync(r.receiptPath)));
+    expect(m.receipt_sha256).toBe(sha(bundledReceipt));
+    expect(JSON.parse(bundledReceipt.toString("utf8"))).toEqual({ ...r.receipt, run_dir: "private_outside_repo" });
+    expect(bundledReceipt.toString("utf8")).not.toContain(r.runDir);
     const text = manifestBytes.toString("utf8");
     expect(text).not.toContain("PROMPT");
     expect(text).not.toContain(r.runDir);
@@ -354,7 +358,8 @@ describe("delivery: interrupted send, duplicates, conflicts, the receiver's own 
     const conflict = { bundle_id: ID, bundle_sha256: other.bundle_sha256, entries: (await verifyBundleDir(other.dir)).entries };
     expect(await codeOf(receiver.receive(conflict))).toBe("BUNDLE_ID_CONFLICT");
     expect(lstatSync(join(r.inbox, ID, "manifest.json")).ino).toBe(kept);
-    expect(readdirSync(r.inbox)).toEqual([ID]); // no staging left behind
+    expect(readdirSync(r.inbox).sort()).toEqual([".records", ID]); // no staging left behind
+    expect(readdirSync(join(r.inbox, ".records"))).toEqual([`${ID}.json`]);
   });
 
   it("the receiver re-checks everything: claimed SHA, paths, PNGs, the expected approval / plan / commit", async () => {
@@ -402,6 +407,93 @@ describe("delivery: interrupted send, duplicates, conflicts, the receiver's own 
     t = Date.parse(sealed.manifest.retention.delete_after) + 1;
     expect(await receiver.purgeExpired()).toEqual([ID]);
     expect(existsSync(join(r.inbox, ID))).toBe(false);
+  });
+
+  it("retention and grant come from the RECEIVER's clock and constants, never from the sender's manifest", async () => {
+    // the sender packed it a year ago: the receiver still keeps it 7 days from ITS receive time and grants 15 minutes
+    const r = makeRun();
+    const sealed = await packOf(r, { now: () => NOW - 365 * 86_400_000 });
+    let t = NOW;
+    const receiver = receiverFor(r, () => t);
+    const ack = await receiver.receive({ bundle_id: ID, bundle_sha256: sealed.bundle_sha256, entries: (await verifyBundleDir(sealed.dir)).entries });
+    expect(Date.parse(ack.retrieval.expires_at)).toBe(NOW + 15 * 60 * 1000);
+    expect(await receiver.purgeExpired()).toEqual([]);
+    t = NOW + 7 * 86_400_000 + 1;
+    expect(await receiver.purgeExpired()).toEqual([ID]);
+    // fail closed: a kept bundle without the receiver's own record is deleted on the next purge
+    const r2 = makeRun();
+    const s2 = await packOf(r2);
+    const rec2 = receiverFor(r2);
+    await rec2.receive({ bundle_id: ID, bundle_sha256: s2.bundle_sha256, entries: (await verifyBundleDir(s2.dir)).entries });
+    rmSync(join(r2.inbox, ".records", `${ID}.json`));
+    expect(await rec2.purgeExpired()).toEqual([ID]);
+  });
+
+  it("the sender's declared terms must be exact: a bad, far, or missing delete_after (and friends) is refused", async () => {
+    type Terms = { created_at?: unknown; access: Record<string, unknown>; retention?: Record<string, unknown> };
+    const edits: [string, (m: Terms) => void][] = [
+      ["not-a-date", (m) => void (m.retention!.delete_after = "not-a-date")],
+      ["year 2999", (m) => void (m.retention!.delete_after = "2999-01-01T00:00:00.000Z")],
+      ["missing delete_after", (m) => void delete m.retention!.delete_after],
+      ["missing retention", (m) => void delete m.retention],
+      ["retain_days 99999", (m) => void (m.retention!.retain_days = 99999)],
+      ["created_at x", (m) => void (m.created_at = "x")],
+      ["ttl 99999", (m) => void (m.access.retrieval_ttl_seconds = 99999)],
+      ["public", (m) => void (m.access.visibility = "public")],
+      ["extra term", (m) => void (m.retention!.keep_forever = true)],
+    ];
+    for (const [label, edit] of edits) {
+      const r = makeRun();
+      const sealed = await packOf(r);
+      const m = JSON.parse(readFileSync(join(sealed.dir, "manifest.json"), "utf8")) as Terms;
+      edit(m);
+      const bytes = Buffer.from(`${JSON.stringify(m, null, 2)}\n`);
+      writeFileSync(join(sealed.dir, "manifest.json"), bytes);
+      const code = await codeOf(verifyBundleDir(sealed.dir));
+      expect([label, code]).toEqual([label, label === "missing retention" || label === "public" ? expect.stringMatching(/^BUNDLE_(MANIFEST|TERMS)_INVALID$/) : "BUNDLE_TERMS_INVALID"]);
+      const entries = [...sealed.manifest.files.map((f) => f.path), "SHA256SUMS"].map((p) => ({ path: p, bytes: readFileSync(join(sealed.dir, p)) }));
+      const receiver = receiverFor(r);
+      expect(await codeOf(receiver.receive({ bundle_id: ID, bundle_sha256: sha(bytes), entries: [...entries, { path: "manifest.json", bytes }] }))).toMatch(/^BUNDLE_(MANIFEST|TERMS)_INVALID$/);
+      expect(existsSync(join(r.inbox, ID))).toBe(false);
+    }
+  });
+
+  it("an invalid job file is refused (never more than 5 sends); a caller cannot raise the cap", async () => {
+    const r = makeRun();
+    const sealed = await packOf(r);
+    const job = await registerSealed(r.state, sealed, () => NOW);
+    const file = join(r.state, "deliveries", `${ID}.json`);
+    const t = fakeTransport(receiverFor(r), { fail: Array(10).fill("before") as "before"[] });
+    for (const bad of [{ ...job, attempts: undefined }, { ...job, attempts: 99 }, { ...job, attempts: -1 }, { ...job, attempts: 1.5 }]) {
+      writeFileSync(file, JSON.stringify(bad), { mode: 0o600 });
+      expect(await codeOf(deliverBundle({ stateDir: r.state, bundleDir: sealed.dir, bundleId: ID, transport: t }))).toBe("JOB_UNREADABLE");
+    }
+    expect(t.calls).toBe(0);
+    writeFileSync(file, JSON.stringify(job), { mode: 0o600 });
+    for (let i = 0; i < 8; i++) await deliverBundle({ stateDir: r.state, bundleDir: sealed.dir, bundleId: ID, transport: t, maxAttempts: 10 });
+    expect(t.calls).toBe(5);
+  });
+
+  it("the receiver checks sizes before writing, and concurrent receives of one ID give duplicate / conflict codes", async () => {
+    const r = makeRun();
+    const sealed = await packOf(r);
+    const entries = (await verifyBundleDir(sealed.dir)).entries;
+    const small: BundleLimits = { ...BUNDLE_LIMITS, part: { ...BUNDLE_LIMITS.part, maxBytes: 1000 } };
+    const tiny = createFakeReceiver({ inboxDir: r.inbox, expected: () => EXPECTED, now: () => NOW, limits: small });
+    expect(await codeOf(tiny.receive({ bundle_id: ID, bundle_sha256: sealed.bundle_sha256, entries }))).toBe("BUNDLE_FILE_TOO_LARGE");
+    expect(existsSync(r.inbox)).toBe(false); // nothing was written, not even the inbox
+
+    const receiver = receiverFor(r);
+    const ok = { bundle_id: ID, bundle_sha256: sealed.bundle_sha256, entries };
+    const both = await Promise.all([receiver.receive(ok), receiver.receive(ok)]);
+    expect(both.map((a) => a.status).sort()).toEqual(["accepted", "duplicate"]);
+
+    const r2 = makeRun();
+    const a = await packOf({ ...r2, bundles: join(tmp("sr-b3-"), "bundles") });
+    const b = await packOf({ ...r2, bundles: join(tmp("sr-b4-"), "bundles") }, { now: () => NOW + 1000 });
+    const rec2 = createFakeReceiver({ inboxDir: join(tmp("sr-in-"), "inbox"), expected: () => EXPECTED, now: () => NOW });
+    const results = await Promise.all([a, b].map(async (s) => codeOf(rec2.receive({ bundle_id: ID, bundle_sha256: s.bundle_sha256, entries: (await verifyBundleDir(s.dir)).entries }))));
+    expect(results.sort()).toEqual(["BUNDLE_ID_CONFLICT", "OK"]);
   });
 });
 

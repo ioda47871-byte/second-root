@@ -13,7 +13,7 @@
 ```
 <bundles>/<承認 ID>/manifest.json   imagefirst_private_bundle_v1（ID・コミット・SHA・バイト数だけ。プロンプト文・パス・秘密なし）
 <bundles>/<承認 ID>/SHA256SUMS      "<sha256>  <path>"（全ファイル、整列）
-<bundles>/<承認 ID>/receipt.json    worker の receipt をそのまま
+<bundles>/<承認 ID>/receipt.json    worker の receipt から run_dir（WSL の絶対パス）だけを "private_outside_repo" に置き換えたもの
 <bundles>/<承認 ID>/parts/{pc-1,pc-2,sp-1..sp-4}.png
 <bundles>/<承認 ID>/composites/{pc,sp}.png   （呼び手が SHA を渡したときだけ）
 ```
@@ -26,6 +26,12 @@
   receipt の名前が `parts/(pc|sp)-*.png` でない（`../`・絶対パス・別ディレクトリ）なら読む前に `RUN_FILE_OUTSIDE`。各ファイルは
   link を辿らずに**一度だけ**読み、そのバイトで SHA・サイズ・PNG（`design-image/png.ts` の `checkPng`、CRC まで）を検め、同じバイトを封入する。
 - run ディレクトリの他のファイル（`prompts/`・`call.json`・`run-plan.json` など）は**入れない**。
+- receipt の `run_dir`（ホームのパス）は bundle が機械の外へ出ても漏れないよう伏せる。他の欄（各 part の SHA を含む）は同じ。
+  manifest は伏せた receipt の SHA（`receipt_sha256`）と、元の receipt のバイトの SHA（`receipt_original_sha256`）を持つ。
+  後者は WSL 上の元の receipt とだけ照合できる（受け手は元のパスを知らないので照合できない）。画像との結び付きは part の SHA で保たれる。
+- 合成画像は receipt に結び付いていない: 封入する側が渡した SHA に一致する、形の正しい PNG であることしか保証しない（送り手を信頼する前提）。
+- 受け手の側で残る弱さ（既知・Low）: O_NOFOLLOW は最後の部分だけを守り、`parts/` を検査と open の間に link に替える攻撃は防がない
+  （0700・自分の所有の木なので、同じユーザーの攻撃者に限る）。同じ job への `deliverBundle` の同時実行に lock は無い（job の書き込みは atomic）。
 - 合成画像（PC/SP の完成カンプ）は既定ではディスクに無い（`image-first-check --run` がメモリで作り、SHA を出す）。書き出した場合だけ
   `composites/pc.png`・`composites/sp.png` に置き、その SHA を `composites` で渡す。SHA の無い合成ファイルは拒否。
 
@@ -51,8 +57,12 @@
   受け手は**自分が期待する記録**（オーナーの承認: 承認 ID・plan ID・コミット）と、主張された bundle SHA、SHA256SUMS、サイズ、パス
   （`../`・重複・許可外の名前）、link・特殊ファイル、PNG の形、receipt と manifest の一致をすべて検め直す。
 - 保持と取得（データだけ。実サービスは無い）: manifest に `access.retrieval_ttl_seconds = 900`（15 分の取得許可）と
-  `retention.retain_days = 7`・`delete_after`。偽の受け手は ack に 15 分の取得トークンを付け、期限後の読み取りを `GRANT_EXPIRED` で拒否し、
-  `delete_after` を過ぎた bundle を消す。
+  `retention.retain_days = 7`・`delete_after`。これらは**送り手の申告**で、検証は固定値と完全に一致すること（`created_at` + 7 日 =
+  `delete_after`、余分な欄なし。不正・欠落・遠い日付は `BUNDLE_TERMS_INVALID`）だけ。**受け手はそれを使わない**: 取得トークンの期限
+  （15 分）と削除の時刻（7 日）は、受け手が**自分の受け取り時刻と自分の定数**（`RECEIVER_TERMS`）から計算し、自分の記録
+  （`<inbox>/.records/<ID>.json`）に残す。`purgeExpired` はその記録だけを読み、記録が無い・読めない bundle も消す（fail closed）。
+- 受け手は書き込む前に各ファイルと合計のサイズを検める。同じ ID の同時受信は `duplicate` / `BUNDLE_ID_CONFLICT` になる。
+  job の `attempts` が欠けている・不正（整数でない、負、5 超）なら job を読めないとして拒否し、呼び手は上限を上げられない。
 
 ## 3. 実在する非公開の受け渡し先の調査（読むだけ。何も設定・呼び出ししていない）
 

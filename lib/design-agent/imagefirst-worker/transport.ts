@@ -13,13 +13,15 @@
  *
  * The receiver is idempotent: the same bundle ID with the same SHA again = "duplicate" (no-op, same ack); the same ID with
  * different bytes = BUNDLE_ID_CONFLICT. It re-verifies everything (verifyBundleDir) against the record it EXPECTS (from the
- * owner's approval, not from the bundle), issues a short-lived retrieval grant, and deletes bundles past retention.
+ * owner's approval, not from the bundle), issues a short-lived retrieval grant, and deletes bundles past retention. Grant
+ * expiry and deletion are computed from the receiver's own receive time and constants (RECEIVER_TERMS), never from the
+ * sender's manifest.
  */
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { APPROVAL_ID_RE, BUNDLE_ACCESS, BundleStop, isBundleFilePath, verifyBundleDir, writeEntries, type BundleEntry, type BundleLimits, type ExpectedRecord, type SealedBundle } from "./bundle";
+import { APPROVAL_ID_RE, BUNDLE_ACCESS, BUNDLE_LIMITS, BundleStop, isBundleFilePath, verifyBundleDir, writeEntries, type BundleEntry, type BundleLimits, type ExpectedRecord, type SealedBundle } from "./bundle";
 
 export type BundlePayload = { bundle_id: string; bundle_sha256: string; entries: BundleEntry[] };
 export type DeliveryAck = { bundle_id: string; bundle_sha256: string; status: "accepted" | "duplicate"; retrieval: { token: string; expires_at: string } };
@@ -64,6 +66,8 @@ async function readJob(stateDir: string, id: string): Promise<DeliveryJob | null
   try {
     const j = JSON.parse((await h.readFile()).toString("utf8")) as DeliveryJob;
     if (j?.schema !== "imagefirst_bundle_delivery_v1" || j.bundle_id !== id || !/^[0-9a-f]{64}$/.test(j.bundle_sha256) || !["sealed", "delivering", "delivered"].includes(j.state)) throw new Error("shape");
+    // a missing or invalid attempt count never reads as "fewer attempts": the job is unreadable (refused)
+    if (!Number.isSafeInteger(j.attempts) || j.attempts < 0 || j.attempts > MAX_DELIVERY_ATTEMPTS || (j.last_error !== null && typeof j.last_error !== "string")) throw new Error("shape");
     return j;
   } catch {
     throw new DeliveryStop("JOB_UNREADABLE");
@@ -118,7 +122,8 @@ export async function deliverBundle(o: DeliverOptions): Promise<DeliverResult> {
     await writeJob(o.stateDir, j);
     return { state: "sealed", sent: code !== "BUNDLE_CHANGED" && code !== "ATTEMPTS_EXHAUSTED" && code !== "DELIVERY_ABORTED", code, job: j };
   };
-  if (job.attempts >= (o.maxAttempts ?? MAX_DELIVERY_ATTEMPTS)) return back("ATTEMPTS_EXHAUSTED");
+  // a caller may lower the cap, never raise it
+  if (job.attempts >= Math.min(o.maxAttempts ?? MAX_DELIVERY_ATTEMPTS, MAX_DELIVERY_ATTEMPTS)) return back("ATTEMPTS_EXHAUSTED");
   if (o.signal?.aborted) return back("DELIVERY_ABORTED");
 
   // the same sealed bytes, verified again from disk (never re-packed, never regenerated)
@@ -168,12 +173,21 @@ export type FakeReceiverOptions = {
   limits?: BundleLimits;
 };
 
+/**
+ * The receiver's own terms. Deletion and grant expiry come from the receiver's clock at receive time and these constants,
+ * never from the sender's manifest (whose declared terms verifyBundleDir only checks for exactness).
+ */
+export const RECEIVER_TERMS = { retainMs: BUNDLE_ACCESS.retainDays * 86_400_000, grantMs: BUNDLE_ACCESS.retrievalTtlSeconds * 1000 } as const;
+type ReceivedRecord = { bundle_id: string; bundle_sha256: string; received_at: string; delete_after: string };
+const RECORDS = ".records";
+
 export function createFakeReceiver(o: FakeReceiverOptions) {
   const now = o.now ?? Date.now;
+  const limits = o.limits ?? BUNDLE_LIMITS;
   const grants = new Map<string, { bundle_id: string; bundle_sha256: string; expires: number }>();
   const issue = (bundle_id: string, bundle_sha256: string) => {
     const token = randomBytes(24).toString("hex");
-    const expires = now() + BUNDLE_ACCESS.retrievalTtlSeconds * 1000;
+    const expires = now() + RECEIVER_TERMS.grantMs;
     grants.set(token, { bundle_id, bundle_sha256, expires });
     return { token, expires_at: new Date(expires).toISOString() };
   };
@@ -187,14 +201,44 @@ export function createFakeReceiver(o: FakeReceiverOptions) {
     if (error instanceof BundleStop) throw new ReceiverStop(error.code);
     throw error;
   };
+  /** The receiver's own record of when it took a bundle in (written once, 0600). */
+  const writeRecord = async (root: string, rec: ReceivedRecord) => {
+    await mkdir(join(root, RECORDS), { recursive: true, mode: 0o700 });
+    const h = await open(join(root, RECORDS, `${rec.bundle_id}.json`), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try {
+      await h.writeFile(`${JSON.stringify(rec)}\n`);
+    } finally {
+      await h.close();
+    }
+  };
+  const readRecord = async (root: string, id: string): Promise<ReceivedRecord | null> => {
+    const t = await readFile(join(root, RECORDS, `${id}.json`), "utf8").catch(() => null);
+    try {
+      const r = t ? (JSON.parse(t) as ReceivedRecord) : null;
+      return r && r.bundle_id === id && typeof r.delete_after === "string" && Number.isFinite(Date.parse(r.delete_after)) ? r : null;
+    } catch {
+      return null;
+    }
+  };
+  /** The same ID already kept: same SHA = duplicate, anything else = conflict. */
+  const existing = async (final: string, p: BundlePayload): Promise<DeliveryAck> => {
+    const have = await verifyBundleDir(final, { limits: o.limits }).catch(() => null);
+    if (!have || have.bundle_sha256 !== p.bundle_sha256) throw new ReceiverStop("BUNDLE_ID_CONFLICT");
+    return { bundle_id: p.bundle_id, bundle_sha256: p.bundle_sha256, status: "duplicate", retrieval: issue(p.bundle_id, p.bundle_sha256) };
+  };
+  const capOf = (path: string) =>
+    path === "manifest.json" ? limits.manifestBytes : path === "SHA256SUMS" ? limits.sumsBytes : path === "receipt.json" ? limits.receiptBytes : path.startsWith("composites/") ? limits.composite.maxBytes : limits.part.maxBytes;
 
   return {
-    /** Receives one payload: write into a fresh staging dir, verify it all, then keep it (or no-op / refuse by ID + SHA). */
+    /** Receives one payload: sizes first, then a fresh staging dir, verify it all, then keep it (or no-op / refuse by ID + SHA). */
     async receive(p: BundlePayload): Promise<DeliveryAck> {
       if (!p || typeof p.bundle_id !== "string" || !APPROVAL_ID_RE.test(p.bundle_id) || typeof p.bundle_sha256 !== "string" || !Array.isArray(p.entries)) throw new ReceiverStop("PAYLOAD_INVALID");
       const paths = p.entries.map((e) => e?.path);
       if (paths.some((x) => typeof x !== "string" || !(x === "manifest.json" || x === "SHA256SUMS" || isBundleFilePath(x))) || new Set(paths).size !== paths.length) throw new ReceiverStop("PAYLOAD_INVALID");
       if (p.entries.some((e) => !Buffer.isBuffer(e.bytes))) throw new ReceiverStop("PAYLOAD_INVALID");
+      // sizes before anything touches the disk
+      if (p.entries.some((e) => e.bytes.length > capOf(e.path))) throw new ReceiverStop("BUNDLE_FILE_TOO_LARGE");
+      if (p.entries.reduce((n, e) => n + e.bytes.length, 0) > limits.totalBytes + limits.manifestBytes + limits.sumsBytes) throw new ReceiverStop("BUNDLE_FILE_TOO_LARGE");
       const expected = o.expected(p.bundle_id);
       if (!expected) throw new ReceiverStop("NOT_EXPECTED");
       const root = await inbox();
@@ -204,12 +248,17 @@ export function createFakeReceiver(o: FakeReceiverOptions) {
         const v = await verifyBundleDir(staging, { limits: o.limits, expected: { ...expected, bundle_sha256: p.bundle_sha256 } }).catch(asStop);
         if (v.manifest.bundle_id !== p.bundle_id) throw new ReceiverStop("PAYLOAD_INVALID");
         const final = join(root, p.bundle_id);
-        if (await lstat(final).then(() => true, () => false)) {
-          const have = await verifyBundleDir(final, { limits: o.limits }).catch(() => null);
-          if (!have || have.bundle_sha256 !== p.bundle_sha256) throw new ReceiverStop("BUNDLE_ID_CONFLICT");
-          return { bundle_id: p.bundle_id, bundle_sha256: p.bundle_sha256, status: "duplicate", retrieval: issue(p.bundle_id, p.bundle_sha256) };
+        if (await lstat(final).then(() => true, () => false)) return await existing(final, p);
+        try {
+          await rename(staging, final);
+        } catch (error) {
+          // a concurrent receive of the same ID won the rename: decide by SHA like any other repeat
+          const code = (error as { code?: string }).code;
+          if (code === "ENOTEMPTY" || code === "EEXIST") return await existing(final, p);
+          throw error;
         }
-        await rename(staging, final);
+        const at = now();
+        await writeRecord(root, { bundle_id: p.bundle_id, bundle_sha256: p.bundle_sha256, received_at: new Date(at).toISOString(), delete_after: new Date(at + RECEIVER_TERMS.retainMs).toISOString() });
         return { bundle_id: p.bundle_id, bundle_sha256: p.bundle_sha256, status: "accepted", retrieval: issue(p.bundle_id, p.bundle_sha256) };
       } finally {
         await rm(staging, { recursive: true, force: true }).catch(() => undefined);
@@ -228,16 +277,19 @@ export function createFakeReceiver(o: FakeReceiverOptions) {
       return v.entries;
     },
 
-    /** Deletes every kept bundle whose manifest's retention.delete_after has passed; returns the deleted IDs. */
+    /**
+     * Deletes every kept bundle whose RECEIVER record says its time is up (received_at + the receiver's own retention).
+     * Fail closed: a kept bundle without a readable record of ours is deleted too. The manifest's dates are never read.
+     */
     async purgeExpired(): Promise<string[]> {
       const root = await inbox();
       const gone: string[] = [];
       for (const name of await readdir(root)) {
         if (!APPROVAL_ID_RE.test(name)) continue;
-        const m = await readFile(join(root, name, "manifest.json"), "utf8").then((t) => JSON.parse(t) as { retention?: { delete_after?: string } }, () => null);
-        const after = Date.parse(m?.retention?.delete_after ?? "");
-        if (Number.isFinite(after) && now() > after) {
+        const rec = await readRecord(root, name);
+        if (!rec || now() > Date.parse(rec.delete_after)) {
           await rm(join(root, name), { recursive: true, force: true });
+          await rm(join(root, RECORDS, `${name}.json`), { force: true });
           for (const [t, g] of grants) if (g.bundle_id === name) grants.delete(t);
           gone.push(name);
         }

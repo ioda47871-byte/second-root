@@ -11,7 +11,7 @@
  *
  *               <bundles>/<approval id>/manifest.json   imagefirst_private_bundle_v1 (no prompt text, no secret)
  *               <bundles>/<approval id>/SHA256SUMS      "<sha256>  <path>" for every file below, sorted
- *               <bundles>/<approval id>/receipt.json    the worker's receipt, byte for byte
+ *               <bundles>/<approval id>/receipt.json    the worker's receipt with run_dir redacted (see RECEIPT_RUN_DIR_REDACTED)
  *               <bundles>/<approval id>/parts/{pc-*,sp-*}.png
  *               <bundles>/<approval id>/composites/{pc,sp}.png   (only when given)
  *
@@ -55,6 +55,25 @@ export type BundleLimits = { part: PngLimits; composite: PngLimits; receiptBytes
 /** Retention and short-lived retrieval (data only: no real service reads them yet). */
 export const BUNDLE_ACCESS = { retrievalTtlSeconds: 15 * 60, retainDays: 7 } as const;
 
+const DAY_MS = 86_400_000;
+/** What the bundled receipt holds in place of the worker's absolute local run directory. */
+export const RECEIPT_RUN_DIR_REDACTED = "private_outside_repo";
+
+/**
+ * The sender's declared terms must be exactly the fixed ones (fail closed on anything else). A receiver never relies on
+ * them: it computes its own deletion time and grant expiry from its own receive time (transport.ts).
+ */
+function termsValid(m: BundleManifest): boolean {
+  const iso = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) && new Date(Date.parse(v)).toISOString() === v ? Date.parse(v) : null);
+  const created = iso(m.created_at);
+  const after = iso(m.retention?.delete_after);
+  return (
+    created !== null && after !== null && m.access?.visibility === "private" && m.access?.retrieval_ttl_seconds === BUNDLE_ACCESS.retrievalTtlSeconds &&
+    m.retention?.retain_days === BUNDLE_ACCESS.retainDays && after === created + BUNDLE_ACCESS.retainDays * DAY_MS &&
+    Object.keys(m.access).length === 2 && Object.keys(m.retention).length === 2
+  );
+}
+
 export const APPROVAL_ID_RE = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
@@ -96,7 +115,8 @@ export type BundleCode =
   | "BUNDLE_RECEIPT_MISMATCH"
   | "BUNDLE_COUNTS_INVALID"
   | "BUNDLE_SHA_MISMATCH"
-  | "BUNDLE_RECORD_MISMATCH";
+  | "BUNDLE_RECORD_MISMATCH"
+  | "BUNDLE_TERMS_INVALID";
 
 export class BundleStop extends Error {
   constructor(readonly code: BundleCode) {
@@ -121,7 +141,10 @@ export type BundleManifest = {
   direction: string;
   packet_sha256: string;
   plan_sha256: string;
+  /** SHA-256 of the bundled (redacted) receipt.json. */
   receipt_sha256: string;
+  /** SHA-256 of the worker's original receipt bytes: checkable only against the original on the worker's machine. */
+  receipt_original_sha256: string;
   files: BundleFile[];
   sha256sums_sha256: string;
   counts: { pc: number; sp: number; composites: number; files: number };
@@ -164,7 +187,7 @@ function checkLimits(l: BundleLimits): BundleLimits {
 }
 
 /** A regular file read without following a link, within `max` bytes; null when it is missing. */
-async function readNoFollow(path: string, max: number, codes: { link: BundleCode; big: BundleCode }): Promise<Buffer | null> {
+async function readNoFollow(path: string, max: number, codes: { link: BundleCode; big: BundleCode }, ownPrivate = false): Promise<Buffer | null> {
   let h;
   try {
     h = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -176,6 +199,8 @@ async function readNoFollow(path: string, max: number, codes: { link: BundleCode
   try {
     const info = await h.stat();
     if (!info.isFile() || info.nlink !== 1) stop(codes.link);
+    // checked on the same handle that is read (no window between the mode check and the read)
+    if (ownPrivate && (info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0)) stop(codes.link);
     if (info.size > max) stop(codes.big);
     const bytes = await h.readFile();
     if (bytes.length > max) stop(codes.big);
@@ -269,10 +294,8 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
   const now = o.now ?? Date.now;
 
   // ---- the receipt ----
-  const receiptBytes = await readNoFollow(o.receiptPath, limits.receiptBytes, { link: "RECEIPT_UNREADABLE", big: "RECEIPT_UNREADABLE" });
+  const receiptBytes = await readNoFollow(o.receiptPath, limits.receiptBytes, { link: "RECEIPT_UNREADABLE", big: "RECEIPT_UNREADABLE" }, true);
   if (!receiptBytes) return stop("RECEIPT_UNREADABLE");
-  const receiptInfo = await lstat(o.receiptPath);
-  if (receiptInfo.uid !== process.getuid?.() || (receiptInfo.mode & 0o077) !== 0) stop("RECEIPT_UNREADABLE");
   const { r, images } = parseReceipt(receiptBytes);
 
   // ---- the run directory: ours, and the one the receipt names ----
@@ -327,8 +350,13 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
     files.push({ path: rel, role: want.role, sha256: got, bytes: bytes.length });
     bytesOf.set(rel, bytes);
   }
-  files.push({ path: "receipt.json", role: "receipt", sha256: sha256(receiptBytes), bytes: receiptBytes.length });
-  bytesOf.set("receipt.json", receiptBytes);
+  // the bundled receipt drops the worker's absolute local run_dir (a home path) so it cannot leave the machine; every
+  // other field, the part SHAs included, is kept; the original bytes' SHA goes into the manifest
+  const bundledReceipt = Buffer.from(`${JSON.stringify({ ...r, run_dir: RECEIPT_RUN_DIR_REDACTED }, null, 2)}\n`);
+  if (bundledReceipt.length > limits.receiptBytes) stop("RECEIPT_INVALID");
+  total += bundledReceipt.length - receiptBytes.length;
+  files.push({ path: "receipt.json", role: "receipt", sha256: sha256(bundledReceipt), bytes: bundledReceipt.length });
+  bytesOf.set("receipt.json", bundledReceipt);
   sortFiles(files);
 
   // ---- the manifest (codes, ids, SHAs and sizes only) ----
@@ -345,14 +373,15 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
     direction: "d3",
     packet_sha256: r.packet_sha256 as string,
     plan_sha256: r.plan_sha256 as string,
-    receipt_sha256: sha256(receiptBytes),
+    receipt_sha256: sha256(bundledReceipt),
+    receipt_original_sha256: sha256(receiptBytes),
     files,
     sha256sums_sha256: sha256(sums),
     counts: { pc: IMAGES.pc, sp: IMAGES.sp, composites: composites.length, files: files.length },
     total_bytes: total,
     created_at: new Date(created).toISOString(),
     access: { visibility: "private", retrieval_ttl_seconds: BUNDLE_ACCESS.retrievalTtlSeconds },
-    retention: { retain_days: BUNDLE_ACCESS.retainDays, delete_after: new Date(created + BUNDLE_ACCESS.retainDays * 86_400_000).toISOString() },
+    retention: { retain_days: BUNDLE_ACCESS.retainDays, delete_after: new Date(created + BUNDLE_ACCESS.retainDays * DAY_MS).toISOString() },
   };
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
   if (manifestBytes.length > limits.manifestBytes || sums.length > limits.sumsBytes) stop("BUNDLE_MANIFEST_INVALID");
@@ -432,8 +461,10 @@ export async function verifyBundleDir(dir: string, o: VerifyOptions = {}): Promi
   const okManifest =
     m && typeof m === "object" && m.schema === BUNDLE_SCHEMA && typeof m.bundle_id === "string" && APPROVAL_ID_RE.test(m.bundle_id) && m.approval_id === m.bundle_id &&
     typeof m.plan_id === "string" && PLAN_ID_RE.test(m.plan_id) && typeof m.commit === "string" && COMMIT_RE.test(m.commit) && Array.isArray(m.files) &&
-    typeof m.sha256sums_sha256 === "string" && typeof m.receipt_sha256 === "string" && m.access?.visibility === "private" && typeof m.retention?.delete_after === "string";
+    typeof m.sha256sums_sha256 === "string" && typeof m.receipt_sha256 === "string" && typeof m.receipt_original_sha256 === "string" && SHA_RE.test(m.receipt_original_sha256) &&
+    !!m.access && typeof m.access === "object" && !!m.retention && typeof m.retention === "object";
   if (!okManifest) stop("BUNDLE_MANIFEST_INVALID");
+  if (!termsValid(m)) stop("BUNDLE_TERMS_INVALID");
   for (const f of m.files) {
     if (!f || typeof f.path !== "string" || !isBundleFilePath(f.path) || typeof f.sha256 !== "string" || !SHA_RE.test(f.sha256) || !Number.isSafeInteger(f.bytes) || f.bytes < 0) stop("BUNDLE_MANIFEST_INVALID");
     const role = f.path === "receipt.json" ? "receipt" : PART_RE.test(f.path) ? "part" : "composite";
@@ -472,7 +503,7 @@ export async function verifyBundleDir(dir: string, o: VerifyOptions = {}): Promi
     return stop("BUNDLE_RECEIPT_MISMATCH");
   }
   const { r, images } = parsed;
-  if (r.approval_id !== m.approval_id || r.plan_id !== m.plan_id || r.commit !== m.commit || r.packet_sha256 !== m.packet_sha256 || r.plan_sha256 !== m.plan_sha256) stop("BUNDLE_RECEIPT_MISMATCH");
+  if (r.approval_id !== m.approval_id || r.plan_id !== m.plan_id || r.commit !== m.commit || r.packet_sha256 !== m.packet_sha256 || r.plan_sha256 !== m.plan_sha256 || r.run_dir !== RECEIPT_RUN_DIR_REDACTED) stop("BUNDLE_RECEIPT_MISMATCH");
   const parts = m.files.filter((f) => f.role === "part");
   if (parts.length !== images.length || images.some((i) => !parts.some((p) => p.path === i.file && p.sha256 === i.sha256 && p.bytes === i.bytes))) stop("BUNDLE_RECEIPT_MISMATCH");
   const pc = parts.filter((p) => p.path.startsWith("parts/pc-")).length;
