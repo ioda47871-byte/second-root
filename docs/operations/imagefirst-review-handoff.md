@@ -173,8 +173,12 @@ wrapper（`scripts/sales-design-worker/imagefirst-deliver-review.sh`）は自動
 worker の専用 clone（`~/imagefirst/second-root`、worker が走るのと同じ場所）がきれいで HEAD = origin/develop（読むだけ。fetch も checkout も
 しない。M3）。最後に自動起動と同じ `setpriv` で `sr-designgen` に落とし、**jail の外で** `imagefirst-worker.ts --deliver-review <承認 ID>` を 1 回だけ。
 `--deliver-review` は cycle を動かさず、claim も ledger も使わず、何も起動しない。自分でも HEAD = origin/develop・きれいな tree、jail の状態
-（`/usr/bin/systemctl` を絶対パスで。L5）、上の 1〜7 を確かめ直す。**封入済みの bundle が無い・空なら `SEALED_BUNDLE_MISSING` で止まり、作り直さない**
-（L2。新しく pack すると別のバイトになる）。そのときは報告して止める（生成は再試行しない）。
+（`/usr/bin/systemctl` を絶対パスで。L5）、上の 1〜7 を確かめ直す。
+**封入の前に止まった自動の受け渡し**（`REVIEW_LOCKED`、止める合図、git の一時的な失敗など）は、この再送で直る: その承認について bundle も
+配送の記録（`<state>/deliveries/<承認 ID>.json`）も inbox の写しも**一つも無い**ときに限り、再送が同じ検証済みの receipt と run から**最初の 1 回だけ**
+封入する（PR #310 再レビュー M-1）。どれか一つでもあれば二度と封入しない: bundle が無いのに記録や写しがある、または bundle が空なら
+`SEALED_BUNDLE_MISSING` で止まる（新しく pack すると別のバイトになる。L2）。そのときは報告して止める（生成は再試行しない）。
+再送中に止める合図が来たら wrapper は `DELIVER_INTERRUPTED`（終了 1）を出す。あとでもう一度実行してよい。
 終了コード（wrapper）: 0 = 渡した（または既に渡っている）、1 = 渡せなかった（bundle は封入のまま。あとでもう一度）、2 = 拒否、12 = busy、20 = clone の状態。
 再送は封入済みのバイトの再送だけで、Codex の再実行・再生成・再 pack は無い。GitHub・bridge の JSON spool・公開の保存先へは何も置かない。
 

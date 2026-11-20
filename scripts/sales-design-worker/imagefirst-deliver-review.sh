@@ -24,12 +24,13 @@
 #      origin/develop (read only: no fetch, no checkout; run the automatic start's step 5 or update it by hand first)
 #   5. busy() again, then the worker CLI ONCE as the worker user: --deliver-review <approval id> (it checks everything
 #      again itself: HEAD and a clean tree, the jail state, the receipt against the packet at its commit, the commit on
-#      origin/develop, its own claim marker, the sealed bundle; SEALED_BUNDLE_MISSING if there is none)
+#      origin/develop, its own claim marker, the sealed bundle. It packs only the first time, when the automatic hand-off
+#      stopped before sealing and nothing was ever sealed or sent for the approval; otherwise never: SEALED_BUNDLE_MISSING)
 #
 # Output: fixed lines; the worker's one JSON line. The last line is machine-readable:
 #   IMAGEFIRST_DELIVER_REVIEW <CODE> approval=<id|none> exit=<n>
-# Exit: 0 delivered (or already there: duplicate), 1 not delivered (the bundle stays sealed: run it again later) or the
-#       worker stopped / timed out, 2 usage / refused (by this script or the worker), 12 busy, 20 stopped (environment,
+# Exit: 0 delivered (or already there: duplicate), 1 not delivered (the bundle stays sealed: run it again later), the
+#       worker stopped / timed out, or interrupted by a stop signal (DELIVER_INTERRUPTED), 2 usage / refused (by this script or the worker), 12 busy, 20 stopped (environment,
 #       clone), 40/41 signal / internal.
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
@@ -61,6 +62,7 @@ DELIVER_KILL_AFTER=90
 APPROVAL=none
 FINISHED=0
 STARTED=0
+INTERRUPTED=0
 WPID=""
 WORK=""
 
@@ -82,6 +84,7 @@ on_exit() {
 on_signal() {
   # while the worker runs: pass the stop on and wait for it (it aborts the delivery attempt; the bundle stays sealed)
   if [ "$STARTED" = 1 ]; then
+    INTERRUPTED=1
     [ -z "$WPID" ] || kill -TERM "$WPID" 2>/dev/null || true
     return 0
   fi
@@ -192,6 +195,8 @@ say "worker: ${line:-<no line>}"
 if [ "$rc" -ne 0 ]; then
   tail -n 20 "$WORK/err" | tr -d '\000-\010\013-\037' | cut -c1-300 | sed 's/^/imagefirst-deliver-review: worker stderr: /'
 fi
+# a stop during the re-send is an interruption, never a refusal (the bundle stays sealed or unsealed: run it again later)
+if [ "$INTERRUPTED" = 1 ]; then finish DELIVER_INTERRUPTED 1; fi
 case "$rc" in
   0) finish DELIVER_DONE 0 ;;
   1) finish DELIVER_NOT_DELIVERED 1 ;;

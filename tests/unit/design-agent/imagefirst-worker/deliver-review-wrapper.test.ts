@@ -25,8 +25,16 @@ import { join } from "node:path";
 const home = process.env.HOME ?? "";
 appendFileSync(join(home, "stub.log"), JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), env: Object.keys(process.env).sort(), execArgv: process.execArgv }) + "\\n");
 const code = existsSync(join(home, "stub-exit")) ? Number(readFileSync(join(home, "stub-exit"), "utf8")) : 0;
-console.log(JSON.stringify({ status: code === 0 ? "delivered" : code === 1 ? "not_delivered" : "refused", code: null, invoked: false }));
-process.exit(code);
+function finish() {
+  console.log(JSON.stringify({ status: code === 0 ? "delivered" : code === 1 ? "not_delivered" : "refused", code: null, invoked: false }));
+  process.exit(code);
+}
+if (existsSync(join(home, "stub-sleep"))) {
+  // as the real CLI: a stop aborts the delivery attempt (REVIEW_ABORTED, exit 2)
+  process.on("SIGTERM", () => { appendFileSync(join(home, "stub-term.log"), "term\\n"); console.log(JSON.stringify({ status: "refused", code: "REVIEW_ABORTED", invoked: false })); process.exit(2); });
+  appendFileSync(join(home, "stub-sleeping"), "1");
+  setTimeout(finish, 30_000);
+} else finish();
 `;
 
 function wsl() {
@@ -40,7 +48,10 @@ function wsl() {
     join(bin, "systemctl"),
     `echo "$*" >> '${sc}/systemctl.log'; u="\${@: -1}"
 if [ "$1" = is-enabled ]; then [ -f '${sc}/isenabled-fail' ] && exit 1; if [ -f '${sc}'/enabled-"$u" ]; then cat '${sc}'/enabled-"$u"; exit 0; fi; echo disabled; exit 1; fi
-[ -f '${sc}/show-fail' ] && exit 1; if [ -f '${sc}'/"$u" ]; then cat '${sc}'/"$u"; else echo inactive; fi`,
+[ -f '${sc}/show-fail' ] && exit 1
+# jail-active-after N: the jailed Claude turns active after N reads of its state (the second busy() sees it)
+if [ "$u" = sr-jail-claude.service ] && [ -f '${sc}/jail-active-after' ]; then echo x >> '${sc}/jail-reads'; if [ "$(wc -l < '${sc}/jail-reads')" -gt "$(cat '${sc}/jail-active-after')" ]; then echo active; exit 0; fi; fi
+if [ -f '${sc}'/"$u" ]; then cat '${sc}'/"$u"; else echo inactive; fi`,
   );
   exe(join(bin, "setpriv"), `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${sc}/setpriv.log'; exec "$@"`);
   exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0; exit 1`);
@@ -130,6 +141,46 @@ describe("root's review re-send wrapper (fake WSL, stub worker)", () => {
     } finally {
       holder.kill("SIGKILL");
     }
+  });
+
+  it("a design cycle holding cycle.sh's lock: busy, nothing started", async () => {
+    const w = wsl();
+    const dir = join(w.t, "var", "lib", "sr-design-cycle");
+    mkdirSync(dir, { recursive: true });
+    const holder = spawn("flock", [join(dir, "cycle.lock"), "sleep", "20"], { stdio: "ignore" });
+    try {
+      for (let i = 0; i < 100 && !existsSync(join(dir, "cycle.lock")); i++) await new Promise((r) => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 200));
+      expect(w.run([ID])).toMatchObject({ status: 12, code: "DELIVER_BUSY" });
+      expect(w.starts()).toEqual([]);
+    } finally {
+      holder.kill("SIGKILL");
+    }
+  });
+
+  it("the second busy() right before the start: the jailed Claude started meanwhile = busy, nothing started", () => {
+    const w = wsl();
+    writeFileSync(join(w.sc, "jail-active-after"), "1");
+    expect(w.run([ID])).toMatchObject({ status: 12, code: "DELIVER_BUSY" });
+    expect(readFileSync(join(w.sc, "jail-reads"), "utf8").trim().split("\n")).toHaveLength(2);
+    expect(w.starts()).toEqual([]);
+  });
+
+  it("a stop signal during the re-send is passed on and reported as DELIVER_INTERRUPTED (1), never as refused", async () => {
+    const w = wsl();
+    writeFileSync(join(w.home, "stub-sleep"), "");
+    const child = spawn("bash", [SCRIPT, ID], { env: w.env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout!.on("data", (b: Buffer) => (out += b.toString()));
+    const closed = new Promise<number | null>((res) => child.on("close", (c) => res(c)));
+    for (let i = 0; i < 1500 && !existsSync(join(w.home, "stub-sleeping")); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(existsSync(join(w.home, "stub-sleeping"))).toBe(true);
+    child.kill("SIGTERM");
+    const code = await closed;
+    expect(out.trim().split("\n").pop()).toBe(`IMAGEFIRST_DELIVER_REVIEW DELIVER_INTERRUPTED approval=${ID} exit=1`);
+    expect(code).toBe(1);
+    expect(readFileSync(join(w.home, "stub-term.log"), "utf8")).toContain("term");
+    expect(w.starts()).toHaveLength(1);
   });
 
   it("usage and the approval id: none, two, malformed, the dummy's reserved date: 2, nothing started", () => {

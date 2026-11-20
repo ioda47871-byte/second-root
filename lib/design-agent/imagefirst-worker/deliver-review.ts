@@ -14,8 +14,12 @@
  * process, after the cycle released its lock and after the run's result line was printed; skipped when a stop was
  * requested), and (b) through root's wrapper scripts/sales-design-worker/imagefirst-deliver-review.sh, which checks the
  * jailed Claude, the design cycle and the clone as root and then runs `imagefirst-worker.ts --deliver-review <approval id>`
- * as the worker user outside the jail, to re-send the SAME sealed bundle after a failed hand-off. A re-send never packs:
- * a missing sealed bundle is SEALED_BUNDLE_MISSING, and the sealed bundle must still match the receipt byte for byte.
+ * as the worker user outside the jail, to re-send the SAME sealed bundle after a failed hand-off. A re-send packs only
+ * the FIRST time (PR #310 re-review M-1): when the automatic hand-off stopped before sealing (REVIEW_LOCKED, a stop, a
+ * transient git failure), so that there is no bundle directory, no delivery job and no inbox copy for the approval, the
+ * re-send packs the bundle once from the same verified receipt and run, after every check above. Once any bundle or job
+ * or inbox copy exists it never packs again: a missing bundle is then SEALED_BUNDLE_MISSING (a second pack would be
+ * other bytes), an empty or partial one is refused, and the sealed bundle must still match the receipt byte for byte.
  * The worker's lock is released between the cycle and the hand-off (taken again here): a worker started by hand in that
  * moment makes the hand-off REVIEW_LOCKED, recovered by the same wrapper (PR #310 review L3).
  *
@@ -225,13 +229,19 @@ async function checkClaim(stateDir: string, approvalId: string, started: number,
  * receipt, PC 2 + SP 4, no link), or — on a re-send — the one sealed earlier, verified again and required to come from
  * exactly these receipt bytes (never re-packed, never regenerated).
  */
-async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes: Buffer; bundlesDir: string; expected: ExpectedRecord; resend: boolean; now?: () => number }): Promise<{ sealed: SealedBundle; how: "sealed" | "existing" }> {
-  const dir = join(o.bundlesDir, o.expected.approval_id);
+async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes: Buffer; bundlesDir: string; stateDir: string; inboxDir: string; expected: ExpectedRecord; resend: boolean; now?: () => number }): Promise<{ sealed: SealedBundle; how: "sealed" | "existing" }> {
+  const id = o.expected.approval_id;
+  const dir = join(o.bundlesDir, id);
   let sealed: SealedBundle;
   let how: "sealed" | "existing";
-  const exists = await lstat(dir).then(() => true, () => false);
-  // a re-send never packs: the sealed bundle must be there, and not an empty directory (PR #310 review L2)
-  if (o.resend && (!exists || (await readdir(dir).then((n) => n.length === 0, () => true)))) stop("SEALED_BUNDLE_MISSING");
+  const present = (p: string) => lstat(p).then(() => true, () => false);
+  const exists = await present(dir);
+  if (o.resend) {
+    // an empty bundle directory is never a bundle (PR #310 review L2)
+    if (exists && (await readdir(dir).then((n) => n.length === 0, () => true))) stop("SEALED_BUNDLE_MISSING");
+    // no bundle: the first pack only when nothing was ever sealed or sent for this approval (PR #310 re-review M-1)
+    if (!exists && ((await present(join(o.stateDir, "deliveries", `${id}.json`))) || (await present(join(o.inboxDir, id))))) stop("SEALED_BUNDLE_MISSING");
+  }
   if (exists) {
     const v = await verifyBundleDir(dir, { expected: o.expected }).catch(asReviewStop);
     sealed = { dir, bundle_id: v.manifest.bundle_id, bundle_sha256: v.bundle_sha256, manifest: v.manifest };
@@ -279,9 +289,10 @@ export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDep
     }
     const expected = await checkReceipt(r, o.approvalId, runDir, o.stateDir, d);
     if (o.signal?.aborted) stop("REVIEW_ABORTED");
-    const { sealed, how } = await sealedFor({ runDir, receiptPath, receiptBytes, bundlesDir: join(runs, BUNDLES), expected, resend: o.resend === true, ...(o.now ? { now: o.now } : {}) });
+    const inboxDir = o.inboxDir ?? join(runs, REVIEW_INBOX);
+    const { sealed, how } = await sealedFor({ runDir, receiptPath, receiptBytes, bundlesDir: join(runs, BUNDLES), stateDir: o.stateDir, inboxDir, expected, resend: o.resend === true, ...(o.now ? { now: o.now } : {}) });
     if (o.signal?.aborted) stop("REVIEW_ABORTED");
-    const h = await handOffToLocalInbox({ sealed, stateDir: o.stateDir, inboxDir: o.inboxDir ?? join(runs, REVIEW_INBOX), expected, ...(o.now ? { now: o.now } : {}), ...(o.signal ? { signal: o.signal } : {}) }).catch(asReviewStop);
+    const h = await handOffToLocalInbox({ sealed, stateDir: o.stateDir, inboxDir, expected, ...(o.now ? { now: o.now } : {}), ...(o.signal ? { signal: o.signal } : {}) }).catch(asReviewStop);
     const base = { approval_id: o.approvalId, bundle_sha256: sealed.bundle_sha256, bundle: how, sent: h.delivery.sent };
     if (h.delivery.state !== "delivered" || !h.previews) return { ...base, status: "not_delivered", code: h.delivery.code, previews: null, previews_dir: null };
     const duplicate = !h.delivery.sent || h.delivery.ack?.status === "duplicate";

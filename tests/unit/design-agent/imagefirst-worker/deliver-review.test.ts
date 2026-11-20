@@ -154,6 +154,12 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
       pointOrigin(w.repo);
       return c;
     };
+    const noPacket = () => {
+      git(w.repo, "rm", "-q", APPROVAL_PACKET_PATH);
+      git(w.repo, "commit", "-q", "-m", "the packet removed");
+      pointOrigin(w.repo);
+      return git(w.repo, "rev-parse", "HEAD");
+    };
     // a local commit object (same approved tree) that nothing on origin/develop descends from
     const offOrigin = git(w.repo, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "a local commit, not on origin/develop");
     const cases: [string, unknown][] = [
@@ -171,6 +177,8 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
       // PR #310 review M2: a commit that is not on origin/develop (a local commit, or none at all) is refused first
       ["COMMIT_NOT_ON_ORIGIN_DEVELOP", { ...r, commit: offOrigin }],
       ["COMMIT_NOT_ON_ORIGIN_DEVELOP", { ...r, commit: "1".repeat(40) }],
+      // re-review L-c: a commit on origin/develop without the packet
+      ["PACKET_UNREADABLE", { ...r, commit: noPacket() }],
       ["RECEIPT_INVALID", { ...r, approval_id: "hoshigama-imagefirst-d3-20261120-02" }],
       ["RECEIPT_NOT_SUCCEEDED", { ...r, interrupted: true }],
       ["RECEIPT_NOT_SUCCEEDED", { ...r, counts: { ...r.counts, sp: 3 } }],
@@ -227,14 +235,48 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
     nothingDelivered(w);
   });
 
-  it("PR #310 review L2: a re-send never packs: a missing or empty sealed bundle is SEALED_BUNDLE_MISSING", async () => {
+  it("PR #310 re-review M-1: a hand-off stopped before sealing (lock held, stop requested) is recovered by the re-send's FIRST pack", async () => {
+    // REVIEW_LOCKED: a worker started by hand holds the lock right after the cycle
     const w = await finishedRun();
-    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    const before = w.used();
+    const lock = await acquireLock(w.stateDir, new Date(NOW), "imagefirst.lock");
+    expect(await deliverAfterRun(w.report, { runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, w.deps)).toEqual({ status: "refused", code: "REVIEW_LOCKED" });
+    await lock!.release();
     nothingDelivered(w);
+    const r = await deliverReview({ ...w.opts, resend: true, jailIdle: async () => true }, w.deps);
+    expect(r).toMatchObject({ status: "delivered", bundle: "sealed", previews: "built" });
+    expect(w.used()).toEqual(before);
+    // and never a second pack: the bundle gone but the job / inbox copy there
+    rmSync(join(w.bundles, ID), { recursive: true });
+    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    rmSync(join(w.stateDir, "deliveries"), { recursive: true });
+    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    expect(existsSync(w.bundles) ? readdirSync(w.bundles) : []).toEqual([]);
+
+    // a stop requested before the hand-off: the same recovery
+    const v = await finishedRun();
+    const ac = new AbortController();
+    ac.abort();
+    expect(await deliverAfterRun(v.report, { runsDir: v.runsDir, stateDir: v.stateDir, signal: ac.signal }, v.deps)).toEqual({ status: "refused", code: "REVIEW_ABORTED" });
+    expect(await deliverReview({ ...v.opts, resend: true }, v.deps)).toMatchObject({ status: "delivered", bundle: "sealed" });
+  });
+
+  it("PR #310 review L2 / re-review M-1: a re-send never packs a second time; an empty bundle or a delivery job without a bundle is SEALED_BUNDLE_MISSING", async () => {
+    const w = await finishedRun();
     mkdirSync(join(w.bundles, ID), { recursive: true, mode: 0o700 });
     expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
     expect(readdirSync(join(w.bundles, ID))).toEqual([]);
     rmSync(join(w.bundles, ID), { recursive: true });
+    // a delivery job exists (sealed earlier, then the bundle was removed): never packed again
+    mkdirSync(join(w.stateDir, "deliveries"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(w.stateDir, "deliveries", `${ID}.json`), "{}", { mode: 0o600 });
+    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    rmSync(join(w.stateDir, "deliveries"), { recursive: true });
+    // an inbox copy exists: the same
+    mkdirSync(join(w.inbox, ID), { recursive: true, mode: 0o700 });
+    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    rmSync(join(w.inbox, ID), { recursive: true });
+    expect(existsSync(w.bundles) ? readdirSync(w.bundles) : []).toEqual([]);
     // the automatic path packs once (one atomic rename: no temporary or empty directory is left behind)
     expect((await deliverReview(w.opts, w.deps)).status).toBe("delivered");
     expect(readdirSync(w.bundles)).toEqual([ID]);

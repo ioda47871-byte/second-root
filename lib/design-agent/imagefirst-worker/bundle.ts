@@ -402,7 +402,8 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
       await rename(tmp, final);
     } catch (error) {
       const code = (error as { code?: string }).code;
-      if (code === "ENOTEMPTY" || code === "EEXIST") stop("BUNDLE_EXISTS");
+      // a file or link appearing at the final name in the window: ENOTDIR / EISDIR, the same "already there" (re-review L-d)
+      if (code === "ENOTEMPTY" || code === "EEXIST" || code === "ENOTDIR" || code === "EISDIR") stop("BUNDLE_EXISTS");
       throw error;
     }
   } catch (error) {
