@@ -489,3 +489,33 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
     return complete ? { status: "succeeded", code: null, ...base } : { status: "stopped", code: stopCode, ...base };
   }
 }
+
+export type ApprovalAt = { approvalId: string; planId: string; expiresMs: number; packetSha256: string };
+/**
+ * Issue #302 P3 follow-up: the owner's d3 approval AS COMMITTED at `commit`, with the same reader (readApprovalPacket)
+ * and the same checks the cycle makes before its claim: approved, d3 alone, the ほし窯 id (never the reserved dummy date),
+ * the plan ID's shape, the expiry, the packet's §3 pins = the fixed allowlist. With `startedAtMs` (a finished run's start
+ * from its receipt) the run must have started inside the approval's window (not after the expiry, not further than the
+ * 24 h window before it): APPROVAL_NOT_VALID_AT_RUN otherwise. Read only: no lock, no claim, no ledger, nothing invoked.
+ * For the review delivery (deliver-review.ts), which compares a receipt with it.
+ */
+export async function readApprovalAt(commit: string, fileAt: CycleDeps["fileAt"], startedAtMs?: number): Promise<ApprovalAt | { code: string }> {
+  const a = IMAGEFIRST_ALLOWLIST;
+  if (!/^[0-9a-f]{40}$/.test(commit)) return { code: "COMMIT_UNREADABLE" };
+  const packetBytes = await fileAt(commit, APPROVAL_PACKET_PATH).catch(() => null);
+  if (!packetBytes) return { code: "PACKET_UNREADABLE" };
+  const packet = readApprovalPacket(packetBytes);
+  if (!packet) return { code: "PACKET_NOT_APPROVED" };
+  if (packet.directions.join(",") !== a.direction) return { code: "SCOPE_NOT_ALLOWED" };
+  const approvalId = packet.approvalIds.d3;
+  if (!APPROVAL_ID.test(approvalId)) return { code: "SHOP_NOT_ALLOWED" };
+  const idCheck = checkRealApprovalId(approvalId);
+  if (idCheck !== "ok") return { code: idCheck };
+  if (!PLAN_ID.test(packet.planId)) return { code: "PLAN_ID_INVALID" };
+  const expires = parseUtcInstant(packet.expires);
+  if (expires === null) return { code: "APPROVAL_EXPIRY_INVALID" };
+  const pins = packetPins(packetBytes);
+  if (!pins || pins.planSha256 !== a.planSha256 || pins.promptSha256 !== a.promptSha256 || pins.promptChars !== a.promptChars) return { code: "PACKET_PIN_MISMATCH" };
+  if (startedAtMs !== undefined && (!Number.isFinite(startedAtMs) || startedAtMs > expires || expires - startedAtMs > MAX_APPROVAL_WINDOW_MS)) return { code: "APPROVAL_NOT_VALID_AT_RUN" };
+  return { approvalId, planId: packet.planId, expiresMs: expires, packetSha256: sha256(packetBytes) };
+}

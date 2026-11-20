@@ -172,6 +172,15 @@ cycle を使う）で走らせる。確かめること: 未承認 → 0 回・�
 分岐 → 印の前に停止、同時 2 本 → 1 本だけ、実行中の SIGTERM → worker の receipt（`WORKER_INTERRUPTED`）・再試行なし。unit の予算と
 上限、リポジトリの中に install / enable するものが無いことも検査する。
 
+### 6.1 成功した run の後処理（Issue #302 P3 の続き）
+
+worker の CLI は、cycle が `succeeded` を返したときだけ、その run を同じプロセスのままローカルの review inbox
+（`~/sr-runs/review-inbox`）へ渡す（`lib/design-agent/imagefirst-worker/deliver-review.ts` の `deliverAfterRun`。receipt を receipt の
+コミットの承認パケットと照合 → 封入 → inbox → プレビューと INDEX）。結果は 1 行の JSON の `review` 欄で、終了コードは変えない。
+自動起動の script・unit・timer は変えていない。受け渡しは何も起動できず、claim も ledger も使わない。失敗したときの再送は
+`imagefirst-worker.ts --deliver-review <承認 ID>`（同じ bundle だけ。jail の Claude が止まっていて disabled のときだけ）。
+詳しくは [`imagefirst-review-handoff.md`](imagefirst-review-handoff.md) §4。**ChatGPT 側へ画像を返すことは未達のまま**（同 §5 の選択肢。何も設定していない）。
+
 ## 7. オーナーの手順（自動起動。別のオーナー承認の後だけ。いまは読むだけ）
 
 **ここに書いた操作は、まだ誰も行っていない。** Claude はクラウドから root で操作しない。すべてオーナーが WSL で、一度だけ行う。

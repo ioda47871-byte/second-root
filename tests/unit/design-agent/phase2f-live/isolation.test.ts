@@ -55,7 +55,10 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./ledger", "./steps"],
   [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
   [WORKER_LIB]: ["node:crypto", "node:fs", "node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state"],
-  [WORKER_CLI]: ["node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
+  // Issue #302 P3 follow-up (owner instruction 2026-11-20, exact path): plus the review delivery of a finished run
+  // (deliver-review.ts: bundle + local inbox + previews; starts nothing, claims nothing; its imports are pinned in
+  // tests/unit/design-agent/imagefirst-worker/deliver-review.test.ts)
+  [WORKER_CLI]: ["node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/imagefirst-worker/deliver-review`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
   [CLI_SHARED]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/codex`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, `${L}/protected-paths`, `${L}/sandbox`, `${L}/worker/env`],
   // DEV-124: node:os, playwright and the reference sheet make the v2 reference images before the approval is used
   // DEV-150: node:crypto for the SHA-256 of the tm0 brief that --print-pin shows

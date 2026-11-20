@@ -11,8 +11,8 @@
   - `lib/design-agent/imagefirst-worker/preview.ts` — 検証済みの bundle から、Claude の Read で表示できる大きさのプレビューと `INDEX.md` を作る。
   - `lib/design-agent/imagefirst-worker/review-poc.ts` と `scripts/sales-design-worker/imagefirst-review-poc.ts` — 無害なダミー画像での PoC。
   - `tests/unit/design-agent/imagefirst-worker/review-handoff.test.ts`
-- worker（`cycle.ts`・`imagefirst-worker.ts`）・自動起動・unit は**変更していない**。実際の d3 の run を inbox へ渡す入口は、まだ無い
-  （実 run の後に `packBundle` → `handOffToLocalInbox` を呼ぶだけの小さな入口を、承認後に足す）。
+- 追記（Issue #302 P3 の続き）: 本物の run を inbox へ渡す入口 `lib/design-agent/imagefirst-worker/deliver-review.ts` を足した（§4）。
+  自動起動の script・unit・timer は**変更していない**。
 
 ## 1. 置き場所の根拠 — jail の中の Claude が実際に読めるもの
 
@@ -118,11 +118,52 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
 worker（`cycle.ts`）・承認の claim・自動起動の grant・受け渡しは、日付 `00000000`（と暦に無い日付）の承認 ID を拒否する（`APPROVAL_ID_RESERVED`）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
-## 4. 本物の run での流れ（承認の後。いまは入口なし）
+## 4. 本物の run での流れ（Issue #302 P3 の続き。オフラインで実装・テスト済み、実機では未実施）
 
-worker の 1 回の run が `succeeded` で終わる → 同じ `sr-designgen` で `packBundle`（`~/sr-runs/bundles/`）→ `handOffToLocalInbox`
-（期待する記録 = §10 の承認 ID・plan ID・コミット）→ プレビュー → オーナーが `claude-start` → Claude が `INDEX.md` とプレビューを Read して評価。
-失敗した受け渡しは同じ bundle の再送だけ。Codex の再実行・再生成は無い。自動の公開も無い。
+実画像の生成そのもの（実 Codex、PR #300 の承認パケット、timer の設置）は、どれも**別のオーナー承認**が要り、この変更では何もしていない。
+
+**入口は worker の CLI（`scripts/sales-design-worker/imagefirst-worker.ts`）の末尾。** cycle（`runImagefirstCycle`）が `succeeded` を返した
+ときだけ、同じプロセス・同じ `sr-designgen` のまま `deliverAfterRun`（`deliver-review.ts`）を呼ぶ:
+
+1. 承認 ID が本物の形（日付 `00000000` のダミーと暦に無い日付は拒否）
+2. worker のロック（`imagefirst.lock`。cycle が外した後に取り直す）
+3. `~/sr-runs/<承認 ID>-<UTC>.receipt.json` がちょうど 1 つ。0600・自分のもの・link でない。cycle が報告した receipt と同じもの
+4. receipt が `succeeded`・`verified`・`interrupted: false`・PC 2 + SP 4・停止 0、ほし窯 d3、plan SHA / prompt SHA / 文字数が固定の許可表どおり
+5. **receipt のコミットにある承認パケット**を、worker と同じ読み手（`readApprovalPacket` と `packetPins`。新しい parser は作らない。`cycle.ts`
+   の `readApprovalAt`）で読む: 承認済み・d3 だけ・承認 ID が receipt と同じ・plan ID が同じ・パケットの SHA が同じ・§3 の pin が同じ・
+   run の開始が承認の期限内（期限より後、24 時間の窓より前なら `RUN_NOT_IN_APPROVAL_WINDOW`）
+6. `packBundle`（各画像の SHA-256 を receipt と照合、link 拒否、0700 / 0600、`~/sr-runs/bundles/<承認 ID>/`）。既に封入済みなら作り直さず、
+   検証し直して**同じ receipt のバイトから作ったもの**であることを確かめる（`SEALED_BUNDLE_MISMATCH`）
+7. `handOffToLocalInbox`（受け手が承認の記録で検証し直す → atomic rename → プレビューと `INDEX`）
+
+結果は worker の 1 行の JSON の `review` 欄（`delivered` / `duplicate` / `not_delivered` / `refused`、コードだけ）。**worker の終了コードは変えない**
+（run の結果はそのまま。自動起動の判定も変わらない）。
+
+**なぜここか（自動起動の script ではなく）**: (a) worker と同じユーザー・同じ場所（`~/sr-runs`）で、権限の境界を一つも増やさない。root の
+script が worker のファイルを読む道を作らない（自動起動の方針「root は worker のファイルに git も node も parser も使わない」を守る）。
+(b) 手で動かした run（§5 の手順）にも同じように効く。(c) worker の排他の中にある: 自動起動は `sr-jail-claude` が止まっていて
+disabled / masked のときだけ worker を起動するので、受け渡しの間に jail の Claude は動いていない。(d) `deliver-review.ts` は cycle を
+呼ばず、プロセスを起動できない（`runBounded`・入口・Codex・画像の道具を import しない。テストで固定）。claim を作らず、入口の ledger
+に触れない。
+
+**失敗したとき**: 封入済みの bundle は残り、配送の状態は `sealed`。オーナーが**同じ bundle だけ**を手で再送する:
+
+```bash
+# sr-designgen として、worker の clone で（jail の Claude は止めて disabled のまま）
+sudo bash $A run sr-designgen -- bash -c 'cd ~/work/second-root && node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --deliver-review <承認 ID>'
+```
+
+`--deliver-review` は cycle を動かさず、claim も ledger も使わず、何も起動しない。jail の Claude（`sr-jail-claude.service`）が止まっていて
+disabled / masked でなければ（`systemctl` で判断できないときも）`JAIL_ACTIVE` / `JAIL_STATE_UNKNOWN` で何も書かずに止まる（自動起動と同じ規則）。
+終了コード: 0 = 渡した（または既に渡っている `duplicate`）、1 = 渡せなかった（bundle は封入のまま。もう一度だけ同じコマンド）、2 = 拒否。
+再送は封入済みのバイトの再送だけで、Codex の再実行・再生成・再 pack は無い。GitHub・bridge の JSON spool・公開の保存先へは何も置かない。
+
+渡った後: オーナーが `claude-start` → Remote Control の Claude が `~/sr-runs/review-inbox/previews/<承認 ID>/INDEX.md` とプレビューを Read して評価する。
+
+オフラインの E2E（`tests/unit/design-agent/imagefirst-worker/deliver-review.test.ts`。偽 Codex で本物の cycle を 1 回 → 本物の inbox）:
+成功（パーツ 6 枚のプレビューと INDEX、元の SHA = bundle の SHA = receipt の SHA）、receipt が succeeded でない、期限の窓の外、承認・plan・prompt・
+パケット・コミットの不一致、画像の改ざん、run dir / receipt / パーツの symlink、inbox / previews の symlink、重複（冪等）、中断した受け渡しの
+同じ SHA での再送、jail の排他、ダミー ID、ロック。どの場合も claim・ledger・Codex の実行回数が受け渡しの前後で変わらないことを確かめている。
 
 ## 5. 状態のまとめ
 
