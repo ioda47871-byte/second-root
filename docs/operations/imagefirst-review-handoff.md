@@ -120,7 +120,8 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 
 うまくいかないとき: Claude が「読めない」「権限がない」と答えたら、その文言を記録して止める。**chmod や jail の設定を変えて通さない。**
 ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
-worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant と run marker は、日付 `00000000`（と暦に無い日付）の承認 ID を拒否する
+worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant と run marker・本物の run の受け渡し（`deliver-review.ts`、§4）と
+その再送 wrapper は、日付 `00000000`（と暦に無い日付）の承認 ID を拒否する
 （`APPROVAL_ID_RESERVED` など。テストで固定）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
 ## 4. 本物の run での流れ（Issue #302 P3 の続き。オフラインで実装・テスト済み、実機では未実施）
