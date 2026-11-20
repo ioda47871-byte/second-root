@@ -74,11 +74,14 @@ export const say = (o: object) => process.stdout.write(`${JSON.stringify(o)}\n`)
  * The stop signals, installed at once so a signal that arrives during the checks is never lost (the call then
  * does not start): the first aborts the call (it records itself as aborted), a second one or 20 s later kills
  * every process and exits. `hardStopMs` (default 20 s) moves that hard stop later: the IMAGE_FIRST worker waits for
- * its child entry's own 20 s + 10 s stop before it kills anything (PR #301 review L1).
+ * its child entry's own 20 s + 10 s stop before it kills anything (PR #301 review L1). `repeatGraceMs` (default 0) ignores
+ * a repeated signal that arrives that soon after the first: one stop delivered twice (timeout(1) signals its child and
+ * its group) must not turn into a hard stop (Issue #302 review M4).
  */
-export function stopSignals(o: { cleanup?: () => Promise<void>; hardStopMs?: number } = {}): { controller: AbortController; stop: () => void } {
+export function stopSignals(o: { cleanup?: () => Promise<void>; hardStopMs?: number; repeatGraceMs?: number } = {}): { controller: AbortController; stop: () => void } {
   const controller = new AbortController();
   let stopping = false;
+  let firstAt = 0;
   // a hard stop still removes what a running call left (its session log and image dirs), for at most 10 s
   // (watchdog + 20 s + 10 s stays inside what the plan clock counts for a call without a result)
   const hardExit = (): void => {
@@ -87,8 +90,12 @@ export function stopSignals(o: { cleanup?: () => Promise<void>; hardStopMs?: num
     void done.then(() => process.exit(1));
   };
   const stop = (): void => {
-    if (stopping) return hardExit();
+    if (stopping) {
+      if (Date.now() - firstAt < (o.repeatGraceMs ?? 0)) return;
+      return hardExit();
+    }
     stopping = true;
+    firstAt = Date.now();
     controller.abort();
     setTimeout(hardExit, o.hardStopMs ?? 20_000).unref();
   };

@@ -1,9 +1,10 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { runBounded } from "@/lib/design-agent/bounded-process";
+import { tsEntry } from "@/lib/design-agent/imagefirst-worker/cycle";
 
 // Issue #302 P0 (PR #301 review L2): the IMAGE_FIRST worker CLI started as a real process, in a scratch HOME, and the
 // split-UTF-8 fix of runBounded. The CLI never gets an approved packet here: every run refuses (or finds no job) before
@@ -11,7 +12,7 @@ import { runBounded } from "@/lib/design-agent/bounded-process";
 
 const REPO = resolve(__dirname, "../../../..");
 const CLI = join(REPO, "scripts/sales-design-worker/imagefirst-worker.ts");
-const TSX = join(REPO, "node_modules/.bin/tsx");
+const PROBE = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/signal-probe.ts");
 const PATH_ONLY = { PATH: process.env.PATH ?? "/usr/bin:/bin" } as unknown as NodeJS.ProcessEnv;
 vi.setConfig({ testTimeout: 60_000 });
 const temps: string[] = [];
@@ -27,7 +28,8 @@ afterAll(() => {
 /** The CLI as a process with only PATH and a scratch HOME (plus what the test adds). */
 function runCli(args: string[], extra: Record<string, string> = {}) {
   const home = tmp("sr-ifw-cli-home-");
-  const r = spawnSync(TSX, [CLI, ...args], { cwd: REPO, encoding: "utf8", env: { ...PATH_ONLY, HOME: home, ...extra }, timeout: 50_000 });
+  // started as the runbook says: node with the tsx loader (never the tsx CLI, which relays signals a second time)
+  const r = spawnSync(process.execPath, ["--import", "tsx", CLI, ...args], { cwd: REPO, encoding: "utf8", env: { ...PATH_ONLY, HOME: home, ...extra }, timeout: 50_000 });
   const lines = r.stdout.trim().split("\n").filter(Boolean);
   return { home, status: r.status, out: JSON.parse(lines[lines.length - 1] ?? "null") as { status: string; code: string | null; invoked: boolean } | null, lines };
 }
@@ -84,6 +86,27 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
   });
 });
 
+describe("Issue #302 P1: the worker's --precheck as a real process (no lock, no audit, no write)", () => {
+  it("answers the same gates with the precheck exit (2 refused / 3 no job) and creates nothing in HOME", () => {
+    const want = expectedGate();
+    const r = runCli(["--precheck"]);
+    expect(r.status).toBe(want.status === "no_job" ? 3 : 2);
+    expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
+    // nothing at all under the scratch HOME: no state dir, no audit line, no runs dir
+    expect(readdirSync(r.home)).toEqual([]);
+  });
+
+  it("--precheck with anything else is USAGE; a malformed grant is GRANT_INVALID, both before any place is touched", () => {
+    const usage = runCli(["--precheck", "--now"]);
+    expect(usage.status).toBe(2);
+    expect(usage.out).toEqual({ status: "refused", code: "USAGE", invoked: false });
+    const bad = runCli(["--precheck"], { SR_IMAGEFIRST_EXPECT_APPROVAL_ID: "tsugute-imagefirst-d3-20261120-01" });
+    expect(bad.status).toBe(2);
+    expect(bad.out).toEqual({ status: "refused", code: "GRANT_INVALID", invoked: false });
+    expect(readdirSync(bad.home)).toEqual([]);
+  });
+});
+
 describe("Issue #298 fix kept: runBounded decodes a UTF-8 character split across two pipe reads", () => {
   it("あいう×3 written in two chunks, split inside a character, comes back intact (no U+FFFD)", async () => {
     const text = "あいう".repeat(3);
@@ -98,5 +121,59 @@ describe("Issue #298 fix kept: runBounded decodes a UTF-8 character split across
     // stderr is decoded the same way
     const e = await runBounded(process.execPath, ["-e", script.replaceAll("process.stdout", "process.stderr")], { env: PATH_ONLY, timeoutMs: 10_000 });
     expect(e.stderr).toBe(text);
+  });
+});
+
+describe("Issue #302 review M4: one stop is one signal (node --import tsx, not the tsx CLI)", () => {
+  const until = async (cond: () => boolean, ms = 30_000) => {
+    const end = Date.now() + ms;
+    while (!cond()) {
+      if (Date.now() > end) throw new Error("timed out waiting");
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  };
+
+  it("the worker starts the entry as node --import tsx (no tsx CLI parent in its process group)", () => {
+    expect(tsEntry("/r/e.ts", ["--x", "1"])).toEqual({ bin: process.execPath, args: ["--import=tsx", "/r/e.ts", "--x", "1"] });
+    const worker = readFileSync(CLI, "utf8");
+    expect(worker).toMatch(/runBounded\(tsEntry\(join\(REPO, GENERATE_ENTRY\), argv\)\.bin, tsEntry\(join\(REPO, GENERATE_ENTRY\), argv\)\.args, \{ cwd: REPO,/);
+    expect(worker).not.toMatch(/node_modules\/\.bin\/tsx"/);
+    // the runbook's manual start (Ctrl-C reaches node once)
+    const doc = readFileSync(join(REPO, "docs/operations/imagefirst-worker-port.md"), "utf8");
+    expect(doc).not.toMatch(/^\.\/node_modules\/\.bin\/tsx scripts\/sales-design-worker\/imagefirst-worker\.ts/m);
+    expect(doc).toMatch(/^node --import tsx scripts\/sales-design-worker\/imagefirst-worker\.ts$/m);
+  });
+
+  it("runBounded's abort reaches an entry started that way exactly once, even with a busy event loop", async () => {
+    for (let i = 0; i < 3; i++) {
+      const out = join(tmp("sr-ifw-probe-"), "count");
+      const c = new AbortController();
+      const e = tsEntry(PROBE, [out, "count"]);
+      const run = runBounded(e.bin, e.args, { cwd: REPO, env: PATH_ONLY, timeoutMs: 30_000, graceMs: 5_000, signal: c.signal });
+      await until(() => existsSync(`${out}.ready`));
+      c.abort();
+      const r = await run;
+      expect(r.code, r.stderr).toBe(0);
+      expect(readFileSync(out, "utf8")).toBe("1");
+    }
+  });
+
+  it("the worker's stop: a signal repeated within 1 s is the same stop (graceful); a later one is the hard stop", async () => {
+    const probe = async (gapMs: number) => {
+      const out = join(tmp("sr-ifw-probe-"), "stop");
+      const child = spawn(process.execPath, ["--import", "tsx", PROBE, out, "stop"], { cwd: REPO, env: PATH_ONLY, stdio: "ignore" });
+      const done = new Promise<number | null>((res) => child.on("exit", (code) => res(code)));
+      await until(() => existsSync(`${out}.ready`));
+      child.kill("SIGTERM");
+      // the gap is measured from the moment the probe took the first signal (its "abort" line), not from the send:
+      // under load the first handler can run late, which would shrink a gap measured from the send
+      if (gapMs > 100) await until(() => existsSync(out) && readFileSync(out, "utf8").includes("abort"));
+      await new Promise((r) => setTimeout(r, gapMs));
+      child.kill("SIGTERM");
+      const code = await done;
+      return { code, text: readFileSync(out, "utf8") };
+    };
+    expect(await probe(20)).toEqual({ code: 0, text: "abort\ngraceful\n" });
+    expect(await probe(1_500)).toEqual({ code: 1, text: "abort\nhard\n" });
   });
 });

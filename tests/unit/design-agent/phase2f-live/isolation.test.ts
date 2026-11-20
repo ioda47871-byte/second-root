@@ -28,6 +28,8 @@ const FULL_PAGE_CLI = "scripts/design-artifact/image-first-generate.ts";
  */
 const WORKER_LIB = "lib/design-agent/imagefirst-worker/cycle.ts";
 const WORKER_CLI = "scripts/sales-design-worker/imagefirst-worker.ts";
+/** Issue #302 P1: root's automatic start (OFF by default; its unit and timer are never installed or enabled here). */
+const WORKER_AUTOSTART = "scripts/sales-design-worker/imagefirst-autostart.sh";
 const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
@@ -142,13 +144,17 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI, FULL_PAGE_CLI, WORKER_CLI].sort());
     // Issue #293 P3: nothing starts the IMAGE_FIRST entry (run by hand by the owner only). Issue #298 P1: except the worker
     // adapter, which names it once (GENERATE_ENTRY) and is itself started by hand only (nothing starts the adapter)
-    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*image-first-generate", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${FULL_PAGE_CLI}`])).toEqual([]);
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b.*image-first-generate", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${FULL_PAGE_CLI}`])).toEqual([]);
     expect(git(["grep", "--untracked", "-lF", "image-first-generate", "--", "lib", "app", "components", "scripts", ".github", "package.json", `:!${FULL_PAGE_CLI}`])).toEqual([WORKER_LIB]);
-    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b[^\\n]*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([]);
+    // Issue #302 P1 (owner-approved scope): one exception, root's automatic start (WORKER_AUTOSTART), which starts the
+    // adapter once per root-owned one-use marker; its unit names only that script (tests/unit/design-agent/imagefirst-worker/autostart.test.ts)
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_AUTOSTART]);
+    // the automatic start never names the entry, Codex or a model itself: it only starts the adapter
+    expect(readFileSync(resolve(REPO, WORKER_AUTOSTART), "utf8")).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);
     // the adapter never takes the image call, the sandbox or Codex: it starts the entry (its one process) and reads files
     for (const file of [WORKER_LIB, WORKER_CLI]) expect(readFileSync(resolve(REPO, file), "utf8"), file).not.toMatch(/generateImage|image-once|prepareCodexSandbox|\/sandbox["']|runCodexJson|\/codex["']|\bfetch\(|node:https?|child_process|anthropic|openai/);
     // DEV-150: no package script, workflow, unit file or other script starts the new entries (run by hand only)
-    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*(phase2f-direction|three-methods-steps)", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"])).toEqual([]);
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b.*(phase2f-direction|three-methods-steps)", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"])).toEqual([]);
   });
 
   it("only the image CLI names the image PoC's code; no file here names its approval, pin, ledger or output", () => {
