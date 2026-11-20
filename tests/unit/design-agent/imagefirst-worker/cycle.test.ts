@@ -502,6 +502,13 @@ describe("Issue #302 P1: the precheck (every check up to the claim, nothing writ
     expect(readdirSync(other.stateDir)).toEqual([]);
   });
 
+  it("less than 5 minutes of the approval left: the precheck says no (the real cycle alone would still accept it)", async () => {
+    const w = world({ repo: workerRepo(filledPacket({ expires: "`2026-11-20T01:04:00Z`" })) });
+    expect(await precheck(w, ID)).toMatchObject({ status: "refused", code: "APPROVAL_EXPIRES_SOON" });
+    nothingWritten(w);
+    expect((await w.cycle()).status).toBe("succeeded");
+  });
+
   it("an unsafe existing place is refused read-only; missing places are fine (they would be created 0700)", async () => {
     const w = world();
     chmodSync(w.runsDir, 0o755);

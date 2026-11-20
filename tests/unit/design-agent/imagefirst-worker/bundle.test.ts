@@ -62,6 +62,7 @@ function makeRun(o: { composites?: boolean; editReceipt?: (r: WorkerReceipt) => 
     status: "succeeded",
     stop_code: null,
     stage: null,
+    interrupted: false,
     cli_exit: 0,
     cli_timed_out: false,
     shop: "hoshigama",

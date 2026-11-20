@@ -60,7 +60,16 @@ const STOP_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
  * writes the receipt and the audit line. Only if the worker is still waiting at `hardStopMs` (or gets a second signal)
  * does it kill every group and write the receipt from what is on disk (`recordInterrupted`), for at most `recordMs`.
  */
-export const WORKER_STOP = { entryStopMs: 20_000 + 10_000, graceMs: 35_000, hardStopMs: 50_000, recordMs: 10_000 } as const;
+export const WORKER_STOP = { entryStopMs: 20_000 + 10_000, graceMs: 35_000, hardStopMs: 50_000, recordMs: 10_000, repeatGraceMs: 1_000 } as const;
+/** The precheck says "would run" only with at least this much of the approval left (Issue #302 review L5). */
+export const PRECHECK_MIN_LEFT_MS = 5 * 60_000;
+/**
+ * How the worker starts a TypeScript entry: node itself with the tsx loader (`node --import tsx <file>`, cwd = the clone),
+ * never the tsx CLI. The CLI is a parent process that relays signals with a 30 ms window and then sends another
+ * TERM / SIGKILL, so one stop could reach the entry twice (a hard stop) or kill it (Issue #302 review M4). With node as
+ * the process-group leader, runBounded's one SIGTERM to the group reaches the entry once.
+ */
+export const tsEntry = (file: string, argv: readonly string[] = []) => ({ bin: process.execPath, args: ["--import=tsx", file, ...argv] });
 
 /** would_run: only from precheckImagefirstCycle (every check up to the claim passed; nothing was written). */
 export type CycleStatus = "no_job" | "locked" | "refused" | "succeeded" | "stopped" | "would_run";
@@ -328,6 +337,8 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   const expires = parseUtcInstant(packet.expires);
   if (expires === null) return refuse("APPROVAL_EXPIRY_INVALID", approvalId);
   if (now() > expires) return refuse("APPROVAL_EXPIRED", approvalId);
+  // the precheck leaves room for the run that follows it (else the marker could be used just before the expiry)
+  if (precheckOnly && expires - now() < PRECHECK_MIN_LEFT_MS) return refuse("APPROVAL_EXPIRES_SOON", approvalId);
   if (expires - now() > MAX_APPROVAL_WINDOW_MS) return refuse("APPROVAL_EXPIRY_TOO_FAR", approvalId);
 
   // ---- the pins: the packet's §3 and the plan rebuilt from the inputs at the same commit equal the fixed SHAs ----

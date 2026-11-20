@@ -282,7 +282,7 @@ fi
 
 # ---------------------------------------------------------------- 5. the dedicated clone on origin/develop (as the worker)
 worker_uid="$(id -u "$WORKER_USER")" && worker_gid="$(id -g "$WORKER_USER")" || { say "AUTOSTART_STOP_NO_USER: $WORKER_USER"; finish AUTOSTART_STOP_NO_USER 20; }
-AS_WORKER=(setpriv --reuid="$worker_uid" --regid="$worker_gid" --init-groups --reset-env -- env -i HOME="$WORKER_HOME" PATH="$WORKER_PATH" LANG=C.UTF-8)
+AS_WORKER=(setpriv --reuid="$worker_uid" --regid="$worker_gid" --init-groups --reset-env --no-new-privs -- env -i HOME="$WORKER_HOME" PATH="$WORKER_PATH" LANG=C.UTF-8)
 for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
   if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
 done
@@ -302,15 +302,15 @@ base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" git rev-parse
 [[ "$head" =~ ^[0-9a-f]{40}$ ]] && [ "$head" = "$base" ] || { say "HEAD is not origin/develop after the checkout: stopped before the marker"; finish AUTOSTART_STOP_GIT 20; }
 # npm ci only when package-lock.json changed (as run.sh; the hash is the worker's own state)
 in_clone bash -c 'h="$(sha256sum package-lock.json | cut -d" " -f1)" || exit 1
-  [ -x node_modules/.bin/tsx ] && [ "$(cat "$HOME/$1" 2>/dev/null || true)" = "$h" ] && exit 0
+  [ -f node_modules/tsx/package.json ] && [ "$(cat "$HOME/$1" 2>/dev/null || true)" = "$h" ] && exit 0
   timeout --kill-after="$2" "$3" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 || exit 1
   mkdir -p "$(dirname "$HOME/$1")" && printf "%s\n" "$h" >"$HOME/$1"' _ "$NPM_HASH_FILE" "$KILL_AFTER" "$NPM_TIMEOUT" ||
   { say "npm ci failed: stopped before the marker"; finish AUTOSTART_STOP_NPM 20; }
 
 # ---------------------------------------------------------------- 6. the worker's own precheck (nothing used, nothing written)
 set +e
-"${AS_WORKER[@]}" timeout --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
-  ./node_modules/.bin/tsx scripts/sales-design-worker/imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
+"${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
+  node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
 prc=$?
 set -e
 pline="$(tail -n 1 "$WORK/precheck" | tr -d '\000-\037' | cut -c1-2000)"
@@ -334,8 +334,11 @@ PHASE=after_claim
 say "the run marker is used up (approval $APPROVAL, commit $head); starting the worker once"
 
 set +e
-"${AS_WORKER[@]}" timeout --kill-after="$WORKER_KILL_AFTER" "$WORKER_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
-  ./node_modules/.bin/tsx scripts/sales-design-worker/imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &
+# node with the tsx loader is timeout's direct child, and timeout --foreground signals only that child: one stop is one
+# SIGTERM to the worker (the tsx CLI would relay it again within 30 ms, and the worker would take it as a hard stop).
+# The worker starts the entry in its own process group and stops it itself.
+"${AS_WORKER[@]}" timeout --foreground --kill-after="$WORKER_KILL_AFTER" "$WORKER_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
+  node --import tsx scripts/sales-design-worker/imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &
 WPID=$!
 wait "$WPID"
 rc=$?
@@ -356,6 +359,10 @@ case "$rc" in
   0) if [[ "$line" == *'"status":"no_job"'* ]]; then
        say "the worker found no job after the marker was used (the packet changed in between?); the marker stays used"
        finish AUTOSTART_USED_NO_JOB 10
+     fi
+     if [[ "$line" == *'"status":"locked"'* ]]; then
+       say "the worker's own lock was held after the marker was used (a run by hand?); nothing was called, the marker stays used"
+       finish AUTOSTART_USED_LOCKED 10
      fi
      finish AUTOSTART_RAN 0 ;;
   2) finish AUTOSTART_WORKER_REFUSED 2 ;;

@@ -90,7 +90,8 @@ codex login status                                        # ChatGPT でサイン
 ```
 cd <worker の clone>   # run.sh と同じ専用 clone。場所は実機で確かめる（P2）
 git checkout --quiet --force --detach origin/develop && git clean -q -f -d
-./node_modules/.bin/tsx scripts/sales-design-worker/imagefirst-worker.ts
+# node with the tsx loader: the tsx CLI would pass Ctrl-C on a second time (= the hard stop, no graceful receipt)
+node --import tsx scripts/sales-design-worker/imagefirst-worker.ts
 ```
 
 承認が未記入なら `{"status":"no_job","code":"PACKET_NOT_APPROVED",...}` で何もせずに終わる。`succeeded` なら `run_dir` と `receipt` の場所が出る。
@@ -139,7 +140,15 @@ sr-imagefirst-autostart.timer（毎時 :41 + 最大 10 分の揺らぎ、Persist
 ```
 
 - **再試行はどこにも無い。** 印は worker の結果にかかわらず使用済みのまま。worker 自身の claim と入口の ledger も 1 回限り（三重）。
-- **未承認なら 0 回・0 課金**: §10 が未記入・期限切れ・ピン不一致なら 6 で止まり、印も残る（直った次の毎時の実行で動く）。
+- **未承認なら 0 回・0 課金**: §10 が未記入・期限切れ・ピン不一致なら 6 で止まり、印も残る（直った次の毎時の実行で動く）。worker と事前確認は
+  `node --import tsx` で起動する（tsx の CLI は止める信号をもう一度送るので、worker が hard stop と受け取ってしまう）。
+- **印が使われても呼び出しが 0 回になる場合（すべて安全側。作り直しは新しい承認 ID と新しい印）**: 事前確認は期限まで 5 分未満なら
+  「動かない」と答える（`APPROVAL_EXPIRES_SOON`）が、それでも残るのは次のとき。
+  (a) 事前確認と本番の間に HEAD・パケット・ledger が変わった（worker が `no_job` → `AUTOSTART_USED_NO_JOB`、または `refused`）、
+  (b) 手で起動した worker が同時に lock を持っていた（`AUTOSTART_USED_LOCKED`。直前の pgrep で普通は起きない）、
+  (c) state / runs の dir が作れない（`CLAIMS_DIR_UNSAFE` / `RUNS_DIR_UNSAFE`）、
+  (d) claim のあと入口自身の確認で止まった（Codex のサインイン切れ・sandbox など。worker の receipt に停止コード、承認は使用済み）。
+  どれも Codex は呼ばれないか、呼ばれても 1 回だけで、再試行は無い。
 - **権限の分離**: switch と印は root 所有（`/etc` から上のすべての dir が root 所有で、group / other が書けないこと）。使用済みの記録は
   `/var/lib/sr-imagefirst-autostart/used/<承認 ID>/`（root、0700）。sr-designgen は印を作れず、使用済みを消せない。root は sr-designgen の
   clone で git・node・パーサを動かさない（すべて sr-designgen として。cycle.sh の約束と同じ）。権限は `setpriv` で落とす（exec するので

@@ -1,8 +1,9 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { acquireLock } from "@/lib/design-agent/worker/state";
 import { APPROVAL_PACKET_PATH } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { UNAPPROVED_PACKET_FIXTURE } from "../image-first/fixtures/unapproved-packet";
 import { cleanupTemps, commitFiles, filledPacket, git, ID, NOW, REPO, tmp, workerRepo } from "./support";
@@ -11,14 +12,13 @@ import { cleanupTemps, commitFiles, filledPacket, git, ID, NOW, REPO, tmp, worke
 // WSL under SR_IMAGEFIRST_AUTOSTART_TEST_ROOT: temp dirs stand in for /etc/sr-design-worker (the owner's switch and
 // one-use run marker), /var/lib (root's state, cycle.sh's lock) and the worker's home with its dedicated clone of a
 // temporary bare origin (git fetch here never leaves this machine). systemctl, pgrep and npm are stubs. The clone's
-// node_modules/.bin/tsx runs fixtures/fake-worker.ts: the real worker's main() over the real cycle, with the entry
+// scripts/sales-design-worker/imagefirst-worker.ts imports fixtures/fake-worker.ts (run as node --import tsx): the real worker's main() over the real cycle, with the entry
 // played in-process against the fake Codex. No Codex, no model, no network, no root, no systemd.
 
 vi.setConfig({ testTimeout: 120_000 });
 afterAll(cleanupTemps);
 const SCRIPT = join(REPO, "scripts/sales-design-worker/imagefirst-autostart.sh");
 const UNIT_DIR = join(REPO, "scripts/sales-design-worker/systemd");
-const REAL_TSX = join(REPO, "node_modules/.bin/tsx");
 const FAKE_WORKER = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/fake-worker.ts");
 const exe = (path: string, body: string) => {
   writeFileSync(path, `#!/bin/bash\n${body}\n`);
@@ -26,7 +26,7 @@ const exe = (path: string, body: string) => {
 };
 
 const startLog = (home: string) =>
-  existsSync(join(home, "fake-worker-starts.log")) ? readFileSync(join(home, "fake-worker-starts.log"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: string[]; grant: string | null }) : [];
+  existsSync(join(home, "fake-worker-starts.log")) ? readFileSync(join(home, "fake-worker-starts.log"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: string[]; grant: string | null; execArgv: string[] }) : [];
 
 /** One fake WSL. The origin starts with the UNAPPROVED packet; `approve()` pushes the owner's filled-in §10. */
 function wsl() {
@@ -54,15 +54,22 @@ if [ "$1" = is-enabled ]; then [ -f '${sc}/isenabled-fail' ] && exit 1; if [ -f 
   exe(join(bin, "npm"), `echo "npm $*" >> '${sc}/npm.log'`);
   // the approved code at origin/develop: the prompt inputs, the packet, a lockfile, node_modules ignored
   const src = workerRepo(readFileSync(UNAPPROVED_PACKET_FIXTURE));
-  commitFiles(src, { ".gitignore": Buffer.from("node_modules\n"), "package-lock.json": Buffer.from("{}\n") }, "lockfile (test)");
+  // the clone's worker is the fake worker (imported by absolute path), started as the real one: node --import tsx <it>
+  commitFiles(
+    src,
+    { ".gitignore": Buffer.from("node_modules\n"), "package-lock.json": Buffer.from("{}\n"), "scripts/sales-design-worker/imagefirst-worker.ts": Buffer.from(`import ${JSON.stringify(FAKE_WORKER)};\n`) },
+    "lockfile and worker (test)",
+  );
   const origin = join(t, "origin.git");
   git(t, "init", "-q", "--bare", origin);
   git(src, "push", "-q", origin, "HEAD:refs/heads/develop");
   const clone = join(home, "imagefirst", "second-root");
   mkdirSync(join(home, "imagefirst"));
   git(t, "clone", "-q", "--branch", "develop", origin, clone);
+  // the tsx loader (the repository's own) for `node --import tsx`; the tsx CLI must not be used (it relays signals twice)
   mkdirSync(join(clone, "node_modules", ".bin"), { recursive: true });
-  exe(join(clone, "node_modules", ".bin", "tsx"), `exec '${REAL_TSX}' '${FAKE_WORKER}' "$@"`);
+  symlinkSync(join(REPO, "node_modules", "tsx"), join(clone, "node_modules", "tsx"), "dir");
+  exe(join(clone, "node_modules", ".bin", "tsx"), `echo "the tsx CLI was used" >> '${sc}/tsx-cli.log'; exit 99`);
   writeFileSync(join(home, "fake-codex-mode"), "six");
   const w = {
     t,
@@ -138,14 +145,14 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     expect(before.stdout).toContain('"status":"no_job","code":"PACKET_NOT_APPROVED"');
     nothingRan(w);
     // the worker's own precheck answered, with the marker's approval id, and wrote nothing
-    expect(w.prechecks()).toEqual([{ argv: ["scripts/sales-design-worker/imagefirst-worker.ts", "--precheck"], grant: ID }]);
+    expect(w.prechecks()).toEqual([{ argv: ["scripts/sales-design-worker/imagefirst-worker.ts", "--precheck"], grant: ID, execArgv: ["--import", "tsx"] }]);
     expect(existsSync(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker"))).toBe(false);
     // the owner merges the filled-in §10; the next hourly poll picks it up
     w.approve();
     const run = poll(w);
     expect(run).toMatchObject({ status: 0, code: "AUTOSTART_RAN", phase: "after_claim", approval: ID });
     expect(run.worker).toMatchObject({ status: "succeeded", code: null, invoked: true });
-    expect(w.starts()).toEqual([{ argv: ["scripts/sales-design-worker/imagefirst-worker.ts"], grant: ID }]);
+    expect(w.starts()).toEqual([{ argv: ["scripts/sales-design-worker/imagefirst-worker.ts"], grant: ID, execArgv: ["--import", "tsx"] }]);
     expect(w.execs()).toBe(1);
     expect(w.used()).toEqual([ID]);
     expect(statSync(join(w.state, "used", ID)).mode & 0o777).toBe(0o700);
@@ -300,7 +307,10 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTOSTART_INTERRUPTED", phase: "after_claim" });
     expect(r.worker, r.stdout).toMatchObject({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true });
     // the worker ran through the privilege drop's stand-in with the production options
-    expect(readFileSync(join(w.sc, "setpriv.log"), "utf8")).toMatch(/^--reuid=\d+ --regid=\d+ --init-groups --reset-env$/m);
+    expect(readFileSync(join(w.sc, "setpriv.log"), "utf8")).toMatch(/^--reuid=\d+ --regid=\d+ --init-groups --reset-env --no-new-privs$/m);
+    // node with the tsx loader, never the tsx CLI (M4: one stop = one SIGTERM to the worker)
+    expect(existsSync(join(w.sc, "tsx-cli.log"))).toBe(false);
+    expect(startLog(w.home).every((e) => e.execArgv.join(" ") === "--import tsx")).toBe(true);
     const [receipt] = w.receipts();
     expect(receipt).toMatchObject({ status: "stopped", stop_code: "WORKER_INTERRUPTED", interrupted: true, approval_id: ID });
     const audit = readFileSync(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker", "audit.jsonl"), "utf8");
@@ -354,6 +364,21 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     await until(() => w.receipts().length === 1);
   });
 
+  it("the worker's own lock held when it starts after the marker: AUTOSTART_USED_LOCKED (not RAN), nothing called", async () => {
+    const w = wsl();
+    w.approve();
+    w.switchOn();
+    w.marker();
+    const held = await acquireLock(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker"), new Date(), "imagefirst.lock");
+    expect(held).toBeDefined();
+    const r = poll(w);
+    expect(r).toMatchObject({ status: 10, code: "AUTOSTART_USED_LOCKED", phase: "after_claim" });
+    expect(r.worker).toMatchObject({ status: "locked", invoked: false });
+    expect(w.execs()).toBe(0);
+    expect(w.used()).toEqual([ID]);
+    await held!.release();
+  });
+
   it("refuses arguments, and any copy outside the root-only clone without the test world", () => {
     const w = wsl();
     expect(poll(w, ["--now"])).toMatchObject({ status: 2, code: "AUTOSTART_USAGE" });
@@ -385,7 +410,9 @@ describe("Issue #302 P1 automatic start: the units are code and documentation on
     expect(num("WORKER_KILL_AFTER")).toBeGreaterThan(60);
     expect(stop).toBeGreaterThan(num("WORKER_KILL_AFTER"));
     // the worker runs with no supervising parent: setpriv execs (runuser would SIGKILL it 2 s after passing on a SIGTERM)
-    expect(script).toMatch(/^AS_WORKER=\(setpriv --reuid="\$worker_uid" --regid="\$worker_gid" --init-groups --reset-env -- env -i /m);
+    expect(script).toMatch(/^AS_WORKER=\(setpriv --reuid="\$worker_uid" --regid="\$worker_gid" --init-groups --reset-env --no-new-privs -- env -i /m);
+    for (const l of script.split("\n").filter((x) => /imagefirst-worker\.ts/.test(x) && !x.trimStart().startsWith("#"))) expect(l).toMatch(/^\s*node --import tsx scripts\/sales-design-worker\/imagefirst-worker\.ts/);
+    expect(script.match(/timeout --foreground --kill-after=/g)).toHaveLength(2);
     expect(script.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n")).not.toMatch(/\brunuser\b/);
     expect(script).not.toMatch(/PRECHECK_PY|python3 -I -c "\$PRECHECK/);
     for (const key of ["MemoryMax", "MemoryHigh", "CPUWeight", "TasksMax", "Nice", "IOSchedulingClass"]) expect(service).toMatch(new RegExp(`^${key}=\\S+$`, "m"));
