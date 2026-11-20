@@ -23,13 +23,31 @@
  * audit.jsonl), runs ~/sr-runs/<approval>-<UTC> (+ .receipt.json), the entry's ledger (phase2f, unchanged).
  *
  * One JSON line on stdout. Exit: 0 no job / locked / succeeded, 2 refused (nothing invoked), 1 invoked and stopped.
- * `--precheck` (the only argument): every check of the cycle up to, not including, the claim, with no lock, audit line
- * or write; exit 0 = it would run now ("would_run"), 3 = no job, 2 = refused.
+ * `--precheck`: every check of the cycle up to, not including, the claim, with no lock, audit line or write; exit 0 = it
+ * would run now ("would_run"), 3 = no job, 2 = refused.
+ *
+ * Issue #302 P3 follow-up (docs/operations/imagefirst-review-handoff.md §4): after a cycle that ended "succeeded", the
+ * same process hands that run to the local review inbox (~/sr-runs/review-inbox) with deliverAfterRun
+ * (lib/design-agent/imagefirst-worker/deliver-review.ts: receipt checked against the packet at its commit → sealed private
+ * bundle → inbox → previews + INDEX). The run's one JSON line is printed FIRST (PR #310 review M1: a stop during the
+ * hand-off can never hide a run that succeeded); the hand-off is skipped when a stop was already requested and is
+ * aborted by one; its own summary goes to stderr and the audit file only, so stdout stays exactly one line (the
+ * automatic start reads its last line). It never changes the exit code and it can start nothing. A failed hand-off
+ * leaves the sealed bundle (or, if it stopped before sealing, nothing sealed); the owner re-sends the SAME bundle (or,
+ * when no bundle, delivery job or inbox copy exists, the first and only pack of the same run) through root's wrapper
+ * scripts/sales-design-worker/imagefirst-deliver-review.sh, which runs this CLI with `--deliver-review <approval id>` as
+ * the worker user outside the jail. That mode runs no cycle, claims nothing and starts nothing except read-only git and
+ * systemctl; it requires HEAD = origin/develop and a clean tree, and (defense in depth; the wrapper is the gate) the
+ * jailed Claude stopped and disabled or masked. Exit: 0 delivered / duplicate, 1 not delivered (the bundle stays sealed
+ * for another re-send), 2 refused.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runBounded } from "../../lib/design-agent/bounded-process";
-import { exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
+import { appendFile } from "node:fs/promises";
+import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
+import { jailIdle } from "../../lib/design-agent/imagefirst-worker/jail-state";
+import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { expand, fileAtCommit, insideRepo, REPO, runMain, say, stopSignals } from "../design-artifact/phase2f-live-cli";
@@ -45,10 +63,19 @@ const { controller } = stopSignals({ hardStopMs: WORKER_STOP.hardStopMs, cleanup
  */
 const INVOKE_TIMEOUT_MS = WATCHDOG_MS + 2 * 60_000;
 
+/** PR #310 review M2: the receipt's commit is on origin/develop in this (the worker's own) clone. Read only. */
+const onOriginDevelop = (env: NodeJS.ProcessEnv) => async (commit: string) =>
+  /^[0-9a-f]{40}$/.test(commit) && (await runBounded("git", ["merge-base", "--is-ancestor", commit, "origin/develop"], { cwd: REPO, env, timeoutMs: 60_000 }).then((r) => r.code === 0, () => false));
+
 async function main(): Promise<number> {
-  // the only argument: --precheck (Issue #302 P1, the automatic start asks before it uses root's marker)
+  // the arguments: none, --precheck (Issue #302 P1, the automatic start asks before it uses root's marker), or
+  // --deliver-review <approval id> (Issue #302 P3 follow-up: re-send a finished run's sealed bundle to the review inbox)
   const precheck = process.argv.length === 3 && process.argv[2] === "--precheck";
-  if (process.argv.length > 2 && !precheck) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  const deliver = process.argv[2] === "--deliver-review";
+  if (deliver && process.argv.length !== 4) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  if (process.argv.length > 2 && !precheck && !deliver) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  const deliverId = deliver ? process.argv[3]! : null;
+  if (deliverId !== null && checkRealApprovalId(deliverId) !== "ok") return (say({ status: "refused", code: checkRealApprovalId(deliverId), invoked: false }), 2);
   const grant = grantFromEnv(process.env);
   if (grant === null) return (say({ status: "refused", code: "GRANT_INVALID", invoked: false }), 2);
   const env = childEnvironment(process.env);
@@ -57,6 +84,22 @@ async function main(): Promise<number> {
   // the same ledger the entry opens (it sees only the allowlisted environment)
   const ledgerDir = defaultLedgerDir(env, homedir());
   for (const p of [stateDir, runsDir, ledgerDir]) if (await insideRepo(p)) return (say({ status: "refused", code: "PLACE_INSIDE_REPO", invoked: false }), 2);
+  if (deliver) {
+    // the manual re-send: no cycle, no claim, no ledger, nothing started; the same sealed bundle (or its first pack when
+    // nothing was ever sealed or sent), from the worker's
+    // own clean clone on origin/develop (PR #310 review M3)
+    const c = await gitCommitState(REPO, env).catch(() => null);
+    if (!c?.head || c.head !== c.base) return (say({ status: "refused", code: "NOT_ON_ORIGIN_DEVELOP", invoked: false }), 2);
+    if (!c.clean) return (say({ status: "refused", code: "TREE_DIRTY", invoked: false }), 2);
+    try {
+      const r = await deliverReview({ approvalId: deliverId!, runsDir, stateDir, resend: true, signal: controller.signal, jailIdle: () => jailIdle(env) }, { fileAt: (commit, rel) => fileAtCommit(commit, rel), onOriginDevelop: onOriginDevelop(env) });
+      say({ ...r, invoked: false });
+      return r.status === "not_delivered" ? 1 : 0;
+    } catch (error) {
+      say({ status: "refused", code: error instanceof ReviewStop ? error.code : "REVIEW_UNEXPECTED", invoked: false });
+      return 2;
+    }
+  }
   if (precheck) {
     // every check up to the claim; no lock, no audit, no write, nothing invoked
     const r = await precheckImagefirstCycle({ repoRoot: REPO, stateDir, runsDir, ...(grant ? { expectApprovalId: grant } : {}) }, { commit: () => gitCommitState(REPO, env), fileAt: (commit, rel) => fileAtCommit(commit, rel), ledger: openLedger(ledgerDir) });
@@ -72,7 +115,13 @@ async function main(): Promise<number> {
       invoke: (argv, signal) => runBounded(tsEntry(join(REPO, GENERATE_ENTRY), argv).bin, tsEntry(join(REPO, GENERATE_ENTRY), argv).args, { cwd: REPO, env, timeoutMs: INVOKE_TIMEOUT_MS, graceMs: WORKER_STOP.graceMs, ...(signal ? { signal } : {}) }),
     },
   );
+  // the run's result first (the one stdout line), then the hand-off (PR #310 review M1)
   say(report);
+  const review = await deliverAfterRun(report, { runsDir, stateDir, signal: controller.signal }, { fileAt: (commit, rel) => fileAtCommit(commit, rel), onOriginDevelop: onOriginDevelop(env) });
+  if (review) {
+    process.stderr.write(`imagefirst-worker: review ${JSON.stringify(review)}\n`);
+    await appendFile(join(stateDir, "audit.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), approval_id: report.approval_id, review })}\n`, { mode: 0o600 }).catch(() => undefined);
+  }
   return exitCodeOf(report.status);
 }
 

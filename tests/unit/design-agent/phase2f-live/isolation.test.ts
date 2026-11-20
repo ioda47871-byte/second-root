@@ -30,6 +30,11 @@ const WORKER_LIB = "lib/design-agent/imagefirst-worker/cycle.ts";
 const WORKER_CLI = "scripts/sales-design-worker/imagefirst-worker.ts";
 /** Issue #302 P1: root's automatic start (OFF by default; its unit and timer are never installed or enabled here). */
 const WORKER_AUTOSTART = "scripts/sales-design-worker/imagefirst-autostart.sh";
+/**
+ * Issue #302 P3 follow-up (PR #310 review H1, owner instruction 2026-11-20, exact path): root's review re-send wrapper,
+ * run by hand only; it starts the adapter's --deliver-review mode once (no cycle; tests/unit/design-agent/imagefirst-worker/deliver-review-wrapper.test.ts).
+ */
+const WORKER_DELIVER = "scripts/sales-design-worker/imagefirst-deliver-review.sh";
 const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
@@ -55,7 +60,12 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./ledger", "./steps"],
   [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
   [WORKER_LIB]: ["node:crypto", "node:fs", "node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state"],
-  [WORKER_CLI]: ["node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
+  // Issue #302 P3 follow-up (owner instruction 2026-11-20, exact path): plus the review delivery of a finished run
+  // (deliver-review.ts: bundle + local inbox + previews; starts nothing, claims nothing; its imports are pinned in
+  // tests/unit/design-agent/imagefirst-worker/deliver-review.test.ts)
+  // PR #310 review H1 / L5 (exact paths): plus the worker side's read-only jail state (jail-state.ts: /usr/bin/systemctl
+  // by absolute path) and node:fs/promises for the review summary's audit line
+  [WORKER_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/imagefirst-worker/deliver-review`, `${L}/imagefirst-worker/jail-state`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
   [CLI_SHARED]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/codex`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, `${L}/protected-paths`, `${L}/sandbox`, `${L}/worker/env`],
   // DEV-124: node:os, playwright and the reference sheet make the v2 reference images before the approval is used
   // DEV-150: node:crypto for the SHA-256 of the tm0 brief that --print-pin shows
@@ -148,9 +158,13 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(git(["grep", "--untracked", "-lF", "image-first-generate", "--", "lib", "app", "components", "scripts", ".github", "package.json", `:!${FULL_PAGE_CLI}`])).toEqual([WORKER_LIB]);
     // Issue #302 P1 (owner-approved scope): one exception, root's automatic start (WORKER_AUTOSTART), which starts the
     // adapter once per root-owned one-use marker; its unit names only that script (tests/unit/design-agent/imagefirst-worker/autostart.test.ts)
-    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_AUTOSTART]);
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_AUTOSTART, WORKER_DELIVER].sort());
     // the automatic start never names the entry, Codex or a model itself: it only starts the adapter
     expect(readFileSync(resolve(REPO, WORKER_AUTOSTART), "utf8")).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);
+    // the re-send wrapper names the adapter only in its --deliver-review mode, and never the entry, Codex or a model (code lines)
+    const deliver = readFileSync(resolve(REPO, WORKER_DELIVER), "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    expect(deliver).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);
+    expect(deliver.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &']);
     // the adapter never takes the image call, the sandbox or Codex: it starts the entry (its one process) and reads files
     for (const file of [WORKER_LIB, WORKER_CLI]) expect(readFileSync(resolve(REPO, file), "utf8"), file).not.toMatch(/generateImage|image-once|prepareCodexSandbox|\/sandbox["']|runCodexJson|\/codex["']|\bfetch\(|node:https?|child_process|anthropic|openai/);
     // DEV-150: no package script, workflow, unit file or other script starts the new entries (run by hand only)

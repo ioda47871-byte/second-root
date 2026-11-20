@@ -11,8 +11,8 @@
   - `lib/design-agent/imagefirst-worker/preview.ts` — 検証済みの bundle から、Claude の Read で表示できる大きさのプレビューと `INDEX.md` を作る。
   - `lib/design-agent/imagefirst-worker/review-poc.ts` と `scripts/sales-design-worker/imagefirst-review-poc.ts` — 無害なダミー画像での PoC。
   - `tests/unit/design-agent/imagefirst-worker/review-handoff.test.ts`
-- worker（`cycle.ts`・`imagefirst-worker.ts`）・自動起動・unit は**変更していない**。実際の d3 の run を inbox へ渡す入口は、まだ無い
-  （実 run の後に `packBundle` → `handOffToLocalInbox` を呼ぶだけの小さな入口を、承認後に足す）。
+- 追記（Issue #302 P3 の続き）: 本物の run を inbox へ渡す入口 `lib/design-agent/imagefirst-worker/deliver-review.ts` を足した（§4）。
+  自動起動の script・unit・timer は**変更していない**。
 
 ## 1. 置き場所の根拠 — jail の中の Claude が実際に読めるもの
 
@@ -120,17 +120,81 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 
 うまくいかないとき: Claude が「読めない」「権限がない」と答えたら、その文言を記録して止める。**chmod や jail の設定を変えて通さない。**
 ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
-worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant は、日付 `00000000`・暦に無い日付・2000 年より前の年の承認 ID を拒否する
-（`checkRealApprovalId` が `APPROVAL_ID_RESERVED` / `APPROVAL_ID_INVALID` を返し、grant の経路では worker が `GRANT_INVALID` で止まる。テストで固定）。
+worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant・本物の run の受け渡し（`deliver-review.ts`、§4）は、日付 `00000000`・
+暦に無い日付・2000 年より前の年の承認 ID を拒否する（`checkRealApprovalId` が `APPROVAL_ID_RESERVED` / `APPROVAL_ID_INVALID` を返し、grant の経路
+では worker が `GRANT_INVALID` で止まる。テストで固定）。
 自動起動の run marker の検査（`imagefirst-autostart.sh` の MARKER_PY）が見るのは日付 `00000000` だけ。暦に無い日付（例 `20261399`）の marker は
 その検査を通るが、続く worker の `--precheck` が `GRANT_INVALID`（exit 2）を返し、自動起動は `AUTOSTART_IDLE_NOT_RUNNABLE`（exit 10）で終わる。
-承認は使われず marker も残るので、以後の poll は毎回同じ結果で止まる。**オーナーがその marker を手で消すまで続く**（PR #309 再レビュー L-1）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
+承認は使われず marker も残るので、以後の poll は毎回同じ結果で止まる。**オーナーがその marker を手で消すまで続く**（PR #309 再レビュー L-1）。
+再送 wrapper（`imagefirst-deliver-review.sh`）も日付 `00000000` だけを見て、暦に無い日付は worker の `--deliver-review` が `APPROVAL_ID_INVALID`
+（exit 2）で止める（何も書かない）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
-## 4. 本物の run での流れ（承認の後。いまは入口なし）
+## 4. 本物の run での流れ（Issue #302 P3 の続き。オフラインで実装・テスト済み、実機では未実施）
 
-worker の 1 回の run が `succeeded` で終わる → 同じ `sr-designgen` で `packBundle`（`~/sr-runs/bundles/`）→ `handOffToLocalInbox`
-（期待する記録 = §10 の承認 ID・plan ID・コミット）→ プレビュー → オーナーが `claude-start` → Claude が `INDEX.md` とプレビューを Read して評価。
-失敗した受け渡しは同じ bundle の再送だけ。Codex の再実行・再生成は無い。自動の公開も無い。
+実画像の生成そのもの（実 Codex、PR #300 の承認パケット、timer の設置）は、どれも**別のオーナー承認**が要り、この変更では何もしていない。
+
+**入口は worker の CLI（`scripts/sales-design-worker/imagefirst-worker.ts`）の末尾。** cycle（`runImagefirstCycle`）が `succeeded` を返した
+ときだけ、同じプロセス・同じ `sr-designgen` のまま `deliverAfterRun`（`deliver-review.ts`）を呼ぶ:
+
+1. 承認 ID が本物の形（日付 `00000000` のダミーと暦に無い日付は拒否）
+2. worker のロック（`imagefirst.lock`。cycle が外した後に取り直す）
+3. `~/sr-runs/<承認 ID>-<UTC>.receipt.json` がちょうど 1 つ。0600・自分のもの・link でない。cycle が報告した receipt と同じもの
+4. receipt が `succeeded`・`verified`・`interrupted: false`・PC 2 + SP 4・停止 0、ほし窯 d3、plan SHA / prompt SHA / 文字数が固定の許可表どおり
+5. **receipt のコミットにある承認パケット**を、worker と同じ読み手（`readApprovalPacket` と `packetPins`。新しい parser は作らない。`cycle.ts`
+   の `readApprovalAt`）で読む: 承認済み・d3 だけ・承認 ID が receipt と同じ・plan ID が同じ・パケットの SHA が同じ・§3 の pin が同じ・
+   run の開始が承認の期限内（期限より後、24 時間の窓より前なら `RUN_NOT_IN_APPROVAL_WINDOW`）。その前に、receipt のコミットが worker の
+   clone で **origin/develop に含まれる**こと（`git merge-base --is-ancestor`。違えば `COMMIT_NOT_ON_ORIGIN_DEVELOP`）。最後に、worker 自身の
+   **claim の印**（`<state>/claims/<承認 ID>.used`）があり、承認 ID と時刻が receipt と合うこと（読むだけ。`CLAIM_MISSING` / `CLAIM_MISMATCH`）。PR #310 レビュー M2
+6. `packBundle`（各画像の SHA-256 を receipt と照合、link 拒否、0700 / 0600、`~/sr-runs/bundles/<承認 ID>/`。一時ディレクトリに書いて 1 回の
+   rename で置く: 空や書きかけの bundle は残らない）。既に封入済みなら作り直さず、検証し直して**同じ receipt のバイトから作ったもの**であることを
+   確かめる（`SEALED_BUNDLE_MISMATCH`）。パスは実パスで比べる（ホームが symlink 経由でもよい。L1）
+7. `handOffToLocalInbox`（受け手が承認の記録で検証し直す → atomic rename → プレビューと `INDEX`）
+
+**run の結果の 1 行（stdout）は受け渡しの前に出す**（PR #310 レビュー M1）。止める合図が来ていれば受け渡しはしない、受け渡し中に来れば中止する
+（封入済みなら bundle は残り、下の再送で直る）。受け渡しの結果（`delivered` / `duplicate` / `not_delivered` / `refused`、コードだけ）は
+stderr と worker の `audit.jsonl` にだけ書き、stdout は 1 行のまま（自動起動はその最後の行を読む）。**worker の終了コードは変えない**。
+
+ロック: cycle が worker のロックを外してから受け渡しが取り直す。その間に手で worker を起動していると受け渡しは `REVIEW_LOCKED` になる。
+そのときも下の再送で直す（L3）。
+
+**なぜここか（自動起動の script ではなく）**: (a) worker と同じユーザー・同じ場所（`~/sr-runs`）で、権限の境界を一つも増やさない。root の
+script が worker のファイルを読む道を作らない（自動起動の方針「root は worker のファイルに git も node も parser も使わない」を守る）。
+(b) 手で動かした run（§5 の手順）にも同じように効く。(c) worker の排他の中にある: 自動起動は `sr-jail-claude` が止まっていて
+disabled / masked のときだけ worker を起動するので、受け渡しの間に jail の Claude は動いていない。(d) `deliver-review.ts` は cycle を
+呼ばず、プロセスを起動できない（`runBounded`・入口・Codex・画像の道具を import しない。テストで固定）。claim を作らず、入口の ledger
+に触れない。
+
+**失敗したとき**: 封入済みの bundle は残り、配送の状態は `sealed`。オーナーが**同じ bundle だけ**を、root の再送 wrapper で送り直す
+（PR #310 レビュー H1。`admin.sh run` は jail の中で動き、jail には /run もシステムバスも無いので、そこからは systemd の状態を確かめられない）:
+
+```bash
+# WSL の root で。root 専用の admin clone から（何も install・enable しない。jail の Claude は止めて disabled のまま）
+sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-deliver-review.sh <承認 ID>
+```
+
+wrapper（`scripts/sales-design-worker/imagefirst-deliver-review.sh`）は自動起動と同じ規則で確かめる: 承認 ID の形（`00000000` は拒否）、
+自動起動の lock と design cycle の lock を持つ、`busy()`（自動起動のものと一字一句同じ。テストで固定）= `sr-jail-claude` と `sr-design-cycle`
+が inactive / failed、`sr-jail-claude` が disabled / masked、`sr-designgen` のプロセスが無い（＝worker のロックを持つ者がいない）。次に
+worker の専用 clone（`~/imagefirst/second-root`、worker が走るのと同じ場所）がきれいで HEAD = origin/develop（読むだけ。fetch も checkout も
+しない。M3）。最後に自動起動と同じ `setpriv` で `sr-designgen` に落とし、**jail の外で** `imagefirst-worker.ts --deliver-review <承認 ID>` を 1 回だけ。
+`--deliver-review` は cycle を動かさず、claim も ledger も使わず、何も起動しない。自分でも HEAD = origin/develop・きれいな tree、jail の状態
+（`/usr/bin/systemctl` を絶対パスで。L5）、上の 1〜7 を確かめ直す。
+**封入の前に止まった自動の受け渡し**（`REVIEW_LOCKED`、止める合図、git の一時的な失敗など）は、この再送で直る: その承認について bundle も
+配送の記録（`<state>/deliveries/<承認 ID>.json`）も inbox の写しも**一つも無い**ときに限り、再送が同じ検証済みの receipt と run から**最初の 1 回だけ**
+封入する（PR #310 再レビュー M-1）。どれか一つでもあれば二度と封入しない: bundle が無いのに記録や写しがある、または bundle が空なら
+`SEALED_BUNDLE_MISSING` で止まる（新しく pack すると別のバイトになる。L2）。そのときは報告して止める（生成は再試行しない）。
+再送中に止める合図が来たら wrapper は `DELIVER_INTERRUPTED`（終了 1）を出す。あとでもう一度実行してよい。
+終了コード（wrapper）: 0 = 渡した（または既に渡っている）、1 = 渡せなかった（bundle は封入のまま。あとでもう一度）、2 = 拒否、12 = busy、20 = clone の状態。
+再送は封入済みのバイトの再送（封入の前に止まったときだけ、上の条件で最初の 1 回の封入）で、Codex の再実行・再生成・2 度目の pack は無い。GitHub・bridge の JSON spool・公開の保存先へは何も置かない。
+
+渡った後: オーナーが `claude-start` → Remote Control の Claude が `~/sr-runs/review-inbox/previews/<承認 ID>/INDEX.md` とプレビューを Read して評価する。
+
+オフラインの E2E（`tests/unit/design-agent/imagefirst-worker/deliver-review.test.ts`。偽 Codex で本物の cycle を 1 回 → 本物の inbox）:
+成功（パーツ 6 枚のプレビューと INDEX、元の SHA = bundle の SHA = receipt の SHA）、receipt が succeeded でない、期限の窓の外、承認・plan・prompt・
+パケット・コミットの不一致、画像の改ざん、run dir / receipt / パーツの symlink、inbox / previews の symlink、重複（冪等）、中断した受け渡しの
+同じ SHA での再送、jail の排他、ダミー ID、ロック、origin/develop に無いコミット、claim の印の欠落・不一致、symlink 経由のホーム、止める合図、
+封入の無い再送。どの場合も claim と ledger の**中身の SHA-256**・Codex の実行回数が受け渡しの前後で変わらないことを確かめている。jail の状態の読み取りは
+偽の systemctl で（`deliver-review.test.ts`）、wrapper は偽の WSL で（`deliver-review-wrapper.test.ts`）テストしている。
 
 ## 5. 状態のまとめ
 
