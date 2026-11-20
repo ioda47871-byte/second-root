@@ -37,7 +37,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { loadPromptInputs, type Reader } from "../image-first/prompt";
 import { acquireLock } from "../worker/state";
-import { AUDIT_RUBRIC_VERSION, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, RUBRIC_SHA256, VIEWPORT_IDS, VIEWPORTS, type AuditMaterial, type AuditViewport, type SentImage } from "./audit-rubric";
+import { AUDIT_RUBRIC_VERSION, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, principlesFor, RUBRIC_SHA256, VIEWPORT_IDS, VIEWPORTS, type AuditMaterial, type AuditViewport, type SentImage } from "./audit-rubric";
 import { AUDIT_SCHEMA, AuditRecord, deriveViewport, incoherence, overallVerdict, ViewportAnswer, type Derived, type Verdict } from "./audit-schema";
 import { APPROVAL_ID_RE, BundleStop, verifyBundleDir } from "./bundle";
 import { assertClaudeSignedIn, buildUserMessage, claudeEnvironment, ClaudeCallError, extractJsonObject, runClaudeWithoutTools, type ClaudeImage } from "./claude-cli";
@@ -225,7 +225,8 @@ function renderAuditMd(r: AuditRecord): string {
       continue;
     }
     L.push(`- verdict: \`${d.verdict}\` · total ${d.total}/25 · lowest ${d.lowest}${d.low_criteria.length ? ` · below 4: ${d.low_criteria.join(", ")}` : ""}${d.low_checks.length ? ` · checks below 4: ${d.low_checks.join(", ")}` : ""}`);
-    L.push(`- hard fails: ${d.hard_fail_hits.length ? d.hard_fail_hits.join(", ") : "none"}`, "");
+    L.push(`- hard fails: ${d.hard_fail_hits.length ? d.hard_fail_hits.join(", ") : "none"}`);
+    L.push(`- success_principles_applied: the principles (text only) of ${principlesFor(vp).map((p) => `${p.id} (${p.provenance.source})`).join(", ")}. Closeness to an example is not a criterion; imitating another shop's design, colours or layout is penalised.`, "");
     L.push("| item | score | reason |", "|---|---|---|");
     for (const k of CRITERION_IDS) L.push(`| ${k} | ${a.scores[k].score} | ${a.scores[k].reason.replace(/\|/g, "/")} |`);
     for (const k of CHECK_IDS) L.push(`| ${k} (check) | ${a.checks[k].score} | ${a.checks[k].reason.replace(/\|/g, "/")} |`);

@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EVAL_CRITERIA, EVAL_MIN_CRITERION, EVAL_PASS_TOTAL, EvaluationSchema } from "@/lib/design-agent/comp-impl/bundle";
 import { IMAGE_FIRST_HARD_FAILS } from "@/lib/design-agent/image-first/record";
-import { AUDIT_THRESHOLDS, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, REASK_LINE, RUBRIC_SHA256, SUCCESS_EXAMPLE_TEXT } from "@/lib/design-agent/imagefirst-worker/audit-rubric";
+import { FAILURE_CAUSES, SUCCESS_PRINCIPLES } from "@/lib/design-agent/imagefirst-worker/audit-principles";
+import { AUDIT_RUBRIC_VERSION, AUDIT_THRESHOLDS, buildViewportAuditRequest, CHECK_IDS, CHECKS, CRITERION_IDS, HARD_FAIL_IDS, HARD_FAILS, IMITATION_RULE, principlesFor, REASK_LINE, RUBRIC_SHA256 } from "@/lib/design-agent/imagefirst-worker/audit-rubric";
 import { AuditRecord, deriveViewport, incoherence, overallVerdict, ViewportAnswer } from "@/lib/design-agent/imagefirst-worker/audit-schema";
 import { asMaterial, buildUserMessage, CLAUDE_BLOCKED_ENV, CLAUDE_PRINT_ARGS, claudeEnvironment, extractJsonObject } from "@/lib/design-agent/imagefirst-worker/claude-cli";
 import { DUMMY_RECORD } from "@/lib/design-agent/imagefirst-worker/review-poc";
@@ -25,13 +26,91 @@ describe("Issue #302: the rubric is the adopted one", () => {
     expect(AUDIT_THRESHOLDS.passTotal).toBe(EVAL_PASS_TOTAL);
     expect(AUDIT_THRESHOLDS.minCriterion).toBe(EVAL_MIN_CRITERION);
     expect(HARD_FAIL_IDS).toEqual([...IMAGE_FIRST_HARD_FAILS, ...Object.keys(EvaluationSchema.shape.hard_fails.shape)]);
-    expect(CHECK_IDS).toEqual(["shop_worldview", "not_generic_template", "whole_page_composition", "viewport_distinct_readable", "shop_info_conveyed", "success_example_distance"]);
+    expect(CHECK_IDS).toEqual(["shop_worldview", "not_generic_template", "whole_page_composition", "viewport_distinct_readable", "shop_info_conveyed", "success_principles_applied"]);
   });
 
-  it("the CP-003 text equals success-references-v1.json (text only: the request carries no reference image)", () => {
-    const refs = (JSON.parse(src("design-library/phase2f/references/success-references-v1.json")) as { refs: { id: string; learn: string; do_not_copy: string[] }[] }).refs;
-    expect(Object.fromEntries(refs.map((r) => [r.id, { learn: r.learn, do_not_copy: r.do_not_copy }]))).toEqual(SUCCESS_EXAMPLE_TEXT);
+  it("owner comment 7053442141 (c): every success-example principle and do-not-copy line is verbatim from the source its provenance names", () => {
+    expect(AUDIT_RUBRIC_VERSION).toBe("if-claude-audit-v2");
     expect(RUBRIC_SHA256).toMatch(/^[0-9a-f]{64}$/);
+    // the examples used, with differing structures (two concept pictures, a PC page and its phone page)
+    expect(SUCCESS_PRINCIPLES.map((p) => p.id)).toEqual(["CP-001-concept", "CP-002-concept", "CP-003-pc", "CP-003-sp"]);
+    for (const p of SUCCESS_PRINCIPLES) {
+      const pv = p.provenance;
+      // the case record exists in the catalogue and is the registered example's own record
+      expect(existsSync(join(REPO, pv.record)), pv.record).toBe(true);
+      expect(pv.record.startsWith(`design-library/success-cases/${pv.example_id}-`), pv.record).toBe(true);
+      expect(p.id.startsWith(`${pv.example_id}-`)).toBe(true);
+      expect(p.principles.length).toBeGreaterThan(0);
+      if (pv.source.endsWith(".read.json")) {
+        // Claude's own viewing record of the registered preview (VISUAL_VERIFIED in the visual-read matrix)
+        const r = JSON.parse(src(pv.source)) as { case_id: string; actually_viewed: boolean; asset: { path: string; sha256: string }; observation: { learn: string[]; do_not_copy: string[] } };
+        expect(r.case_id).toBe(pv.example_id);
+        expect(r.actually_viewed).toBe(true);
+        expect(r.asset.sha256).toBe(pv.asset_sha256);
+        expect(existsSync(join(REPO, r.asset.path)), r.asset.path).toBe(true);
+        expect([...p.principles]).toEqual(r.observation.learn);
+        expect([...p.do_not_copy]).toEqual(r.observation.do_not_copy);
+        const matrix = (JSON.parse(src("design-library/research/quality-pipeline/visual-read-matrix.json")) as { cases: { id: string; modes: Record<string, string> }[] }).cases;
+        const view = pv.source.split("/").pop()!.replace(".read.json", "");
+        expect(matrix.find((c) => c.id === pv.example_id)?.modes[view]).toBe("VISUAL_VERIFIED");
+      } else {
+        // the owner-approved generation reference (text only: the request carries no reference image)
+        expect(pv.source).toBe("design-library/phase2f/references/success-references-v1.json");
+        const ref = (JSON.parse(src(pv.source)) as { refs: { id: string; case_id: string; learn: string; do_not_copy: string[]; webp_sha256: string }[] }).refs.find((r) => r.id === p.id)!;
+        expect(ref.case_id).toBe(pv.example_id);
+        expect(ref.webp_sha256).toBe(pv.asset_sha256);
+        expect([...p.principles]).toEqual([ref.learn]);
+        expect([...p.do_not_copy]).toEqual(ref.do_not_copy);
+      }
+    }
+    // every viewport gets principles from three different examples (differing structures), never CP-003 alone
+    for (const vp of ["desktop_1440", "mobile_390"] as const) expect(new Set(principlesFor(vp).map((p) => p.provenance.example_id)).size).toBe(3);
+  });
+
+  it("owner comment 7053442141 (c): every failure cause is verbatim from the principles synthesis, and its case record states the rejection", () => {
+    const codes = (JSON.parse(src("design-library/research/quality-pipeline/principles-v1.json")) as { failure_codes: { pattern: string; evidence: string[]; evidence_kind: string }[] }).failure_codes;
+    const said: Record<string, string> = { "CP-016": "同じような構成になってきた", "CP-023": "下部3枚の汎用写真カード", "CP-011": "ちょっとありきたりかな" };
+    expect(FAILURE_CAUSES.map((f) => f.provenance.example_id)).toEqual(Object.keys(said));
+    for (const f of FAILURE_CAUSES) {
+      const c = codes.find((x) => x.pattern === f.pattern);
+      expect(c, f.pattern).toBeDefined();
+      expect(c!.evidence).toContain(f.evidence);
+      expect(c!.evidence_kind).toBe("observed");
+      expect(f.provenance.source).toBe("design-library/research/quality-pipeline/principles-v1.json");
+      expect(f.evidence.startsWith(f.provenance.example_id)).toBe(true);
+      expect(f.provenance.record.startsWith(`design-library/success-cases/${f.provenance.example_id}-`)).toBe(true);
+      expect(src(f.provenance.record), f.provenance.record).toContain(said[f.provenance.example_id]!);
+    }
+  });
+
+  it("owner comment 7053442141 (a, b): the request measures principles, not closeness, and says imitation is penalised", () => {
+    const material = { facts: [{ key: "name", value: "架空の店" }], direction: { id: "d3", concept: "c", protect: ["p"] } };
+    for (const viewport of ["desktop_1440", "mobile_390"] as const) {
+      const t = buildViewportAuditRequest({ viewport, images: [], material });
+      // no "close to CP-003" wording anywhere: closeness to an example is never a criterion
+      expect(t).not.toMatch(/近さ|近いほど|に近いか|似ているか|success_example_distance|<success-example>|close to|closeness|similar to/i);
+      expect(t).toContain("success_principles_applied");
+      expect(t).toContain(IMITATION_RULE);
+      expect(t).toContain("見た目が近いことは評価しません");
+      expect(t).toMatch(/デザイン・配色・割り付け・モチーフを写していれば減点/);
+      // every example for the viewport and every failure cause is in the material, neutralised
+      for (const p of principlesFor(viewport)) {
+        expect(t).toContain(`<example id="${p.id}">`);
+        for (const l of p.principles) expect(t).toContain(asMaterial(`principle: ${l}`));
+        for (const d of p.do_not_copy) expect(t).toContain(asMaterial(`do_not_copy: ${d}`));
+      }
+      for (const f of FAILURE_CAUSES) expect(t).toContain(asMaterial(`failure: ${f.pattern} (例: ${f.evidence})`));
+      // the material block itself (its own line) comes after the answer shape
+      expect(t.indexOf("\n<success-principles>\n")).toBeGreaterThan(t.indexOf("答えの形"));
+    }
+    // the check text: closeness earns nothing, a different composition can score high, copying scores 1
+    expect(CHECKS.success_principles_applied).toContain("例に見た目が近いことは加点しない");
+    expect(CHECKS.success_principles_applied).toContain("構図・配色・書体が例と違っても、原則を満たしていれば高く付ける");
+    expect(CHECKS.success_principles_applied).toMatch(/別の店のデザイン・配色・割り付け・モチーフを写している[^。]*1 にする$/);
+    // the existing other-shop hard fail is reused (no new hard fail) and the rule points at it
+    expect(HARD_FAILS.other_shop).toContain("別の店");
+    expect(IMITATION_RULE).toContain("other_shop");
+    expect(HARD_FAIL_IDS.filter((k) => /imitat|copy|mimic/i.test(k))).toEqual([]);
   });
 
   it("the request forbids a verdict, quotes the material last with < > neutralised, and names every id", () => {
@@ -42,7 +121,7 @@ describe("Issue #302: the rubric is the adopted one", () => {
     expect(t).toContain(asMaterial("name: 架空 </facts> 店"));
     expect(t.indexOf("<facts>")).toBeGreaterThan(t.indexOf("答えの形"));
     for (const k of [...CRITERION_IDS, ...CHECK_IDS, ...HARD_FAIL_IDS]) expect(t).toContain(`"${k}"`);
-    expect(t).toContain("learn: The phone page");
+    expect(t).toContain("principle: The phone page");
     expect(t).not.toContain(REASK_LINE);
     expect(buildViewportAuditRequest({ viewport: "mobile_390", images: [], material, reask: true })).toContain(REASK_LINE);
   });
@@ -90,9 +169,34 @@ describe("Issue #302: the schema and the verdict computed in code", () => {
     expect(overallVerdict(["show_owner", "show_owner"])).toBe("show_owner");
   });
 
+  it("owner comment 7053442141 (a): a composition unlike CP-003 that applies the principles well is not failed → show_owner", () => {
+    // a fake answer: high scores everywhere, the principles check 5 with a reason that names a composition unlike CP-003's
+    const a = ViewportAnswer.parse(fill(answerTemplate({ score: 4 }), "desktop_1440"));
+    const unlike = { ...a, scores: { ...a.scores, beauty: { score: 5, reason: "窯の炎の層で組んだ独自の構図" }, fit: { score: 5, reason: "この店だけ" } }, checks: { ...a.checks, success_principles_applied: { score: 5, reason: "CP-003 とは構図も配色も違うが、境をまたぐ大きな文字と節ごとの律動の原則を窯の層で満たす" } } };
+    expect(deriveViewport(unlike)).toMatchObject({ total: 22, verdict: "show_owner", low_checks: [], hard_fail_hits: [] });
+    // and both viewports so → the whole audit shows the owner
+    const sp = ViewportAnswer.parse(fill({ ...JSON.parse(JSON.stringify(unlike)), viewport: "@VIEWPORT" } as ReturnType<typeof answerTemplate>, "mobile_390"));
+    expect(overallVerdict([deriveViewport(unlike).verdict, deriveViewport(sp).verdict])).toBe("show_owner");
+  });
+
+  it("owner comment 7053442141 (b): imitating CP-003 can never reach show_owner, however high the other scores", () => {
+    const a = ViewportAnswer.parse(fill(answerTemplate({ score: 5 }), "desktop_1440"));
+    // the check scores imitation 1 → revise, even at 25/25
+    const copied = { ...a, checks: { ...a.checks, success_principles_applied: { score: 1, reason: "CP-003 の地図と配色を写している" } } };
+    expect(deriveViewport(copied)).toMatchObject({ total: 25, verdict: "revise", low_checks: ["success_principles_applied"] });
+    // any score of 3 or less on it blocks show_owner
+    for (const score of [1, 2, 3]) expect(deriveViewport({ ...a, checks: { ...a.checks, success_principles_applied: { score, reason: "r" } } }).verdict).toBe("revise");
+    // the page reads as the other shop's → the existing other_shop hard fail → drop, even with every score and check at 5
+    const h = ViewportAnswer.parse(fill(answerTemplate({ hit: "other_shop" }), "desktop_1440"));
+    expect(Object.values(h.checks).every((c) => c.score === 5)).toBe(true);
+    expect(deriveViewport(h)).toMatchObject({ total: 25, verdict: "drop", hard_fail_hits: ["other_shop"] });
+    expect(overallVerdict(["show_owner", deriveViewport(copied).verdict])).toBe("revise");
+    expect(overallVerdict(["show_owner", deriveViewport(h).verdict])).toBe("drop");
+  });
+
   it("the record is advisory only: confirmation, success case and owner-evaluation flags are fixed literals", () => {
     const rec = {
-      schema: "imagefirst_claude_audit_v1", status: "stopped", stop_code: "CLAUDE_QUOTA",
+      schema: "imagefirst_claude_audit_v2", status: "stopped", stop_code: "CLAUDE_QUOTA",
       binding: { approval_id: "a", bundle_id: "a", bundle_sha256: "a".repeat(64), plan_id: "p", commit: "0".repeat(40), previews_index_sha256: "b".repeat(64), rubric_version: "v", rubric_sha256: "c".repeat(64), audit_tier: "jpeg-q85-444-v1", request_sha256: { desktop_1440: null, mobile_390: null }, images: [{ viewport: "desktop_1440", label: "l", preview_file: "composite-pc.png", preview_sha256: "d".repeat(64), preview_bytes: 2, audit_sha256: "f".repeat(64), audit_bytes: 1, media_type: "image/jpeg", opaque: true, kind: "full", source: "composites/pc.png", source_sha256: "e".repeat(64), y0: 0, y1: 1 }] },
       auditor: { via: "claude_cli_print_no_tools", cli_version: null, model_reported: null, started_at: "2026-11-20T00:00:00.000Z", finished_at: "2026-11-20T00:00:00.000Z", calls: 1, reasks: 0 },
       viewports: { desktop_1440: null, mobile_390: null },
@@ -132,11 +236,14 @@ describe("Issue #302: the runner (copied from curiosity-media) keeps its guards"
 describe("Issue #302: module boundaries (the audit can never write a success case or an owner evaluation)", () => {
   it("imports are pinned", () => {
     expect(imports(`${W}/claude-cli.ts`)).toEqual(["../bounded-process", "../worker/env"]);
-    expect(imports(`${W}/audit-rubric.ts`)).toEqual(["./claude-cli", "node:crypto"]);
+    expect(imports(`${W}/audit-rubric.ts`)).toEqual(["./audit-principles", "./claude-cli", "node:crypto"]);
+    // the principles are data only: no import, no file, no process, no network (the paths in it are provenance, never opened)
+    expect(imports(`${W}/audit-principles.ts`)).toEqual([]);
+    expect(code(`${W}/audit-principles.ts`)).not.toMatch(/\bimport\b|require\(|\bfetch\(|readFile|process\.|child_process|spawn/);
     expect(imports(`${W}/audit-schema.ts`)).toEqual(["./audit-rubric", "zod"]);
     // the gated structure modules are never reached (the path is assembled, so this test does not name it either)
     const gated = new RegExp(["struct", "ure/", "(descr", "iptor|measure|references|observe)"].join(""));
-    for (const f of ["claude-cli.ts", "audit-rubric.ts", "audit-schema.ts", "claude-audit.ts"]) expect(src(`${W}/${f}`), f).not.toMatch(gated);
+    for (const f of ["claude-cli.ts", "audit-rubric.ts", "audit-principles.ts", "audit-schema.ts", "claude-audit.ts"]) expect(src(`${W}/${f}`), f).not.toMatch(gated);
     expect(src("scripts/sales-design-worker/imagefirst-audit.ts")).not.toMatch(gated);
     // nor copied: none of the gated vocabulary's ids appears in the audit sources (PR #311 sixth review L1). The ids are read
     // as text from the gated file (path assembled, nothing imported), so a list copied into the audit fails here
@@ -144,7 +251,7 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     const block = vocab.slice(vocab.indexOf("export const VOCABULARY"), vocab.indexOf("} as const;", vocab.indexOf("export const VOCABULARY")));
     const ids = [...new Set([...block.matchAll(/"([a-z]+(?:_[a-z]+)+)"/g)].map((m) => m[1]!))];
     expect(ids.length).toBeGreaterThan(10);
-    for (const f of [`${W}/claude-cli.ts`, `${W}/audit-rubric.ts`, `${W}/audit-schema.ts`, `${W}/claude-audit.ts`, "scripts/sales-design-worker/imagefirst-audit.ts"]) {
+    for (const f of [`${W}/claude-cli.ts`, `${W}/audit-rubric.ts`, `${W}/audit-principles.ts`, `${W}/audit-schema.ts`, `${W}/claude-audit.ts`, "scripts/sales-design-worker/imagefirst-audit.ts"]) {
       const s = src(f);
       expect(ids.filter((id) => s.includes(id)), f).toEqual([]);
     }
