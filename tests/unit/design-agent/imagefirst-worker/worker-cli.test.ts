@@ -165,6 +165,9 @@ describe("Issue #302 review M4: one stop is one signal (node --import tsx, not t
       const done = new Promise<number | null>((res) => child.on("exit", (code) => res(code)));
       await until(() => existsSync(`${out}.ready`));
       child.kill("SIGTERM");
+      // the gap is measured from the moment the probe took the first signal (its "abort" line), not from the send:
+      // under load the first handler can run late, which would shrink a gap measured from the send
+      if (gapMs > 100) await until(() => existsSync(out) && readFileSync(out, "utf8").includes("abort"));
       await new Promise((r) => setTimeout(r, gapMs));
       child.kill("SIGTERM");
       const code = await done;

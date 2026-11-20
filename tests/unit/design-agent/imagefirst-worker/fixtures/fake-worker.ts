@@ -7,7 +7,7 @@
  * (runImagefirstCycle) over the clone it was started in, the same places under HOME — except that the entry is played
  * in-process against the fake Codex (./support), at the fixed test clock. No Codex, no model, no network.
  *
- * Settings, files in HOME written by the test: fake-codex-mode (six | fail | hang), fake-codex-stop-delay-ms (hang: how long the stop takes), fake-worker-hold (wait while it
+ * Settings, files in HOME written by the test: fake-codex-mode (six | fail | hang), fake-codex-stop-delay-ms (hang: how long the stop takes), fake-codex-stop-hold (hang: the stop waits while it exists), fake-worker-hold (wait while it
  * exists). Records: fake-worker-starts.log (one line per start, prechecks included), codex-execs.log (one line per fake Codex run).
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -44,7 +44,7 @@ async function main(): Promise<number> {
   const codexRoot = join(home, "fake-codex");
   mkdirSync(codexRoot, { recursive: true });
   const delay = existsSync(join(home, "fake-codex-stop-delay-ms")) ? Number(readFileSync(join(home, "fake-codex-stop-delay-ms"), "utf8")) : 0;
-  const fake = fakeCodex(mode, codexRoot, () => appendFileSync(join(home, "codex-execs.log"), "exec\n"), delay);
+  const fake = fakeCodex(mode, codexRoot, () => appendFileSync(join(home, "codex-execs.log"), "exec\n"), delay, join(home, "fake-codex-stop-hold"));
   const report = await runImagefirstCycle(
     { repoRoot: repo, stateDir, runsDir: join(home, "sr-runs"), signal: controller.signal, onInvoking: (record) => (recordInterrupted = record), ...(grant ? { expectApprovalId: grant } : {}) },
     {

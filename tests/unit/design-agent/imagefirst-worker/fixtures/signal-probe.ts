@@ -1,7 +1,7 @@
 /**
  * Issue #302 review M4 test fixture (worker-cli.test.ts), run as `node --import tsx` like the worker and the entry.
  *   <out> count : counts SIGTERMs while its event loop is busy (80 ms in every 100 ms), writes the count 0.8 s after the first
- *   <out> stop  : the real stopSignals with the worker's repeatGraceMs; writes "abort", then "graceful" 2.5 s later and
+ *   <out> stop  : the real stopSignals with the worker's repeatGraceMs; writes "abort", then "graceful" 8 s later and
  *                 exits 0, unless a hard stop comes first (its cleanup writes "hard", exit 1)
  * Writes <out>.ready once its handlers are installed.
  */
@@ -31,7 +31,7 @@ if (process.argv[3] === "count") {
     setTimeout(() => {
       appendFileSync(out, "graceful\n");
       process.exit(0);
-    }, 2_500);
+    }, 8_000);
   });
   setInterval(() => undefined, 1_000);
 }

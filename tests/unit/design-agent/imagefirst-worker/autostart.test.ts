@@ -350,7 +350,8 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     w.switchOn();
     w.marker();
     writeFileSync(join(w.home, "fake-codex-mode"), "hang");
-    writeFileSync(join(w.home, "fake-codex-stop-delay-ms"), "3500");
+    // the worker's stop cannot end until the test has looked (deterministic under load: no race with the orphan)
+    writeFileSync(join(w.home, "fake-codex-stop-hold"), "");
     exe(join(w.bin, "setpriv"), `while [ "$1" != "--" ]; do shift; done; shift; "$@" & c=$!; trap 'kill -TERM $c; sleep 2; kill -KILL $c 2>/dev/null; exit 1' TERM; wait $c; wait $c`);
     const p = pollAsync(w);
     await until(() => w.execs() === 1);
@@ -361,6 +362,7 @@ describe("Issue #302 P1 automatic start: owner-approved commit → poll → sing
     expect(w.receipts()).toEqual([]);
     // let the orphaned fake worker (it got the SIGTERM before its parent was killed) finish before the temp dir goes
     // (in production systemd's KillMode=mixed SIGKILLs it here: no receipt at all)
+    spawnSync("rm", ["-f", join(w.home, "fake-codex-stop-hold")]);
     await until(() => w.receipts().length === 1);
   });
 

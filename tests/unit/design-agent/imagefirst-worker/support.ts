@@ -4,7 +4,7 @@
 // Codex, no model, no image tool, no network. Relative imports only (the fake worker runs under plain tsx).
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -91,7 +91,7 @@ export const pointOrigin = (repo: string) => git(repo, "update-ref", "refs/remot
 // ---- the fake Codex (the image-once tests' in-process sandbox) ----------------------------------------------------
 export type Fake = { execs: number; codexHome: string; tmpBase: string; sandbox: CodexSandbox };
 export const ok = (stdout = ""): BoundedResult => ({ code: 0, signal: null, stdout, stderr: "", timedOut: false });
-export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-ifw-codex-"), onExec: () => void = () => undefined, stopDelayMs = 0): Fake {
+export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-ifw-codex-"), onExec: () => void = () => undefined, stopDelayMs = 0, stopHold?: string): Fake {
   const codexHome = join(root, "home", ".codex");
   const tmpBase = join(root, "tmp");
   for (const d of [codexHome, tmpBase]) mkdirSync(d, { recursive: true });
@@ -113,6 +113,8 @@ export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-
           await new Promise<void>((resolve) => (o.signal?.aborted ? resolve() : o.signal?.addEventListener("abort", () => resolve(), { once: true })));
           // a CLI (and an entry) that takes a while to stop, as the real one may (the entry has 20 s + 10 s)
           if (stopDelayMs > 0) await new Promise((r) => setTimeout(r, stopDelayMs));
+          // or until the test lets it finish (a stop that cannot end before the test has looked)
+          for (let i = 0; stopHold && existsSync(stopHold) && i < 1_200; i++) await new Promise((r) => setTimeout(r, 50));
           clearInterval(alive);
           return { code: null, signal: "SIGTERM", stdout: "", stderr: "", timedOut: false, aborted: true };
         }

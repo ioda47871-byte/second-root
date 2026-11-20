@@ -2,11 +2,15 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { BUNDLE_LIMITS, BundleStop, packBundle, verifyBundleDir, type BundleLimits, type PackOptions } from "@/lib/design-agent/imagefirst-worker/bundle";
 import type { WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { createFakeReceiver, deliverBundle, DeliveryStop, fakeTransport, registerSealed, ReceiverStop, type BundlePayload } from "@/lib/design-agent/imagefirst-worker/transport";
 import { colourPng } from "../phase2f/fixtures";
+
+// Hashing, PNG checks and copies of multi-MB fixtures: under a loaded runner a test can take longer than vitest's
+// default 5 s (seen as a timeout, never a wrong result). The same limit as the other imagefirst-worker files.
+vi.setConfig({ testTimeout: 60_000 });
 
 // Issue #302 P2: the private result bundle and its delivery, against a FAKE transport and receiver only. No Codex, no
 // worker, no network. The run directory and receipt are built here in the exact shape cycle.ts writes them.
@@ -62,7 +66,6 @@ function makeRun(o: { composites?: boolean; editReceipt?: (r: WorkerReceipt) => 
     status: "succeeded",
     stop_code: null,
     stage: null,
-    interrupted: false,
     cli_exit: 0,
     cli_timed_out: false,
     interrupted: false,
