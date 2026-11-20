@@ -138,6 +138,16 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     const gated = new RegExp(["struct", "ure/", "(descr", "iptor|measure|references|observe)"].join(""));
     for (const f of ["claude-cli.ts", "audit-rubric.ts", "audit-schema.ts", "claude-audit.ts"]) expect(src(`${W}/${f}`), f).not.toMatch(gated);
     expect(src("scripts/sales-design-worker/imagefirst-audit.ts")).not.toMatch(gated);
+    // nor copied: none of the gated vocabulary's ids appears in the audit sources (PR #311 sixth review L1). The ids are read
+    // as text from the gated file (path assembled, nothing imported), so a list copied into the audit fails here
+    const vocab = src(["lib/design-agent/struct", "ure/descr", "iptor.ts"].join(""));
+    const block = vocab.slice(vocab.indexOf("export const VOCABULARY"), vocab.indexOf("} as const;", vocab.indexOf("export const VOCABULARY")));
+    const ids = [...new Set([...block.matchAll(/"([a-z]+(?:_[a-z]+)+)"/g)].map((m) => m[1]!))];
+    expect(ids.length).toBeGreaterThan(10);
+    for (const f of [`${W}/claude-cli.ts`, `${W}/audit-rubric.ts`, `${W}/audit-schema.ts`, `${W}/claude-audit.ts`, "scripts/sales-design-worker/imagefirst-audit.ts"]) {
+      const s = src(f);
+      expect(ids.filter((id) => s.includes(id)), f).toEqual([]);
+    }
     expect(imports(`${W}/claude-audit.ts`)).toEqual(["../image-first/prompt", "../worker/state", "./audit-rubric", "./audit-schema", "./bundle", "./claude-cli", "./preview", "node:crypto", "node:fs", "node:fs/promises", "node:path", "sharp"]);
     expect(imports("scripts/sales-design-worker/imagefirst-audit.ts")).toEqual(["../../lib/design-agent/imagefirst-worker/claude-audit", "../../lib/design-agent/imagefirst-worker/jail-state", "../../lib/design-agent/worker/env", "node:fs/promises", "node:os", "node:path"]);
   });

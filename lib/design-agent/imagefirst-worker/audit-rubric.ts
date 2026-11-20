@@ -5,7 +5,8 @@
  *
  * Sources. What a test pins against its source (claude-audit-rubric.test.ts): the criterion ids and their order
  * (EVAL_CRITERIA), the thresholds (EVAL_PASS_TOTAL, EVAL_MIN_CRITERION), the hard-fail ids (IMAGE_FIRST_HARD_FAILS +
- * the design-image rubric's hard_fails keys) and the CP-003 text (verbatim). NOT pinned: the guide / anchor wording of CRITERIA, CHECKS and HARD_FAILS, which is written here for
+ * the design-image rubric's hard_fails keys) and the CP-003 text (verbatim). NOT pinned: the guide / anchor wording of
+ * CRITERIA, CHECKS and HARD_FAILS, which is written here for
  * a web page (e.g. the eval template's structure anchor 5 asks for "2–3 visual cards", which the not_generic_template
  * check deliberately does not reward); a change of that wording changes RUBRIC_SHA256 and so the one-use marker:
  *   - the owner-adopted design-image rubric (docs/operations/design-image-eval-template.md; the comp loader's
@@ -89,7 +90,6 @@ export const SUCCESS_EXAMPLE_TEXT = {
     do_not_copy: ["its diagonal roast-stage map", "its coffee photographs and its section words", "its colours, typefaces and grid", "the shop name and brand of なごやビーンズ"],
   },
 } as const;
-
 
 export const RUBRIC_SHA256 = createHash("sha256")
   .update(JSON.stringify({ v: AUDIT_RUBRIC_VERSION, VIEWPORTS, CRITERIA, CHECKS, HARD_FAILS, AUDIT_THRESHOLDS, SUCCESS_EXAMPLE_TEXT }))
