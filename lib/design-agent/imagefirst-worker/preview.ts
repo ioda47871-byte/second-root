@@ -11,7 +11,9 @@
  *                               fitted) is cut into vertical tiles (with a small overlap) plus one low-detail overview
  *
  * Written into a temporary sibling (0700 / 0600) and renamed into place; never overwritten. Building again for the same
- * bundle SHA is a no-op ("duplicate"); a different bundle under the same name is refused (PREVIEWS_CONFLICT).
+ * bundle is a no-op ("duplicate") only when the directory holds exactly the previews rebuilt from this bundle's verified
+ * bytes; a different bundle SHA under the same name is refused (PREVIEWS_CONFLICT), anything else not derived from this
+ * bundle too (PREVIEWS_NOT_FROM_BUNDLE). A concurrent builder's still-empty claim is waited for (PREVIEWS_BUSY if never filled).
  * Failures throw PreviewStop with a fixed code only (no path, no content).
  */
 import { createHash, randomBytes } from "node:crypto";
@@ -32,7 +34,7 @@ const MiB = 1024 * 1024;
 export const PREVIEW_LIMITS = { maxSide: 1568, maxBytes: 3.5 * MiB, tallRatio: 2, overlap: 64, maxTiles: 16, maxInputPixels: 40_000_000 } as const;
 export const PREVIEW_SCHEMA = "imagefirst_review_previews_v1";
 
-export type PreviewCode = "BUNDLE_UNVERIFIED" | "PREVIEWS_DIR_UNSAFE" | "PREVIEWS_CONFLICT" | "PREVIEW_TOO_LARGE" | "PREVIEW_TOO_MANY_TILES" | "PREVIEW_DECODE_FAILED" | "PREVIEW_INDEX_INVALID" | "PREVIEW_FILE_SET_MISMATCH" | "PREVIEW_SHA_MISMATCH";
+export type PreviewCode = "BUNDLE_UNVERIFIED" | "PREVIEWS_DIR_UNSAFE" | "PREVIEWS_CONFLICT" | "PREVIEW_TOO_LARGE" | "PREVIEW_TOO_MANY_TILES" | "PREVIEW_DECODE_FAILED" | "PREVIEW_INDEX_INVALID" | "PREVIEW_FILE_SET_MISMATCH" | "PREVIEW_SHA_MISMATCH" | "PREVIEWS_NOT_FROM_BUNDLE" | "PREVIEWS_BUSY" | "PREVIEWS_STALE_CLAIM";
 export class PreviewStop extends Error {
   constructor(readonly code: PreviewCode) {
     super(code);
@@ -252,9 +254,55 @@ export type BuildPreviewsOptions = {
   expected: ExpectedRecord & { bundle_sha256: string };
   /** The previews directory to create (its parent must exist, be ours and 0700). */
   outDir: string;
+  /** Tests only: how long to wait for a concurrent builder (default PREVIEW_WAIT). */
+  wait?: { totalMs: number; stepMs: number };
 };
 
-/** Verifies the bundle, then writes its previews and INDEX (or confirms the existing ones for the same bundle SHA). */
+/** How long a builder waits for a concurrent builder's claimed (still empty) previews directory to be filled. */
+export const PREVIEW_WAIT = { totalMs: 10_000, stepMs: 100 } as const;
+/**
+ * An empty claimed directory older than this (by mtime) is a builder that died between claiming and renaming (OOM, a
+ * kill): refused as PREVIEWS_STALE_CLAIM at once, never waited on or reused (PR #309 review L3). Recovery is by hand
+ * (docs/operations/imagefirst-review-handoff.md §2): remove that empty directory, then build again.
+ */
+export const PREVIEW_STALE_CLAIM_MS = 120_000;
+
+/** The same index, field for field (both are plain JSON built by this module). */
+const sameIndex = (a: PreviewIndex, b: PreviewIndex) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * An existing previews directory for this name. While it is the empty placeholder a concurrent builder has just claimed
+ * (PR #308 review L2), wait for that builder to rename its finished directory in (PREVIEWS_BUSY if it never does or gives
+ * up). Then verify it and require it to be exactly the previews of THIS bundle (PR #308 review L1): the index rebuilt
+ * from the verified bundle bytes (every source path and SHA, every preview's SHA: the encoding is deterministic, the ids)
+ * must equal the one on disk. Otherwise PREVIEWS_NOT_FROM_BUNDLE: never silently reused.
+ */
+async function existingPreviews(final: string, want: PreviewIndex, wait: { totalMs: number; stepMs: number }): Promise<PreviewResult> {
+  for (let waited = 0; ; waited += wait.stepMs) {
+    const info = await lstat(final).catch(() => null);
+    if (!info) return stop("PREVIEWS_BUSY");
+    // every pass: a real directory of ours, 0700 (PR #309 review L2); a readdir error is a fixed code, never a raw error
+    if (!(await ownPrivateDir(final))) return stop("PREVIEWS_DIR_UNSAFE");
+    let names: string[];
+    try {
+      names = await readdir(final);
+    } catch {
+      return stop("PREVIEWS_DIR_UNSAFE");
+    }
+    if (names.length > 0) break;
+    if (Date.now() - info.mtimeMs > PREVIEW_STALE_CLAIM_MS) return stop("PREVIEWS_STALE_CLAIM");
+    if (waited >= wait.totalMs) return stop("PREVIEWS_BUSY");
+    await new Promise((r) => setTimeout(r, wait.stepMs));
+  }
+  const have = await verifyPreviews(final, { bundle_sha256: want.bundle_sha256 });
+  if (!sameIndex(have, want)) stop("PREVIEWS_NOT_FROM_BUNDLE");
+  return { status: "duplicate", dir: final, index: have };
+}
+
+/**
+ * Verifies the bundle, builds its previews in memory, then writes them and INDEX; or, when the directory exists, confirms
+ * it holds exactly these previews (a concurrent builder's result included) and reports "duplicate".
+ */
 export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewResult> {
   let verified;
   try {
@@ -266,10 +314,7 @@ export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewRes
   const parent = dirname(o.outDir);
   if (!(await ownPrivateDir(parent))) stop("PREVIEWS_DIR_UNSAFE");
   const final = join(await realpath(parent), basename(o.outDir));
-  if (await lstat(final).then(() => true, () => false)) {
-    const index = await verifyPreviews(final, { bundle_sha256: verified.bundle_sha256 });
-    return { status: "duplicate", dir: final, index };
-  }
+  const wait = o.wait ?? PREVIEW_WAIT;
   const m = verified.manifest;
   const previews: PreviewEntry[] = [];
   const files: { name: string; bytes: Buffer }[] = [];
@@ -290,6 +335,7 @@ export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewRes
     limits: { max_side: PREVIEW_LIMITS.maxSide, max_bytes: PREVIEW_LIMITS.maxBytes },
     previews,
   };
+  if (await lstat(final).then(() => true, () => false)) return existingPreviews(final, index, wait);
   const tmp = join(dirname(final), `.tmp-previews-${randomBytes(6).toString("hex")}`);
   try {
     await mkdir(tmp, { mode: 0o700 });
@@ -298,10 +344,10 @@ export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewRes
     await writeFile0600(join(tmp, "INDEX.md"), renderIndexMd(index));
     try {
       await mkdir(final, { mode: 0o700 });
-    } catch {
-      // someone else built it meanwhile: the same bundle is a duplicate, anything else a conflict
-      const have = await verifyPreviews(final, { bundle_sha256: verified.bundle_sha256 });
-      return { status: "duplicate", dir: final, index: have };
+    } catch (error) {
+      // someone else claimed it meanwhile: wait for their result; the same previews are a duplicate, anything else refused
+      if ((error as { code?: string }).code === "EEXIST") return await existingPreviews(final, index, wait);
+      throw error;
     }
     // the empty directory just claimed is replaced by the finished one (never a half-written name)
     await rename(tmp, final).catch(async (error: unknown) => {
@@ -311,5 +357,7 @@ export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewRes
   } finally {
     await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
   }
-  return { status: "built", dir: final, index: await verifyPreviews(final, { bundle_sha256: verified.bundle_sha256 }) };
+  const built = await verifyPreviews(final, { bundle_sha256: verified.bundle_sha256 });
+  if (!sameIndex(built, index)) stop("PREVIEWS_NOT_FROM_BUNDLE");
+  return { status: "built", dir: final, index: built };
 }

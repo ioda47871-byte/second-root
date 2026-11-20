@@ -8,8 +8,10 @@
  * terminal). Nothing in the bundle, the inbox or INDEX names it, so a Claude session that describes the pictures
  * correctly can only have done so by looking at them.
  *
- * The bundle ID is fixed to a date no approval can have (00000000), so the dummy can never collide with a real approval's
- * bundle in the inbox; a new PoC run replaces only that dummy ID there.
+ * The bundle ID is fixed to the reserved date 00000000, which no real run may use (PR #308 review L4: the worker's cycle
+ * and precheck, its claim and the automatic start's grant and run marker refuse it; tests pin those), so the dummy can
+ * never collide with a real approval's bundle in the inbox. The local hand-off accepts it (this PoC uses it); a new PoC
+ * run replaces only that dummy ID there.
  */
 import { createHash, randomInt } from "node:crypto";
 import { constants } from "node:fs";

@@ -57,18 +57,39 @@
   ファイルはプレビューに届かない。inbox の bundle が変わっていれば `BUNDLE_UNVERIFIED` で作らない。
 - `INDEX.md` / `INDEX.json` は各プレビューの `source`（`parts/pc-1.png` など）、`source_sha256`（= bundle の `SHA256SUMS` の行）、
   `preview_sha256`、大きさ、tile なら元画像の何行目から何行目か、を持つ。`verifyPreviews` はファイル集合・SHA・大きさ・`INDEX.md` の一致を検める。
-- 同じ bundle でもう一度作ると `duplicate`（何も変えない）。同じ名前で別の bundle なら `PREVIEWS_CONFLICT`。
+- 同じ bundle でもう一度作ると `duplicate`（何も変えない）。ただし `duplicate` と答えるのは、既にあるプレビューが**この bundle の検証済みの
+  バイトから作り直したものと完全に一致する**とき（元ファイルのパスと SHA、各プレビューの SHA、ID）だけ。同じ名前で別の bundle SHA なら
+  `PREVIEWS_CONFLICT`、SHA の札だけ合わせた別物なら `PREVIEWS_NOT_FROM_BUNDLE`（PR #308 レビュー L1。黙って使い回さない）。
+- 2 つが同時に作ると、遅れた方は先の方が確保した空のディレクトリが埋まるのを待ち（最大 10 秒）、同じものなら `duplicate`。
+  埋まらなければ `PREVIEWS_BUSY`（L2）。待つ間も毎回、そのディレクトリが自分のもので 0700 であることを確かめる（違えば `PREVIEWS_DIR_UNSAFE`）。
+- 作る途中で落ちた（OOM や kill）ときは、空の `previews/<ID>/` が残る。作られてから 120 秒より古い空のディレクトリは待たずに
+  `PREVIEWS_STALE_CLAIM` で止まる（PR #309 レビュー L3）。**直し方（手で）**: 中身が空であることを確かめてから、その空ディレクトリだけを消し、
+  もう一度作る（ダミーなら PoC をもう一度走らせる）:
+  `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- bash -c 'rmdir ~/sr-runs/review-inbox/previews/<ID>'`（`rmdir` は空でなければ失敗するので、中身は消えない）
+- inbox からの削除（`removeFromInbox`・保持期限の削除）は、`previews` や `.records` が symlink・他人のもの・0700 でないときは
+  何も消さずに `INBOX_SUBDIR_UNSAFE` で止まる（L3）。
 
 ## 3. オーナーの確認手順（実機の WSL、ダミー PoC。読むだけで終わらせてよい）
 
-事前: jail が install 済み（`design-capture-helper.md`）。worker も自動起動も動いていない。`admin.sh` は root 専用の clone
+事前: jail が install 済み（`design-capture-helper.md`）。worker も自動起動も旧 design cycle も動いていない（手順 0 で確かめる）。
+jail の Claude が worker と同じユーザーであることが §1 の前提なので、手順 0 d) で unit の `User=` が `sr-designgen` であることを確かめる
+（`claude-start` は unit の `User=` を書き換えない。`install` に別のユーザーを渡していたら、この受け渡しは成り立たない。PR #308 レビュー L5）。`admin.sh` は root 専用の clone
 （`/root/sr-capture-admin`）から実行する（`admin.sh:76-77` が他の場所からの実行を拒否する）。この変更を含む develop と
 `node_modules`（`sharp` を含む）が `sr-designgen` の checkout にあること。
 
 ```bash
 A=/root/sr-capture-admin/scripts/sales-design-capture/admin.sh
-# 0) 何も動いていないこと（読むだけ）
-systemctl is-active sr-jail-claude.service sr-imagefirst-autostart.service 2>/dev/null; pgrep -u sr-designgen || echo "no sr-designgen process"
+# 0) 何も動いていないこと（読むだけ。どれか一つでも違えば、そこで止めて報告する）
+#    a) 次の 3 つの service がどれも active でない（3 行とも active 以外。inactive / failed / unknown など）
+systemctl is-active sr-jail-claude.service sr-imagefirst-autostart.service sr-design-cycle.service
+#    b) 次の 2 つの timer が enable されていない（list-unit-files が「0 unit files listed」、または STATE が disabled / masked）。
+#       決め手は次の is-active: 2 行とも active 以外であること
+systemctl list-unit-files sr-design-cycle.timer sr-imagefirst-autostart.timer
+systemctl is-active sr-design-cycle.timer sr-imagefirst-autostart.timer
+#    c) sr-designgen のプロセスが無い
+pgrep -u sr-designgen || echo "no sr-designgen process"
+#    d) jail の unit が sr-designgen として動く設定であること（User=sr-designgen と 1 行だけ出る。違う・空なら止める）
+systemctl show sr-jail-claude.service -p User
 sudo bash $A run sr-designgen -- bash -c 'cd ~/work/second-root && git log --oneline -1 && ls -d node_modules/sharp'
 
 # 1) ダミー PoC を sr-designgen として jail の中で 1 回（画像はその場で作る。Codex・ネットワークなし、数秒）
@@ -98,7 +119,12 @@ sudo bash $A run sr-designgen -- bash -c 'I=~/sr-runs/review-inbox; D=hoshigama-
 ```
 
 うまくいかないとき: Claude が「読めない」「権限がない」と答えたら、その文言を記録して止める。**chmod や jail の設定を変えて通さない。**
-ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
+ダミーの ID は日付 `00000000` で、本物の承認 ID と衝突しない。これは約束ではなくコードで強制している（PR #308 レビュー L4）:
+worker（`cycle.ts` の cycle と precheck）・承認の claim・自動起動の grant は、日付 `00000000`・暦に無い日付・2000 年より前の年の承認 ID を拒否する
+（`checkRealApprovalId` が `APPROVAL_ID_RESERVED` / `APPROVAL_ID_INVALID` を返し、grant の経路では worker が `GRANT_INVALID` で止まる。テストで固定）。
+自動起動の run marker の検査（`imagefirst-autostart.sh` の MARKER_PY）が見るのは日付 `00000000` だけ。暦に無い日付（例 `20261399`）の marker は
+その検査を通るが、続く worker の `--precheck` が `GRANT_INVALID`（exit 2）を返し、自動起動は `AUTOSTART_IDLE_NOT_RUNNABLE`（exit 10）で終わる。
+承認は使われず marker も残るので、以後の poll は毎回同じ結果で止まる。**オーナーがその marker を手で消すまで続く**（PR #309 再レビュー L-1）。ローカルの受け渡し（`local-inbox.ts`）そのものはこの ID を受け付ける（このダミー PoC が使うため）。PoC をもう一度走らせると、inbox のダミーだけを置き換える。
 
 ## 4. 本物の run での流れ（承認の後。いまは入口なし）
 
