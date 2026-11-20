@@ -51,8 +51,9 @@ export const IMAGEFIRST_ALLOWLIST = {
 const APPROVAL_ID = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
 /**
  * The date part reserved for the dummy review PoC (review-poc.ts DUMMY_ID, hoshigama-imagefirst-d3-00000000-00). PR #308
- * review L4: enforced, not a convention: the worker, its claim, the automatic start's grant and the review delivery
- * refuse it, so the dummy can never be a real run's approval (and a real run's bundle never collides with the dummy's).
+ * review L4: enforced, not a convention: the worker's cycle and precheck, its claim, the automatic start's grant (and its
+ * run marker) refuse it, so the dummy can never be a real run's approval. The local hand-off itself (local-inbox.ts)
+ * accepts it on purpose: the dummy PoC delivers that ID.
  */
 export const RESERVED_APPROVAL_DATE = "00000000";
 export type ApprovalIdCheck = "ok" | "APPROVAL_ID_INVALID" | "APPROVAL_ID_RESERVED";

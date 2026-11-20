@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import sharp from "sharp";
@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { checkPng } from "@/lib/design-agent/design-image/png";
 import { verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { handOffToLocalInbox, InboxStop, localInboxTransport, removeFromInbox } from "@/lib/design-agent/imagefirst-worker/local-inbox";
-import { buildPreviews, PREVIEW_LIMITS, previewsOf, PreviewStop, verifyPreviews } from "@/lib/design-agent/imagefirst-worker/preview";
+import { buildPreviews, PREVIEW_LIMITS, PREVIEW_STALE_CLAIM_MS, previewsOf, PreviewStop, verifyPreviews } from "@/lib/design-agent/imagefirst-worker/preview";
 import { COLOURS, DUMMY_ID, DUMMY_RECORD, makeDummyBundle, runReviewPoc, SHAPES } from "@/lib/design-agent/imagefirst-worker/review-poc";
 import { ReceiverStop } from "@/lib/design-agent/imagefirst-worker/transport";
 
@@ -293,6 +293,20 @@ describe("previews", () => {
     mkdirSync(out("stuck"), { mode: 0o700 });
     expect(await codeOf(buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("stuck"), wait: { totalMs: 100, stepMs: 20 } }))).toBe("PREVIEWS_BUSY");
     expect(readdirSync(out("stuck"))).toEqual([]);
+    // PR #309 review L2: an unsafe (group-readable) claim is PREVIEWS_DIR_UNSAFE at once, not waited on
+    mkdirSync(out("open"), { mode: 0o750 });
+    chmodSync(out("open"), 0o750);
+    expect(await codeOf(buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("open"), wait: { totalMs: 20_000, stepMs: 20 } }))).toBe("PREVIEWS_DIR_UNSAFE");
+    // PR #309 review L3: an empty claim older than PREVIEW_STALE_CLAIM_MS (a builder that died) is refused at once
+    mkdirSync(out("stale"), { mode: 0o700 });
+    const old = (Date.now() - PREVIEW_STALE_CLAIM_MS - 60_000) / 1000;
+    utimesSync(out("stale"), old, old);
+    const t0 = Date.now();
+    expect(await codeOf(buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("stale"), wait: { totalMs: 20_000, stepMs: 20 } }))).toBe("PREVIEWS_STALE_CLAIM");
+    expect(Date.now() - t0).toBeLessThan(15_000);
+    // the documented recovery: remove the empty directory, build again
+    rmdirSync(out("stale"));
+    expect((await buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("stale") })).status).toBe("built");
   });
 
   it("PR #308 review L3: removal and purge never follow a symlinked previews or .records directory", async () => {

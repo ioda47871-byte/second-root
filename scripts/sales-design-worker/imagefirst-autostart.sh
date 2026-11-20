@@ -197,6 +197,8 @@ if not isinstance(d, dict) or set(d) != {"approval_id", "expires_at"}:
 a, e = d["approval_id"], d["expires_at"]
 if not isinstance(a, str) or not re.fullmatch(r"hoshigama-imagefirst-d3-[0-9]{8}-[0-9]{2}", a, re.ASCII):
     print("INVALID"); sys.exit(0)
+if a.startswith("hoshigama-imagefirst-d3-00000000-"):
+    print("INVALID"); sys.exit(0)  # the dummy PoC reserved date: never a real run (PR #308 review L4, PR #309 review N-2)
 if not isinstance(e, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", e, re.ASCII):
     print("INVALID"); sys.exit(0)
 try:
