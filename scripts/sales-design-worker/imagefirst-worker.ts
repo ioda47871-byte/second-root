@@ -29,20 +29,23 @@
  * Issue #302 P3 follow-up (docs/operations/imagefirst-review-handoff.md §4): after a cycle that ended "succeeded", the
  * same process hands that run to the local review inbox (~/sr-runs/review-inbox) with deliverAfterRun
  * (lib/design-agent/imagefirst-worker/deliver-review.ts: receipt checked against the packet at its commit → sealed private
- * bundle → inbox → previews + INDEX). Its result is the `review` field of the one JSON line; it never changes the exit
- * code (the run's result stands) and it can start nothing. A failed hand-off leaves the sealed bundle; the owner re-sends
- * the SAME bundle with
- *
- *   node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --deliver-review <approval id>
- *
- * which runs no cycle, claims nothing and starts nothing, and refuses unless the jailed Claude (sr-jail-claude.service)
- * is stopped and disabled or masked (as the automatic start requires). Exit: 0 delivered / duplicate, 1 not delivered
- * (the bundle stays sealed for another re-send), 2 refused.
+ * bundle → inbox → previews + INDEX). The run's one JSON line is printed FIRST (PR #310 review M1: a stop during the
+ * hand-off can never hide a run that succeeded); the hand-off is skipped when a stop was already requested and is
+ * aborted by one; its own summary goes to stderr and the audit file only, so stdout stays exactly one line (the
+ * automatic start reads its last line). It never changes the exit code and it can start nothing. A failed hand-off
+ * leaves the sealed bundle; the owner re-sends the SAME bundle through root's wrapper
+ * scripts/sales-design-worker/imagefirst-deliver-review.sh, which runs this CLI with `--deliver-review <approval id>` as
+ * the worker user outside the jail. That mode runs no cycle, claims nothing and starts nothing except read-only git and
+ * systemctl; it requires HEAD = origin/develop and a clean tree, and (defense in depth; the wrapper is the gate) the
+ * jailed Claude stopped and disabled or masked. Exit: 0 delivered / duplicate, 1 not delivered (the bundle stays sealed
+ * for another re-send), 2 refused.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runBounded } from "../../lib/design-agent/bounded-process";
+import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
+import { jailIdle } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -59,20 +62,9 @@ const { controller } = stopSignals({ hardStopMs: WORKER_STOP.hardStopMs, cleanup
  */
 const INVOKE_TIMEOUT_MS = WATCHDOG_MS + 2 * 60_000;
 
-/**
- * The manual re-send's mutual exclusion, the automatic start's rule (imagefirst-autostart.sh busy()): the jailed Claude is
- * idle only when its ActiveState is inactive or failed AND it is disabled or masked. Anything else, an error included, is
- * not idle (false) or cannot be told (null): refused either way.
- */
-async function jailIdle(env: NodeJS.ProcessEnv): Promise<boolean | null> {
-  const systemctl = (a: string[]) => runBounded("systemctl", a, { cwd: "/", env, timeoutMs: 30_000 }).catch(() => null);
-  const active = await systemctl(["show", "-p", "ActiveState", "--value", "sr-jail-claude.service"]);
-  if (!active || active.code !== 0 || active.stdout.trim() === "") return null;
-  if (!/^(inactive|failed)$/.test(active.stdout.trim())) return false;
-  const enabled = await systemctl(["is-enabled", "sr-jail-claude.service"]);
-  if (!enabled) return null;
-  return /^(disabled|masked)$/.test(enabled.stdout.trim());
-}
+/** PR #310 review M2: the receipt's commit is on origin/develop in this (the worker's own) clone. Read only. */
+const onOriginDevelop = (env: NodeJS.ProcessEnv) => async (commit: string) =>
+  /^[0-9a-f]{40}$/.test(commit) && (await runBounded("git", ["merge-base", "--is-ancestor", commit, "origin/develop"], { cwd: REPO, env, timeoutMs: 60_000 }).then((r) => r.code === 0, () => false));
 
 async function main(): Promise<number> {
   // the arguments: none, --precheck (Issue #302 P1, the automatic start asks before it uses root's marker), or
@@ -92,9 +84,13 @@ async function main(): Promise<number> {
   const ledgerDir = defaultLedgerDir(env, homedir());
   for (const p of [stateDir, runsDir, ledgerDir]) if (await insideRepo(p)) return (say({ status: "refused", code: "PLACE_INSIDE_REPO", invoked: false }), 2);
   if (deliver) {
-    // the manual re-send: no cycle, no claim, no ledger, nothing started; the same sealed bundle only
+    // the manual re-send: no cycle, no claim, no ledger, nothing started; the same sealed bundle only, from the worker's
+    // own clean clone on origin/develop (PR #310 review M3)
+    const c = await gitCommitState(REPO, env).catch(() => null);
+    if (!c?.head || c.head !== c.base) return (say({ status: "refused", code: "NOT_ON_ORIGIN_DEVELOP", invoked: false }), 2);
+    if (!c.clean) return (say({ status: "refused", code: "TREE_DIRTY", invoked: false }), 2);
     try {
-      const r = await deliverReview({ approvalId: deliverId!, runsDir, stateDir, jailIdle: () => jailIdle(env) }, { fileAt: (commit, rel) => fileAtCommit(commit, rel) });
+      const r = await deliverReview({ approvalId: deliverId!, runsDir, stateDir, resend: true, signal: controller.signal, jailIdle: () => jailIdle(env) }, { fileAt: (commit, rel) => fileAtCommit(commit, rel), onOriginDevelop: onOriginDevelop(env) });
       say({ ...r, invoked: false });
       return r.status === "not_delivered" ? 1 : 0;
     } catch (error) {
@@ -117,8 +113,13 @@ async function main(): Promise<number> {
       invoke: (argv, signal) => runBounded(tsEntry(join(REPO, GENERATE_ENTRY), argv).bin, tsEntry(join(REPO, GENERATE_ENTRY), argv).args, { cwd: REPO, env, timeoutMs: INVOKE_TIMEOUT_MS, graceMs: WORKER_STOP.graceMs, ...(signal ? { signal } : {}) }),
     },
   );
-  const review = await deliverAfterRun(report, { runsDir, stateDir }, { fileAt: (commit, rel) => fileAtCommit(commit, rel) });
-  say(review ? { ...report, review } : report);
+  // the run's result first (the one stdout line), then the hand-off (PR #310 review M1)
+  say(report);
+  const review = await deliverAfterRun(report, { runsDir, stateDir, signal: controller.signal }, { fileAt: (commit, rel) => fileAtCommit(commit, rel), onOriginDevelop: onOriginDevelop(env) });
+  if (review) {
+    process.stderr.write(`imagefirst-worker: review ${JSON.stringify(review)}\n`);
+    await appendFile(join(stateDir, "audit.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), approval_id: report.approval_id, review })}\n`, { mode: 0o600 }).catch(() => undefined);
+  }
   return exitCodeOf(report.status);
 }
 

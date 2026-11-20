@@ -26,7 +26,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, realpath, rename, rm, rmdir } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { checkPng, MOCKUP_PNG_LIMITS, PngError, type PngLimits } from "../design-image/png";
 
@@ -393,20 +393,20 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
   const final = join(bundles, bundleId);
   if (await lstat(final).then(() => true, () => false)) stop("BUNDLE_EXISTS");
   const tmp = join(bundles, `.tmp-${bundleId}-${randomBytes(6).toString("hex")}`);
-  let claimed = false;
   try {
     await mkdir(tmp, { mode: 0o700 });
     await writeEntries(tmp, [...[...bytesOf.entries()].map(([path, bytes]) => ({ path, bytes })), { path: "SHA256SUMS", bytes: Buffer.from(sums) }, { path: "manifest.json", bytes: manifestBytes }]);
+    // one atomic rename of the finished directory: the final name never exists empty or half-written (PR #310 review L2:
+    // no empty placeholder a crash could leave behind). A non-empty final (another pack won) refuses: ENOTEMPTY / EEXIST.
     try {
-      await mkdir(final, { mode: 0o700 });
-      claimed = true;
-    } catch {
-      stop("BUNDLE_EXISTS");
+      await rename(tmp, final);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "ENOTEMPTY" || code === "EEXIST") stop("BUNDLE_EXISTS");
+      throw error;
     }
-    await rename(tmp, final);
   } catch (error) {
     await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-    if (claimed) await rmdir(final).catch(() => undefined);
     if (error instanceof BundleStop) throw error;
     return stop("BUNDLE_WRITE_FAILED");
   }

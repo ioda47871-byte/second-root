@@ -12,7 +12,8 @@ import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import { acquireLock } from "@/lib/design-agent/worker/state";
 import { fileAtCommit } from "@/scripts/design-artifact/phase2f-live-cli";
 import { UNAPPROVED_PACKET_FIXTURE } from "../image-first/fixtures/unapproved-packet";
-import { cleanupTemps, commitFiles, ENV, entryInProcess, fakeCodex, filledPacket, git, ID, NOW, PLAN_ID, REPO, sha, tmp, workerRepo } from "./support";
+import { jailIdle } from "@/lib/design-agent/imagefirst-worker/jail-state";
+import { cleanupTemps, commitFiles, ENV, entryInProcess, fakeCodex, filledPacket, git, ID, NOW, PLAN_ID, pointOrigin, REPO, sha, tmp, workerRepo } from "./support";
 
 // Issue #302 P3 follow-up: a REAL finished run (the worker's cycle over a temporary clone, the entry played in-process
 // against the FAKE Codex) → deliverReview / deliverAfterRun → private bundle → the real local inbox → previews + INDEX.
@@ -32,10 +33,21 @@ function tree(dir: string, out: string[] = [], base = dir): string[] {
   return out;
 }
 
-/** One finished, successful worker run (claim + ledger used ONCE by the cycle itself), and what delivering needs. */
-async function finishedRun(mode: "six" | "fail" = "six") {
-  const home = tmp("sr-dr-home-");
-  chmodSync(home, 0o700);
+/** Every file under dir with the SHA-256 of its content (PR #310 review L4: an append is a change too). */
+const hashes = (dir: string) => tree(dir).map((rel) => (lstatSync(join(dir, rel)).isFile() ? `${rel} ${sha(readFileSync(join(dir, rel)))}` : rel));
+
+/**
+ * One finished, successful worker run (claim + ledger used ONCE by the cycle itself), and what delivering needs. With
+ * `linkedHome` the worker's home is reached through a symlink (the receipt then names the run by that path).
+ */
+async function finishedRun(mode: "six" | "fail" = "six", o: { linkedHome?: boolean } = {}) {
+  const realHome = tmp("sr-dr-home-");
+  chmodSync(realHome, 0o700);
+  let home = realHome;
+  if (o.linkedHome) {
+    home = join(tmp("sr-dr-link-"), "home");
+    symlinkSync(realHome, home);
+  }
   const repo = workerRepo();
   const runsDir = join(home, "sr-runs");
   mkdirSync(runsDir, { mode: 0o700 });
@@ -56,10 +68,13 @@ async function finishedRun(mode: "six" | "fail" = "six") {
       },
     },
   );
-  const deps = { fileAt: (c: string, rel: string) => fileAtCommit(c, rel, repo) };
+  const deps = {
+    fileAt: (c: string, rel: string) => fileAtCommit(c, rel, repo),
+    onOriginDevelop: async (c: string) => spawnSync("git", ["merge-base", "--is-ancestor", c, "origin/develop"], { cwd: repo }).status === 0,
+  };
   const opts: DeliverReviewOptions = { approvalId: ID, runsDir, stateDir, now: () => NOW };
   /** Everything the run may use exactly once: claims, the entry's ledger, Codex executions, invocations. */
-  const used = () => ({ claims: tree(join(stateDir, "claims")), ledger: tree(ledgerDir), execs: fake.execs, invoked: invoked.length });
+  const used = () => ({ claims: hashes(join(stateDir, "claims")), ledger: hashes(ledgerDir), execs: fake.execs, invoked: invoked.length });
   const receipt = report.receipt ?? "";
   const readReceipt = () => JSON.parse(readFileSync(receipt, "utf8")) as WorkerReceipt;
   const writeReceipt = (r: unknown) => writeFileSync(receipt, typeof r === "string" ? r : `${JSON.stringify(r, null, 2)}\n`);
@@ -107,7 +122,7 @@ describe("a real finished run reaches the local review inbox (fake Codex, real i
 
     // again (manual re-send, jail stopped): idempotent, nothing re-packed or re-sent, previews unchanged
     const indexBefore = readFileSync(join(w.inbox, "previews", ID, "INDEX.json"));
-    const again = await deliverReview({ ...w.opts, jailIdle: async () => true }, w.deps);
+    const again = await deliverReview({ ...w.opts, resend: true, jailIdle: async () => true }, w.deps);
     expect(again).toMatchObject({ status: "duplicate", bundle: "existing", sent: false, previews: "duplicate", bundle_sha256: summary!.bundle_sha256 });
     expect(readFileSync(join(w.inbox, "previews", ID, "INDEX.json")).equals(indexBefore)).toBe(true);
     // a lost delivery job: the same sealed bytes go again and the inbox answers duplicate
@@ -133,10 +148,17 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
     const before = w.used();
     const good = readFileSync(w.receipt, "utf8");
     const r = w.readReceipt();
-    const other = (packet: Buffer) => commitFiles(w.repo, { [APPROVAL_PACKET_PATH]: packet }, "another packet");
+    // another commit, put on origin/develop (so only the packet check can refuse it)
+    const other = (packet: Buffer) => {
+      const c = commitFiles(w.repo, { [APPROVAL_PACKET_PATH]: packet }, "another packet");
+      pointOrigin(w.repo);
+      return c;
+    };
+    // a local commit object (same approved tree) that nothing on origin/develop descends from
+    const offOrigin = git(w.repo, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "a local commit, not on origin/develop");
     const cases: [string, unknown][] = [
       // the run started after the approval expired / further than 24 h before it
-      ["RUN_NOT_IN_APPROVAL_WINDOW", { ...r, timings: { ...r.timings, started_at: "2026-11-20T09:00:01.000Z" } }],
+      ["RUN_NOT_IN_APPROVAL_WINDOW", { ...r, timings: { ...r.timings, started_at: "2026-11-20T09:00:01.000Z", finished_at: "2026-11-20T09:00:02.000Z" } }],
       ["RUN_NOT_IN_APPROVAL_WINDOW", { ...r, timings: { ...r.timings, started_at: "2026-11-19T08:59:59.000Z" } }],
       ["PLAN_MISMATCH", { ...r, plan_id: "hoshigama-imagefirst-p3-20261121" }],
       ["RECEIPT_ALLOWLIST_MISMATCH", { ...r, prompt_sha256: "0".repeat(64) }],
@@ -146,11 +168,14 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
       ["APPROVAL_MISMATCH", { ...r, commit: other(filledPacket({ d3: "`hoshigama-imagefirst-d3-20261120-02`" })) }],
       ["PACKET_NOT_APPROVED", { ...r, commit: other(readFileSync(UNAPPROVED_PACKET_FIXTURE)) }],
       ["APPROVAL_ID_RESERVED", { ...r, commit: other(filledPacket({ d3: `\`${DUMMY_ID}\`` })) }],
-      ["PACKET_UNREADABLE", { ...r, commit: "1".repeat(40) }],
+      // PR #310 review M2: a commit that is not on origin/develop (a local commit, or none at all) is refused first
+      ["COMMIT_NOT_ON_ORIGIN_DEVELOP", { ...r, commit: offOrigin }],
+      ["COMMIT_NOT_ON_ORIGIN_DEVELOP", { ...r, commit: "1".repeat(40) }],
       ["RECEIPT_INVALID", { ...r, approval_id: "hoshigama-imagefirst-d3-20261120-02" }],
       ["RECEIPT_NOT_SUCCEEDED", { ...r, interrupted: true }],
       ["RECEIPT_NOT_SUCCEEDED", { ...r, counts: { ...r.counts, sp: 3 } }],
       ["RECEIPT_INVALID", "{"],
+      ["RECEIPT_INVALID", { ...r, timings: { ...r.timings, finished_at: "2026-11-20T00:00:00.000Z" } }],
     ];
     for (const [code, receipt] of cases) {
       w.writeReceipt(receipt);
@@ -160,6 +185,59 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
     writeFileSync(w.receipt, good);
     expect(w.used()).toEqual(before);
     expect((await deliverReview(w.opts, w.deps)).status).toBe("delivered");
+  });
+
+  it("PR #310 review M2: the worker's claim marker must exist and agree with the receipt (read only, never made here)", async () => {
+    const w = await finishedRun();
+    const claim = join(w.stateDir, "claims", `${ID}.used`);
+    const good = readFileSync(claim);
+    renameSync(claim, `${claim}.away`);
+    expect(await codeOf(deliverReview(w.opts, w.deps))).toBe("CLAIM_MISSING");
+    expect(existsSync(claim)).toBe(false);
+    renameSync(`${claim}.away`, claim);
+    for (const body of [{ approval_id: "hoshigama-imagefirst-d3-20261120-02", claimed_at: new Date(NOW).toISOString() }, { approval_id: ID, claimed_at: "2026-11-19T00:00:00.000Z" }, { approval_id: ID }]) {
+      writeFileSync(claim, JSON.stringify(body));
+      expect(await codeOf(deliverReview(w.opts, w.deps))).toBe("CLAIM_MISMATCH");
+    }
+    writeFileSync(claim, good);
+    renameSync(claim, `${claim}.real`);
+    symlinkSync(`${claim}.real`, claim);
+    expect(await codeOf(deliverReview(w.opts, w.deps))).toBe("CLAIM_MISMATCH");
+    rmSync(claim);
+    renameSync(`${claim}.real`, claim);
+    nothingDelivered(w);
+    const before = readFileSync(claim);
+    expect((await deliverReview(w.opts, w.deps)).status).toBe("delivered");
+    expect(readFileSync(claim).equals(before)).toBe(true);
+  });
+
+  it("PR #310 review L1: a home reached through a symlink delivers (real paths compared), from the report or by hand", async () => {
+    const w = await finishedRun("six", { linkedHome: true });
+    expect(w.report.receipt!.startsWith(w.home)).toBe(true);
+    expect(await deliverAfterRun(w.report, { runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, w.deps)).toMatchObject({ status: "delivered" });
+    expect(await deliverReview({ ...w.opts, resend: true }, w.deps)).toMatchObject({ status: "duplicate" });
+  });
+
+  it("PR #310 review M1: a stop already requested skips the hand-off; nothing is sealed or delivered", async () => {
+    const w = await finishedRun();
+    const ac = new AbortController();
+    ac.abort();
+    expect(await deliverAfterRun(w.report, { runsDir: w.runsDir, stateDir: w.stateDir, signal: ac.signal }, w.deps)).toEqual({ status: "refused", code: "REVIEW_ABORTED" });
+    expect(await codeOf(deliverReview({ ...w.opts, signal: ac.signal }, w.deps))).toBe("REVIEW_ABORTED");
+    nothingDelivered(w);
+  });
+
+  it("PR #310 review L2: a re-send never packs: a missing or empty sealed bundle is SEALED_BUNDLE_MISSING", async () => {
+    const w = await finishedRun();
+    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    nothingDelivered(w);
+    mkdirSync(join(w.bundles, ID), { recursive: true, mode: 0o700 });
+    expect(await codeOf(deliverReview({ ...w.opts, resend: true }, w.deps))).toBe("SEALED_BUNDLE_MISSING");
+    expect(readdirSync(join(w.bundles, ID))).toEqual([]);
+    rmSync(join(w.bundles, ID), { recursive: true });
+    // the automatic path packs once (one atomic rename: no temporary or empty directory is left behind)
+    expect((await deliverReview(w.opts, w.deps)).status).toBe("delivered");
+    expect(readdirSync(w.bundles)).toEqual([ID]);
   });
 
   it("a tampered picture, a symlinked part, run directory or receipt, a second receipt", async () => {
@@ -184,7 +262,7 @@ describe("refusals before anything is sealed (nothing in the inbox, nothing used
 
     renameSync(runDir, `${runDir}.real`);
     symlinkSync(`${runDir}.real`, runDir);
-    expect(await codeOf(deliverReview(w.opts, w.deps))).toMatch(/^(RUN_DIR_UNSAFE|RECEIPT_RUN_DIR_MISMATCH)$/);
+    expect(await codeOf(deliverReview(w.opts, w.deps))).toMatch(/^(RUN_DIR_UNSAFE|RECEIPT_RUN_DIR_MISMATCH|RECEIPT_INVALID)$/);
     rmSync(runDir);
     renameSync(`${runDir}.real`, runDir);
     nothingDelivered(w);
@@ -295,9 +373,14 @@ describe("the delivery cannot start anything", () => {
   it("the worker CLI delivers only after a succeeded cycle, and its --deliver-review never runs the cycle", () => {
     const cli = readFileSync(resolve(REPO, "scripts/sales-design-worker/imagefirst-worker.ts"), "utf8");
     const deliverBranch = cli.slice(cli.indexOf("if (deliver)"), cli.indexOf("if (precheck)"));
-    expect(deliverBranch).toMatch(/deliverReview\(/);
+    expect(deliverBranch).toMatch(/deliverReview\(\{[^}]*resend: true[^}]*signal: controller\.signal/);
+    expect(deliverBranch).toMatch(/gitCommitState\(REPO, env\)/);
     expect(deliverBranch).not.toMatch(/runImagefirstCycle|\binvoke\b(?!d)|runBounded|tsEntry|openLedger|precheckImagefirstCycle/);
-    expect(cli).toMatch(/const report = await runImagefirstCycle\([\s\S]*\);\n\s*const review = await deliverAfterRun\(report,/);
+    // PR #310 review M1: the run's one stdout line is printed BEFORE the hand-off, which takes the stop signal; the
+    // review summary goes to stderr / the audit file, never a second stdout line
+    expect(cli).toMatch(/const report = await runImagefirstCycle\([\s\S]*\);\n(\s*\/\/.*\n)?\s*say\(report\);\n\s*const review = await deliverAfterRun\(report, \{ runsDir, stateDir, signal: controller\.signal \}/);
+    expect(cli.match(/\bsay\(/g)!.length).toBeGreaterThan(0);
+    expect(cli.slice(cli.indexOf("const review = await deliverAfterRun"))).not.toMatch(/\bsay\(/);
   });
 
   it("the CLI's --deliver-review refuses a malformed or reserved ID and an unknown / running jail state, writing nothing", () => {
@@ -312,11 +395,48 @@ describe("the delivery cannot start anything", () => {
       expect([r.status, r.out.status, r.out.code], args.join(" ")).toEqual([2, "refused", code]);
       expect(readdirSync(r.home)).toEqual([]);
     }
-    // a valid ID: here there is no systemd (cannot tell) or no such unit (not disabled): refused before any place is touched
-    const r = run(["--deliver-review", ID]);
-    expect(r.status).toBe(2);
-    expect(r.out.code).toMatch(/^(JAIL_STATE_UNKNOWN|JAIL_ACTIVE)$/);
-    expect(readdirSync(r.home)).toEqual([]);
     expect(IMAGEFIRST_ALLOWLIST.shop).toBe("hoshigama");
+    // (a valid ID's outcome depends on this checkout's commit and the host's systemd: the jail read is tested below with a
+    // fake systemctl, and the whole re-send path through root's wrapper in deliver-review-wrapper.test.ts. PR #310 review L6)
+  });
+});
+
+describe("the worker side's jail read (PR #310 review H1 / L5 / L6): a fake systemctl, never the host's", () => {
+  /** A fake systemctl: `show` prints <active> (or fails), `is-enabled` prints <enabled> with its exit code. */
+  const fake = (active: string | null, enabled: string | null, enabledExit = 0) => {
+    const dir = tmp("sr-dr-sc-");
+    const p = join(dir, "systemctl");
+    writeFileSync(
+      p,
+      `#!/bin/bash\necho "$*" >> '${dir}/log'\nif [ "$1" = show ]; then ${active === null ? "exit 1" : `echo '${active}'`}; exit 0; fi\nif [ "$1" = is-enabled ]; then ${enabled === null ? "exit 1" : `echo '${enabled}'; exit ${enabledExit}`}; fi\nexit 9\n`,
+    );
+    chmodSync(p, 0o755);
+    return { p, log: () => readFileSync(join(dir, "log"), "utf8") };
+  };
+  const env = { PATH: "/usr/bin:/bin" } as unknown as NodeJS.ProcessEnv;
+  it.each([
+    ["inactive / disabled", "inactive", "disabled", 1, true],
+    ["failed / masked", "failed", "masked", 1, true],
+    ["inactive / masked", "inactive", "masked", 0, true],
+    ["active", "active", "disabled", 1, false],
+    ["activating", "activating", "disabled", 1, false],
+    ["inactive / enabled", "inactive", "enabled", 0, false],
+    ["inactive / static", "inactive", "static", 0, false],
+    ["inactive / not-found", "inactive", "not-found", 1, false],
+    ["inactive / no answer", "inactive", "", 1, false],
+    ["show fails (no bus, e.g. inside the jail)", null, "disabled", 1, null],
+    ["show prints nothing", "", "disabled", 1, null],
+  ] as const)("%s", async (_name, active, enabled, exit, want) => {
+    const f = fake(active, enabled, exit);
+    expect(await jailIdle(env, f.p)).toBe(want);
+    expect(f.log()).toMatch(/^show -p ActiveState --value sr-jail-claude\.service$/m);
+  });
+  it("uses the absolute root-owned path by default (never the caller's PATH)", () => {
+    const src = readFileSync(resolve(REPO, "lib/design-agent/imagefirst-worker/jail-state.ts"), "utf8");
+    expect(src).toMatch(/export const SYSTEMCTL = "\/usr\/bin\/systemctl";/);
+    expect(src).toMatch(/systemctl: string = SYSTEMCTL/);
+    const cli = readFileSync(resolve(REPO, "scripts/sales-design-worker/imagefirst-worker.ts"), "utf8");
+    expect(cli).toMatch(/jailIdle: \(\) => jailIdle\(env\)/);
+    expect(cli).not.toMatch(/"systemctl"/);
   });
 });

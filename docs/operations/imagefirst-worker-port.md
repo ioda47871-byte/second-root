@@ -176,9 +176,10 @@ cycle を使う）で走らせる。確かめること: 未承認 → 0 回・�
 
 worker の CLI は、cycle が `succeeded` を返したときだけ、その run を同じプロセスのままローカルの review inbox
 （`~/sr-runs/review-inbox`）へ渡す（`lib/design-agent/imagefirst-worker/deliver-review.ts` の `deliverAfterRun`。receipt を receipt の
-コミットの承認パケットと照合 → 封入 → inbox → プレビューと INDEX）。結果は 1 行の JSON の `review` 欄で、終了コードは変えない。
-自動起動の script・unit・timer は変えていない。受け渡しは何も起動できず、claim も ledger も使わない。失敗したときの再送は
-`imagefirst-worker.ts --deliver-review <承認 ID>`（同じ bundle だけ。jail の Claude が止まっていて disabled のときだけ）。
+コミットの承認パケットと照合 → 封入 → inbox → プレビューと INDEX）。run の結果の 1 行は受け渡しの前に出し、受け渡しの結果は stderr と
+audit にだけ書く。終了コードは変えない。自動起動の script・unit・timer は変えていない。受け渡しは何も起動できず、claim も ledger も使わない。
+失敗したときの再送は root の wrapper `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-deliver-review.sh <承認 ID>`
+（同じ bundle だけ。自動起動と同じ busy() のあと、jail の外で worker として `--deliver-review` を 1 回。install も enable もしない）。
 詳しくは [`imagefirst-review-handoff.md`](imagefirst-review-handoff.md) §4。**ChatGPT 側へ画像を返すことは未達のまま**（同 §5 の選択肢。何も設定していない）。
 
 ## 7. オーナーの手順（自動起動。別のオーナー承認の後だけ。いまは読むだけ）

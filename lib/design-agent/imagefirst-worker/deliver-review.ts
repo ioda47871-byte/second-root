@@ -11,9 +11,16 @@
  * approval and never writes the entry's ledger. Nothing leaves the machine: no socket, no GitHub, no bridge spool.
  *
  * Called (a) by the worker CLI right after a cycle that ended "succeeded" (the automatic path: the same user, the same
- * process, after the cycle released its lock), and (b) by hand, `imagefirst-worker.ts --deliver-review <approval id>`,
- * to re-send the SAME sealed bundle after a failed hand-off (the manual path, which also requires the jailed Claude to be
- * stopped and disabled). A re-send never re-packs: the sealed bundle must still match the receipt byte for byte.
+ * process, after the cycle released its lock and after the run's result line was printed; skipped when a stop was
+ * requested), and (b) through root's wrapper scripts/sales-design-worker/imagefirst-deliver-review.sh, which checks the
+ * jailed Claude, the design cycle and the clone as root and then runs `imagefirst-worker.ts --deliver-review <approval id>`
+ * as the worker user outside the jail, to re-send the SAME sealed bundle after a failed hand-off. A re-send never packs:
+ * a missing sealed bundle is SEALED_BUNDLE_MISSING, and the sealed bundle must still match the receipt byte for byte.
+ * The worker's lock is released between the cycle and the hand-off (taken again here): a worker started by hand in that
+ * moment makes the hand-off REVIEW_LOCKED, recovered by the same wrapper (PR #310 review L3).
+ *
+ * Before anything is sealed: the receipt's commit is on origin/develop in the trusted clone (injected git check) and the
+ * worker's own claim marker for the approval exists and agrees with the receipt (read only). PR #310 review M2.
  *
  * Failures: ReviewStop with a fixed code (no path, no content), or a "not_delivered" result whose sealed bundle stays
  * for a re-send of the same bytes.
@@ -67,9 +74,23 @@ export type DeliverReviewOptions = {
    * automatic start requires; false = running / enabled, null = cannot tell (both refuse, nothing written).
    */
   jailIdle?: () => Promise<boolean | null>;
+  /**
+   * The manual re-send (PR #310 review L2): only the bundle sealed earlier may go. A missing or empty sealed bundle is
+   * refused (SEALED_BUNDLE_MISSING) and NEVER packed again here (a new pack would be other bytes).
+   */
+  resend?: boolean;
+  /** A stop requested (the worker got SIGTERM / SIGINT): nothing starts after it, and the delivery attempt is aborted. */
+  signal?: AbortSignal;
   now?: () => number;
 };
-export type DeliverReviewDeps = Pick<CycleDeps, "fileAt">;
+export type DeliverReviewDeps = Pick<CycleDeps, "fileAt"> & {
+  /**
+   * PR #310 review M2: true only when `commit` is an ancestor of (or equal to) origin/develop in the worker's trusted
+   * clone (`git merge-base --is-ancestor <commit> origin/develop`). The cycle only ever runs on origin/develop, so a
+   * receipt naming any other commit is refused (COMMIT_NOT_ON_ORIGIN_DEVELOP). Injected: this module starts no process.
+   */
+  onOriginDevelop: (commit: string) => Promise<boolean>;
+};
 export type DeliverReviewResult = {
   status: "delivered" | "duplicate" | "not_delivered";
   code: string | null;
@@ -99,7 +120,7 @@ type Receipt = {
   prompt_chars?: unknown;
   run_dir?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown } | null;
-  timings?: { started_at?: unknown } | null;
+  timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
 
 /** A reused module's fixed-code stop becomes a ReviewStop with the same code; anything else is rethrown. */
@@ -145,16 +166,22 @@ async function findReceipt(runs: string, approvalId: string): Promise<string> {
  * approval packet at the receipt's commit is the owner's approval of exactly this run (approval ID, plan ID, packet SHA,
  * §3 pins), and the run started inside that approval's window. Returns the record the bundle must match.
  */
-async function checkReceipt(r: Receipt, approvalId: string, runDir: string, d: DeliverReviewDeps): Promise<ExpectedRecord> {
+async function checkReceipt(r: Receipt, approvalId: string, runDir: string, stateDir: string, d: DeliverReviewDeps): Promise<ExpectedRecord> {
   const a = IMAGEFIRST_ALLOWLIST;
   if (!r || typeof r !== "object" || r.schema !== "imagefirst_worker_receipt_v1") stop("RECEIPT_INVALID");
   if (r.approval_id !== approvalId || typeof r.commit !== "string" || !/^[0-9a-f]{40}$/.test(r.commit) || typeof r.plan_id !== "string" || typeof r.packet_sha256 !== "string") stop("RECEIPT_INVALID");
-  if (r.run_dir !== runDir) stop("RECEIPT_INVALID");
+  // PR #310 review L1: compared by real path (the worker names ~/sr-runs as written; a home reached through a link is fine)
+  if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== runDir) stop("RECEIPT_INVALID");
   const c = r.counts;
   if (r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || !c || c.pc !== a.images.pc || c.sp !== a.images.sp || c.total !== a.images.pc + a.images.sp || c.stopped !== 0) stop("RECEIPT_NOT_SUCCEEDED");
   if (r.shop !== a.shop || r.direction !== a.direction || r.plan_sha256 !== a.planSha256 || r.prompt_sha256 !== a.promptSha256 || r.prompt_chars !== a.promptChars) stop("RECEIPT_ALLOWLIST_MISMATCH");
   const started = typeof r.timings?.started_at === "string" ? Date.parse(r.timings.started_at) : NaN;
   if (!Number.isFinite(started)) stop("RECEIPT_INVALID");
+  const finished = typeof r.timings?.finished_at === "string" ? Date.parse(r.timings.finished_at) : NaN;
+  if (!Number.isFinite(finished) || finished < started) stop("RECEIPT_INVALID");
+  // PR #310 review M2: the commit is on origin/develop (the cycle runs nowhere else); below, the worker's own one-use
+  // claim for this approval exists and agrees with the receipt (read only: never created, changed or removed here)
+  if (!(await d.onOriginDevelop(r.commit as string).catch(() => false))) stop("COMMIT_NOT_ON_ORIGIN_DEVELOP");
   // the owner's approval as committed at the receipt's commit (the same reader and checks as the worker's cycle)
   const at = await readApprovalAt(r.commit as string, d.fileAt, started);
   if ("code" in at) {
@@ -164,7 +191,33 @@ async function checkReceipt(r: Receipt, approvalId: string, runDir: string, d: D
   if (at.approvalId !== approvalId) stop("APPROVAL_MISMATCH");
   if (at.planId !== r.plan_id) stop("PLAN_MISMATCH");
   if (at.packetSha256 !== r.packet_sha256) stop("PACKET_MISMATCH");
+  await checkClaim(stateDir, approvalId, started, finished);
   return { approval_id: at.approvalId, plan_id: at.planId, commit: r.commit as string };
+}
+
+/** A claim is made right after the run's start time is taken and before the entry starts (cycle.ts): it lies in the run. */
+const CLAIM_SLACK_MS = 5 * 60_000;
+/** The worker's claim marker <state>/claims/<id>.used: a regular file of ours, no link, naming this approval, made during this run. */
+async function checkClaim(stateDir: string, approvalId: string, started: number, finished: number): Promise<void> {
+  let h;
+  try {
+    h = await open(join(stateDir, "claims", `${approvalId}.used`), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (error) {
+    return stop((error as { code?: string }).code === "ENOENT" ? "CLAIM_MISSING" : "CLAIM_MISMATCH");
+  }
+  let c: { approval_id?: unknown; claimed_at?: unknown };
+  try {
+    const st = await h.stat();
+    if (!st.isFile() || st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0 || st.size > 4096) stop("CLAIM_MISMATCH");
+    c = JSON.parse((await h.readFile()).toString("utf8")) as typeof c;
+  } catch (error) {
+    if (error instanceof ReviewStop) throw error;
+    return stop("CLAIM_MISMATCH");
+  } finally {
+    await h.close();
+  }
+  const at = typeof c?.claimed_at === "string" ? Date.parse(c.claimed_at) : NaN;
+  if (c?.approval_id !== approvalId || !Number.isFinite(at) || at < started - CLAIM_SLACK_MS || at > finished) stop("CLAIM_MISMATCH");
 }
 
 /**
@@ -172,11 +225,14 @@ async function checkReceipt(r: Receipt, approvalId: string, runDir: string, d: D
  * receipt, PC 2 + SP 4, no link), or — on a re-send — the one sealed earlier, verified again and required to come from
  * exactly these receipt bytes (never re-packed, never regenerated).
  */
-async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes: Buffer; bundlesDir: string; expected: ExpectedRecord; now?: () => number }): Promise<{ sealed: SealedBundle; how: "sealed" | "existing" }> {
+async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes: Buffer; bundlesDir: string; expected: ExpectedRecord; resend: boolean; now?: () => number }): Promise<{ sealed: SealedBundle; how: "sealed" | "existing" }> {
   const dir = join(o.bundlesDir, o.expected.approval_id);
   let sealed: SealedBundle;
   let how: "sealed" | "existing";
-  if (await lstat(dir).then(() => true, () => false)) {
+  const exists = await lstat(dir).then(() => true, () => false);
+  // a re-send never packs: the sealed bundle must be there, and not an empty directory (PR #310 review L2)
+  if (o.resend && (!exists || (await readdir(dir).then((n) => n.length === 0, () => true)))) stop("SEALED_BUNDLE_MISSING");
+  if (exists) {
     const v = await verifyBundleDir(dir, { expected: o.expected }).catch(asReviewStop);
     sealed = { dir, bundle_id: v.manifest.bundle_id, bundle_sha256: v.bundle_sha256, manifest: v.manifest };
     how = "existing";
@@ -194,6 +250,7 @@ async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes:
 export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDeps): Promise<DeliverReviewResult> {
   const idCheck = checkRealApprovalId(o.approvalId);
   if (idCheck !== "ok") stop(idCheck);
+  if (o.signal?.aborted) stop("REVIEW_ABORTED");
   if (o.jailIdle) {
     const idle = await o.jailIdle().catch(() => null);
     if (idle === null) stop("JAIL_STATE_UNKNOWN");
@@ -210,7 +267,8 @@ export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDep
   if (lock === undefined) return stop("REVIEW_LOCKED");
   try {
     const receiptPath = await findReceipt(runs, o.approvalId);
-    if (o.receiptPath !== undefined && o.receiptPath !== receiptPath) stop("RECEIPT_AMBIGUOUS");
+    // PR #310 review L1: the cycle's report names the receipt as written; compare real paths
+    if (o.receiptPath !== undefined && (await realpath(o.receiptPath).catch(() => null)) !== receiptPath) stop("RECEIPT_AMBIGUOUS");
     const runDir = join(runs, basename(receiptPath, ".receipt.json"));
     const receiptBytes = await readReceipt(receiptPath);
     let r: Receipt;
@@ -219,9 +277,11 @@ export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDep
     } catch {
       return stop("RECEIPT_INVALID");
     }
-    const expected = await checkReceipt(r, o.approvalId, runDir, d);
-    const { sealed, how } = await sealedFor({ runDir, receiptPath, receiptBytes, bundlesDir: join(runs, BUNDLES), expected, ...(o.now ? { now: o.now } : {}) });
-    const h = await handOffToLocalInbox({ sealed, stateDir: o.stateDir, inboxDir: o.inboxDir ?? join(runs, REVIEW_INBOX), expected, ...(o.now ? { now: o.now } : {}) }).catch(asReviewStop);
+    const expected = await checkReceipt(r, o.approvalId, runDir, o.stateDir, d);
+    if (o.signal?.aborted) stop("REVIEW_ABORTED");
+    const { sealed, how } = await sealedFor({ runDir, receiptPath, receiptBytes, bundlesDir: join(runs, BUNDLES), expected, resend: o.resend === true, ...(o.now ? { now: o.now } : {}) });
+    if (o.signal?.aborted) stop("REVIEW_ABORTED");
+    const h = await handOffToLocalInbox({ sealed, stateDir: o.stateDir, inboxDir: o.inboxDir ?? join(runs, REVIEW_INBOX), expected, ...(o.now ? { now: o.now } : {}), ...(o.signal ? { signal: o.signal } : {}) }).catch(asReviewStop);
     const base = { approval_id: o.approvalId, bundle_sha256: sealed.bundle_sha256, bundle: how, sent: h.delivery.sent };
     if (h.delivery.state !== "delivered" || !h.previews) return { ...base, status: "not_delivered", code: h.delivery.code, previews: null, previews_dir: null };
     const duplicate = !h.delivery.sent || h.delivery.ack?.status === "duplicate";
@@ -231,15 +291,17 @@ export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDep
   }
 }
 
-/** The review summary the worker adds to its one JSON line (codes only). */
+/** The review summary (codes only). The worker writes it to stderr and its audit file, never to the run's stdout line. */
 export type ReviewSummary = { status: DeliverReviewResult["status"] | "refused" | "stopped"; code: string | null; bundle_sha256?: string };
 
 /**
  * The automatic path, called by the worker CLI after its cycle: only a "succeeded" report with a receipt is delivered;
  * anything else returns null and touches nothing. Never throws: a refusal is a summary line, the run's result stands.
  */
-export async function deliverAfterRun(report: CycleReport, o: Omit<DeliverReviewOptions, "approvalId" | "receiptPath" | "jailIdle">, d: DeliverReviewDeps): Promise<ReviewSummary | null> {
+export async function deliverAfterRun(report: CycleReport, o: Omit<DeliverReviewOptions, "approvalId" | "receiptPath" | "jailIdle" | "resend">, d: DeliverReviewDeps): Promise<ReviewSummary | null> {
   if (report.status !== "succeeded" || !report.receipt || !report.approval_id) return null;
+  // a stop was requested: no hand-off at all (the sealed-or-not run is recovered later by the root wrapper's re-send)
+  if (o.signal?.aborted) return { status: "refused", code: "REVIEW_ABORTED" };
   try {
     const r = await deliverReview({ ...o, approvalId: report.approval_id, receiptPath: report.receipt }, d);
     return { status: r.status, code: r.code, bundle_sha256: r.bundle_sha256 };
