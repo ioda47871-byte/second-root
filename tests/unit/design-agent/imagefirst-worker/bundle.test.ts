@@ -65,6 +65,7 @@ function makeRun(o: { composites?: boolean; editReceipt?: (r: WorkerReceipt) => 
     interrupted: false,
     cli_exit: 0,
     cli_timed_out: false,
+    interrupted: false,
     shop: "hoshigama",
     direction: "d3",
     approval_id: ID,
