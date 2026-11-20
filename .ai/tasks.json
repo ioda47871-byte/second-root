@@ -10544,6 +10544,212 @@
       "blocked_reason": "Owner approved 10→4 for draft demo creation only (PR comment 6908926087). Post-R4 fix HEAD still needs full CI + independent Fresh Review PASS. Explicit merge authorization not included; hosted migration/publication/outreach remain unapproved.",
       "branch": "feature/dev-263k-optional-real-shop-facts",
       "note": "R4 PASS on 634438b6, CI run 43815976366 all jobs passed. L1 privacy in review log and L2 optional-fields notice condition+tests fixed after R4; recorded in .ai/reviews/DEV-263k.md. Need final-head CI and review; keep feature unmerged."
+    },
+    {
+      "id": "DEV-312a",
+      "title": "Issue #312: 5万円デモ採用+顧客所有CMS/ホスティングの比較・最小納品仕様を確定",
+      "status": "ready",
+      "priority": "P2",
+      "depends_on": [],
+      "purpose": "現在のP0営業MVPとIMAGE_FIRST開発を止めず、将来の5万円買い切り商品化に必要なCMS・顧客名義公開構成・法務/価格不整合の調査を文書化する。優先するのは既存の高品質デモと初契約の獲得。Issue #312 / PR #313を参照。",
+      "acceptance_criteria": [
+        "Brot Yanagi商品CMSの実装・ライセンスを可能なら読み取り比較し、アクセスできなければ未確認と明記",
+        "microCMS Hobby・Sanity Free・既存Supabase CMS・静的データ方式を顧客の操作性、権限、料金上限、画像、移管、障害・サービス変更・解約条件で比較",
+        "顧客名義のCMS/ホスティング/ドメインを基本とし、SecretをSecond Rootが保管し続けない納品・アクセス権剥奪設計を記録",
+        "デモ採用5万円は現時点で商品方針。公開Pricing/Faqの税別5万円・CMSなし・初年度管理込みとの不整合を列挙し、本番文面を勝手に変更しない",
+        "既存の進行中P0営業MVP・DEV-302/IMAGE_FIRSTのCI、レビュー、承認ゲートを変更しない"
+      ],
+      "required_tests": [
+        "設計の文書レビュー",
+        "追加変更がある場合: lint / typecheck / check:secrets / docs関連の既存CI",
+        "独立Fresh Review（必要なPR）"
+      ],
+      "allowed_scope": [
+        "docs/operations/customer-owned-cms-handoff-plan.md",
+        "docs/operations/以下の新規検証文書",
+        ".ai/tasks.json（本タスク追加・状態更新に限る）",
+        ".ai/reviews/DEV-312a.md"
+      ],
+      "human_approval_triggers": [
+        "公開価格・契約条件・税込税別・実績条件の変更",
+        "有料サービス契約、外部アカウント、Production・DNS等の操作",
+        "既存MVPや主要開発計画を変更する場合"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "forbidden_scope": [
+        "実店舗への営業送信・自動DM/メール送信・公開前の営業対象データ利用",
+        "顧客アカウント作成・決済・外部規約同意・本番DNS/Production/Secrets操作",
+        "既存営業MVPのHard Rules・DNC・品質審査閾値・成功例原本の変更",
+        "main直接push・開発中のDEV-302 / ISSUE #263ブランチへの介入"
+      ]
+    },
+    {
+      "id": "DEV-312b",
+      "title": "Issue #312: 独創的デザインを保つメニューデータ契約/adapterのオフラインPoC",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-312a"
+      ],
+      "purpose": "架空パン屋45品を使い、デモ生成の店固有デザインを保持しつつ商品・価格・写真・カテゴリー・営業時間・お知らせを外部データから反映できる共通層を検証。テンプレート強制は禁止。",
+      "acceptance_criteria": [
+        "架空の45品データだけで商品追加・価格編集・画像差替・表示順・非公開・売切表示（手動）をデータ契約として表現できる",
+        "営業時間・定休日・臨時休業・お知らせも独立編集できる",
+        "PC 1440・SP 390で商品増減や日本語長文による崩れなし。現在のブランド固有レイアウトを失わない",
+        "デモの未確認メニュー・価格・写真を本番データへ無断流用せず、顧客が確認した正式情報のみ採用する",
+        "秘密情報なし、実店舗データなし、既存システム未接続・Production影響なし"
+      ],
+      "required_tests": [
+        "単体: メニューschema・変換・不正データ拒否・表示",
+        "PC1440/SP390のローカル画面確認",
+        "lint / typecheck / check:secrets / 関連CI",
+        "独立Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/ 内の独立したメニューデータPoC",
+        "tests/unit/ 以下の新規テスト",
+        "docs/operations/customer-owned-cms-handoff-plan.md",
+        ".ai/tasks.json / .ai/reviews/（該当タスクのみ）"
+      ],
+      "human_approval_triggers": [
+        "顧客の実データ利用や画像権利の変更",
+        "既存デモ生成パイプラインの本番接続",
+        "本番/有料外部サービスへの接続"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "forbidden_scope": [
+        "実店舗への営業送信・自動DM/メール送信・公開前の営業対象データ利用",
+        "顧客アカウント作成・決済・外部規約同意・本番DNS/Production/Secrets操作",
+        "既存営業MVPのHard Rules・DNC・品質審査閾値・成功例原本の変更",
+        "main直接push・開発中のDEV-302 / ISSUE #263ブランチへの介入"
+      ]
+    },
+    {
+      "id": "DEV-312c",
+      "title": "Issue #312: 顧客自身のメニュー編集→公開反映のフェイルセーフ検証",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-312b"
+      ],
+      "purpose": "選定した外部CMSから顧客の操作でWebサイトが自動更新され、Second Rootの承認・更新代行が不要であることを架空店舗環境で検証する。",
+      "acceptance_criteria": [
+        "顧客権限で商品追加・価格/写真変更・非公開・営業時間更新・臨時休業・お知らせを編集/公開できる",
+        "公開イベントから静的サイトの再ビルドとサイト反映が起き、反映待ち・失敗を顧客が認識できる",
+        "Webhook失敗、ビルド失敗、連続更新、Free枠超過でも最後の正常サイトを維持し、秘密URL・CMSキーをログ/公開JS/リポジトリに漏らさない",
+        "CMS所有アカウントとWeb公開アカウントは顧客側に置き、Second Rootの操作なしで更新できることを実証",
+        "実測した初期設定工数・1回の更新時間・更新遅延・無料枠/利用コスト・失敗リスクを記録"
+      ],
+      "required_tests": [
+        "オフラインWebhook/ビルドスタブによる連携・失敗・再試行テスト",
+        "秘密情報漏えい・認可・反映結果の検査",
+        "PC1440/SP390検証",
+        "lint / typecheck / check:secrets / 関連CI",
+        "独立Fresh Review"
+      ],
+      "allowed_scope": [
+        "架空店舗CMS連携PoC・独立検証用スクリプト",
+        "tests/unit/ tests/integration/ の新規PoCテスト",
+        "docs/operations/ 以下のPoC記録",
+        ".ai/tasks.json / .ai/reviews/（該当タスクのみ）"
+      ],
+      "human_approval_triggers": [
+        "実CMS/Cloudflare上の新規アカウント作成・規約同意・外部API実行",
+        "有料プラン導入・Secretの設定",
+        "Staging/Productionへの接続やDNS操作"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "forbidden_scope": [
+        "実店舗への営業送信・自動DM/メール送信・公開前の営業対象データ利用",
+        "顧客アカウント作成・決済・外部規約同意・本番DNS/Production/Secrets操作",
+        "既存営業MVPのHard Rules・DNC・品質審査閾値・成功例原本の変更",
+        "main直接push・開発中のDEV-302 / ISSUE #263ブランチへの介入"
+      ]
+    },
+    {
+      "id": "DEV-312d",
+      "title": "Issue #312: 5万円サイトの顧客名義納品・権限引き渡しE2E",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-312c"
+      ],
+      "purpose": "架空顧客で「完成済みデモの採用→正式なデータへの差替→CMS接続→公開→Second Rootの権限削除→店舗自身の継続利用」を安全に検証する。",
+      "acceptance_criteria": [
+        "デモの独自デザインのまま本番用の事実・画像に安全に差し替えできる",
+        "顧客へCMS・hosting・domain・repoの所有/利用権、操作ガイド、バックアップ/移管手順を明記",
+        "Second Root側の権限削除後も、顧客権限だけでメニューを更新し公開し続けられる",
+        "顧客名義の費用、無料枠超過、サービス終了、移管、障害対応の契約責任分界点を明記",
+        "受注〜納品のSecond Root担当工数を測り5万円で採算可能か判定する"
+      ],
+      "required_tests": [
+        "架空店舗でのE2E（秘密情報と実顧客は使わない）",
+        "Owner/CMS認可・更新・再デプロイの回帰テスト",
+        "納品手順・権限引き渡しのレビュー",
+        "CI / 独立Fresh Review"
+      ],
+      "allowed_scope": [
+        "架空案件の納品PoCと受け入れテスト",
+        "docs/operations/ 以下の新規納品手順書",
+        ".ai/tasks.json / .ai/reviews/（該当タスクのみ）"
+      ],
+      "human_approval_triggers": [
+        "顧客/本番アカウントの登録、顧客への連絡・請求",
+        "顧客DB/DNS/Productionでの変更",
+        "公開環境の正式採用・運用責任の確定"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "forbidden_scope": [
+        "実店舗への営業送信・自動DM/メール送信・公開前の営業対象データ利用",
+        "顧客アカウント作成・決済・外部規約同意・本番DNS/Production/Secrets操作",
+        "既存営業MVPのHard Rules・DNC・品質審査閾値・成功例原本の変更",
+        "main直接push・開発中のDEV-302 / ISSUE #263ブランチへの介入"
+      ]
+    },
+    {
+      "id": "DEV-312e",
+      "title": "Issue #312: 販売条件・Pricing/FAQ・営業→納品導線の公開前整合",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-312d"
+      ],
+      "purpose": "PoCで合格した顧客所有CMS付き5万円デモ採用商品を商用販売可能な表記に整合。現行50,000円税別CMSなし/更新プラン198,000円との矛盾を解消する提案を作成する。承認前には公開変更しない。",
+      "acceptance_criteria": [
+        "5万円の税込/税別をオーナーに提示し明示決定を得る",
+        "基本料金に含む更新機能、初期データ登録件数、修正回数、デモ採用条件、追加料金、外部サービス費用と制限、30日保証、実績掲載条件を明記",
+        "既存Pricing/Faq/契約書案/営業文の整合を検証し、変更案を別PRで提示する",
+        "営業時のデモを店舗公式サイトと誤認させない・未確認価格を本番公開しない・店舗承認を取る",
+        "現行P0営業MVP/画像生成の評価・営業承認・DNCを変更せず、新商品化の前に独立レビューと承認を得る"
+      ],
+      "required_tests": [
+        "Pricing/FAQ/契約文言の整合チェック",
+        "サイト変更時の既存E2E・lint・typecheck・build・check:secrets",
+        "独立Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/operations/以下の販売契約・運用提案",
+        "components/home/Pricing.tsx・Faq.tsx（別PR、明示承認後のみ）",
+        "既存CI・E2Eの追加テスト",
+        ".ai/tasks.json / .ai/reviews/（該当タスクのみ）"
+      ],
+      "human_approval_triggers": [
+        "価格・税込税別・法的条項・契約と公開表記の最終決定",
+        "develop→main、本番公開、実店舗送信",
+        "新規課金/CRMシステム導入"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "forbidden_scope": [
+        "実店舗への営業送信・自動DM/メール送信・公開前の営業対象データ利用",
+        "顧客アカウント作成・決済・外部規約同意・本番DNS/Production/Secrets操作",
+        "既存営業MVPのHard Rules・DNC・品質審査閾値・成功例原本の変更",
+        "main直接push・開発中のDEV-302 / ISSUE #263ブランチへの介入"
+      ]
     }
   ]
 }
