@@ -2160,7 +2160,9 @@ describe("isolation of the PoC's output", () => {
     expect(files.filter((f) => f.startsWith("lib/design-agent/image-first/"))).toEqual(imageFirst);
     // Issue #302 P2 (owner instruction 2026-11-20, exact path): the private result bundle reuses only the PNG check
     // (png.ts); never the image call, the worker or the entry (tests/unit/design-agent/imagefirst-worker/bundle.test.ts)
-    const resultBundle = ["lib/design-agent/imagefirst-worker/bundle.ts"];
+    // Issue #302 P3 (owner instruction 2026-11-20, exact path): the review previews re-check their own output with the
+    // same PNG check (png.ts); never the image call (tests/unit/design-agent/imagefirst-worker/review-handoff.test.ts)
+    const resultBundle = ["lib/design-agent/imagefirst-worker/bundle.ts", "lib/design-agent/imagefirst-worker/preview.ts"];
     expect(files.filter((f) => f.startsWith("lib/design-agent/imagefirst-worker/"))).toEqual(resultBundle);
     // Issue #293 P3 (preparation, exact path): the owner-run, approval-gated IMAGE_FIRST entry reuses only the one-run batch
     // call (image-once.ts); kept out of the worker and the app (tests/unit/design-agent/phase2f-live/isolation.test.ts)

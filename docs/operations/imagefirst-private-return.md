@@ -93,6 +93,11 @@
 4. いずれの場合も、実際の送信を有効にする前に、受け手の検証（`verifyBundleDir` と期待する記録）を本物の受け手に入れ、偽の転送の
    テスト（このファイルの §2）と同じ fail-closed を確かめる。
 
+> **Issue #302 P3 の追記（2026-11-20）**: 上の表の最後の行（Remote Control）について、新しいフォルダ共有は要らないことが分かった。
+> jail の Claude は worker と同じ `sr-designgen` として動き、自分のホームが見えるので、`~/sr-runs/review-inbox/`（0700）に置いた bundle と
+> プレビューを、権限を変えずに読める。ローカル inbox・プレビュー・ダミー PoC と、オーナーの確認手順は
+> [`imagefirst-review-handoff.md`](imagefirst-review-handoff.md)。実機での確認はまだ（未確認）。ChatGPT 側は未達のまま。
+
 ## 4. 使い方（いまはオフラインのテストだけ）
 
 ```

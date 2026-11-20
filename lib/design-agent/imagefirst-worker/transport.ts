@@ -153,8 +153,9 @@ export async function deliverBundle(o: DeliverOptions): Promise<DeliverResult> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// FAKE receiver and transport (tests only; stands in for a private endpoint that does not exist yet — see
-// docs/operations/imagefirst-private-return.md).
+// FAKE receiver and transport (stands in for a remote private endpoint that does not exist yet — see
+// docs/operations/imagefirst-private-return.md). Issue #302 P3: the receiver is also the far end of local-inbox.ts,
+// where the same-machine review inbox IS the endpoint (only filesystem work; its retrieval grant is unused there).
 
 export type ReceiverCode = "PAYLOAD_INVALID" | "BUNDLE_ID_CONFLICT" | "NOT_EXPECTED" | "GRANT_INVALID" | "GRANT_EXPIRED" | "INBOX_UNSAFE";
 export class ReceiverStop extends Error {
