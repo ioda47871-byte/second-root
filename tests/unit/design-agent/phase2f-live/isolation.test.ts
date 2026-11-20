@@ -21,7 +21,14 @@ const DIRECTION_CLI = "scripts/design-artifact/phase2f-direction.ts";
 const TM_STEPS_CLI = "scripts/design-artifact/three-methods-steps.ts";
 /** Issue #293 P3 (preparation; owner-run only after a per-run approval packet): one IMAGE_FIRST batch of section pictures. */
 const FULL_PAGE_CLI = "scripts/design-artifact/image-first-generate.ts";
-const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI];
+/**
+ * Issue #298 P1 (owner-approved scope): the WSL worker adapter that hands ONE owner-approved IMAGE_FIRST job (ほし窯 d3)
+ * to FULL_PAGE_CLI. It reads the packet, the ledger and the pins (full-page-call, ledger, steps types) and starts the
+ * entry as a process; it never takes the image call, the sandbox or Codex itself (checked below).
+ */
+const WORKER_LIB = "lib/design-agent/imagefirst-worker/cycle.ts";
+const WORKER_CLI = "scripts/sales-design-worker/imagefirst-worker.ts";
+const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -45,6 +52,8 @@ const ALLOWED: Record<string, string[]> = {
   // Issue #293 P3: one IMAGE_FIRST batch under one approval; the batch call is passed in by its CLI
   [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./ledger", "./steps"],
   [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
+  [WORKER_LIB]: ["node:crypto", "node:fs", "node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state"],
+  [WORKER_CLI]: ["node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
   [CLI_SHARED]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/codex`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, `${L}/protected-paths`, `${L}/sandbox`, `${L}/worker/env`],
   // DEV-124: node:os, playwright and the reference sheet make the v2 reference images before the approval is used
   // DEV-150: node:crypto for the SHA-256 of the tm0 brief that --print-pin shows
@@ -129,10 +138,15 @@ describe("isolation of the Phase 2f-2 steps", () => {
   });
 
   it("is imported by nobody else (the CLIs are entry points; the shared helper only by the real-call CLIs)", () => {
-    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI].sort());
-    expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI, FULL_PAGE_CLI].sort());
-    // Issue #293 P3: nothing starts the IMAGE_FIRST entry (run by hand by the owner only)
+    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI].sort());
+    expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI, FULL_PAGE_CLI, WORKER_CLI].sort());
+    // Issue #293 P3: nothing starts the IMAGE_FIRST entry (run by hand by the owner only). Issue #298 P1: except the worker
+    // adapter, which names it once (GENERATE_ENTRY) and is itself started by hand only (nothing starts the adapter)
     expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*image-first-generate", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${FULL_PAGE_CLI}`])).toEqual([]);
+    expect(git(["grep", "--untracked", "-lF", "image-first-generate", "--", "lib", "app", "components", "scripts", ".github", "package.json", `:!${FULL_PAGE_CLI}`])).toEqual([WORKER_LIB]);
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b[^\\n]*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([]);
+    // the adapter never takes the image call, the sandbox or Codex: it starts the entry (its one process) and reads files
+    for (const file of [WORKER_LIB, WORKER_CLI]) expect(readFileSync(resolve(REPO, file), "utf8"), file).not.toMatch(/generateImage|image-once|prepareCodexSandbox|\/sandbox["']|runCodexJson|\/codex["']|\bfetch\(|node:https?|child_process|anthropic|openai/);
     // DEV-150: no package script, workflow, unit file or other script starts the new entries (run by hand only)
     expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*(phase2f-direction|three-methods-steps)", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"])).toEqual([]);
   });
