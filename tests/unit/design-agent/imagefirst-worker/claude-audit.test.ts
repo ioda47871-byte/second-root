@@ -541,8 +541,17 @@ describe("Issue #302: the dummy id, consistent with the review delivery", () => 
 describe("Issue #302: the CLI as a process (fakes only through the test entry under tests/)", () => {
   const CLI = join(REPO, "scripts/sales-design-worker/imagefirst-audit.ts");
   const ENTRY = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/audit-cli-entry.ts");
+  /**
+   * PR #311 fourth review L-1: every CLI process of these tests gets a PATH whose FIRST `claude` and `systemctl` are stubs
+   * that only log and exit, so no test can ever start the host's real claude (the production entry resolves "claude"
+   * through PATH; it reaches systemctl by its absolute path). Each spawn asserts afterwards that no stub was started.
+   */
+  const stubDir = tmp("sr-audit-stub-bin-");
+  const stubLog = join(stubDir, "stub.log");
+  for (const name of ["claude", "systemctl"]) writeFileSync(join(stubDir, name), `#!/bin/sh\necho "${name} $*" >> "${stubLog}"\nexit 97\n`, { mode: 0o755 });
   const spawnOut = (argv: string[], env: Record<string, string>) => {
-    const r = spawnSync(process.execPath, ["--import", "tsx", ...argv], { cwd: REPO, encoding: "utf8", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", ...env } as unknown as NodeJS.ProcessEnv, timeout: 100_000 });
+    const r = spawnSync(process.execPath, ["--import", "tsx", ...argv], { cwd: REPO, encoding: "utf8", env: { ...env, PATH: `${stubDir}:${process.env.PATH ?? "/usr/bin:/bin"}` } as unknown as NodeJS.ProcessEnv, timeout: 100_000 });
+    expect(existsSync(stubLog), "a PATH claude / systemctl was started").toBe(false);
     const lines = r.stdout.trim().split("\n").filter(Boolean);
     return { status: r.status, lines, out: JSON.parse(lines[lines.length - 1] ?? "null") as Record<string, unknown> | null };
   };
@@ -588,13 +597,10 @@ describe("Issue #302: the CLI as a process (fakes only through the test entry un
 
   it("the production entry cannot be pointed at a fake claude or systemctl by the environment; the dummy id needs --dummy", () => {
     const h = homeWith();
-    // the removed test-mode variables have no effect: the real /usr/bin/systemctl (absent, or no such unit here) cannot
-    // say the jail is idle → refused before anything; the fake claude is never started
-    // whatever the host's real systemctl answers (any exit code), neither fake is ever started by the production entry
-    for (const args of [[h.d.id, "--dry-run"], [h.d.id]]) {
-      const off = h.prod(args, { SR_IMAGEFIRST_AUDIT_TEST_MODE: "1", SR_IMAGEFIRST_AUDIT_CLAUDE_BIN: h.bin, SR_IMAGEFIRST_AUDIT_SYSTEMCTL: h.sys, CLAUDE_BIN: h.bin, SYSTEMCTL: h.sys });
-      expect(off.out).not.toBeNull();
-    }
+    // whatever the host's real /usr/bin/systemctl answers (any exit code), the production entry never starts either fake
+    // (a dry run only: it starts no claude at all, so no test can reach a real one; the PATH stubs would also catch it)
+    const off = h.prod([h.d.id, "--dry-run"], { SR_IMAGEFIRST_AUDIT_TEST_MODE: "1", SR_IMAGEFIRST_AUDIT_CLAUDE_BIN: h.bin, SR_IMAGEFIRST_AUDIT_SYSTEMCTL: h.sys, CLAUDE_BIN: h.bin, SYSTEMCTL: h.sys });
+    expect(off.out).not.toBeNull();
     expect(existsSync(h.sysLog)).toBe(false);
     expect(readLog(h.log)).toEqual([]);
     // the test entry does use them (so the logs above would have shown a start)

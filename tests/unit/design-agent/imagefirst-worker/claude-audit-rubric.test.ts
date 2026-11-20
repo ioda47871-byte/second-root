@@ -166,8 +166,18 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     expect(cli).toMatch(/childEnvironment\(process\.env\)/);
     expect(cli).toMatch(/env: process\.env, jailIdle/);
     expect(cli).not.toMatch(/\bprocess\.argv\b(?!\.slice\(2\), \{ claudeBin: "claude", systemctl: SYSTEMCTL \})/);
-    // the test entry reads no environment at all
-    expect(code("tests/unit/design-agent/imagefirst-worker/fixtures/audit-cli-entry.ts")).not.toMatch(/process\.env/);
+    // PR #311 fourth review L-1: no audit test names the bare `claude` as a binary to run (the core tests pass a fake's
+    // absolute path; the CLI tests put logging stubs first on PATH for every spawn and assert they never ran)
+    // (this file spawns only git; it names "claude" only inside the expectations above)
+    for (const t of ["claude-audit.test.ts", "claude-audit-support.ts", "fixtures/audit-cli-entry.ts"]) {
+      expect(code(`tests/unit/design-agent/imagefirst-worker/${t}`), t).not.toMatch(/claudeBin\s*:\s*["'`]claude["'`]|(spawn|spawnSync|execFile|execFileSync|runBounded)\s*\(\s*["'`]claude["'`]/);
+    }
+    // the test entry reads no environment at all; neither file reaches the environment any other way (PR #311 fourth review N-1)
+    const entry = code("tests/unit/design-agent/imagefirst-worker/fixtures/audit-cli-entry.ts");
+    expect(entry).not.toMatch(/process\.env/);
+    for (const [name, src] of [["cli", cli], ["entry", entry]] as const) {
+      expect(src, name).not.toMatch(/process\s*\[|process\s*\?\.|\{[^}]*\benv\b[^}]*\}\s*=\s*process\b|=\s*process\s*;|globalThis|from\s+["'](node:)?process["']|require\s*\(\s*["'](node:)?process["']\s*\)|import\s*\(\s*["'](node:)?process["']/);
+    }
   });
 
   it("the dummy record matches the review PoC's", () => {
