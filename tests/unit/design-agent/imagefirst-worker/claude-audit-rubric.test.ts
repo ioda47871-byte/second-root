@@ -161,7 +161,10 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     expect(cli).not.toMatch(/SR_IMAGEFIRST_AUDIT|_CLAUDE_BIN|_SYSTEMCTL|TEST_MODE/);
     expect(cli.match(/auditCli\(process\.argv\.slice\(2\), \{[^}]*\}\)/g)).toEqual(['auditCli(process.argv.slice(2), { claudeBin: "claude", systemctl: SYSTEMCTL })']);
     // PR #311 third review L3: the whole file reads the environment only for XDG_STATE_HOME, plus the whole environment
-    // handed to childEnvironment (the allowlist) and to runClaudeAudit (scrubbed by claude-cli.ts) — a hook under any name fails
+    // handed to childEnvironment (the allowlist) and to runClaudeAudit (scrubbed by claude-cli.ts). These are TEXT checks: a hook
+    // spelled `process.env.X`, `process[...]`, a process import or require fails, but indirect forms (e.g. Reflect.get on process,
+    // a type cast, or a binary name held in a constant) are not seen; the runtime guard for the last is the stub PATH that
+    // claude-audit.test.ts gives every CLI spawn (PR #311 fifth review N-1)
     expect(cli.match(/process\.env\b(\s*\.\s*\w+|\s*\[[^\]]*\])?/g)).toEqual(["process.env.XDG_STATE_HOME", "process.env", "process.env"]);
     expect(cli).toMatch(/childEnvironment\(process\.env\)/);
     expect(cli).toMatch(/env: process\.env, jailIdle/);

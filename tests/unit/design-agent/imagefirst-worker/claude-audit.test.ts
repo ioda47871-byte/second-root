@@ -551,7 +551,10 @@ describe("Issue #302: the CLI as a process (fakes only through the test entry un
   for (const name of ["claude", "systemctl"]) writeFileSync(join(stubDir, name), `#!/bin/sh\necho "${name} $*" >> "${stubLog}"\nexit 97\n`, { mode: 0o755 });
   const spawnOut = (argv: string[], env: Record<string, string>) => {
     const r = spawnSync(process.execPath, ["--import", "tsx", ...argv], { cwd: REPO, encoding: "utf8", env: { ...env, PATH: `${stubDir}:${process.env.PATH ?? "/usr/bin:/bin"}` } as unknown as NodeJS.ProcessEnv, timeout: 100_000 });
-    expect(existsSync(stubLog), "a PATH claude / systemctl was started").toBe(false);
+    // read and clear per spawn, so one failure does not make every later spawn fail too (PR #311 fifth review N-2)
+    const started = existsSync(stubLog);
+    rmSync(stubLog, { force: true });
+    expect(started, "a PATH claude / systemctl was started").toBe(false);
     const lines = r.stdout.trim().split("\n").filter(Boolean);
     return { status: r.status, lines, out: JSON.parse(lines[lines.length - 1] ?? "null") as Record<string, unknown> | null };
   };
