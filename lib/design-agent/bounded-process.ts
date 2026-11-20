@@ -148,11 +148,16 @@ export function runBounded(
     if (pid !== undefined) {
       liveGroups.add(pid);
     }
-    child.stdout?.on("data", (chunk: Buffer) => {
+    /*
+     * Decoded by the streams (a StringDecoder), never chunk by chunk: a multi-byte UTF-8 character split across two
+     * pipe reads would otherwise become two U+FFFD (Issue #298: a Japanese packet read with `git show` under load).
+     */
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (text: string) => {
       if (stdout.length >= MAX_CAPTURE) {
         return;
       }
-      const text = chunk.toString("utf8");
       stdout += text;
       if (options.onStdout !== undefined) {
         try {
@@ -165,9 +170,9 @@ export function runBounded(
         }
       }
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
+    child.stderr?.on("data", (text: string) => {
       if (stderr.length < MAX_CAPTURE) {
-        stderr += chunk.toString("utf8");
+        stderr += text;
       }
     });
     child.on("error", (error) => {
