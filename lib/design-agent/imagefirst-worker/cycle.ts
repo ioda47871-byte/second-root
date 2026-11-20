@@ -49,6 +49,22 @@ export const IMAGEFIRST_ALLOWLIST = {
   images: { pc: 2, sp: 4 },
 } as const;
 const APPROVAL_ID = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
+/**
+ * The date part reserved for the dummy review PoC (review-poc.ts DUMMY_ID, hoshigama-imagefirst-d3-00000000-00). PR #308
+ * review L4: enforced, not a convention: the worker, its claim, the automatic start's grant and the review delivery
+ * refuse it, so the dummy can never be a real run's approval (and a real run's bundle never collides with the dummy's).
+ */
+export const RESERVED_APPROVAL_DATE = "00000000";
+export type ApprovalIdCheck = "ok" | "APPROVAL_ID_INVALID" | "APPROVAL_ID_RESERVED";
+/** A ほし窯 d3 approval id a REAL run may use: the shape, never the reserved dummy date, and a real calendar date (UTC). */
+export function checkRealApprovalId(id: string): ApprovalIdCheck {
+  if (!APPROVAL_ID.test(id)) return "APPROVAL_ID_INVALID";
+  const date = id.split("-")[3]!;
+  if (date === RESERVED_APPROVAL_DATE) return "APPROVAL_ID_RESERVED";
+  const [y, m, d] = [Number(date.slice(0, 4)), Number(date.slice(4, 6)), Number(date.slice(6, 8))];
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return y >= 2000 && t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? "ok" : "APPROVAL_ID_INVALID";
+}
 /** Fail closed before claiming: malformed values must never spend a valid one-use approval. */
 const PLAN_ID = /^hoshigama-imagefirst-p3-\d{8}$/;
 const STOP_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -134,7 +150,7 @@ export const GRANT_ENV = "SR_IMAGEFIRST_EXPECT_APPROVAL_ID";
 export function grantFromEnv(env: NodeJS.ProcessEnv): string | null | undefined {
   const v = env[GRANT_ENV];
   if (v === undefined) return undefined;
-  return APPROVAL_ID.test(v) ? v : null;
+  return checkRealApprovalId(v) === "ok" ? v : null;
 }
 export type CycleDeps = {
   commit: () => Promise<CommitState>;
@@ -202,7 +218,7 @@ const ours = (info: { isDirectory(): boolean; uid: number; mode: number }) => in
 const DIR_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 /** A name inside an open directory, reached through that handle (Linux /proc: the same object as openat(fd, name)). */
 const under = (dir: { fd: number }, name: string) => `/proc/self/fd/${dir.fd}/${name}`;
-type ClaimResult = "claimed" | "APPROVAL_ALREADY_CLAIMED" | "CLAIMS_DIR_UNSAFE" | "CLAIM_FAILED";
+type ClaimResult = "claimed" | "APPROVAL_ALREADY_CLAIMED" | "CLAIMS_DIR_UNSAFE" | "CLAIM_FAILED" | "APPROVAL_ID_INVALID" | "APPROVAL_ID_RESERVED";
 
 /**
  * One-use claim (ported: body-image-approvals.ts claimBodyImageApproval): "claimed" only when this call created the
@@ -212,6 +228,9 @@ type ClaimResult = "claimed" | "APPROVAL_ALREADY_CLAIMED" | "CLAIMS_DIR_UNSAFE" 
  * Without /proc (not Linux) nothing is created: CLAIM_FAILED, never "claimed".
  */
 export async function claimApproval(stateDir: string, approvalId: string, at: number): Promise<ClaimResult> {
+  // nothing is created for an id a real run may not use (the dummy PoC's reserved date included)
+  const idCheck = checkRealApprovalId(approvalId);
+  if (idCheck !== "ok") return idCheck;
   const handles: Awaited<ReturnType<typeof open>>[] = [];
   const unsafe = (code: string | undefined) => code === "ELOOP" || code === "ENOTDIR";
   try {
@@ -332,6 +351,8 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   // the fixed scope: d3 alone (d1, d1,d3 refuse), and the shop's own approval id
   if (packet.directions.join(",") !== a.direction) return refuse("SCOPE_NOT_ALLOWED");
   if (!APPROVAL_ID.test(approvalId)) return refuse("SHOP_NOT_ALLOWED");
+  const idCheck = checkRealApprovalId(approvalId);
+  if (idCheck !== "ok") return refuse(idCheck, approvalId);
   if (o.expectApprovalId !== undefined && approvalId !== o.expectApprovalId) return refuse("APPROVAL_NOT_GRANTED", approvalId);
   if (!PLAN_ID.test(packet.planId)) return refuse("PLAN_ID_INVALID", approvalId);
   const expires = parseUtcInstant(packet.expires);

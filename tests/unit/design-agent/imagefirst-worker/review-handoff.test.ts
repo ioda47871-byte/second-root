@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import sharp from "sharp";
@@ -242,6 +242,84 @@ describe("previews", () => {
     expect(await codeOf(verifyPreviews(dir))).toBe("PREVIEW_FILE_SET_MISMATCH");
     rmSync(join(dir, "extra.png"));
     expect(await codeOf(verifyPreviews(dir, { bundle_sha256: "0".repeat(64) }))).toBe("PREVIEWS_CONFLICT");
+  });
+
+  /** One delivered dummy bundle in a fresh inbox (previews built). */
+  const delivered = async (seed: number) => {
+    const { root, inbox, work } = place();
+    const { sealed } = await makeDummyBundle({ workDir: work, now: () => NOW, rand: seeded(seed) });
+    const r = await handOffToLocalInbox({ sealed, stateDir: join(work, "state"), inboxDir: inbox, expected: { ...DUMMY_RECORD }, now: () => NOW });
+    expect(r.previews?.status).toBe("built");
+    const expected = { ...DUMMY_RECORD, bundle_sha256: sealed.bundle_sha256 };
+    return { root, inbox, work, sealed, expected, bundleDir: join(inbox, DUMMY_ID), previewsDir: join(inbox, "previews", DUMMY_ID) };
+  };
+
+  it("PR #308 review L1: an existing previews dir that is self-consistent but not derived from this bundle is refused, never reused", async () => {
+    const a = await delivered(71);
+    const b = await delivered(72);
+    expect(b.sealed.bundle_sha256).not.toBe(a.sealed.bundle_sha256);
+    // plant B's previews (other pictures) under A's name, re-labelled with A's bundle SHA: internally consistent
+    rmSync(a.previewsDir, { recursive: true });
+    mkdirSync(a.previewsDir, { mode: 0o700 });
+    for (const f of readdirSync(b.previewsDir)) {
+      let bytes = readFileSync(join(b.previewsDir, f));
+      if (f.startsWith("INDEX.")) bytes = Buffer.from(bytes.toString("utf8").split(b.sealed.bundle_sha256).join(a.sealed.bundle_sha256));
+      writeFileSync(join(a.previewsDir, f), bytes, { mode: 0o600 });
+    }
+    expect((await verifyPreviews(a.previewsDir, { bundle_sha256: a.sealed.bundle_sha256 })).bundle_sha256).toBe(a.sealed.bundle_sha256);
+    expect(await codeOf(buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: a.previewsDir }))).toBe("PREVIEWS_NOT_FROM_BUNDLE");
+    // the hand-off (a re-run of the same sealed bundle) says the same instead of "duplicate"
+    expect(await codeOf(handOffToLocalInbox({ sealed: a.sealed, stateDir: join(a.work, "state"), inboxDir: a.inbox, expected: { ...DUMMY_RECORD }, now: () => NOW }))).toBe("PREVIEWS_NOT_FROM_BUNDLE");
+    // the genuine previews of A, rebuilt, are a duplicate again
+    rmSync(a.previewsDir, { recursive: true });
+    expect((await buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: a.previewsDir })).status).toBe("built");
+    expect((await buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: a.previewsDir })).status).toBe("duplicate");
+  });
+
+  it("PR #308 review L2: concurrent builders: one builds, the other waits for it and reports duplicate; a claim never filled is PREVIEWS_BUSY", async () => {
+    const a = await delivered(81);
+    const out = (n: string) => join(a.inbox, "previews", n);
+    const both = await Promise.all([0, 1].map(() => buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("race") })));
+    expect(both.map((r) => r.status).sort()).toEqual(["built", "duplicate"]);
+    // the loser sees the winner's empty claim first: it waits, then verifies the winner's result
+    mkdirSync(out("claimed"), { mode: 0o700 });
+    const waiting = buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("claimed"), wait: { totalMs: 20_000, stepMs: 20 } });
+    await new Promise((r) => setTimeout(r, 300));
+    const winner = await buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("winner") });
+    rmSync(out("claimed"), { recursive: true });
+    renameSync(winner.dir, out("claimed"));
+    expect((await waiting).status).toBe("duplicate");
+    // a claim nobody fills: PREVIEWS_BUSY, never "duplicate" (and nothing is written into it)
+    mkdirSync(out("stuck"), { mode: 0o700 });
+    expect(await codeOf(buildPreviews({ bundleDir: a.bundleDir, expected: a.expected, outDir: out("stuck"), wait: { totalMs: 100, stepMs: 20 } }))).toBe("PREVIEWS_BUSY");
+    expect(readdirSync(out("stuck"))).toEqual([]);
+  });
+
+  it("PR #308 review L3: removal and purge never follow a symlinked previews or .records directory", async () => {
+    for (const sub of ["previews", ".records"]) {
+      const a = await delivered(91);
+      const outside = tmp("sr-rv-outside-");
+      // what rm -rf <link>/<id> would have deleted outside the inbox
+      mkdirSync(join(outside, DUMMY_ID), { mode: 0o700 });
+      writeFileSync(join(outside, DUMMY_ID, "keep.txt"), "x");
+      writeFileSync(join(outside, `${DUMMY_ID}.json`), "x");
+      renameSync(join(a.inbox, sub), join(a.root, `moved-${sub.replace(".", "")}`));
+      symlinkSync(outside, join(a.inbox, sub));
+      expect(await codeOf(removeFromInbox(a.inbox, DUMMY_ID))).toBe("INBOX_SUBDIR_UNSAFE");
+      expect(await codeOf(localInboxTransport({ inboxDir: a.inbox, expected: () => null, now: () => NOW + 8 * 86_400_000 }).purgeExpired())).toBe("INBOX_SUBDIR_UNSAFE");
+      expect(existsSync(join(outside, DUMMY_ID, "keep.txt"))).toBe(true);
+      expect(existsSync(join(outside, `${DUMMY_ID}.json`))).toBe(true);
+      // nothing in the inbox was removed either (refused before the first rm)
+      expect(existsSync(join(a.bundleDir, "manifest.json"))).toBe(true);
+      // a group-readable one is refused the same way
+      rmSync(join(a.inbox, sub));
+      renameSync(join(a.root, `moved-${sub.replace(".", "")}`), join(a.inbox, sub));
+      chmodSync(join(a.inbox, sub), 0o750);
+      expect(await codeOf(removeFromInbox(a.inbox, DUMMY_ID))).toBe("INBOX_SUBDIR_UNSAFE");
+      chmodSync(join(a.inbox, sub), 0o700);
+      await removeFromInbox(a.inbox, DUMMY_ID);
+      expect(existsSync(a.bundleDir)).toBe(false);
+    }
   });
 
   it("a large noisy picture is brought under the byte cap (palette / smaller), a very tall one is tiled", async () => {

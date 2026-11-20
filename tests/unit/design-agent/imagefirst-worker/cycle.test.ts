@@ -3,9 +3,10 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { PROMPT_INPUTS } from "@/lib/design-agent/image-first/prompt";
-import { claimApproval, exitCodeOf, generateArgv, gitCommitState, grantFromEnv, GRANT_ENV, IMAGEFIRST_ALLOWLIST, packetPins, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { checkRealApprovalId, claimApproval, exitCodeOf, generateArgv, gitCommitState, grantFromEnv, GRANT_ENV, IMAGEFIRST_ALLOWLIST, packetPins, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, WORKER_STOP, type CycleDeps, type CycleOptions, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { APPROVAL_PACKET_PATH } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
+import { DUMMY_ID } from "@/lib/design-agent/imagefirst-worker/review-poc";
 import { acquireLock } from "@/lib/design-agent/worker/state";
 import { fileAtCommit, parseArgs } from "@/scripts/design-artifact/phase2f-live-cli";
 import { colourPng } from "../phase2f/fixtures";
@@ -133,6 +134,21 @@ describe("Issue #298 IMAGE_FIRST worker adapter: fail closed (nothing invoked)",
 
   it("another shop's approval id", async () => {
     await refusedWith(world({ repo: workerRepo(filledPacket({ d3: "`tsugute-imagefirst-d3-20261120-01`" })) }), "refused", "SHOP_NOT_ALLOWED");
+  });
+
+  it("PR #308 review L4: the dummy PoC's reserved date 00000000 (and a non-calendar date) is never a real run's approval", async () => {
+    const r = await refusedWith(world({ repo: workerRepo(filledPacket({ d3: `\`${DUMMY_ID}\`` })) }), "refused", "APPROVAL_ID_RESERVED");
+    expect(r.approval_id).toBe(DUMMY_ID);
+    await refusedWith(world({ repo: workerRepo(filledPacket({ d3: "`hoshigama-imagefirst-d3-20261332-01`" })) }), "refused", "APPROVAL_ID_INVALID");
+    // the precheck (automatic start) says the same, and the claim itself never creates a marker for it
+    const w = world({ repo: workerRepo(filledPacket({ d3: `\`${DUMMY_ID}\`` })) });
+    expect(await precheckImagefirstCycle({ repoRoot: w.repo, stateDir: w.stateDir, runsDir: w.runsDir }, { commit: () => gitCommitState(w.repo, ENV), fileAt: (c, rel) => fileAtCommit(c, rel, w.repo), ledger: openLedger(w.ledgerDir), now: () => NOW })).toMatchObject({ status: "refused", code: "APPROVAL_ID_RESERVED" });
+    const state = tmp("sr-ifw-l4-");
+    expect(await claimApproval(state, DUMMY_ID, NOW)).toBe("APPROVAL_ID_RESERVED");
+    expect(await claimApproval(state, "hoshigama-imagefirst-d3-20260230-01", NOW)).toBe("APPROVAL_ID_INVALID");
+    expect(existsSync(join(state, "claims"))).toBe(false);
+    expect([DUMMY_ID, "hoshigama-imagefirst-d3-20261120-01", "hoshigama-imagefirst-d3-20240229-01", "hoshigama-imagefirst-d3-20250229-01"].map(checkRealApprovalId)).toEqual(["APPROVAL_ID_RESERVED", "ok", "ok", "APPROVAL_ID_INVALID"]);
+    expect(grantFromEnv({ [GRANT_ENV]: DUMMY_ID } as unknown as NodeJS.ProcessEnv)).toBeNull();
   });
 
   it("an invalid plan ID is refused before the one-use approval claim", async () => {

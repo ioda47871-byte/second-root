@@ -29,8 +29,10 @@ import { createFakeReceiver, deliverBundle, registerSealed, type BundlePayload, 
 /** The inbox under the worker's private runs directory (~/sr-runs/review-inbox). */
 export const REVIEW_INBOX = "review-inbox";
 export const PREVIEWS = "previews";
+/** The receiver's own records (transport.ts RECORDS). */
+const RECORDS = ".records";
 
-export type InboxCode = "INBOX_PARENT_UNSAFE" | "INBOX_ID_INVALID";
+export type InboxCode = "INBOX_PARENT_UNSAFE" | "INBOX_ID_INVALID" | "INBOX_SUBDIR_UNSAFE";
 export class InboxStop extends Error {
   constructor(readonly code: InboxCode) {
     super(code);
@@ -49,6 +51,22 @@ async function inboxParent(inboxDir: string): Promise<void> {
   if (!(await ownPrivateDir(dirname(inboxDir)))) throw new InboxStop("INBOX_PARENT_UNSAFE");
 }
 
+/**
+ * Before anything is removed under `previews` or `.records` (PR #308 review L3): each must be missing or a real directory
+ * of ours, 0700, reached as `<inbox>/<name>` with no link anywhere (lstat on the name itself, and its real path equal to
+ * the inbox's real path + name). A symlinked or foreign one is refused, never followed: `rm` would otherwise delete
+ * `<link target>/<id>` outside the inbox. Checked again right before each removal.
+ */
+async function safeSubdirs(inboxDir: string): Promise<void> {
+  const root = await realpath(inboxDir);
+  for (const name of [PREVIEWS, RECORDS]) {
+    const p = join(inboxDir, name);
+    const info = await lstat(p).catch((e: { code?: string }) => (e.code === "ENOENT" ? "missing" : null));
+    if (info === "missing") continue;
+    if (!(await ownPrivateDir(p)) || (await realpath(p).catch(() => null)) !== join(root, name)) throw new InboxStop("INBOX_SUBDIR_UNSAFE");
+  }
+}
+
 export type LocalInboxOptions = { inboxDir: string; expected: (bundleId: string) => ExpectedRecord | null; now?: () => number };
 
 /** A transport whose far end is the local review inbox. send() throws on any refusal (deliverBundle records it). */
@@ -64,8 +82,14 @@ export function localInboxTransport(o: LocalInboxOptions): BundleTransport & { p
     /** Deletes bundles past the receiver's own retention, and their previews. */
     async purgeExpired(): Promise<string[]> {
       await inboxParent(o.inboxDir);
+      if (!(await lstat(o.inboxDir).then(() => true, () => false))) return [];
+      if (!(await ownPrivateDir(o.inboxDir))) throw new InboxStop("INBOX_PARENT_UNSAFE");
+      await safeSubdirs(o.inboxDir);
       const gone = await receiver.purgeExpired();
-      for (const id of gone) await rm(join(o.inboxDir, PREVIEWS, id), { recursive: true, force: true });
+      for (const id of gone) {
+        await safeSubdirs(o.inboxDir);
+        await rm(join(o.inboxDir, PREVIEWS, id), { recursive: true, force: true });
+      }
       return gone;
     },
   };
@@ -107,6 +131,10 @@ export async function removeFromInbox(inboxDir: string, id: string): Promise<voi
   if (!APPROVAL_ID_RE.test(id)) throw new InboxStop("INBOX_ID_INVALID");
   if (!(await lstat(inboxDir).then(() => true, () => false))) return;
   if (!(await ownPrivateDir(inboxDir))) throw new InboxStop("INBOX_PARENT_UNSAFE");
-  for (const p of [join(inboxDir, id), join(inboxDir, ".records", `${id}.json`), join(inboxDir, PREVIEWS, id)]) await rm(p, { recursive: true, force: true });
+  await safeSubdirs(inboxDir);
+  for (const p of [join(inboxDir, id), join(inboxDir, RECORDS, `${id}.json`), join(inboxDir, PREVIEWS, id)]) {
+    await safeSubdirs(inboxDir);
+    await rm(p, { recursive: true, force: true });
+  }
 }
 
