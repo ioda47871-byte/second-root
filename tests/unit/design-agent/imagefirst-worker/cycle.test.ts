@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -291,6 +291,27 @@ describe("Issue #298 IMAGE_FIRST worker adapter: fail closed (nothing invoked)",
 
   it("another shop's approval id", async () => {
     await refusedWith(world({ repo: workerRepo(filledPacket({ d3: "`tsugute-imagefirst-d3-20261120-01`" })) }), "refused", "SHOP_NOT_ALLOWED");
+  });
+
+  it("an invalid plan ID is refused before the one-use approval claim", async () => {
+    for (const invalid of ["--other-flag", "../wrong-plan", "hoshigama-imagefirst-p3-wrong", "other-imagefirst-p3-20261120"]) {
+      const w = world({ repo: workerRepo(filledPacket({ planId: `\`${invalid}\`` })) });
+      await refusedWith(w, "refused", "PLAN_ID_INVALID");
+      expect(existsSync(join(w.stateDir, "claims"))).toBe(false);
+    }
+  });
+
+  it("an unsafe claims directory (world-readable or symlink) is refused before using the approval", async () => {
+    const loose = world();
+    mkdirSync(join(loose.stateDir, "claims"), { mode: 0o700 });
+    chmodSync(join(loose.stateDir, "claims"), 0o755);
+    await refusedWith(loose, "refused", "CLAIMS_DIR_UNSAFE");
+
+    const linked = world();
+    const outside = tmp("sr-ifw-untrusted-claims-");
+    symlinkSync(outside, join(linked.stateDir, "claims"), "dir");
+    await refusedWith(linked, "refused", "CLAIMS_DIR_UNSAFE");
+    expect(readdirSync(outside)).toEqual([]);
   });
 
   it("a tampered packet pin or plan input", async () => {
