@@ -13,6 +13,8 @@
   - `tests/unit/design-agent/imagefirst-worker/review-handoff.test.ts`
 - 追記（Issue #302 P3 の続き）: 本物の run を inbox へ渡す入口 `lib/design-agent/imagefirst-worker/deliver-review.ts` を足した（§4）。
   自動起動の script・unit・timer は**変更していない**。
+- 追記（Issue #302）: 届いた bundle とプレビューを、Remote Control を使わずに Claude CLI（道具なし・1回きり）で監査する手動の段を足した。
+  手順と承認が要ることは `imagefirst-claude-audit.md`。本番の監査に Remote Control は使わない（この文書の jail の Claude での目視は任意の確認手段のまま）。
 
 ## 1. 置き場所の根拠 — jail の中の Claude が実際に読めるもの
 
