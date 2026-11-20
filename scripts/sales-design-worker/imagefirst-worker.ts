@@ -33,7 +33,8 @@
  * hand-off can never hide a run that succeeded); the hand-off is skipped when a stop was already requested and is
  * aborted by one; its own summary goes to stderr and the audit file only, so stdout stays exactly one line (the
  * automatic start reads its last line). It never changes the exit code and it can start nothing. A failed hand-off
- * leaves the sealed bundle; the owner re-sends the SAME bundle through root's wrapper
+ * leaves the sealed bundle (or, if it stopped before sealing, nothing sealed); the owner re-sends the SAME bundle (or,
+ * when no bundle, delivery job or inbox copy exists, the first and only pack of the same run) through root's wrapper
  * scripts/sales-design-worker/imagefirst-deliver-review.sh, which runs this CLI with `--deliver-review <approval id>` as
  * the worker user outside the jail. That mode runs no cycle, claims nothing and starts nothing except read-only git and
  * systemctl; it requires HEAD = origin/develop and a clean tree, and (defense in depth; the wrapper is the gate) the
@@ -84,7 +85,8 @@ async function main(): Promise<number> {
   const ledgerDir = defaultLedgerDir(env, homedir());
   for (const p of [stateDir, runsDir, ledgerDir]) if (await insideRepo(p)) return (say({ status: "refused", code: "PLACE_INSIDE_REPO", invoked: false }), 2);
   if (deliver) {
-    // the manual re-send: no cycle, no claim, no ledger, nothing started; the same sealed bundle only, from the worker's
+    // the manual re-send: no cycle, no claim, no ledger, nothing started; the same sealed bundle (or its first pack when
+    // nothing was ever sealed or sent), from the worker's
     // own clean clone on origin/develop (PR #310 review M3)
     const c = await gitCommitState(REPO, env).catch(() => null);
     if (!c?.head || c.head !== c.base) return (say({ status: "refused", code: "NOT_ON_ORIGIN_DEVELOP", invoked: false }), 2);

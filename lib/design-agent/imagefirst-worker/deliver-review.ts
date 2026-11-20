@@ -79,8 +79,9 @@ export type DeliverReviewOptions = {
    */
   jailIdle?: () => Promise<boolean | null>;
   /**
-   * The manual re-send (PR #310 review L2): only the bundle sealed earlier may go. A missing or empty sealed bundle is
-   * refused (SEALED_BUNDLE_MISSING) and NEVER packed again here (a new pack would be other bytes).
+   * The manual re-send (PR #310 review L2, re-review M-1): the bundle sealed earlier goes again. When nothing was ever
+   * sealed or sent for this approval (no bundle, no delivery job, no inbox copy), it packs once from the same verified
+   * receipt and run; otherwise a missing or empty sealed bundle is refused (SEALED_BUNDLE_MISSING), never packed again.
    */
   resend?: boolean;
   /** A stop requested (the worker got SIGTERM / SIGINT): nothing starts after it, and the delivery attempt is aborted. */
@@ -227,7 +228,8 @@ async function checkClaim(stateDir: string, approvalId: string, started: number,
 /**
  * The bundle for this receipt: packed now (packBundle checks the run directory, every picture's SHA-256 against the
  * receipt, PC 2 + SP 4, no link), or — on a re-send — the one sealed earlier, verified again and required to come from
- * exactly these receipt bytes (never re-packed, never regenerated).
+ * exactly these receipt bytes. A re-send packs only when nothing was ever sealed or sent for this approval; it never
+ * packs a second time and never regenerates.
  */
 async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes: Buffer; bundlesDir: string; stateDir: string; inboxDir: string; expected: ExpectedRecord; resend: boolean; now?: () => number }): Promise<{ sealed: SealedBundle; how: "sealed" | "existing" }> {
   const id = o.expected.approval_id;

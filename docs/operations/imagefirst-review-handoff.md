@@ -185,7 +185,7 @@ worker の専用 clone（`~/imagefirst/second-root`、worker が走るのと同�
 `SEALED_BUNDLE_MISSING` で止まる（新しく pack すると別のバイトになる。L2）。そのときは報告して止める（生成は再試行しない）。
 再送中に止める合図が来たら wrapper は `DELIVER_INTERRUPTED`（終了 1）を出す。あとでもう一度実行してよい。
 終了コード（wrapper）: 0 = 渡した（または既に渡っている）、1 = 渡せなかった（bundle は封入のまま。あとでもう一度）、2 = 拒否、12 = busy、20 = clone の状態。
-再送は封入済みのバイトの再送だけで、Codex の再実行・再生成・再 pack は無い。GitHub・bridge の JSON spool・公開の保存先へは何も置かない。
+再送は封入済みのバイトの再送（封入の前に止まったときだけ、上の条件で最初の 1 回の封入）で、Codex の再実行・再生成・2 度目の pack は無い。GitHub・bridge の JSON spool・公開の保存先へは何も置かない。
 
 渡った後: オーナーが `claude-start` → Remote Control の Claude が `~/sr-runs/review-inbox/previews/<承認 ID>/INDEX.md` とプレビューを Read して評価する。
 
