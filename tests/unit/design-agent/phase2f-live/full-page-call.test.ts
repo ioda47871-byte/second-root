@@ -11,10 +11,11 @@ import { encodePng, type RgbImage } from "@/lib/design-agent/image-first/pixels"
 import { buildPromptPlan, loadPromptInputs, type PromptInputs, type PromptPlan } from "@/lib/design-agent/image-first/prompt";
 import { CODEX_STOP_CODES } from "@/lib/design-agent/image-first/record";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
-import { APPROVAL_PACKET_PATH, MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { APPROVAL_PACKET_PATH, MAX_APPROVAL_WINDOW_MS, PACKET_FIELDS, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { CommitState } from "@/lib/design-agent/phase2f-live/steps";
 import { fileAtCommit } from "@/scripts/design-artifact/phase2f-live-cli";
+import { UNAPPROVED_PACKET_FIXTURE, UNAPPROVED_PACKET_FIXTURE_SHA256 } from "../image-first/fixtures/unapproved-packet";
 
 // Issue #293 P3 (preparation): the gated IMAGE_FIRST real-call step. The batch is a stub (an injected function): nothing
 // here calls Codex, a model, the image tool, the network or a process. The ledger lives in a temporary directory.
@@ -68,8 +69,31 @@ const PACKET = (() => {
   writeFileSync(file, PACKET_TEXT);
   return readFileSync(file);
 })();
-/** The real packet in the repository: an unapproved draft (§10 未記入). */
+/** The real packet in the repository: the draft, or the owner's filled-in version. Only state-independent checks use it. */
 const REAL_PACKET = readFileSync(resolve(REPO, APPROVAL_PACKET_PATH));
+/** The unapproved draft as a test-only immutable copy (header 未承認, §10 未記入); pinned by its SHA-256 below. */
+const UNAPPROVED_PACKET = readFileSync(UNAPPROVED_PACKET_FIXTURE);
+/**
+ * The unapproved fixture filled in memory exactly as its own §10 says: the header status line rewritten, every §10 row
+ * given a value. Never written to the repository.
+ */
+const fillUnapproved = (values: Record<keyof typeof PACKET_FIELDS, string>) => {
+  let text = UNAPPROVED_PACKET.toString("utf8");
+  const header = "**状態: 未承認。**";
+  // the status line at the top (before the first section): the one the §10 notes say to rewrite
+  expect(text.indexOf(header)).toBeGreaterThan(0);
+  expect(text.indexOf(header)).toBeLessThan(text.indexOf("\n## "));
+  text = text.replace(header, "**状態: 承認済み。**");
+  const at = text.indexOf("## 10. 承認欄");
+  let section = text.slice(at);
+  for (const [k, label] of Object.entries(PACKET_FIELDS) as [keyof typeof PACKET_FIELDS, string][]) {
+    const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
+    expect(re.test(section), label).toBe(true);
+    section = section.replace(re, `$1${values[k]}$2`);
+  }
+  return Buffer.from(text.slice(0, at) + section);
+};
+const D3_ONLY = { status: "`承認済み`", directions: "`d3`", d1: "`なし`", d3: "`hoshigama-imagefirst-d3-20261120-01`", expires: "`2026-11-20T09:00:00Z`", planId: "`hoshigama-imagefirst-p3-20261120`", approvedBy: "2026-11-20 owner" };
 const EXPIRES = "2026-11-20T12:00:00Z";
 const NOW = Date.parse("2026-11-20T10:00:00+09:00");
 /** The fixture packet with one §10 row's value replaced. */
@@ -92,6 +116,15 @@ async function planD1() {
     return { plan: buildPromptPlan(inputs), inputs };
   })();
   return cached;
+}
+
+let cachedD3: { plan: PromptPlan; inputs: PromptInputs } | null = null;
+async function planD3() {
+  cachedD3 ??= await (async () => {
+    const inputs = await loadPromptInputs((p) => readFile(resolve(REPO, p)), "d3");
+    return { plan: buildPromptPlan(inputs), inputs };
+  })();
+  return cachedD3;
 }
 
 /** A synthetic picture (flat colours; PC: two columns of blocks, SP: one column of bars), never a real comp. */
@@ -196,7 +229,7 @@ describe("IMAGE_FIRST P3 real-call step: refused before the approval is used", (
       "PACKET_PATH_NOT_ALLOWED",
     ],
     ["the packet path does not exist", (s) => input(s, { packetPath: resolve(REPO, "docs/design/no-such-packet.md") }), "PACKET_PATH_NOT_ALLOWED"],
-    ["the real packet in the repository is an unapproved draft (§10 未記入)", (s) => input(s, withPacket(REAL_PACKET)), "PACKET_NOT_APPROVED"],
+    ["the unapproved draft packet (test fixture: header 未承認, §10 未記入)", (s) => input(s, withPacket(UNAPPROVED_PACKET)), "PACKET_NOT_APPROVED"],
     ["a §10 field is still 未記入", (s) => input(s, withPacket(packetWith("承認日・承認者", "未記入"))), "PACKET_NOT_APPROVED"],
     ["the packet's status is not 承認済み", (s) => input(s, withPacket(packetWith("状態", "未承認"))), "PACKET_NOT_APPROVED"],
     ["the packet has no §10", (s) => input(s, withPacket(Buffer.from("# packet\n\n## 9. after\n"))), "PACKET_NOT_APPROVED"],
@@ -271,9 +304,9 @@ describe("IMAGE_FIRST P3 real-call step: the approval packet and its expiry are 
     expect(MAX_APPROVAL_WINDOW_MS).toBe(24 * 60 * 60 * 1000);
   });
 
-  it("the fixture packet reads as approved for d1 only; the real draft packet does not read", () => {
+  it("the fixture packet reads as approved for d1 only; the unapproved draft fixture does not read", () => {
     expect(readApprovalPacket(PACKET)).toEqual({ status: "承認済み", directions: ["d1"], approvalIds: { d1: "test-imagefirst-d1-20261120-01", d3: "なし" }, expires: EXPIRES, planId: "test-imagefirst-plan-01", approvedBy: "2026-11-20 test" });
-    expect(readApprovalPacket(REAL_PACKET)).toBeNull();
+    expect(readApprovalPacket(UNAPPROVED_PACKET)).toBeNull();
     // the commit is not a row of the packet (the packet is part of that commit): a packet that adds one is not read
     const withCommit = Buffer.from(PACKET.toString("utf8").replace("| 計画 ID |", `| 承認コミット | ${COMMIT} |\n| 計画 ID |`));
     expect(readApprovalPacket(withCommit)).toBeNull();
@@ -300,52 +333,25 @@ describe("IMAGE_FIRST P3 real-call step: the approval packet and its expiry are 
     expect(readApprovalPacket(Buffer.from(text.replace("**状態: 承認済み。**", "**状態: 承認済み。** 状態: 差し戻し")))).toBeNull();
   });
 
-  it("the real packet, filled in exactly as its own §10 says, is accepted by the packet checks", () => {
-    let text = REAL_PACKET.toString("utf8");
-    const header = "**状態: 未承認。**";
-    // the status line at the top (before the first section): the one the §10 notes say to rewrite
-    expect(text.indexOf(header)).toBeGreaterThan(0);
-    expect(text.indexOf(header)).toBeLessThan(text.indexOf("\n## "));
-    text = text.replace(header, "**状態: 承認済み。**");
-    const at = text.indexOf("## 10. 承認欄");
-    let section = text.slice(at);
-    const fill = (label: string, value: string) => {
-      const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
-      expect(re.test(section), label).toBe(true);
-      section = section.replace(re, `$1${value}$2`);
-    };
-    fill("状態", "`承認済み`");
-    fill("承認する方向性", "`d1`");
-    fill("d1 の承認 ID", "`hoshigama-imagefirst-d1-20261120-01`");
-    fill("d3 の承認 ID", "`なし`");
-    fill("期限", "`2026-11-20T09:00:00Z`");
-    fill("計画 ID", "`hoshigama-imagefirst-p3-20261120`");
-    fill("承認日・承認者", "2026-11-20 owner");
-    expect(readApprovalPacket(Buffer.from(text.slice(0, at) + section))).toEqual({ status: "承認済み", directions: ["d1"], approvalIds: { d1: "hoshigama-imagefirst-d1-20261120-01", d3: "なし" }, expires: "2026-11-20T09:00:00Z", planId: "hoshigama-imagefirst-p3-20261120", approvedBy: "2026-11-20 owner" });
+  it("the unapproved fixture is the immutable draft copy (pinned by its bytes) and no packet under tests/ reads as approved", () => {
+    expect(sha(UNAPPROVED_PACKET)).toBe(UNAPPROVED_PACKET_FIXTURE_SHA256);
+    const text = UNAPPROVED_PACKET.toString("utf8");
+    expect(text.slice(0, text.indexOf("\n## "))).toContain("**状態: 未承認。**");
+    expect(readApprovalPacket(UNAPPROVED_PACKET)).toBeNull();
+    // a tracked approved packet could be given to the real entry: none may exist under tests/
+    const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (e.name === "__screenshots__" ? [] : walk(join(dir, e.name))) : e.name.endsWith(".md") ? [join(dir, e.name)] : []));
+    for (const f of walk(resolve(REPO, "tests"))) expect(readApprovalPacket(readFileSync(f)), f).toBeNull();
   });
-  it("the real packet, filled for d3 alone with d1 ID なし, is accepted and invalid directions are rejected", () => {
-    let text = REAL_PACKET.toString("utf8");
-    const header = "**状態: 未承認。**";
-    // the status line at the top (before the first section): the one the §10 notes say to rewrite
-    expect(text.indexOf(header)).toBeGreaterThan(0);
-    expect(text.indexOf(header)).toBeLessThan(text.indexOf("\n## "));
-    text = text.replace(header, "**状態: 承認済み。**");
-    const at = text.indexOf("## 10. 承認欄");
-    let section = text.slice(at);
-    const fill = (label: string, value: string) => {
-      const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
-      expect(re.test(section), label).toBe(true);
-      section = section.replace(re, `$1${value}$2`);
-    };
-    fill("状態", "`承認済み`");
-    fill("承認する方向性", "`d3`");
-    fill("d1 の承認 ID", "`なし`");
-    fill("d3 の承認 ID", "`hoshigama-imagefirst-d3-20261120-01`");
-    fill("期限", "`2026-11-20T09:00:00Z`");
-    fill("計画 ID", "`hoshigama-imagefirst-p3-20261120`");
-    fill("承認日・承認者", "2026-11-20 owner");
-    expect(readApprovalPacket(Buffer.from(text.slice(0, at) + section))).toEqual({ status: "承認済み", directions: ["d3"], approvalIds: { d1: "なし", d3: "hoshigama-imagefirst-d3-20261120-01" }, expires: "2026-11-20T09:00:00Z", planId: "hoshigama-imagefirst-p3-20261120", approvedBy: "2026-11-20 owner" });
-    const approved = text.slice(0, at) + section;
+
+  it("the unapproved fixture, filled in exactly as its own §10 says, is accepted by the packet checks", () => {
+    const filled = fillUnapproved({ status: "`承認済み`", directions: "`d1`", d1: "`hoshigama-imagefirst-d1-20261120-01`", d3: "`なし`", expires: "`2026-11-20T09:00:00Z`", planId: "`hoshigama-imagefirst-p3-20261120`", approvedBy: "2026-11-20 owner" });
+    expect(readApprovalPacket(filled)).toEqual({ status: "承認済み", directions: ["d1"], approvalIds: { d1: "hoshigama-imagefirst-d1-20261120-01", d3: "なし" }, expires: "2026-11-20T09:00:00Z", planId: "hoshigama-imagefirst-p3-20261120", approvedBy: "2026-11-20 owner" });
+  });
+  it("the unapproved fixture, filled for d3 alone with d1 ID なし, is accepted and invalid directions are rejected", () => {
+    const filled = fillUnapproved(D3_ONLY);
+    expect(readApprovalPacket(filled)).toEqual({ status: "承認済み", directions: ["d3"], approvalIds: { d1: "なし", d3: "hoshigama-imagefirst-d3-20261120-01" }, expires: "2026-11-20T09:00:00Z", planId: "hoshigama-imagefirst-p3-20261120", approvedBy: "2026-11-20 owner" });
+    const approved = filled.toString("utf8");
+    const section = approved.slice(approved.indexOf("## 10. 承認欄"));
     const directionLine = section.split("\n").find((line) => line.startsWith("| 承認する方向性（"));
     const d1Line = section.split("\n").find((line) => line.startsWith("| d1 の承認 ID（"));
     expect(directionLine).toBeDefined();
@@ -360,6 +366,67 @@ describe("IMAGE_FIRST P3 real-call step: the approval packet and its expiry are 
     expect(readApprovalPacket(Buffer.from(approved.replace(d1Line!, badD1)))).toBeNull();
   });
 
+  it("the d3-only filled fixture runs a d3 plan once (stub batch) and refuses a d1 run", async () => {
+    const filled = fillUnapproved(D3_ONLY);
+    const { plan, inputs } = await planD3();
+    const d3 = { plan, inputs, approvalId: "hoshigama-imagefirst-d3-20261120-01", planId: "hoshigama-imagefirst-p3-20261120", approvalExpires: "2026-11-20T09:00:00Z" };
+    const d3Expected = { promptSha256: plan.batch.sha256, promptChars: plan.batch.chars, planSha256: plan.plan_sha256, packetSha256: sha(filled) };
+    // d1 against the d3-only packet is refused before anything is used
+    const s1 = setup();
+    const d1 = await input(s1, { ...withPacket(filled), approvalId: "hoshigama-imagefirst-d1-20261120-01", planId: d3.planId, approvalExpires: d3.approvalExpires });
+    expect(await runFullPageCall(d1, deps(s1, s1.batchOf(okBatch())))).toEqual({ status: "stopped", code: "PACKET_APPROVAL_MISMATCH", stage: "precheck", aborted: false });
+    expect(s1.calls).toEqual([]);
+    expect(ledgerEntries(s1)).toEqual([]);
+    // the d3 run with the packet's values succeeds once; the same approval never runs again
+    const s = setup();
+    const ok = await runFullPageCall(await input(s, { ...d3, packetBytes: filled, expected: d3Expected }), deps(s, s.batchOf(okBatch())));
+    expect(ok).toMatchObject({ status: "succeeded", images: 6 });
+    expect(s.calls).toEqual([{ prompt: plan.batch.prompt, maxImages: 6 }]);
+    const again = await runFullPageCall(await input(s, { ...d3, packetBytes: filled, expected: d3Expected, outDir: join(s.runs, "run-2") }), deps(s, s.batchOf(okBatch())));
+    expect(again).toMatchObject({ status: "stopped", code: "APPROVAL_ALREADY_USED", stage: "precheck" });
+    expect(s.calls).toHaveLength(1);
+  });
+
+  it("the real packet holds the state-independent invariants: draft, or approved for d3 alone with d1 なし", () => {
+    const text = REAL_PACKET.toString("utf8");
+    // lines outside code fences
+    const lines: string[] = [];
+    let fence = false;
+    for (const line of text.split(/\r?\n/)) {
+      if (/^\s{0,3}(`{3,}|~{3,})/.test(line)) fence = !fence;
+      else if (!fence) lines.push(line);
+    }
+    expect(fence).toBe(false);
+    const starts = lines.flatMap((l, n) => (/^## 10\.\s/.test(l) ? [n] : []));
+    expect(starts).toHaveLength(1);
+    const rest = lines.slice(starts[0]! + 1);
+    const stop = rest.findIndex((l) => /^#{1,2} /.test(l));
+    const rows = (stop < 0 ? rest : rest.slice(0, stop))
+      .filter((l) => l.startsWith("|"))
+      .map((l) => l.split("|").slice(1, -1).map((c) => c.trim()))
+      .filter((c) => c.length === 2 && !/^-+$/.test(c[0]!) && c[0] !== "項目");
+    const labelOf = (c: string[]) => c[0]!.split("（")[0]!.trim();
+    // every §10 row present exactly once, and nothing else
+    expect(rows.map(labelOf).sort()).toEqual(Object.values(PACKET_FIELDS).sort());
+    const row = (label: string) => rows.find((c) => labelOf(c) === label)![1]!;
+    const firstH2 = lines.findIndex((l) => /^## /.test(l));
+    const header = [...lines.slice(0, firstH2).join("\n").matchAll(/\*\*状態[:：]\s*([^。*\s]+)。?\*\*/g)].map((m) => m[1]);
+    expect(header).toHaveLength(1);
+    const status = row(PACKET_FIELDS.status).replace(/^`([^`]*)`$/, "$1");
+    if (header[0] === "承認済み") {
+      expect(status).toBe("承認済み");
+      // the only experiment the owner approved: d3 alone, d1 なし
+      const read = readApprovalPacket(REAL_PACKET);
+      expect(read).not.toBeNull();
+      expect(read!.directions).toEqual(["d3"]);
+      expect(read!.approvalIds.d1).toBe("なし");
+    } else {
+      expect(header[0]).toBe("未承認");
+      expect(status).toBe("未記入");
+      for (const label of Object.values(PACKET_FIELDS)) expect(row(label), label).toContain("未記入");
+      expect(readApprovalPacket(REAL_PACKET)).toBeNull();
+    }
+  });
 
   it("the packet is read only after the commit pin and the clean-tree check, as committed at the approved commit", async () => {
     const s = setup();
