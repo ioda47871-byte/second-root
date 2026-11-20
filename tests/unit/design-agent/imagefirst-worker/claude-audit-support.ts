@@ -157,10 +157,16 @@ const forbidden = Object.keys(process.env).filter((k) => /^(ANTHROPIC_|CLAUDE_CO
 const log = (o) => fs.appendFileSync(cfg.log, JSON.stringify({ ...o, argv: args, cwd: process.cwd(), forbidden, envKeys: Object.keys(process.env).sort() }) + "\\n");
 if (args[0] === "auth" && args[1] === "status") {
   log({ bin: "auth" });
+  /* like the real subcommand (commander): only --json / --text; anything else is "unknown option", exit 1, no stdout */
+  const extra = args.slice(2).filter((a) => a !== "--json" && a !== "--text");
+  if (extra.length > 0) { process.stderr.write("error: unknown option '" + extra[0] + "'\\n"); process.exit(1); }
   const mode = cfg.auth || "ok";
-  if (mode === "signedout") { console.log(JSON.stringify({ loggedIn: false })); process.exit(1); }
+  if (mode === "signedout") { console.log(JSON.stringify({ loggedIn: false, authMethod: "none", apiProvider: "firstParty" })); process.exit(1); }
   if (mode === "garbled") { console.log("???"); process.exit(0); }
-  console.log(JSON.stringify({ loggedIn: true, authMethod: mode === "apikey" ? "api_key" : mode === "ok" ? "claude.ai" : mode === "missing" ? undefined : mode }));
+  /* the real shapes: a subscription login; a Console login (a managed API key) is ALSO "claude.ai", plus apiKeySource */
+  if (mode === "ok") { console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" })); process.exit(0); }
+  if (mode === "console") { console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", apiKeySource: "/login managed key" })); process.exit(0); }
+  console.log(JSON.stringify({ loggedIn: true, authMethod: mode === "apikey" ? "api_key" : mode === "missing" ? undefined : mode, apiProvider: "firstParty" }));
   process.exit(0);
 }
 let input = "";

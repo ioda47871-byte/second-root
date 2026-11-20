@@ -106,6 +106,8 @@ export const AuditImage = z.strictObject({
   audit_sha256: Sha,
   audit_bytes: z.number().int().min(1),
   media_type: z.enum(["image/jpeg", "image/png"]),
+  /** false = some pixel of the preview is not fully opaque (filled white in the audit tier). */
+  opaque: z.boolean(),
   kind: z.enum(["full", "tile", "overview"]),
   source: z.string().regex(/^(parts|composites)\/[a-z0-9-]{1,40}\.png$/),
   source_sha256: Sha,

@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { REASK_LINE, RUBRIC_SHA256 } from "@/lib/design-agent/imagefirst-worker/audit-rubric";
 import { AuditRecord, deriveViewport } from "@/lib/design-agent/imagefirst-worker/audit-schema";
-import { CLAUDE_PRINT_ARGS } from "@/lib/design-agent/imagefirst-worker/claude-cli";
+import { CLAUDE_AUTH_STATUS_ARGS, CLAUDE_PRINT_ARGS } from "@/lib/design-agent/imagefirst-worker/claude-cli";
 import { AUDIT_LIMITS, AUDIT_TIER, auditIdCheck, AuditStop, auditTierOf, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit, type ClaudeAuditOptions } from "@/lib/design-agent/imagefirst-worker/claude-audit";
 import { checkRealApprovalId } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { verifyPreviews } from "@/lib/design-agent/imagefirst-worker/preview";
 import { DUMMY_ID, DUMMY_RECORD, runReviewPoc } from "@/lib/design-agent/imagefirst-worker/review-poc";
 import { readFile } from "node:fs/promises";
+import sharp from "sharp";
 import { answerTemplate, cleanupTemps, copyDelivered, fakeClaude, ID, makeDelivered, photoLikeComposite, readLog, REPO, sha, tmp, treeHashes, type Delivered } from "./claude-audit-support";
 
 // Issue #302: the IMAGE_FIRST design-image audit by the Claude CLI without Remote Control (claude-audit.ts), offline. A
@@ -74,7 +75,7 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
     const pc = inOrder(ix, "composites/pc.png");
     const sp = inOrder(ix, "composites/sp.png");
     expect(pc.length).toBe(7); // 1440 × 9000 → 6 tiles + 1 overview
-    const tierShas = async (list: IxEntry[]) => Promise.all(list.map(async (p) => sha(await auditTierOf(readFileSync(join(previewsDir(s.d), p.file)), p.width, p.height))));
+    const tierShas = async (list: IxEntry[]) => Promise.all(list.map(async (p) => sha((await auditTierOf(readFileSync(join(previewsDir(s.d), p.file)), p.width, p.height)).bytes)));
     expect(calls[0]!.shas).toEqual(await tierShas(pc));
     expect(calls[1]!.shas).toEqual(await tierShas(sp));
     for (const c of calls) {
@@ -82,7 +83,7 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
       expect((c.argv as string[]).some((a) => /model/i.test(a))).toBe(false);
       expect(new Set(c.media as string[])).toEqual(new Set([AUDIT_TIER.mediaType]));
     }
-    expect(log[0]!.argv).toEqual(["auth", "status", "--setting-sources", ""]);
+    expect(log[0]!.argv).toEqual(["auth", "status"]);
     for (const l of log) {
       expect(l.forbidden).toEqual([]);
       expect(l.envKeys).not.toContain("OPENAI_API_KEY");
@@ -372,7 +373,7 @@ describe("PR #311 review: the audit tier, swapped bytes, ownership seams, writes
     const tile = ix.previews.find((p) => p.kind === "tile")!;
     const png = readFileSync(join(previewsDir(d), tile.file));
     const a = await auditTierOf(png, tile.width, tile.height);
-    expect(sha(await auditTierOf(png, tile.width, tile.height))).toBe(sha(a));
+    expect(sha((await auditTierOf(png, tile.width, tile.height)).bytes)).toBe(sha(a.bytes));
     await expect(auditTierOf(png, tile.width + 1, tile.height)).rejects.toMatchObject({ code: "AUDIT_TIER_FAILED" });
     // and the real (fake) call goes through
     expect(await runClaudeAudit(opts)).toMatchObject({ status: "completed", calls: 2 });
@@ -444,22 +445,63 @@ describe("PR #311 review: the audit tier, swapped bytes, ownership seams, writes
 
   it("L4: the jail is asked again before every call; started during the run → stopped (spent) with JAIL_ACTIVE", async () => {
     let asked = 0;
-    const s = setup({}, { jailIdle: async () => ++asked <= 2 });
+    // asked: at the start, right before the marker, before call 1 (idle), before call 2 (active)
+    const s = setup({}, { jailIdle: async () => ++asked <= 3 });
     expect(await runClaudeAudit(s.opts)).toMatchObject({ status: "stopped", code: "JAIL_ACTIVE", calls: 1 });
     expect(readLog(s.log).filter((l) => l.bin === "claude").length).toBe(1);
     expect(readRecord(s).stop_code).toBe("JAIL_ACTIVE");
-    let n = 0;
-    const u = setup({}, { jailIdle: async () => (++n <= 1 ? true : null) });
-    expect(await runClaudeAudit(u.opts)).toMatchObject({ status: "stopped", code: "JAIL_STATE_UNKNOWN", calls: 0 });
   });
 
-  it("L3: only the claude.ai subscription login is accepted (a console login or a token is refused before anything is spent)", async () => {
-    for (const auth of ["console", "oauth_token", "missing"]) {
+  it("L-b: the jail started between the start and the marker → refused, nothing spent", async () => {
+    for (const [late, code] of [[false, "JAIL_ACTIVE"], [null, "JAIL_STATE_UNKNOWN"]] as const) {
+      let n = 0;
+      const u = setup({}, { jailIdle: async () => (++n <= 1 ? true : late) });
+      await refused(runClaudeAudit(u.opts), code);
+      expect(readLog(u.log).map((l) => l.bin)).toEqual(["auth"]);
+      expect(existsSync(markerDir(u))).toBe(false);
+      expect(existsSync(join(u.d.inbox, "audits"))).toBe(false);
+    }
+  });
+
+  it("L3 / M-a: only the claude.ai subscription login passes; a Console login (claude.ai + apiKeySource), a helper, a token or none is refused", async () => {
+    for (const [auth, code] of [["console", "CLAUDE_API_KEY_AUTH"], ["api_key_helper", "CLAUDE_API_KEY_AUTH"], ["oauth_token", "CLAUDE_AUTH_METHOD_REFUSED"], ["third_party", "CLAUDE_AUTH_METHOD_REFUSED"], ["missing", "CLAUDE_AUTH_METHOD_REFUSED"]] as const) {
       const s = setup({ auth });
-      await refused(runClaudeAudit(s.opts), "CLAUDE_AUTH_METHOD_REFUSED");
-      expect(readLog(s.log).map((l) => l.bin)).toEqual(["auth"]);
+      await refused(runClaudeAudit(s.opts), code);
+      expect(readLog(s.log).map((l) => l.bin), auth).toEqual(["auth"]);
       expect(existsSync(markerDir(s))).toBe(false);
     }
+  });
+
+  it("H1: `auth status` takes no extra option (the real subcommand accepts only --json / --text; the fake rejects others)", async () => {
+    expect([...CLAUDE_AUTH_STATUS_ARGS]).toEqual(["auth", "status"]);
+    const s = setup({ auth: "ok" }); // the real subscription shape
+    expect((await runClaudeAudit(s.opts)).status).toBe("completed");
+    expect(readLog(s.log)[0]!.argv).toEqual(["auth", "status"]);
+    // the fake answers like the real CLI to an unknown option: exit 1, no JSON → never a pass
+    const r = spawnSync(s.bin, ["auth", "status", "--setting-sources", ""], { encoding: "utf8", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: s.home } as unknown as NodeJS.ProcessEnv });
+    expect([r.status, r.stdout]).toEqual([1, ""]);
+  });
+
+  it("L-d: per image, whether the preview is fully opaque; a non-opaque one is recorded and noted in AUDIT.md", async () => {
+    const s = setup();
+    expect((await runClaudeAudit(s.opts)).status).toBe("completed");
+    expect(readRecord(s).binding.images.every((i) => i.opaque === true)).toBe(true);
+    expect(readFileSync(join(auditDir(s), "AUDIT.md"), "utf8")).not.toContain("not fully opaque");
+    // a PC composite with a half-transparent band: its previews keep the alpha (preview.ts), the tier fills it white
+    const raw = Buffer.alloc(1440 * 2400 * 4, 0xc8);
+    for (let i = 1440 * 900 * 4 + 3; i < 1440 * 1500 * 4; i += 4) raw[i] = 0x80; // rows 900–1500 half transparent
+    const pc = await sharp(raw, { raw: { width: 1440, height: 2400, channels: 4 } }).png().toBuffer();
+    const d = await makeDelivered({ id: "hoshigama-imagefirst-d3-20261120-03", pc });
+    const home = tmp("sr-audit-alpha-home-");
+    const { bin } = fakeClaude(home, {});
+    const opts: ClaudeAuditOptions = { approvalId: d.id, runsDir: d.runs, stateDir: d.state, material, claudeBin: bin, env: { PATH: process.env.PATH, HOME: home }, jailIdle: async () => true };
+    expect((await runClaudeAudit(opts)).status).toBe("completed");
+    const rec = AuditRecord.parse(JSON.parse(readFileSync(join(d.inbox, "audits", d.id, "audit.json"), "utf8")));
+    expect(rec.binding.images.filter((i) => i.viewport === "desktop_1440").map((i) => i.opaque)).toContain(false);
+    expect(rec.binding.images.filter((i) => i.viewport === "mobile_390").every((i) => i.opaque)).toBe(true);
+    const md = readFileSync(join(d.inbox, "audits", d.id, "AUDIT.md"), "utf8");
+    expect(md).toContain("| **no** |");
+    expect(md).toContain("transparent areas were filled white for the audit");
   });
 });
 
@@ -487,10 +529,11 @@ describe("Issue #302: the dummy id, consistent with the review delivery", () => 
   });
 });
 
-describe("Issue #302: the CLI as a process (fake claude and systemctl in test mode only)", () => {
+describe("Issue #302: the CLI as a process (fakes only through the test entry under tests/)", () => {
   const CLI = join(REPO, "scripts/sales-design-worker/imagefirst-audit.ts");
-  const run = (args: string[], env: Record<string, string>) => {
-    const r = spawnSync(process.execPath, ["--import", "tsx", CLI, ...args], { cwd: REPO, encoding: "utf8", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", ...env } as unknown as NodeJS.ProcessEnv, timeout: 100_000 });
+  const ENTRY = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/audit-cli-entry.ts");
+  const spawnOut = (argv: string[], env: Record<string, string>) => {
+    const r = spawnSync(process.execPath, ["--import", "tsx", ...argv], { cwd: REPO, encoding: "utf8", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", ...env } as unknown as NodeJS.ProcessEnv, timeout: 100_000 });
     const lines = r.stdout.trim().split("\n").filter(Boolean);
     return { status: r.status, lines, out: JSON.parse(lines[lines.length - 1] ?? "null") as Record<string, unknown> | null };
   };
@@ -504,43 +547,46 @@ describe("Issue #302: the CLI as a process (fake claude and systemctl in test mo
     const { bin, log } = fakeClaude(home, cfg);
     const sys = join(tmp("sr-audit-sys-"), "systemctl");
     writeFileSync(sys, `#!/bin/sh\nif [ "$1" = show ]; then echo inactive; else echo disabled; fi\n`, { mode: 0o755 });
-    return { d, home, bin, log, env: { HOME: home, XDG_STATE_HOME: xdg, SR_IMAGEFIRST_AUDIT_TEST_MODE: "1", SR_IMAGEFIRST_AUDIT_CLAUDE_BIN: bin, SR_IMAGEFIRST_AUDIT_SYSTEMCTL: sys } };
+    const env = { HOME: home, XDG_STATE_HOME: xdg };
+    return { d, home, bin, log, sys, test: (args: string[]) => spawnOut([ENTRY, bin, sys, ...args], env), prod: (args: string[], extra: Record<string, string> = {}) => spawnOut([CLI, ...args], { ...env, ...extra }) };
   };
 
-  it("usage errors exit 2", () => {
+  it("usage errors exit 2 (the production entry)", () => {
     const h = tmp("sr-audit-cli-");
-    for (const args of [[], ["a", "b"], ["--dry-run", "--dry-run", ID]]) expect(run(args, { HOME: h }).out).toEqual({ status: "refused", code: "USAGE" });
+    for (const args of [[], ["a", "b"], ["--dry-run", "--dry-run", ID]]) expect(spawnOut([CLI, ...args], { HOME: h }).out).toEqual({ status: "refused", code: "USAGE" });
   });
 
-  it("dry run: the plan, exit 0, no claude process; a real run prints codes, counts and the verdict only (no findings text)", () => {
+  it("dry run: the plan per viewport, exit 0, no claude process; a real run prints codes, counts and the verdict only", () => {
     const h = homeWith();
-    const dry = run([h.d.id, "--dry-run"], h.env);
+    const dry = h.test([h.d.id, "--dry-run"]);
     expect(dry.status).toBe(0);
-    expect(dry.out).toMatchObject({ status: "planned", approval_id: h.d.id, bundle_sha256: h.d.bundleSha, calls: 0 });
+    expect(dry.out).toMatchObject({ status: "planned", approval_id: h.d.id, bundle_sha256: h.d.bundleSha, calls: 0, limits: AUDIT_LIMITS, tier: AUDIT_TIER.id });
+    const plan = dry.out!.plan as { viewport: string; images: number; bytes: number; preview_bytes: number }[];
+    expect(plan.map((p) => [p.viewport, p.images])).toEqual([["desktop_1440", 7], ["mobile_390", 4]]);
+    expect(plan.every((p) => p.bytes > 0 && p.preview_bytes > 0)).toBe(true);
     expect(readLog(h.log)).toEqual([]);
-    const real = run([h.d.id], h.env);
+    const real = h.test([h.d.id]);
     expect(real.status).toBe(0);
     expect(real.lines.length).toBe(1);
     expect(real.out).toMatchObject({ status: "completed", verdict: "show_owner", calls: 2 });
     expect(real.lines[0]).not.toMatch(/login|reason|problem|suggestion/);
     expect(existsSync(join(h.home, "sr-runs", "review-inbox", "audits", h.d.id, "audit.json"))).toBe(true);
-    const again = run([h.d.id], h.env);
-    expect(again).toMatchObject({ status: 2, out: { status: "refused", code: "AUDIT_EXISTS" } });
+    expect(h.test([h.d.id])).toMatchObject({ status: 2, out: { status: "refused", code: "AUDIT_EXISTS" } });
   });
 
-  it("the fake binary and systemctl are ignored outside test mode; the dummy id needs --dummy", () => {
+  it("the production entry cannot be pointed at a fake claude or systemctl by the environment; the dummy id needs --dummy", () => {
     const h = homeWith();
-    const off = run([h.d.id, "--dry-run"], { ...h.env, SR_IMAGEFIRST_AUDIT_TEST_MODE: "0" });
-    // the real /usr/bin/systemctl (absent, or no such unit here) cannot say the jail is idle → refused before anything
+    // the removed test-mode variables have no effect: the real /usr/bin/systemctl (absent, or no such unit here) cannot
+    // say the jail is idle → refused before anything; the fake claude is never started
+    const off = h.prod([h.d.id, "--dry-run"], { SR_IMAGEFIRST_AUDIT_TEST_MODE: "1", SR_IMAGEFIRST_AUDIT_CLAUDE_BIN: h.bin, SR_IMAGEFIRST_AUDIT_SYSTEMCTL: h.sys });
     expect(off.status).toBe(2);
     expect(["JAIL_STATE_UNKNOWN", "JAIL_ACTIVE"]).toContain(off.out?.code);
-    expect(run([DUMMY_ID], h.env).out).toMatchObject({ status: "refused", code: "APPROVAL_ID_RESERVED" });
+    expect(h.test([DUMMY_ID]).out).toMatchObject({ status: "refused", code: "APPROVAL_ID_RESERVED" });
     expect(readLog(h.log)).toEqual([]);
   });
 
   it("a stopped audit exits 1 with the fixed code", () => {
     const h = homeWith({ mode: "quota" });
-    const r = run([h.d.id], h.env);
-    expect(r).toMatchObject({ status: 1, out: { status: "stopped", code: "CLAUDE_QUOTA" } });
+    expect(h.test([h.d.id])).toMatchObject({ status: 1, out: { status: "stopped", code: "CLAUDE_QUOTA" } });
   });
 });

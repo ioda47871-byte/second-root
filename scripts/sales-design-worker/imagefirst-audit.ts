@@ -24,10 +24,7 @@ import { AuditStop, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit } from "..
 import { jailIdle, SYSTEMCTL } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
-process.umask(0o077);
 const REPO = resolve(__dirname, "../..");
-/** Tests only (both honoured only with SR_IMAGEFIRST_AUDIT_TEST_MODE=1): a fake claude and a fake systemctl. */
-const TEST_MODE = process.env.SR_IMAGEFIRST_AUDIT_TEST_MODE === "1";
 const say = (o: Record<string, unknown>) => process.stdout.write(`${JSON.stringify(o)}\n`);
 
 async function real(p: string): Promise<string> {
@@ -43,8 +40,12 @@ const within = (child: string, parent: string) => {
 };
 const expandHome = (p: string) => (p === "~" ? homedir() : p.startsWith("~/") ? join(homedir(), p.slice(2)) : p);
 
-async function main(): Promise<number> {
-  const args = process.argv.slice(2);
+/**
+ * The CLI. The claude binary and systemctl are fixed when this file is run (claude on PATH, /usr/bin/systemctl): no
+ * environment variable or argument can replace them (PR #311 re-review L-c). The tests call this function from their own
+ * entry file under tests/ with a fake claude and a fake systemctl; nothing in production reaches that file.
+ */
+export async function auditCli(args: readonly string[], bins: { claudeBin: string; systemctl: string }): Promise<number> {
   const dryRun = args.includes("--dry-run");
   const rest = args.filter((a) => a !== "--dry-run");
   if (rest.length !== 1 || args.filter((a) => a === "--dry-run").length > 1) return (say({ status: "refused", code: "USAGE" }), 2);
@@ -55,8 +56,7 @@ async function main(): Promise<number> {
   const repo = await real(REPO);
   for (const p of [stateDir, runsDir]) if (within(await real(p), repo)) return (say({ status: "refused", code: "PLACE_INSIDE_REPO" }), 2);
   const env = childEnvironment(process.env);
-  const claudeBin = TEST_MODE && process.env.SR_IMAGEFIRST_AUDIT_CLAUDE_BIN ? process.env.SR_IMAGEFIRST_AUDIT_CLAUDE_BIN : "claude";
-  const systemctl = TEST_MODE && process.env.SR_IMAGEFIRST_AUDIT_SYSTEMCTL ? process.env.SR_IMAGEFIRST_AUDIT_SYSTEMCTL : SYSTEMCTL;
+  const { claudeBin, systemctl } = bins;
   const controller = new AbortController();
   for (const s of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(s, () => controller.abort());
   try {
@@ -72,4 +72,7 @@ async function main(): Promise<number> {
   }
 }
 
-main().then((c) => process.exit(c), () => process.exit(1));
+if (require.main === module) {
+  process.umask(0o077);
+  auditCli(process.argv.slice(2), { claudeBin: "claude", systemctl: SYSTEMCTL }).then((c) => process.exit(c), () => process.exit(1));
+}

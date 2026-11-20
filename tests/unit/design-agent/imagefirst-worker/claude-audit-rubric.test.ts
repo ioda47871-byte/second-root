@@ -8,6 +8,7 @@ import { AUDIT_THRESHOLDS, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, 
 import { AuditRecord, deriveViewport, incoherence, overallVerdict, ViewportAnswer } from "@/lib/design-agent/imagefirst-worker/audit-schema";
 import { asMaterial, buildUserMessage, CLAUDE_BLOCKED_ENV, CLAUDE_PRINT_ARGS, claudeEnvironment, extractJsonObject } from "@/lib/design-agent/imagefirst-worker/claude-cli";
 import { DUMMY_RECORD } from "@/lib/design-agent/imagefirst-worker/review-poc";
+import { AUDIT_LIMITS, AUDIT_TIER } from "@/lib/design-agent/imagefirst-worker/claude-audit";
 import { answerTemplate, REPO } from "./claude-audit-support";
 
 // Issue #302: the Claude CLI audit's rubric, schema and runner pinned to their sources, and the module boundaries that keep
@@ -92,7 +93,7 @@ describe("Issue #302: the schema and the verdict computed in code", () => {
   it("the record is advisory only: confirmation, success case and owner-evaluation flags are fixed literals", () => {
     const rec = {
       schema: "imagefirst_claude_audit_v1", status: "stopped", stop_code: "CLAUDE_QUOTA",
-      binding: { approval_id: "a", bundle_id: "a", bundle_sha256: "a".repeat(64), plan_id: "p", commit: "0".repeat(40), previews_index_sha256: "b".repeat(64), rubric_version: "v", rubric_sha256: "c".repeat(64), audit_tier: "jpeg-q85-444-v1", request_sha256: { desktop_1440: null, mobile_390: null }, images: [{ viewport: "desktop_1440", label: "l", preview_file: "composite-pc.png", preview_sha256: "d".repeat(64), preview_bytes: 2, audit_sha256: "f".repeat(64), audit_bytes: 1, media_type: "image/jpeg", kind: "full", source: "composites/pc.png", source_sha256: "e".repeat(64), y0: 0, y1: 1 }] },
+      binding: { approval_id: "a", bundle_id: "a", bundle_sha256: "a".repeat(64), plan_id: "p", commit: "0".repeat(40), previews_index_sha256: "b".repeat(64), rubric_version: "v", rubric_sha256: "c".repeat(64), audit_tier: "jpeg-q85-444-v1", request_sha256: { desktop_1440: null, mobile_390: null }, images: [{ viewport: "desktop_1440", label: "l", preview_file: "composite-pc.png", preview_sha256: "d".repeat(64), preview_bytes: 2, audit_sha256: "f".repeat(64), audit_bytes: 1, media_type: "image/jpeg", opaque: true, kind: "full", source: "composites/pc.png", source_sha256: "e".repeat(64), y0: 0, y1: 1 }] },
       auditor: { via: "claude_cli_print_no_tools", cli_version: null, model_reported: null, started_at: "2026-11-20T00:00:00.000Z", finished_at: "2026-11-20T00:00:00.000Z", calls: 1, reasks: 0 },
       viewports: { desktop_1440: null, mobile_390: null },
       derived: { desktop_1440: null, mobile_390: null, verdict: null },
@@ -148,6 +149,17 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
   it("nothing starts the audit: no unit, timer, wrapper, worker or automatic start names it", () => {
     const hits = spawnSync("git", ["grep", "--untracked", "-lE", "(tsx|node|sh|ExecStart)\\b.*imagefirst-audit|runClaudeAudit\\(", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
     expect(hits).toEqual(["lib/design-agent/imagefirst-worker/claude-audit.ts", "scripts/sales-design-worker/imagefirst-audit.ts"]);
+  });
+
+  it("PR #311 re-review L-a: the audit tier and the cap are pinned (changing the quality, sampling or fill fails here)", () => {
+    expect(AUDIT_TIER).toEqual({ id: "jpeg-q85-444-v1", mediaType: "image/jpeg", quality: 85, chromaSubsampling: "4:4:4", background: "#ffffff" });
+    expect(AUDIT_LIMITS).toEqual({ maxImages: 20, maxBytes: 18 * 1024 * 1024 });
+  });
+
+  it("PR #311 re-review L-c: the production CLI takes claude and systemctl from nowhere but its own constants", () => {
+    const cli = code("scripts/sales-design-worker/imagefirst-audit.ts");
+    expect(cli).not.toMatch(/SR_IMAGEFIRST_AUDIT|_CLAUDE_BIN|_SYSTEMCTL|TEST_MODE/);
+    expect(cli.match(/auditCli\(process\.argv\.slice\(2\), \{[^}]*\}\)/g)).toEqual(['auditCli(process.argv.slice(2), { claudeBin: "claude", systemctl: SYSTEMCTL })']);
   });
 
   it("the dummy record matches the review PoC's", () => {

@@ -46,7 +46,8 @@ Codex で生成（承認1件 = 1回、cycle.ts）→ 封入・検証済みの bu
 リポジトリの `sharp` で、設定は固定なので同じ入力からは同じバイト列）。同じテストの合成で 4.0 MiB。
 WebP ではなく JPEG にしたのは、CLI と API が確実に受け付ける形式で、この大きさでは差が小さいため。
 
-- 記録: `audit.json` の各画像に `preview_sha256`（元のプレビュー）と `audit_sha256` / `audit_bytes`（送った層）、`media_type`。`AUDIT.md` の表にも両方。
+- 記録: `audit.json` の各画像に `preview_sha256`（元のプレビュー）と `audit_sha256` / `audit_bytes`（送った層）、`media_type`、`opaque`（プレビューが完全に不透明か）。
+  `AUDIT.md` の表にも両方と opaque。不透明でない画像が1枚でもあれば、透明な部分を白で埋めて監査した旨の注記を `AUDIT.md` に出す。
 - **上限（1回の呼び出しあたり、送る層のバイト数）: 画像 20 枚まで、合計 18 MiB まで**（base64 で約 24 MiB）。層でも超えれば
   `AUDIT_INPUT_TOO_LARGE` で止まる（それ以上は縮めない）。呼び出す側は上限を下げられるだけ。
 - `--dry-run` が表示幅ごとの枚数・送る層のバイト数（`bytes`）・プレビューのバイト数（`preview_bytes`）・上限（`limits`）を出す。
@@ -96,8 +97,12 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
   コードを `audit.json`（`status: "stopped"`）に残して止まる。再試行しない。jail は呼び出しのたびに確かめ直し、途中で動き出していれば
   `JAIL_ACTIVE` / `JAIL_STATE_UNKNOWN` で止まる（marker の後なので使った扱い）。記録そのものが書けないとき（`AUDIT_EXISTS`・`AUDIT_DIR_UNSAFE`・
   `AUDIT_WRITE_FAILED`）も `stopped`・終了コード 1 で、「何も使っていない」とは言わない。
-- サインイン: `claude auth status --setting-sources ""`（呼び出しと同じ設定の切り離し・同じ環境）で、`authMethod` が `claude.ai`（サブスクリプション）の
-  ときだけ通す。API キーは `CLAUDE_API_KEY_AUTH`、それ以外・不明（Console のサインイン、長期 token など）は `CLAUDE_AUTH_METHOD_REFUSED` で拒否（何も使わない）。
+- サインイン: `claude auth status`（curiosity-media と同じ素の形。この subcommand は `--json` / `--text` しか受け付けず、`--setting-sources` は
+  "unknown option" で拒否される。環境の掃除と作業ディレクトリは呼び出しと同じ）で、`authMethod` が `claude.ai`（サブスクリプション）**かつ**
+  `apiKeySource` が無いときだけ通す。Console のサインイン（管理された API キー、従量課金）も CLI は `authMethod: "claude.ai"` と報告し、
+  `apiKeySource` を足すだけなので、`apiKeySource` があれば API キーとして `CLAUDE_API_KEY_AUTH` で拒否する。`api_key` / `api_key_helper` も
+  `CLAUDE_API_KEY_AUTH`、それ以外・不明（長期 token の `oauth_token`、`third_party`、`none` など）は `CLAUDE_AUTH_METHOD_REFUSED`。どれも何も使わない。
+- jail: 開始時と、marker を作る直前（ここで動いていれば拒否・何も使わない）と、呼び出しのたびに確かめる。
 - 呼び出し: `claude -p --input-format stream-json --output-format stream-json --verbose --tools "" --strict-mcp-config --no-session-persistence --setting-sources ""`、
   作業ディレクトリは state の下の空の一時ディレクトリ（リポジトリの外。終わったら消す）、環境は worker の許可リストから `ANTHROPIC_*` と
   `CLAUDE_CODE_OAUTH_*` を除いたもの。`--model` は付けない（アカウントの既定。報告されたモデル名を記録するだけ）。
@@ -105,8 +110,8 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
 ## 5. オーナーの承認が要ること（このコードの merge には要らない）
 
 1. **最初の本物の `claude` の呼び出し**（オーナーの契約を使い、デザイン画像を Anthropic へ送る）。最初は bundle ごとに承認。
-2. **WSL での確認**: `sr-designgen` で `claude auth status --setting-sources ""` が受け付けられ、loggedIn で `authMethod` が `claude.ai` であること
-   （この形の `auth status` を CLI が受け付けるかも**未確認**。受け付けなければ `CLAUDE_NOT_SIGNED_IN` で止まり、何も使わない）。jail の外で `claude` が PATH にあること（**未確認**）。
+2. **WSL での確認**: `sr-designgen` で `claude auth status` が loggedIn・`authMethod` が `claude.ai`・`apiKeySource` が無いこと（**未確認**）。
+   jail の外で `claude` が PATH にあること（**未確認**）。
    本物の bundle で `--dry-run` が上限に収まること。
 3. モデルを固定するか（いまは固定しない。リポジトリにモデル名を書かない）。
 4. CP-003 の参照画像を送るか（いまは文だけ）。
@@ -115,6 +120,8 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
 7. 本物の Codex の実行（従来どおり承認 packet §10 と P3 の承認。監査は Codex を起動しない）。
 8. 長期 token（`claude setup-token`）を使うか（いまは使わない。既存の claude.ai のサインインだけ）。
 9. 成功例の登録・評価シートの確定は、監査では決してしない（オーナーだけ）。
+10. 採点の文言の違いを承知しておくこと: rubric の structure の文言は、評価テンプレートの構成 5 点の目安「商品・こだわり（2〜3 枚の visual cards）」を
+    わざと採らない（カード中心は `not_generic_template` で汎用LPの型として扱う）。項目の id・順番・閾値はテンプレートのまま。
 
 管理画面でオーナーがプレビューを見る機能は、別の後の機能である。ChatGPT 側へ画像を返すことは、まだ**達成していない**。
 
@@ -125,4 +132,5 @@ npx vitest run tests/unit/design-agent/imagefirst-worker/claude-audit.test.ts te
 ```
 
 偽の `claude`（node の script。argv・作業ディレクトリ・環境のキー・復号した画像の SHA を記録する）と、無害なダミーの bundle（1440 × 9000 の PC 合成を含む）だけを使う。
-本物の claude・Codex・ネットワークは使わない。
+本物の claude・Codex・ネットワークは使わない。CLI のテストは `tests/` の下のテスト専用の入口（`fixtures/audit-cli-entry.ts`）から偽の claude と systemctl を渡す。
+本番の入口（`scripts/sales-design-worker/imagefirst-audit.ts`）は claude（PATH）と `/usr/bin/systemctl` を固定し、環境変数や引数で差し替える道は無い。

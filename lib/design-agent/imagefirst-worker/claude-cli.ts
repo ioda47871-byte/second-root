@@ -58,12 +58,19 @@ async function run(bin: string, args: readonly string[], o: RunOptions): Promise
 
 /**
  * The only `authMethod` accepted (fail closed, PR #311 review L3): the claude.ai subscription login, the value
- * curiosity-media's worker sees for a subscription sign-in. An API key is CLAUDE_API_KEY_AUTH; any other or unknown
- * method (a Console login, a long-lived token: not used here) is CLAUDE_AUTH_METHOD_REFUSED.
+ * curiosity-media's worker sees for a subscription sign-in. Any other or unknown method (api_key_helper, oauth_token,
+ * third_party, none, ...) is CLAUDE_AUTH_METHOD_REFUSED; an API-key method is CLAUDE_API_KEY_AUTH.
+ *
+ * PR #311 re-review M-a: the CLI also reports a Console login (a managed API key, billed per token) as "claude.ai",
+ * adding `apiKeySource`. Any `apiKeySource` is therefore an API key: CLAUDE_API_KEY_AUTH.
  */
 export const CLAUDE_ALLOWED_AUTH_METHODS = ["claude.ai"] as const;
-/** `auth status` with the same settings isolation as the call (no user / project / local settings). */
-export const CLAUDE_AUTH_STATUS_ARGS = ["auth", "status", "--setting-sources", ""] as const;
+/**
+ * Plain `auth status`, as curiosity-media runs it (PR #311 re-review H1: the subcommand accepts only --json / --text and
+ * rejects --setting-sources). Same scrubbed environment and private cwd as the call; a settings file that injects a key
+ * (apiKeyHelper) shows up here as api_key_helper and is refused.
+ */
+export const CLAUDE_AUTH_STATUS_ARGS = ["auth", "status"] as const;
 
 /**
  * Signed in with the subscription (`claude auth status`), never with an API key. A pass does not prove the login still
@@ -72,14 +79,16 @@ export const CLAUDE_AUTH_STATUS_ARGS = ["auth", "status", "--setting-sources", "
 export async function assertClaudeSignedIn(o: { claudeBin: string; env: NodeJS.ProcessEnv; cwd: string; signal?: AbortSignal }): Promise<void> {
   const r = await run(o.claudeBin, CLAUDE_AUTH_STATUS_ARGS, { env: o.env, cwd: o.cwd, timeoutMs: 30_000, ...(o.signal ? { signal: o.signal } : {}) });
   if (r.aborted) throw new ClaudeCallError("CLAUDE_ABORTED");
-  let status: { loggedIn?: unknown; authMethod?: unknown } = {};
+  let status: { loggedIn?: unknown; authMethod?: unknown; apiKeySource?: unknown } = {};
   try {
     status = JSON.parse(r.stdout) as typeof status;
   } catch {
     /* unreadable = the login cannot be confirmed */
   }
-  if (typeof status?.authMethod === "string" && /api[_-]?key/i.test(status.authMethod)) throw new ClaudeCallError("CLAUDE_API_KEY_AUTH");
-  if (r.code !== 0 || status?.loggedIn !== true) throw new ClaudeCallError("CLAUDE_NOT_SIGNED_IN");
+  if (!status || typeof status !== "object") status = {};
+  if (typeof status.authMethod === "string" && /api[_-]?key/i.test(status.authMethod)) throw new ClaudeCallError("CLAUDE_API_KEY_AUTH");
+  if (r.code !== 0 || status.loggedIn !== true) throw new ClaudeCallError("CLAUDE_NOT_SIGNED_IN");
+  if (status.apiKeySource !== undefined && status.apiKeySource !== null) throw new ClaudeCallError("CLAUDE_API_KEY_AUTH");
   if (!(CLAUDE_ALLOWED_AUTH_METHODS as readonly unknown[]).includes(status.authMethod)) throw new ClaudeCallError("CLAUDE_AUTH_METHOD_REFUSED");
 }
 

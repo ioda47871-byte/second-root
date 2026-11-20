@@ -99,10 +99,14 @@ export async function loadAuditMaterial(reader: Reader): Promise<AuditMaterial> 
  * The audit tier of one verified preview (in memory): the same pixels and size, alpha flattened on white, JPEG at
  * AUDIT_TIER's fixed settings. Refuses (AUDIT_TIER_FAILED) a decode error or any change of size.
  */
-export async function auditTierOf(png: Buffer, width: number, height: number): Promise<Buffer> {
+export async function auditTierOf(png: Buffer, width: number, height: number): Promise<{ bytes: Buffer; opaque: boolean }> {
   let out;
+  let opaque: boolean;
   try {
-    out = await sharp(png, { failOn: "error", limitInputPixels: PREVIEW_LIMITS.maxSide * PREVIEW_LIMITS.maxSide })
+    const img = () => sharp(png, { failOn: "error", limitInputPixels: PREVIEW_LIMITS.maxSide * PREVIEW_LIMITS.maxSide });
+    // PR #311 re-review L-d: whether any pixel is not fully opaque (those are filled white for the audit; recorded)
+    opaque = (await img().stats()).isOpaque;
+    out = await img()
       .flatten({ background: AUDIT_TIER.background })
       .jpeg({ quality: AUDIT_TIER.quality, chromaSubsampling: AUDIT_TIER.chromaSubsampling, mozjpeg: false })
       .toBuffer({ resolveWithObject: true });
@@ -110,7 +114,7 @@ export async function auditTierOf(png: Buffer, width: number, height: number): P
     return stop("AUDIT_TIER_FAILED");
   }
   if (out.info.width !== width || out.info.height !== height) stop("AUDIT_TIER_FAILED");
-  return out.data;
+  return { bytes: out.data, opaque };
 }
 
 export type ClaudeAuditOptions = {
@@ -237,15 +241,16 @@ function renderAuditMd(r: AuditRecord): string {
   L.push(
     "## Images attached (SHA-256 computed by the worker: the verified preview, and the audit-tier bytes derived from it and sent)",
     "",
-    "| viewport | preview | preview SHA-256 | sent (audit tier) SHA-256 | sent bytes | source | source SHA-256 |",
-    "|---|---|---|---|---|---|---|",
+    "| viewport | preview | preview SHA-256 | sent (audit tier) SHA-256 | sent bytes | opaque | source | source SHA-256 |",
+    "|---|---|---|---|---|---|---|---|",
   );
-  for (const i of b.images) L.push(`| ${i.viewport} | \`${i.preview_file}\` | \`${i.preview_sha256}\` | \`${i.audit_sha256}\` | ${i.audit_bytes} | \`${i.source}\` | \`${i.source_sha256}\` |`);
+  for (const i of b.images) L.push(`| ${i.viewport} | \`${i.preview_file}\` | \`${i.preview_sha256}\` | \`${i.audit_sha256}\` | ${i.audit_bytes} | ${i.opaque ? "yes" : "**no**"} | \`${i.source}\` | \`${i.source_sha256}\` |`);
+  if (b.images.some((i) => !i.opaque)) L.push("", "**Note:** at least one preview is not fully opaque; its transparent areas were filled white for the audit (the audit tier), so the model saw them as white.");
   L.push("");
   return L.join("\n");
 }
 
-type Sent = { images: ClaudeImage[]; meta: SentImage[]; entries: PreviewEntry[]; previewSha: string[]; previewBytes: number[] };
+type Sent = { images: ClaudeImage[]; meta: SentImage[]; entries: PreviewEntry[]; previewSha: string[]; previewBytes: number[]; opaque: boolean[] };
 
 /** The audit of one delivered IMAGE_FIRST bundle (see the header). */
 export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAuditResult> {
@@ -334,7 +339,7 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
     await seams.afterVerify?.();
     // 4. each chosen preview read once more: its SHA must still be INDEX.json's (a file swapped after the check stops
     //    here), then the audit tier is derived in memory from exactly those bytes
-    const sent: Record<AuditViewport, Sent> = { desktop_1440: { images: [], meta: [], entries: [], previewSha: [], previewBytes: [] }, mobile_390: { images: [], meta: [], entries: [], previewSha: [], previewBytes: [] } };
+    const sent: Record<AuditViewport, Sent> = { desktop_1440: { images: [], meta: [], entries: [], previewSha: [], previewBytes: [], opaque: [] }, mobile_390: { images: [], meta: [], entries: [], previewSha: [], previewBytes: [], opaque: [] } };
     const plan: PlannedCall[] = [];
     for (const vp of VIEWPORT_IDS) {
       const chosen = choose(ix.previews, vp);
@@ -346,10 +351,11 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
         const b = await readPrivate(join(previewsDir, p.file), PREVIEW_LIMITS.maxBytes, "PREVIEW_SHA_MISMATCH", fileUid);
         if (!b || sha256(b) !== p.preview_sha256 || b.length !== p.bytes) return stop("PREVIEW_SHA_MISMATCH");
         const tier = await auditTierOf(b, p.width, p.height);
-        bytes += tier.length;
+        bytes += tier.bytes.length;
         previewBytes += b.length;
         const label = labelOf(p);
-        sent[vp].images.push({ label, bytes: tier, mediaType: AUDIT_TIER.mediaType });
+        sent[vp].images.push({ label, bytes: tier.bytes, mediaType: AUDIT_TIER.mediaType });
+        sent[vp].opaque.push(tier.opaque);
         sent[vp].meta.push({ label, kind: p.kind, source: p.source, ...rowsOf(p), width: p.width, height: p.height });
         sent[vp].entries.push(p);
         sent[vp].previewSha.push(sha256(b));
@@ -379,6 +385,9 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
       throw error;
     }
     if (o.signal?.aborted) stop("AUDIT_ABORTED");
+    // PR #311 re-review L-b: the jail once more right before anything is spent (a refusal, nothing spent)
+    const preMarkerJail = await jailCode();
+    if (preMarkerJail) stop(preMarkerJail);
     await mkdir(markers, { recursive: true, mode: 0o700 });
     if (!(await ownPrivateDir(markers))) stop("AUDIT_DIR_UNSAFE");
     try {
@@ -473,6 +482,7 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
               audit_sha256: sha256(sent[vp].images[i]!.bytes),
               audit_bytes: sent[vp].images[i]!.bytes.length,
               media_type: AUDIT_TIER.mediaType,
+              opaque: sent[vp].opaque[i]!,
               kind: p.kind,
               source: p.source,
               source_sha256: p.source_sha256,
