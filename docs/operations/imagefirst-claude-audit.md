@@ -97,11 +97,12 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
   コードを `audit.json`（`status: "stopped"`）に残して止まる。再試行しない。jail は呼び出しのたびに確かめ直し、途中で動き出していれば
   `JAIL_ACTIVE` / `JAIL_STATE_UNKNOWN` で止まる（marker の後なので使った扱い）。記録そのものが書けないとき（`AUDIT_EXISTS`・`AUDIT_DIR_UNSAFE`・
   `AUDIT_WRITE_FAILED`）も `stopped`・終了コード 1 で、「何も使っていない」とは言わない。
-- サインイン: `claude auth status`（curiosity-media と同じ素の形。この subcommand は `--json` / `--text` しか受け付けず、`--setting-sources` は
-  "unknown option" で拒否される。環境の掃除と作業ディレクトリは呼び出しと同じ）で、`authMethod` が `claude.ai`（サブスクリプション）**かつ**
-  `apiKeySource` が無いときだけ通す。Console のサインイン（管理された API キー、従量課金）も CLI は `authMethod: "claude.ai"` と報告し、
-  `apiKeySource` を足すだけなので、`apiKeySource` があれば API キーとして `CLAUDE_API_KEY_AUTH` で拒否する。`api_key` / `api_key_helper` も
-  `CLAUDE_API_KEY_AUTH`、それ以外・不明（長期 token の `oauth_token`、`third_party`、`none` など）は `CLAUDE_AUTH_METHOD_REFUSED`。どれも何も使わない。
+- サインイン: `claude --setting-sources "" auth status`（呼び出しと同じ設定だけを読む。`--setting-sources ""` は subcommand の**前**に置く
+  global option として受け付けられる。`auth status` の後ろに置くと "unknown option" で拒否される。環境の掃除と作業ディレクトリも呼び出しと同じ）。
+  通すのは、exit 0・`loggedIn` がちょうど `true`・`authMethod` が `claude.ai`（サブスクリプション）・`apiProvider` が `firstParty`・`apiKeySource` が無い、
+  をすべて満たすときだけ。`apiKeySource` があれば（API キーの資格情報が別にある）API キーとして `CLAUDE_API_KEY_AUTH`、`api_key` / `api_key_helper` も
+  `CLAUDE_API_KEY_AUTH`。それ以外・不明（長期 token の `oauth_token`、`third_party`、`none`、first-party 以外の provider や provider 無し）は
+  `CLAUDE_AUTH_METHOD_REFUSED`、`loggedIn` が true でない・exit が 0 でないものは `CLAUDE_NOT_SIGNED_IN`。どれも何も使わない。
 - jail: 開始時と、marker を作る直前（ここで動いていれば拒否・何も使わない）と、呼び出しのたびに確かめる。
 - 呼び出し: `claude -p --input-format stream-json --output-format stream-json --verbose --tools "" --strict-mcp-config --no-session-persistence --setting-sources ""`、
   作業ディレクトリは state の下の空の一時ディレクトリ（リポジトリの外。終わったら消す）、環境は worker の許可リストから `ANTHROPIC_*` と
@@ -110,7 +111,8 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
 ## 5. オーナーの承認が要ること（このコードの merge には要らない）
 
 1. **最初の本物の `claude` の呼び出し**（オーナーの契約を使い、デザイン画像を Anthropic へ送る）。最初は bundle ごとに承認。
-2. **WSL での確認**: `sr-designgen` で `claude auth status` が loggedIn・`authMethod` が `claude.ai`・`apiKeySource` が無いこと（**未確認**）。
+2. **WSL での確認**: `sr-designgen` で `claude --setting-sources "" auth status` が loggedIn・`authMethod` が `claude.ai`・`apiProvider` が `firstParty`・
+   `apiKeySource` が無いこと（**未確認**）。
    jail の外で `claude` が PATH にあること（**未確認**）。
    本物の bundle で `--dry-run` が上限に収まること。
 3. モデルを固定するか（いまは固定しない。リポジトリにモデル名を書かない）。

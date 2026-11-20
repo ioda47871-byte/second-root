@@ -66,11 +66,13 @@ async function run(bin: string, args: readonly string[], o: RunOptions): Promise
  */
 export const CLAUDE_ALLOWED_AUTH_METHODS = ["claude.ai"] as const;
 /**
- * Plain `auth status`, as curiosity-media runs it (PR #311 re-review H1: the subcommand accepts only --json / --text and
- * rejects --setting-sources). Same scrubbed environment and private cwd as the call; a settings file that injects a key
- * (apiKeyHelper) shows up here as api_key_helper and is refused.
+ * `auth status` reading exactly the settings the call reads (PR #311 review rounds 2-3): `--setting-sources ""` as a
+ * GLOBAL option, before the subcommand (the subcommand itself accepts only --json / --text and rejects it after
+ * `auth status`). Same scrubbed environment and private cwd as the call.
  */
-export const CLAUDE_AUTH_STATUS_ARGS = ["auth", "status"] as const;
+export const CLAUDE_AUTH_STATUS_ARGS = ["--setting-sources", "", "auth", "status"] as const;
+/** The only API provider accepted (PR #311 third review L2): the first-party Anthropic API of the subscription login. */
+export const CLAUDE_ALLOWED_API_PROVIDER = "firstParty";
 
 /**
  * Signed in with the subscription (`claude auth status`), never with an API key. A pass does not prove the login still
@@ -79,7 +81,7 @@ export const CLAUDE_AUTH_STATUS_ARGS = ["auth", "status"] as const;
 export async function assertClaudeSignedIn(o: { claudeBin: string; env: NodeJS.ProcessEnv; cwd: string; signal?: AbortSignal }): Promise<void> {
   const r = await run(o.claudeBin, CLAUDE_AUTH_STATUS_ARGS, { env: o.env, cwd: o.cwd, timeoutMs: 30_000, ...(o.signal ? { signal: o.signal } : {}) });
   if (r.aborted) throw new ClaudeCallError("CLAUDE_ABORTED");
-  let status: { loggedIn?: unknown; authMethod?: unknown; apiKeySource?: unknown } = {};
+  let status: { loggedIn?: unknown; authMethod?: unknown; apiKeySource?: unknown; apiProvider?: unknown } = {};
   try {
     status = JSON.parse(r.stdout) as typeof status;
   } catch {
@@ -90,6 +92,7 @@ export async function assertClaudeSignedIn(o: { claudeBin: string; env: NodeJS.P
   if (r.code !== 0 || status.loggedIn !== true) throw new ClaudeCallError("CLAUDE_NOT_SIGNED_IN");
   if (status.apiKeySource !== undefined && status.apiKeySource !== null) throw new ClaudeCallError("CLAUDE_API_KEY_AUTH");
   if (!(CLAUDE_ALLOWED_AUTH_METHODS as readonly unknown[]).includes(status.authMethod)) throw new ClaudeCallError("CLAUDE_AUTH_METHOD_REFUSED");
+  if (status.apiProvider !== CLAUDE_ALLOWED_API_PROVIDER) throw new ClaudeCallError("CLAUDE_AUTH_METHOD_REFUSED");
 }
 
 /** The CLI's own wording for a login that has expired or cannot be confirmed (curiosity-media DEV-139, review M3). */

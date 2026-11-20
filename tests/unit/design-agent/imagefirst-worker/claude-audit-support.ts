@@ -155,16 +155,23 @@ const cfg = JSON.parse(fs.readFileSync(path.join(process.env.HOME, "fake-claude.
 const args = process.argv.slice(2);
 const forbidden = Object.keys(process.env).filter((k) => /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_)/.test(k) || /CANARY/.test(k));
 const log = (o) => fs.appendFileSync(cfg.log, JSON.stringify({ ...o, argv: args, cwd: process.cwd(), forbidden, envKeys: Object.keys(process.env).sort() }) + "\\n");
-if (args[0] === "auth" && args[1] === "status") {
+/* the global --setting-sources "" is accepted only BEFORE the subcommand (as the real CLI does) */
+const authArgs = args[0] === "--setting-sources" && args[1] === "" ? args.slice(2) : args;
+if (authArgs[0] === "auth" && authArgs[1] === "status") {
   log({ bin: "auth" });
   /* like the real subcommand (commander): only --json / --text; anything else is "unknown option", exit 1, no stdout */
-  const extra = args.slice(2).filter((a) => a !== "--json" && a !== "--text");
+  const extra = authArgs.slice(2).filter((a) => a !== "--json" && a !== "--text");
   if (extra.length > 0) { process.stderr.write("error: unknown option '" + extra[0] + "'\\n"); process.exit(1); }
   const mode = cfg.auth || "ok";
   if (mode === "signedout") { console.log(JSON.stringify({ loggedIn: false, authMethod: "none", apiProvider: "firstParty" })); process.exit(1); }
   if (mode === "garbled") { console.log("???"); process.exit(0); }
   /* the real shapes: a subscription login; a Console login (a managed API key) is ALSO "claude.ai", plus apiKeySource */
   if (mode === "ok") { console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" })); process.exit(0); }
+  /* N1: a truthy-but-not-true loggedIn, and a non-zero exit with valid-looking JSON */
+  if (mode === "loggedin-string") { console.log(JSON.stringify({ loggedIn: "true", authMethod: "claude.ai", apiProvider: "firstParty" })); process.exit(0); }
+  if (mode === "exit1-json") { console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" })); process.exit(1); }
+  /* L2: another or no API provider */
+  if (mode.startsWith("provider-")) { const v = mode.slice(9); console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", ...(v === "missing" ? {} : { apiProvider: v }) })); process.exit(0); }
   if (mode === "console") { console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", apiKeySource: "/login managed key" })); process.exit(0); }
   console.log(JSON.stringify({ loggedIn: true, authMethod: mode === "apikey" ? "api_key" : mode === "missing" ? undefined : mode, apiProvider: "firstParty" }));
   process.exit(0);

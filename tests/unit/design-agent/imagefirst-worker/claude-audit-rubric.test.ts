@@ -160,6 +160,14 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     const cli = code("scripts/sales-design-worker/imagefirst-audit.ts");
     expect(cli).not.toMatch(/SR_IMAGEFIRST_AUDIT|_CLAUDE_BIN|_SYSTEMCTL|TEST_MODE/);
     expect(cli.match(/auditCli\(process\.argv\.slice\(2\), \{[^}]*\}\)/g)).toEqual(['auditCli(process.argv.slice(2), { claudeBin: "claude", systemctl: SYSTEMCTL })']);
+    // PR #311 third review L3: the whole file reads the environment only for XDG_STATE_HOME, plus the whole environment
+    // handed to childEnvironment (the allowlist) and to runClaudeAudit (scrubbed by claude-cli.ts) — a hook under any name fails
+    expect(cli.match(/process\.env\b(\s*\.\s*\w+|\s*\[[^\]]*\])?/g)).toEqual(["process.env.XDG_STATE_HOME", "process.env", "process.env"]);
+    expect(cli).toMatch(/childEnvironment\(process\.env\)/);
+    expect(cli).toMatch(/env: process\.env, jailIdle/);
+    expect(cli).not.toMatch(/\bprocess\.argv\b(?!\.slice\(2\), \{ claudeBin: "claude", systemctl: SYSTEMCTL \})/);
+    // the test entry reads no environment at all
+    expect(code("tests/unit/design-agent/imagefirst-worker/fixtures/audit-cli-entry.ts")).not.toMatch(/process\.env/);
   });
 
   it("the dummy record matches the review PoC's", () => {
