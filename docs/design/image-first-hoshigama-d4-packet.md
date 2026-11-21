@@ -20,33 +20,35 @@
 | 生成りと焼き色の二系統（焼き色の色相をそろえる） | 見開きごとに粉と焼き色の左右・上下・高さを入れ替え、同じ帯を続けない |
 | SP の縦組み | 文字の下は平らな面、質感は文字の無い面で。SP のナビは 3 語・大きめ |
 
-説明文・値段・商品写真・人物は作らない（事実に無い）。フッターは店名と架空店舗の注記（facts の `name` と `description`）だけ。
+説明文・値段・商品写真・人物は作らない（事実に無い）。フッターは店名と店の説明の文（facts の `name` と `description`、架空店舗の注記を含む）をそのまま小さく置くだけ。
+brief にあった「先頭へ戻る導線」は文字にしない（事実に無い語を作らない）。SP のナビは「営業時間」「所在地」「電話」の 3 語だけを許す（`NAV_KEYS_BY_VIEWPORT`、PC は 5 語のまま）。
 
 ## 2. 枚数とセクションの並び
 
 PC 1440: 2 枚（`name`・`spread-flour`・`spread-fire` ／ `shelf`・`info`）。SP 390: 4 枚。区画は 5 つ: `name` → `spread-flour` → `spread-fire` → `shelf` → `info`。
 継ぎ目はどれも区画の境（`section_break`）。合計 6 枚・1 バッチ（d3 と同じ）。
+SP では分け方の都合で `shelf` は 3 枚目（`spread-fire` と同じ画像）、`info` が 4 枚目だけになる。SP の最後の画像は棚ではなく店舗情報で終わる（見るときの注意）。
 
 ## 3. プロンプトのピン（全文は `--print-pin` で表示する）
 
 | 項目 | d4 |
 |---|---|
-| plan SHA-256 | 290f0f7f921146aea6bc5333785d21b11411a54f06e83b1663b879f9442fc830 |
-| バッチ SHA-256 | 770eed5d1922f254c7a79bcfaeccecc6a9aa7648404116b2f152cbb0f6a8ce64 |
-| バッチの文字数 | 14821 |
-| 方向性 SHA-256（`direction.json` の正規形） | 02118ed83819146e21fc1ba6711ce93aa075146cc443b1c9b80384793fb59fa3 |
-| 方向性ファイル SHA-256（`direction-d4.json`） | cc1eb7d38e0ed557e115fa28f2a9d4832508ac94dd8739235d55bd044e64b923 |
+| plan SHA-256 | 383c0a25c774b4d88bfa34bd3d34bea7a74c4a63d4bc52dd78ca96fe114b3c58 |
+| バッチ SHA-256 | 9babc0b16069fd472b1df44ed54fee282ee687688ff74b5d3b25d329a57fc753 |
+| バッチの文字数 | 14438 |
+| 方向性 SHA-256（`direction.json` の正規形） | ae61cfcc4e605bc096a74134ca14a8374dea85802be05e08fc8f78acb1f84008 |
+| 方向性ファイル SHA-256（`direction-d4.json`） | 7490396ac73fbf73f75a1e9712d40cc81183669933d209395e143f88bdab84ea |
 | facts SHA-256 | d46adc81bee7b7096e47f57091d88df348ac37cf389d7cce071a76f634fcf715 |
 | 成功原理 SHA-256 | a7c9a3f467f46787520885edf67df692a23e4c37ac05934fcfabb67ea9c4bf6d |
 
 | 画像 | プロンプト SHA-256 / 文字数 |
 |---|---|
-| pc-1 | `9487584dc424ab61fba434ed9db76ee24187534ad37c79614ee9ca728a8e98f5` / 2287 |
-| pc-2 | `627041f4f827ea2f311d6fe10f76576755ed32ec701d90636bc2ae0a04542ca6` / 2491 |
-| sp-1 | `09a255983f60685f152af3ad861f992889f36b5e1bcb5f3193ab578377608ec0` / 2049 |
-| sp-2 | `40a5fbbef4cc5f7f1963f49577a38ff767980d29d1e2dea1dc81e0a959edf0b0` / 2152 |
-| sp-3 | `03059db57c80ea95e253862e49426a11c21a897f2b235a1abc41872fd01e4722` / 2335 |
-| sp-4 | `b2f8f84a1e6fb7c31daf2cfa0af242b5d52148f495c211dee5275d6af7574160` / 2420 |
+| pc-1 | `13947eed72a153032f73da74353f0bde9a31a3faf2dd3ff680b24c886c4c3395` / 2223 |
+| pc-2 | `d0fb215a2c71a7dc22872cd3b0eef4c1d4c87a7418e30e518ad18853ca6a98d4` / 2433 |
+| sp-1 | `bf2647857f05fb661cae3a71e0bd3695fd252e0a91fc1f3c5a4447fbf83f1925` / 1974 |
+| sp-2 | `097e3933f37a8b1e58d5a3c47e0c81d73b08f14ae75200c2efb1720c917cf218` / 2088 |
+| sp-3 | `73b4c5f7e2b9223f60ea074bb4e470a2b7938bf8fde1958ef2780f3fb12b1617` / 2271 |
+| sp-4 | `92ccad9ae0c475e78d0a631f29dd497f628b049945c4f156424f6e51676c09db` / 2362 |
 
 ## 4. 実行の経路（この版の時点では **d4 を受け付ける入口はまだ無い**）
 

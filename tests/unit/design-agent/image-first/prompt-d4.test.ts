@@ -64,6 +64,17 @@ describe("IMAGE_FIRST d4 (revise of d3)", () => {
     }
   });
 
+  it("the SP header offers only three navigation words; the PC header keeps all five; d1/d3 keep all five on both", async () => {
+    const nav = (t: string) => /ナビゲーションの項目に使ってよい語: (.*)/.exec(t)?.[1];
+    const d4 = await planOf("d4");
+    expect(nav(d4.viewports.mobile_390.parts[0]!.prompt)).toBe("「営業時間」 「所在地」 「電話」");
+    expect(nav(d4.viewports.desktop_1440.parts[0]!.prompt)).toBe("「営業時間」 「定休日」 「所在地」 「道順」 「電話」");
+    for (const key of ["d1", "d3"] as const) {
+      const p = await planOf(key);
+      for (const vp of [p.viewports.desktop_1440, p.viewports.mobile_390]) expect(nav(vp.parts[0]!.prompt)).toBe("「営業時間」 「定休日」 「所在地」 「道順」 「電話」");
+    }
+  });
+
   it("d1 and d3 prompts carry neither the label line nor the footer line (their bytes are pinned in prompt.test.ts)", async () => {
     for (const key of ["d1", "d3"] as const) for (const t of prompts(await planOf(key))) expect(t).not.toMatch(/小さな見出しとして使ってよい語|フッターに書いてよい文字/);
   });

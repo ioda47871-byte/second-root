@@ -48,7 +48,7 @@ export const PROMPT_INPUTS = {
 export const DIRECTIONS = {
   d1: { id: "d1-kiln-clock", sha256: "3c2a50de5ddd42d5f98e120553ebf82cc400b4319e1195b9d37d15b866e4c48b", set: PROMPT_INPUTS.directionSet.path },
   d3: { id: "d3-flour-crust", sha256: "91b4dcfca9a7df561bc2cbebb4c8720aa453f11ddfa030c60fd7a5737237bd23", set: PROMPT_INPUTS.directionSet.path },
-  d4: { id: "d4-flour-crust-shelf", sha256: "02118ed83819146e21fc1ba6711ce93aa075146cc443b1c9b80384793fb59fa3", set: `${BAKERY}/direction-d4.json` },
+  d4: { id: "d4-flour-crust-shelf", sha256: "ae61cfcc4e605bc096a74134ca14a8374dea85802be05e08fc8f78acb1f84008", set: `${BAKERY}/direction-d4.json` },
 } as const;
 export type DirectionKey = keyof typeof DIRECTIONS;
 
@@ -133,6 +133,13 @@ export const SECTION_LABEL_KEYS: Readonly<Partial<Record<DirectionKey, Readonly<
 };
 /** Facts the footer of the last picture may repeat (d4: the shop name and the fictional-shop note). Others: none. */
 export const FOOTER_TEXT_KEYS: Readonly<Partial<Record<DirectionKey, readonly string[]>>> = { d4: ["name", "description"] };
+/**
+ * A narrower navigation for one viewport (d4 SP: the owner asked for three items at most, revise 2026-11-21). The keys are
+ * a subset of NAV_LABELS' keys, in NAV_LABELS' order. Directions/viewports without an entry use all of NAV_LABELS.
+ */
+export const NAV_KEYS_BY_VIEWPORT: Readonly<Partial<Record<DirectionKey, Partial<Record<ImageFirstViewport, readonly string[]>>>>> = {
+  d4: { mobile_390: ["hours", "address", "phone"] },
+};
 /** Navigation words a header may show: labels of the facts schema's own label table (copy-record LABELS_BY_KEY; checked). */
 export const NAV_LABELS: readonly (readonly [key: string, label: string])[] = [
   ["hours", "営業時間"],
@@ -349,10 +356,12 @@ function partPrompt(o: { inputs: PromptInputs; viewport: ImageFirstViewport; gro
     return label;
   };
   const sectionLabels = o.sections.flatMap((s) => (SECTION_LABEL_KEYS[inputs.key]?.[s.id] ?? []).length ? [{ id: s.id, labels: SECTION_LABEL_KEYS[inputs.key]![s.id]!.map(labelOf) }] : []);
-  const nav = NAV_LABELS.map(([key, label]) => {
+  const navKeys = NAV_KEYS_BY_VIEWPORT[inputs.key]?.[viewport];
+  const nav = NAV_LABELS.filter(([key]) => !navKeys || navKeys.includes(key)).map(([key, label]) => {
     if (!LABELS_BY_KEY[key]?.includes(label)) throw new PromptStop("NAV_LABEL_INVALID");
     return label;
   });
+  if (navKeys && nav.length !== navKeys.length) throw new PromptStop("NAV_LABEL_INVALID");
   const lines: string[] = [];
   lines.push("これは Web サイトのデザインカンプ（完成イメージ）の画像1枚です。写真でも、ポスターでも、パソコンやスマートフォンの写った見本画像でもありません。ブラウザの枠・スクロールバー・端末の縁・机・手は描かず、ページの画面そのものだけを、平らな画像として正面から描いてください。");
   lines.push("");
