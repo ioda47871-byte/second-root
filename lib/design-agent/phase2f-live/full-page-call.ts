@@ -10,7 +10,8 @@
  *     YYYY-MM-DDTHH:MM:SSZ (APPROVAL_EXPIRY_INVALID), not past (APPROVAL_EXPIRED) and at most 24 hours ahead
  *     (APPROVAL_EXPIRY_TOO_FAR);
  *   - the plan rebuilt from the pinned inputs is the approved plan (PLAN_PIN_MISMATCH);
- *   - the packet is exactly APPROVAL_PACKET_PATH of the repository (PACKET_PATH_NOT_ALLOWED: never a test fixture);
+ *   - the packet is exactly this direction's own packet of the repository (approval-packets.ts: d1 / d3 the P3 packet
+ *     APPROVAL_PACKET_PATH, d4 its own; PACKET_PATH_NOT_ALLOWED: never a test fixture, never another direction's packet);
  *   - the packet itself is read: its header and its §10 say 承認済み, §10 is filled in (PACKET_NOT_APPROVED), and its direction,
  *     approval id, expiry and plan id are the ones given to this run (PACKET_APPROVAL_MISMATCH). The commit is not in
  *     the packet (the packet is part of that commit): it is pinned by the expected commit = HEAD check below;
@@ -36,6 +37,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { CodexAbortedError, CodexError } from "../codex";
 import { REQUIRED_GENERATION, REQUIRED_RIGHTS, REQUIRED_STORAGE, OUTPUT_KIND, RECORD_SCHEMA, ROUTE, VIEWPORTS } from "../image-first/record";
 import type { PromptInputs, PromptPlan } from "../image-first/prompt";
+import { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec } from "./approval-packets";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, sha256, writeOnce, type CommitState } from "./steps";
 
@@ -55,7 +57,7 @@ export type FullPageBatch = (o: { prompt: string; timeoutMs: number; maxImages: 
 
 export type FullPageCallInput = {
   plan: PromptPlan;
-  /** The packet path as given (absolute, or relative to the working directory): its real path must be APPROVAL_PACKET_PATH in the repository. */
+  /** The packet path as given (absolute, or relative to the working directory): its real path must be this direction's packet in the repository (approval-packets.ts). */
   packetPath: string;
   inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
   humanApprovalConfirmed: boolean;
@@ -75,7 +77,7 @@ export type FullPageCallDeps = {
   commit: () => Promise<CommitState>;
   /**
    * The packet's bytes as committed at the approved commit (the CLI: `git show <commit>:<path>`; null: unreadable).
-   * Asked only after the commit pin and the clean-tree check held, and only for APPROVAL_PACKET_PATH.
+   * Asked only after the commit pin and the clean-tree check held, and only for this direction's packet path.
    */
   packetAt: (commit: string, repoRelativePath: string) => Promise<Buffer | null>;
   preflight?: () => Promise<string | null>;
@@ -88,7 +90,7 @@ export type FullPageCallResult =
 
 export const FULL_PAGE_KIND = "full_page_comp" as const;
 export const FULL_PAGE_ROUTE = "image_first" as const;
-/** <shop words>-imagefirst-<d1|d3>-<YYYYMMDD>-<NN>: the direction is in the id, so an approval cannot run the other one. */
+/** <shop words>-imagefirst-<d1|d3|d4>-<YYYYMMDD>-<NN>: the direction is in the id, so an approval cannot run the other one. */
 const APPROVAL_FORMAT = /^[a-z0-9][a-z0-9-]{2,40}-imagefirst-(d[0-9])-(\d{8})-(\d{2})$/;
 /** An approval is used within a day of being given: an expiry further ahead than this is refused. */
 export const MAX_APPROVAL_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -104,24 +106,32 @@ export function parseUtcInstant(text: string): number | null {
   return ms;
 }
 
-/** The §10 rows of the approval packet (the label is the text before any （…） note). */
+/** The §10 rows of the P3 approval packet (the label is the text before any （…） note). */
 export const PACKET_FIELDS = { status: "状態", directions: "承認する方向性", d1: "d1 の承認 ID", d3: "d3 の承認 ID", expires: "期限", planId: "計画 ID", approvedBy: "承認日・承認者" } as const;
+/** The §10 rows of a packet: the same rows as PACKET_FIELDS, with one approval ID row per direction of that packet. */
+export function packetFieldsOf(spec: ApprovalPacketSpec): Readonly<Record<string, string>> {
+  return { status: PACKET_FIELDS.status, directions: PACKET_FIELDS.directions, ...Object.fromEntries(spec.keys.map((k) => [k, `${k} の承認 ID`])), expires: PACKET_FIELDS.expires, planId: PACKET_FIELDS.planId, approvedBy: PACKET_FIELDS.approvedBy };
+}
 export const PACKET_APPROVED = "承認済み";
 export const PACKET_PLACEHOLDER = "未記入";
 export const PACKET_NONE = "なし";
-export type ApprovalPacket = { status: string; directions: string[]; approvalIds: Record<"d1" | "d3", string>; expires: string; planId: string; approvedBy: string };
+/** approvalIds: one entry per direction of the packet read (the P3 packet: d1 and d3; the d4 packet: d4). */
+export type ApprovalPacket = { status: string; directions: string[]; approvalIds: Record<string, string>; expires: string; planId: string; approvedBy: string };
 
-/** The one approval packet the entry accepts (repository-relative, after links are resolved). Nothing under tests/ or elsewhere. */
-export const APPROVAL_PACKET_PATH = "docs/design/image-first-hoshigama-p3-packet.md";
+export { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec };
+/** The P3 packet (d1 / d3), repository-relative. Each direction's one packet: approval-packets.ts PACKET_OF_DIRECTION. */
+export const APPROVAL_PACKET_PATH = P3_PACKET.path;
 
 /**
- * Reads the approval packet. null (PACKET_NOT_APPROVED) when:
+ * Reads an approval packet (default: the P3 packet's rows). null (PACKET_NOT_APPROVED) when:
  *   - the header (the text before the first `## ` heading) still says 未承認, or does not say exactly once 状態: 承認済み;
  *   - there is not exactly one `## 10.` heading outside code fences (a fenced example never counts);
  *   - a §10 row is missing, repeated or extra, a value is empty or still 未記入, the §10 status is not 承認済み, or the
- *     direction list is not d1 / d3 / d1,d3 with an id for each approved direction and なし for the other.
+ *     direction list is not one of the packet's own (P3: d1 / d3 / d1,d3; d4: d4) with an id for each approved
+ *     direction and なし for the other.
  */
-export function readApprovalPacket(bytes: Buffer): ApprovalPacket | null {
+export function readApprovalPacket(bytes: Buffer, spec: ApprovalPacketSpec = P3_PACKET): ApprovalPacket | null {
+  const fields = packetFieldsOf(spec);
   // every line outside a code fence, with its index (a fence line itself is dropped)
   const lines: string[] = [];
   let fence: string | null = null;
@@ -158,13 +168,13 @@ export function readApprovalPacket(bytes: Buffer): ApprovalPacket | null {
     const bare = v.replace(/^`([^`]*)`$/, "$1").trim();
     return bare === "" ? null : bare;
   };
-  const got = Object.fromEntries(Object.entries(PACKET_FIELDS).map(([k, label]) => [k, value(label)])) as Record<keyof typeof PACKET_FIELDS, string | null>;
-  if (Object.values(got).some((v) => v === null) || rows.size !== Object.keys(PACKET_FIELDS).length) return null;
+  const got = Object.fromEntries(Object.entries(fields).map(([k, label]) => [k, value(label)])) as Record<string, string | null>;
+  if (Object.values(got).some((v) => v === null) || rows.size !== Object.keys(fields).length) return null;
   if (got.status !== PACKET_APPROVED) return null;
   const directions = got.directions!.split(",").map((d) => d.trim());
-  if (!["d1", "d3", "d1,d3"].includes(directions.join(","))) return null;
-  for (const k of ["d1", "d3"] as const) if ((got[k] === PACKET_NONE) === directions.includes(k)) return null;
-  return { status: got.status, directions, approvalIds: { d1: got.d1!, d3: got.d3! }, expires: got.expires!, planId: got.planId!, approvedBy: got.approvedBy! };
+  if (!spec.directionSets.includes(directions.join(","))) return null;
+  for (const k of spec.keys) if ((got[k] === PACKET_NONE) === directions.includes(k)) return null;
+  return { status: got.status, directions, approvalIds: Object.fromEntries(spec.keys.map((k) => [k, got[k]!])), expires: got.expires!, planId: got.planId!, approvedBy: got.approvedBy! };
 }
 
 const within = (child: string, parent: string) => {
@@ -191,9 +201,11 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   if (expires - now() > MAX_APPROVAL_WINDOW_MS) return refuse("APPROVAL_EXPIRY_TOO_FAR");
   if (plan.plan_sha256 !== i.expected.planSha256) return refuse("PLAN_PIN_MISMATCH");
   if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
-  // exactly one packet path: a tracked test fixture or any other file is never an approval
+  // exactly one packet path, this direction's own (approval-packets.ts): a tracked test fixture, another direction's
+  // packet or any other file is never an approval
+  const spec = packetOfDirection(plan.direction_key);
   const packetReal = await realpath(i.packetPath).catch(() => null);
-  if (packetReal === null || relative(repo, packetReal) !== APPROVAL_PACKET_PATH) return refuse("PACKET_PATH_NOT_ALLOWED");
+  if (spec === null || packetReal === null || relative(repo, packetReal) !== spec.path) return refuse("PACKET_PATH_NOT_ALLOWED");
   if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
   const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
   if (parts.length !== plan.batch.images || parts.length < 2 || parts.length > 6) return refuse("PLAN_PIN_MISMATCH");
@@ -207,15 +219,14 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
 
   // ---- before the approval is used: the packet, as committed at the approved commit (pinned and clean just above) ----
-  const packetBytes = await d.packetAt(i.expected.commit, APPROVAL_PACKET_PATH).catch(() => null);
+  const packetBytes = await d.packetAt(i.expected.commit, spec.path).catch(() => null);
   if (!packetBytes || !/^[a-f0-9]{64}$/.test(i.expected.packetSha256) || sha256(packetBytes) !== i.expected.packetSha256) return refuse("PACKET_PIN_MISMATCH");
-  // the packet's own header and §10: the owner's approval, for exactly this run (never only a SHA typed on the same command line)
-  const packet = readApprovalPacket(packetBytes);
+  // the packet's own header and §10 (read with this direction's packet rows): the owner's approval, for exactly this run
+  // (never only a SHA typed on the same command line)
+  const packet = readApprovalPacket(packetBytes, spec);
   if (!packet) return refuse("PACKET_NOT_APPROVED");
   const key = plan.direction_key;
-  // this entry reads only the p3 packet (d1 / d3); a d4 run needs its own packet and entry (docs/design/image-first-hoshigama-d4-packet.md §4)
-  if (key !== "d1" && key !== "d3") return refuse("PACKET_APPROVAL_MISMATCH");
-  if (!packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
+  if (!spec.keys.includes(key) || !packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
 
   // ---- the approval is used from here on ------------------------------------------------------
   const runId = `if-${randomBytes(8).toString("hex")}`;

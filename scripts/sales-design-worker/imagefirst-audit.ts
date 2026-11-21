@@ -28,7 +28,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { AuditStop, checkAuditAuth, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
+import { auditDirectionOf, AuditStop, checkAuditAuth, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
 import { jailIdle, SYSTEMCTL } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
@@ -80,7 +80,8 @@ export async function auditCli(args: readonly string[], bins: { claudeBin: strin
       say({ status: "auth_ok", code: null });
       return 0;
     }
-    const material = await loadAuditMaterial((rel) => readFile(join(REPO, rel)));
+    // the direction the approval id names (a d4 bundle is audited against d4's concept; the audit refuses a mismatch)
+    const material = await loadAuditMaterial((rel) => readFile(join(REPO, rel)), auditDirectionOf(approvalId));
     const r = await runClaudeAudit({ approvalId, runsDir, stateDir, material, claudeBin, env: process.env, jailIdle: () => jailIdle(env, systemctl), dummy, dryRun, signal: controller.signal });
     // the plan: per viewport the image count, the bytes sent (audit tier) and the preview bytes, against the cap
     say({ status: r.status, code: r.code, approval_id: r.approval_id, bundle_sha256: r.bundle_sha256, verdict: r.verdict, calls: r.calls, plan: r.plan, limits: r.limits, tier: r.tier, dir: r.dir });

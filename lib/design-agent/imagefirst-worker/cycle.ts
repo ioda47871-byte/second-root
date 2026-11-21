@@ -1,9 +1,10 @@
 /**
- * Issue #298 P1: the thin WSL worker adapter for ONE owner-approved IMAGE_FIRST job (ほし窯 d3 only). Offline code: it
+ * Issue #298 P1: the thin WSL worker adapter for ONE owner-approved IMAGE_FIRST job (ほし窯 d3; Issue #302: or d4, only
+ * through a grant naming a d4 approval id and only with d4's own packet — run-directions.ts). Offline code: it
  * calls nothing by itself. One cycle:
  *
  *   exclusive lock → HEAD = origin/develop and a clean tree → the approval packet read AS COMMITTED at HEAD (never the
- *   working tree) → fixed allowlist (shop hoshigama, direction d3 alone), expiry within 24 h, the packet's §3 pins and
+ *   working tree) → fixed allowlist row (shop hoshigama, the row's direction alone), expiry within 24 h, the packet's §3 pins and
  *   the plan rebuilt from the inputs at HEAD equal the fixed SHAs, the approval unused in the phase2f ledger and never
  *   claimed by this worker → the one-use claim (O_EXCL) → the EXISTING entry (scripts/design-artifact/image-first-generate.ts)
  *   invoked ONCE through the injected `invoke` (the CLI spawns it; the entry re-checks every pin itself) → the private
@@ -27,7 +28,8 @@ import { appendFile, lstat, mkdir, open, readdir, readFile } from "node:fs/promi
 import { join } from "node:path";
 import { runBounded, type BoundedResult } from "../bounded-process";
 import { buildPromptPlan, loadPromptInputs, PromptStop } from "../image-first/prompt";
-import { APPROVAL_PACKET_PATH, FULL_PAGE_KIND, FULL_PAGE_ROUTE, MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket } from "../phase2f-live/full-page-call";
+import { IMAGEFIRST_RUNS, runOfApprovalId, type ImagefirstRun, type RunDirection } from "./run-directions";
+import { FULL_PAGE_KIND, FULL_PAGE_ROUTE, MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket } from "../phase2f-live/full-page-call";
 import { LedgerStop, type Ledger } from "../phase2f-live/ledger";
 import type { CommitState } from "../phase2f-live/steps";
 import { acquireLock, WorkerStepError } from "../worker/state";
@@ -36,19 +38,14 @@ import { acquireLock, WorkerStepError } from "../worker/state";
 export const GENERATE_ENTRY = "scripts/design-artifact/image-first-generate.ts";
 
 /**
- * The fixed allowlist: one shop, one direction, and the plan the packet's §3 pins for it (d3 column). Nothing here is
- * taken from a job file or an argument: a different shop, direction or plan needs a code change and its own review.
+ * The fixed allowlist, one row per direction (run-directions.ts IMAGEFIRST_RUNS): the shop, the direction, the plan the
+ * packet's §3 pins for it, its one packet and its approval / plan ID forms. Nothing here is taken from a job file or an
+ * argument: a different shop, direction or plan needs a code change and its own review. IMAGEFIRST_ALLOWLIST is the d3
+ * row (the owner's approved d3 pilot, unchanged), which a cycle without a grant uses; a grant (root's one-use marker)
+ * selects the row its approval ID names.
  */
-export const IMAGEFIRST_ALLOWLIST = {
-  shop: "hoshigama",
-  shopId: "fictional-bakery-hoshigama",
-  direction: "d3",
-  planSha256: "a19b6896ffd50111df9ad7029f49ded5757999ddfb31943103a206f6a44072a8",
-  promptSha256: "291475d9ae66b2308d147a7b56ae1a0c9c53822e44cd5425d60976513712e398",
-  promptChars: 12338,
-  images: { pc: 2, sp: 4 },
-} as const;
-const APPROVAL_ID = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
+export { IMAGEFIRST_RUNS, runOfApprovalId, type ImagefirstRun, type RunDirection };
+export const IMAGEFIRST_ALLOWLIST = IMAGEFIRST_RUNS.d3;
 /**
  * The date part reserved for the dummy review PoC (review-poc.ts DUMMY_ID, hoshigama-imagefirst-d3-00000000-00). PR #308
  * review L4: enforced, not a convention: the worker's cycle and precheck, its claim, the automatic start's grant (and its
@@ -58,17 +55,19 @@ const APPROVAL_ID = /^hoshigama-imagefirst-d3-\d{8}-\d{2}$/;
  */
 export const RESERVED_APPROVAL_DATE = "00000000";
 export type ApprovalIdCheck = "ok" | "APPROVAL_ID_INVALID" | "APPROVAL_ID_RESERVED";
-/** A ほし窯 d3 approval id a REAL run may use: the shape, never the reserved dummy date, and a real calendar date (UTC). */
+/**
+ * A ほし窯 approval id a REAL run may use: the shape of one allowlisted direction's id (d3 or d4; the id names it), never
+ * the reserved dummy date, and a real calendar date (UTC).
+ */
 export function checkRealApprovalId(id: string): ApprovalIdCheck {
-  if (!APPROVAL_ID.test(id)) return "APPROVAL_ID_INVALID";
+  if (runOfApprovalId(id) === null) return "APPROVAL_ID_INVALID";
   const date = id.split("-")[3]!;
   if (date === RESERVED_APPROVAL_DATE) return "APPROVAL_ID_RESERVED";
   const [y, m, d] = [Number(date.slice(0, 4)), Number(date.slice(4, 6)), Number(date.slice(6, 8))];
   const t = new Date(Date.UTC(y, m - 1, d));
   return y >= 2000 && t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? "ok" : "APPROVAL_ID_INVALID";
 }
-/** Fail closed before claiming: malformed values must never spend a valid one-use approval. */
-const PLAN_ID = /^hoshigama-imagefirst-p3-\d{8}$/;
+/** Fail closed before claiming: malformed values (the row's plan ID form, among others) must never spend a valid one-use approval. */
 const STOP_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
 
 /**
@@ -143,16 +142,18 @@ export type CycleOptions = {
    */
   onInvoking?: (recordInterrupted: () => Promise<void>) => void;
   /**
-   * Issue #302 P1 (automatic start): the approval id root's one-use run marker names. When given, the packet's d3
-   * approval id must be exactly this one (APPROVAL_NOT_GRANTED otherwise), checked before the claim. It only narrows:
-   * the packet, its §10, the pins, the claim and the entry's ledger decide as before. Absent (a run by hand): unchanged.
+   * Issue #302 P1 (automatic start): the approval id root's one-use run marker names. When given, it selects the
+   * allowlist row its id names (d3 or d4: that row's packet, pins and plan) and that packet's approval id for the
+   * direction must be exactly this one (APPROVAL_NOT_GRANTED otherwise), checked before the claim. It only narrows:
+   * the packet, its §10, the pins, the claim and the entry's ledger decide as before. Absent (a run by hand): the d3
+   * row, unchanged.
    */
   expectApprovalId?: string;
 };
 
 /** The automatic start's grant, as root passes it to the worker (environment, set only by imagefirst-autostart.sh). */
 export const GRANT_ENV = "SR_IMAGEFIRST_EXPECT_APPROVAL_ID";
-/** undefined = no grant (a run by hand); null = a grant that is not a ほし窯 d3 approval id (refused before anything). */
+/** undefined = no grant (a run by hand); null = a grant that is not a ほし窯 d3 / d4 approval id (refused before anything). */
 export function grantFromEnv(env: NodeJS.ProcessEnv): string | null | undefined {
   const v = env[GRANT_ENV];
   if (v === undefined) return undefined;
@@ -178,8 +179,12 @@ export async function gitCommitState(repo: string, env: NodeJS.ProcessEnv): Prom
   return { head: head?.trim() ?? null, base: base?.trim() ?? null, clean: status === "" };
 }
 
-/** The d3 column of the packet's §3 pin table (計画 SHA, バッチ SHA, バッチ文字数); null unless each row is there exactly once. */
-export function packetPins(bytes: Buffer): { planSha256: string; promptSha256: string; promptChars: number } | null {
+/**
+ * The row's column of the packet's §3 pin table (d3: the P3 packet's d3 column of 計画 SHA, バッチ SHA, バッチ文字数; d4:
+ * the d4 packet's plan SHA-256, バッチ SHA-256, バッチの文字数); null unless each row is there exactly once.
+ */
+export function packetPins(bytes: Buffer, run: ImagefirstRun = IMAGEFIRST_ALLOWLIST): { planSha256: string; promptSha256: string; promptChars: number } | null {
+  const t = run.pins;
   const rows = new Map<string, string[]>();
   let fence = false;
   for (const line of bytes.toString("utf8").split(/\r?\n/)) {
@@ -187,28 +192,28 @@ export function packetPins(bytes: Buffer): { planSha256: string; promptSha256: s
     if (fence || !line.startsWith("|")) continue;
     const cells = line.split("|").slice(1, -1).map((c) => c.trim());
     const label = (cells[0] ?? "").split("（")[0]!.trim();
-    if (!["計画 SHA", "バッチ SHA", "バッチ文字数"].includes(label) || cells.length !== 3) continue;
+    if (![t.plan, t.prompt, t.chars].includes(label) || cells.length !== t.cells) continue;
     if (rows.has(label)) return null;
     rows.set(label, cells.map((c) => c.replace(/^`([^`]*)`$/, "$1").trim()));
   }
-  const d3 = (label: string) => rows.get(label)?.[2] ?? null;
-  const plan = d3("計画 SHA");
-  const prompt = d3("バッチ SHA");
-  const chars = d3("バッチ文字数");
+  const cell = (label: string) => rows.get(label)?.[t.column] ?? null;
+  const plan = cell(t.plan);
+  const prompt = cell(t.prompt);
+  const chars = cell(t.chars);
   if (!plan || !prompt || !chars || !/^\d{1,6}$/.test(chars)) return null;
   return { planSha256: plan, promptSha256: prompt, promptChars: Number(chars) };
 }
 
-/** The entry's arguments for this job: every value from the packet at the pinned commit or the fixed allowlist. */
-export function generateArgv(o: { repoRoot: string; outDir: string; planId: string; approvalId: string; expires: string; packetSha256: string; commit: string }): string[] {
-  const a = IMAGEFIRST_ALLOWLIST;
+/** The entry's arguments for this job: every value from the packet at the pinned commit or the fixed allowlist row. */
+export function generateArgv(o: { repoRoot: string; outDir: string; planId: string; approvalId: string; expires: string; packetSha256: string; commit: string }, run: ImagefirstRun = IMAGEFIRST_ALLOWLIST): string[] {
+  const a = run;
   return [
     "--direction", a.direction,
     "--out", o.outDir,
     "--plan-id", o.planId,
     "--approval-id", o.approvalId,
     "--approval-expires", o.expires,
-    "--packet", join(o.repoRoot, APPROVAL_PACKET_PATH),
+    "--packet", join(o.repoRoot, a.packet.path),
     "--expected-prompt-sha256", a.promptSha256,
     "--expected-prompt-chars", String(a.promptChars),
     "--expected-plan-sha256", a.planSha256,
@@ -339,7 +344,10 @@ export async function precheckImagefirstCycle(o: Pick<CycleOptions, "repoRoot" |
 
 async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (r: CycleReport) => Promise<CycleReport>, precheckOnly = false): Promise<CycleReport> {
   const refuse = (code: string, approvalId?: string): CycleReport => ({ status: "refused", code, invoked: false, ...(approvalId ? { approval_id: approvalId } : {}) });
-  const a = IMAGEFIRST_ALLOWLIST;
+  // the allowlist row: the one the grant's id names, else (a run by hand) d3; a grant that names no row runs nothing
+  const selected = o.expectApprovalId === undefined ? IMAGEFIRST_ALLOWLIST : runOfApprovalId(o.expectApprovalId);
+  if (selected === null) return refuse("GRANT_INVALID");
+  const a = selected;
 
   // ---- the approved commit: HEAD = origin/develop, nothing changed (ported: assertOnOriginMain) ----
   const c = await d.commit().catch(() => null);
@@ -349,18 +357,18 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   const commit = c.head;
 
   // ---- the packet as committed at that commit (never the working tree) ----
-  const packetBytes = await d.fileAt(commit, APPROVAL_PACKET_PATH).catch(() => null);
+  const packetBytes = await d.fileAt(commit, a.packet.path).catch(() => null);
   if (!packetBytes) return refuse("PACKET_UNREADABLE");
-  const packet = readApprovalPacket(packetBytes);
+  const packet = readApprovalPacket(packetBytes, a.packet);
   if (!packet) return { status: "no_job", code: "PACKET_NOT_APPROVED", invoked: false };
-  const approvalId = packet.approvalIds.d3;
-  // the fixed scope: d3 alone (d1, d1,d3 refuse), and the shop's own approval id
+  const approvalId = packet.approvalIds[a.direction] ?? "";
+  // the fixed scope: the row's direction alone (d1, d1,d3 refuse), and the shop's own approval id for that direction
   if (packet.directions.join(",") !== a.direction) return refuse("SCOPE_NOT_ALLOWED");
-  if (!APPROVAL_ID.test(approvalId)) return refuse("SHOP_NOT_ALLOWED");
+  if (!a.approvalId.test(approvalId)) return refuse("SHOP_NOT_ALLOWED");
   const idCheck = checkRealApprovalId(approvalId);
   if (idCheck !== "ok") return refuse(idCheck, approvalId);
   if (o.expectApprovalId !== undefined && approvalId !== o.expectApprovalId) return refuse("APPROVAL_NOT_GRANTED", approvalId);
-  if (!PLAN_ID.test(packet.planId)) return refuse("PLAN_ID_INVALID", approvalId);
+  if (!a.planId.test(packet.planId)) return refuse("PLAN_ID_INVALID", approvalId);
   const expires = parseUtcInstant(packet.expires);
   if (expires === null) return refuse("APPROVAL_EXPIRY_INVALID", approvalId);
   if (now() > expires) return refuse("APPROVAL_EXPIRED", approvalId);
@@ -369,7 +377,7 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   if (expires - now() > MAX_APPROVAL_WINDOW_MS) return refuse("APPROVAL_EXPIRY_TOO_FAR", approvalId);
 
   // ---- the pins: the packet's §3 and the plan rebuilt from the inputs at the same commit equal the fixed SHAs ----
-  const pins = packetPins(packetBytes);
+  const pins = packetPins(packetBytes, a);
   if (!pins || pins.planSha256 !== a.planSha256 || pins.promptSha256 !== a.promptSha256 || pins.promptChars !== a.promptChars) return refuse("PACKET_PIN_MISMATCH", approvalId);
   let plan;
   try {
@@ -377,12 +385,12 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
       const b = await d.fileAt(commit, p);
       if (!b) throw new PromptStop("INPUT_UNREADABLE");
       return b;
-    }, "d3");
+    }, a.direction);
     plan = buildPromptPlan(inputs);
   } catch (error) {
     return refuse(error instanceof PromptStop ? `PLAN_${error.code}`.slice(0, 64) : "PLAN_INPUT_UNREADABLE", approvalId);
   }
-  if (plan.plan_sha256 !== a.planSha256 || plan.batch.sha256 !== a.promptSha256 || plan.batch.chars !== a.promptChars || plan.batch.images !== a.images.pc + a.images.sp || plan.shop.shop_id !== a.shopId) return refuse("PLAN_PIN_MISMATCH", approvalId);
+  if (plan.direction_key !== a.direction || plan.plan_sha256 !== a.planSha256 || plan.batch.sha256 !== a.promptSha256 || plan.batch.chars !== a.promptChars || plan.batch.images !== a.images.pc + a.images.sp || plan.shop.shop_id !== a.shopId) return refuse("PLAN_PIN_MISMATCH", approvalId);
 
   // ---- one use: never claimed here, unused in the entry's ledger (read only) ----
   if (await claimed(o.stateDir, approvalId)) return refuse("APPROVAL_ALREADY_CLAIMED", approvalId);
@@ -421,7 +429,7 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
 
   let res: BoundedResult | null;
   try {
-    res = await d.invoke(generateArgv({ repoRoot: o.repoRoot, outDir: runDir, planId, approvalId, expires: packet.expires, packetSha256, commit }), o.signal);
+    res = await d.invoke(generateArgv({ repoRoot: o.repoRoot, outDir: runDir, planId, approvalId, expires: packet.expires, packetSha256, commit }, a), o.signal);
   } catch {
     res = null;
   }
@@ -498,29 +506,31 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
 
 export type ApprovalAt = { approvalId: string; planId: string; expiresMs: number; packetSha256: string };
 /**
- * Issue #302 P3 follow-up: the owner's d3 approval AS COMMITTED at `commit`, with the same reader (readApprovalPacket)
- * and the same checks the cycle makes before its claim: approved, d3 alone, the ほし窯 id (never the reserved dummy date),
+ * Issue #302 P3 follow-up: the owner's approval for the allowlist row `run` (default d3; the review delivery passes the
+ * row the receipt's approval id names) AS COMMITTED at `commit`, in that row's packet, with the same reader
+ * (readApprovalPacket) and the same checks the cycle makes before its claim: approved, the row's direction alone, the
+ * ほし窯 id of that direction (never the reserved dummy date),
  * the plan ID's shape, the expiry, the packet's §3 pins = the fixed allowlist. With `startedAtMs` (a finished run's start
  * from its receipt) the run must have started inside the approval's window (not after the expiry, not further than the
  * 24 h window before it): APPROVAL_NOT_VALID_AT_RUN otherwise. Read only: no lock, no claim, no ledger, nothing invoked.
  * For the review delivery (deliver-review.ts), which compares a receipt with it.
  */
-export async function readApprovalAt(commit: string, fileAt: CycleDeps["fileAt"], startedAtMs?: number): Promise<ApprovalAt | { code: string }> {
-  const a = IMAGEFIRST_ALLOWLIST;
+export async function readApprovalAt(commit: string, fileAt: CycleDeps["fileAt"], startedAtMs?: number, run: ImagefirstRun = IMAGEFIRST_ALLOWLIST): Promise<ApprovalAt | { code: string }> {
+  const a = run;
   if (!/^[0-9a-f]{40}$/.test(commit)) return { code: "COMMIT_UNREADABLE" };
-  const packetBytes = await fileAt(commit, APPROVAL_PACKET_PATH).catch(() => null);
+  const packetBytes = await fileAt(commit, a.packet.path).catch(() => null);
   if (!packetBytes) return { code: "PACKET_UNREADABLE" };
-  const packet = readApprovalPacket(packetBytes);
+  const packet = readApprovalPacket(packetBytes, a.packet);
   if (!packet) return { code: "PACKET_NOT_APPROVED" };
   if (packet.directions.join(",") !== a.direction) return { code: "SCOPE_NOT_ALLOWED" };
-  const approvalId = packet.approvalIds.d3;
-  if (!APPROVAL_ID.test(approvalId)) return { code: "SHOP_NOT_ALLOWED" };
+  const approvalId = packet.approvalIds[a.direction] ?? "";
+  if (!a.approvalId.test(approvalId)) return { code: "SHOP_NOT_ALLOWED" };
   const idCheck = checkRealApprovalId(approvalId);
   if (idCheck !== "ok") return { code: idCheck };
-  if (!PLAN_ID.test(packet.planId)) return { code: "PLAN_ID_INVALID" };
+  if (!a.planId.test(packet.planId)) return { code: "PLAN_ID_INVALID" };
   const expires = parseUtcInstant(packet.expires);
   if (expires === null) return { code: "APPROVAL_EXPIRY_INVALID" };
-  const pins = packetPins(packetBytes);
+  const pins = packetPins(packetBytes, a);
   if (!pins || pins.planSha256 !== a.planSha256 || pins.promptSha256 !== a.promptSha256 || pins.promptChars !== a.promptChars) return { code: "PACKET_PIN_MISMATCH" };
   if (startedAtMs !== undefined && (!Number.isFinite(startedAtMs) || startedAtMs > expires || expires - startedAtMs > MAX_APPROVAL_WINDOW_MS)) return { code: "APPROVAL_NOT_VALID_AT_RUN" };
   return { approvalId, planId: packet.planId, expiresMs: expires, packetSha256: sha256(packetBytes) };

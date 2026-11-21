@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Second Root IMAGE_FIRST pilot preflight (Issue #302): the READ-ONLY check before the owner's one limited ほし窯 d3 pilot
+# Second Root IMAGE_FIRST pilot preflight (Issue #302): the READ-ONLY check before the owner's one limited ほし窯 d3 (or d4) pilot
 # (scripts/sales-design-worker/imagefirst-pilot.sh, docs/operations/imagefirst-pilot.md). It changes nothing: no
 # systemd unit, timer, switch, marker, claim, ledger or file of the worker is created, changed or removed. Its only
 # writes are git's own refs/remotes/origin/develop in the worker's clone (the fetch, run as the worker) and a temporary
@@ -107,9 +107,9 @@ row() {
 
 # ---------------------------------------------------------------- the approval id
 [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id>"; finish USAGE 2; }
-[[ "$1" =~ ^hoshigama-imagefirst-d3-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-d3-YYYYMMDD-NN"; finish USAGE 2; }
+[[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish USAGE 2; }
 APPROVAL="$1"
-[[ "$APPROVAL" != hoshigama-imagefirst-d3-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
+[[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
 
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"

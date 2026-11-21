@@ -50,12 +50,21 @@ SP では分け方の都合で `shelf` は 3 枚目（`spread-fire` と同じ画
 | sp-3 | `cbc28fa7da57d595a1832a28a0a00f3b3eb53e322eb5c87de8803aa0fcb352d5` / 2266 |
 | sp-4 | `cce2773590310f500f136ffa29044e80724638752ce8a73c91d4c22dd894de6b` / 2357 |
 
-## 4. 実行の経路（この版の時点では **d4 を受け付ける入口はまだ無い**）
+## 4. 実行の経路
 
-d3 の pilot・worker・自動起動・bundle・配送・監査は、方向性 `d3` と承認 ID の形式 `hoshigama-imagefirst-d3-…` を固定している
-（`cycle.ts` の `IMAGEFIRST_ALLOWLIST`、`bundle.ts` の `APPROVAL_ID_RE`、`full-page-call.ts` の承認パケットの読み方、pilot・autostart の
-シェルの正規表現）。d4 を 1 回実行するには、それらを方向性ごとの表にする**別の PR（root が動かすスクリプトを含むので OWNER MERGE ONLY）**が要る。
-その PR がマージされるまで、このパケットを承認しても実行はできない（入口が d4 を拒否する）。
+d4 は d3 と同じ一回限りの経路（pilot・worker・自動起動・bundle・配送・監査）を通る。経路は方向性ごとの表で d3 と d4 を分ける
+（`lib/design-agent/imagefirst-worker/run-directions.ts` の `IMAGEFIRST_RUNS`、`lib/design-agent/phase2f-live/approval-packets.ts`）:
+
+- d4 を承認するのは**このパケットだけ**（d3 の P3 パケットは d4 を承認できず、このパケットは d1・d3 を承認できない）。
+- 承認 ID は `hoshigama-imagefirst-d4-<YYYYMMDD>-<NN>`、計画 ID は `hoshigama-imagefirst-p4-<YYYYMMDD>`。ID が方向性を名指すので、
+  d3 の ID で d4 は動かず、d4 の ID で d3 は動かない。日付 `00000000` は使えない。
+- worker は root の一回限りのマーカー（`SR_IMAGEFIRST_EXPECT_APPROVAL_ID`）が d4 の ID を名指したときだけ d4 の行を使う。
+  マーカーが無い手動の実行は従来どおり d3 だけ。
+- worker を通さない手動の入口 `scripts/design-artifact/image-first-generate.ts --direction d4` も、d3 と同じく使える。こちらも
+  承認済みのこのパケット・一致する承認 ID と計画 ID・ピン・`--expected-commit`・台帳がそろわなければ何も使わずに止まる。
+- §3 の 3 行（plan SHA-256・バッチ SHA-256・バッチの文字数）がコードの表の値と一致しなければ止まる。
+
+この経路の変更は root が動かすスクリプトを含むので **OWNER MERGE ONLY**。その変更がマージされるまで、このパケットを承認しても実行はできない。
 
 実行の条件は d3 と同じにする: Codex の画像ツールで 1 回・6 枚・15 分・再試行なし。止まったら新しいパケットと新しい承認 ID。
 届いた画像は既存の受け渡し（review inbox・プレビュー・Claude CLI 監査）を通り、研究ログの `intake … --direction d4 --iteration 1 --parent hoshigama-imagefirst-d3-20261121-01` で記録する。
@@ -70,10 +79,10 @@ d3 と同じ: 入力は facts パック・方向性オブジェクト 1 つ・�
 | 項目 | 値 |
 |---|---|
 | 状態（承認するなら `承認済み` と書く） | 未記入 |
-| 承認する方向性 | 未記入 |
+| 承認する方向性（`d4` のみ） | 未記入 |
 | d4 の承認 ID（1 回限り。形式 `hoshigama-imagefirst-d4-<YYYYMMDD>-<NN>`） | 未記入 |
 | 期限（UTC、`YYYY-MM-DDTHH:MM:SSZ`。起動の時点から 24 時間以内） | 未記入 |
-| 計画 ID | 未記入 |
+| 計画 ID（形式 `hoshigama-imagefirst-p4-<YYYYMMDD>`） | 未記入 |
 | 承認日・承認者 | 未記入 |
 
 - 承認するときは、表の「状態」と一緒に冒頭の状態の行も `**状態: 承認済み。**` に書き換える。両方がそろわなければ未承認として扱う。

@@ -10,15 +10,15 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { BoundedResult } from "../../../../lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "../../../../lib/design-agent/design-image/image-once";
-import { buildPromptPlan, loadPromptInputs, PROMPT_INPUTS, PromptStop, type DirectionKey } from "../../../../lib/design-agent/image-first/prompt";
+import { buildPromptPlan, DIRECTIONS, loadPromptInputs, PROMPT_INPUTS, PromptStop, type DirectionKey } from "../../../../lib/design-agent/image-first/prompt";
 import { gitCommitState } from "../../../../lib/design-agent/imagefirst-worker/cycle";
-import { APPROVAL_PACKET_PATH, PACKET_FIELDS, runFullPageCall } from "../../../../lib/design-agent/phase2f-live/full-page-call";
+import { APPROVAL_PACKET_PATH, D4_PACKET, PACKET_FIELDS, packetFieldsOf, packetOfDirection, runFullPageCall } from "../../../../lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "../../../../lib/design-agent/phase2f-live/ledger";
 import type { CodexSandbox } from "../../../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../../../lib/design-agent/worker/env";
 import { fileAtCommit, parseArgs } from "../../../../scripts/design-artifact/phase2f-live-cli";
 import { colourPng } from "../phase2f/fixtures";
-import { UNAPPROVED_PACKET_FIXTURE } from "../image-first/fixtures/unapproved-packet";
+import { UNAPPROVED_D4_PACKET_FIXTURE, UNAPPROVED_PACKET_FIXTURE } from "../image-first/fixtures/unapproved-packet";
 
 export const REPO = resolve(__dirname, "../../../..");
 const temps: string[] = [];
@@ -59,6 +59,26 @@ export function filledPacket(values: Partial<Fill> = {}, edit: (t: string) => st
   return Buffer.from(edit(text));
 }
 
+// ---- the filled-in d4 packet (in memory; from the unapproved d4 fixture, never the real packet) ---------------------
+export const D4_ID = "hoshigama-imagefirst-d4-20261120-01";
+export const D4_PLAN_ID = "hoshigama-imagefirst-p4-20261120";
+export type D4Fill = { status: string; directions: string; d4: string; expires: string; planId: string; approvedBy: string };
+export const D4: D4Fill = { status: "`承認済み`", directions: "`d4`", d4: `\`${D4_ID}\``, expires: "`2026-11-20T09:00:00Z`", planId: `\`${D4_PLAN_ID}\``, approvedBy: "2026-11-20 owner (test)" };
+/** The unapproved d4 fixture filled exactly as its own §10 says (header line rewritten, every §10 row given a value). */
+export function filledD4Packet(values: Partial<D4Fill> = {}, edit: (t: string) => string = (t) => t): Buffer {
+  let text = readFileSync(UNAPPROVED_D4_PACKET_FIXTURE, "utf8");
+  if (!text.includes("**状態: 未承認。**")) throw new Error("d4 fixture header changed");
+  text = text.replace("**状態: 未承認。**", "**状態: 承認済み。**");
+  const at = text.indexOf("## 10. 承認欄");
+  let section = text.slice(at);
+  for (const [k, label] of Object.entries(packetFieldsOf(D4_PACKET)) as [keyof D4Fill, string][]) {
+    const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
+    if (!re.test(section)) throw new Error(`d4 packet row missing: ${label}`);
+    section = section.replace(re, `$1${values[k] ?? D4[k]}$2`);
+  }
+  return Buffer.from(edit(text.slice(0, at) + section));
+}
+
 // ---- the temporary worker clone ----------------------------------------------------------------------------------
 export const git = (cwd: string, ...a: string[]) => {
   const r = spawnSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@example.invalid", ...a], { cwd, encoding: "utf8" });
@@ -74,15 +94,16 @@ export function commitFiles(repo: string, files: Record<string, Buffer>, msg: st
   git(repo, "commit", "-q", "-m", msg);
   return git(repo, "rev-parse", "HEAD");
 }
-export function workerRepo(packet: Buffer = filledPacket()): string {
+/** A temporary worker clone: the prompt inputs (d4's direction file included) and the given packets, committed. */
+export function workerRepo(packet: Buffer = filledPacket(), extra: Record<string, Buffer> = {}): string {
   const repo = tmp("sr-ifw-repo-");
   git(repo, "init", "-q");
-  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path];
+  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path, DIRECTIONS.d4.set];
   for (const p of inputs) {
     mkdirSync(dirname(join(repo, p)), { recursive: true });
     cpSync(resolve(REPO, p), join(repo, p));
   }
-  const head = commitFiles(repo, { [APPROVAL_PACKET_PATH]: packet }, "approved packet (test)");
+  const head = commitFiles(repo, { [APPROVAL_PACKET_PATH]: packet, ...extra }, "approved packet (test)");
   git(repo, "update-ref", "refs/remotes/origin/develop", head);
   return repo;
 }
@@ -149,7 +170,7 @@ export async function entryInProcess(argv: string[], w: { repo: string; ledgerDi
   const args = parseArgs(argv, FLAGS, VALUES);
   const chars = Number(args?.get("--expected-prompt-chars"));
   const key = args?.get("--direction");
-  if (!args || [...VALUES].some((f) => !args.has(f)) || !Number.isInteger(chars) || (key !== "d1" && key !== "d3")) return line({ status: "refused", code: "USAGE" }, 2);
+  if (!args || [...VALUES].some((f) => !args.has(f)) || !Number.isInteger(chars) || key === undefined || packetOfDirection(key) === null) return line({ status: "refused", code: "USAGE" }, 2);
   let inputs;
   let plan;
   try {

@@ -33,7 +33,7 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { BundleStop, packBundle, verifyBundleDir, type ExpectedRecord, type SealedBundle } from "./bundle";
-import { checkRealApprovalId, IMAGEFIRST_ALLOWLIST, readApprovalAt, sha256, type CycleDeps, type CycleReport } from "./cycle";
+import { checkRealApprovalId, readApprovalAt, runOfApprovalId, sha256, type CycleDeps, type CycleReport } from "./cycle";
 import { handOffToLocalInbox, InboxStop, REVIEW_INBOX } from "./local-inbox";
 import { PreviewStop } from "./preview";
 import { DeliveryStop } from "./transport";
@@ -172,7 +172,9 @@ async function findReceipt(runs: string, approvalId: string): Promise<string> {
  * §3 pins), and the run started inside that approval's window. Returns the record the bundle must match.
  */
 async function checkReceipt(r: Receipt, approvalId: string, runDir: string, stateDir: string, d: DeliverReviewDeps): Promise<ExpectedRecord> {
-  const a = IMAGEFIRST_ALLOWLIST;
+  // the allowlist row the approval id names (d3 or d4): its pins, its packet; never another direction's
+  const a = runOfApprovalId(approvalId);
+  if (a === null) return stop("APPROVAL_ID_INVALID");
   if (!r || typeof r !== "object" || r.schema !== "imagefirst_worker_receipt_v1") stop("RECEIPT_INVALID");
   if (r.approval_id !== approvalId || typeof r.commit !== "string" || !/^[0-9a-f]{40}$/.test(r.commit) || typeof r.plan_id !== "string" || typeof r.packet_sha256 !== "string") stop("RECEIPT_INVALID");
   // PR #310 review L1: compared by real path (the worker names ~/sr-runs as written; a home reached through a link is fine)
@@ -188,7 +190,7 @@ async function checkReceipt(r: Receipt, approvalId: string, runDir: string, stat
   // claim for this approval exists and agrees with the receipt (read only: never created, changed or removed here)
   if (!(await d.onOriginDevelop(r.commit as string).catch(() => false))) stop("COMMIT_NOT_ON_ORIGIN_DEVELOP");
   // the owner's approval as committed at the receipt's commit (the same reader and checks as the worker's cycle)
-  const at = await readApprovalAt(r.commit as string, d.fileAt, started);
+  const at = await readApprovalAt(r.commit as string, d.fileAt, started, a);
   if ("code" in at) {
     if (at.code === "APPROVAL_NOT_VALID_AT_RUN") stop("RUN_NOT_IN_APPROVAL_WINDOW");
     return stop(at.code);

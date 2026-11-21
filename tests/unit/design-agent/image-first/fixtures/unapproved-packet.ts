@@ -9,3 +9,11 @@ import { resolve } from "node:path";
  */
 export const UNAPPROVED_PACKET_FIXTURE = resolve(__dirname, "image-first-packet-unapproved.md");
 export const UNAPPROVED_PACKET_FIXTURE_SHA256 = "d26a807fe197411a82750d1908e93f2e56d9e5022dd1653e1ff5d2765672622e";
+
+/**
+ * Issue #302 (d4 run path): the same kind of copy for the d4 packet (docs/design/image-first-hoshigama-d4-packet.md as
+ * drafted: header 未承認, §10 未記入). Tests fill it only in memory / a temporary repository (an approved d4 packet is
+ * never committed anywhere). Pinned by the SHA-256 below.
+ */
+export const UNAPPROVED_D4_PACKET_FIXTURE = resolve(__dirname, "image-first-d4-packet-unapproved.md");
+export const UNAPPROVED_D4_PACKET_FIXTURE_SHA256 = "5a6ee322a43aae409310edf8a02d466a79411d776ef6cbd3e1496630924a4b9c";

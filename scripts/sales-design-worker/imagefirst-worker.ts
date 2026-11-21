@@ -5,8 +5,10 @@
  * the requester jail with setpriv; the earlier manual run (docs/operations/imagefirst-worker-port.md §5) is refused from a jailed shell or `admin.sh run` (below), and
  * sr-designgen has no login shell outside the jail. Issue #302 P1: root's wrapper imagefirst-autostart.sh (pull
  * model, OFF by default; its unit and timer are NOT installed or enabled by anything in this repository), which passes
- * the approval id of root's one-use run marker in GRANT_ENV: the packet's d3 approval id must then be exactly that one
- * (APPROVAL_NOT_GRANTED). A malformed grant is refused (GRANT_INVALID) before anything. Nothing else changes.
+ * the approval id of root's one-use run marker in GRANT_ENV: its direction (d3 or d4, the id names it) selects the
+ * allowlist row and that row's own packet (lib/design-agent/imagefirst-worker/run-directions.ts), whose approval id must
+ * then be exactly that one (APPROVAL_NOT_GRANTED). Without a grant: d3 only. A malformed grant is refused (GRANT_INVALID)
+ * before anything. Nothing else changes.
  *
  *   node --import tsx scripts/sales-design-worker/imagefirst-worker.ts
  *

@@ -508,9 +508,16 @@ describe("the bundle and transport cannot reach Codex or the worker", () => {
       const src = readFileSync(resolve(REPO, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
       const imports = [...src.matchAll(/^import[^;]*?from\s+"([^"]+)"/gm)].map((x) => x[1]!).sort();
       expect(imports).toContain("node:fs/promises");
-      const allowed = new Set(["node:crypto", "node:fs", "node:fs/promises", "node:path", "../design-image/png", "./bundle"]);
+      // ./run-directions: the per-direction allowlist (data and pure lookups; its own imports are pinned below)
+      const allowed = new Set(["node:crypto", "node:fs", "node:fs/promises", "node:path", "../design-image/png", "./bundle", "./run-directions"]);
       expect(imports.filter((i) => !allowed.has(i))).toEqual([]);
       expect(src).not.toMatch(/\brequire\(|import\(|child_process|node:net|node:http|node:https|fetch\(|cycle|imagefirst-worker\.ts|image-first-generate|codex|image-once|phase2f-live|bounded-process/i);
     }
+    // the allowlist table reaches only the packet table, which imports nothing
+    const code = (rel: string) => readFileSync(resolve(REPO, rel), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const importsOf = (rel: string) => [...code(rel).matchAll(/^import[^;]*?from\s+"([^"]+)"/gm)].map((x) => x[1]!);
+    expect(importsOf("lib/design-agent/imagefirst-worker/run-directions.ts")).toEqual(["../phase2f-live/approval-packets"]);
+    expect(importsOf("lib/design-agent/phase2f-live/approval-packets.ts")).toEqual([]);
+    for (const rel of ["lib/design-agent/imagefirst-worker/run-directions.ts", "lib/design-agent/phase2f-live/approval-packets.ts"]) expect(code(rel)).not.toMatch(/\brequire\(|import\(|node:|fetch\(/);
   });
 });
