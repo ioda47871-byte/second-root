@@ -55,6 +55,10 @@ run ディレクトリを読み直して receipt → unlock。拒否はどれも
 
 出力（標準出力 1 行の JSON、`<state>/audit.jsonl` にも同じ行）: `status` = `no_job` / `locked` / `refused` / `succeeded` / `stopped`、`code`、`invoked`。
 終了コード: 0 = no_job・locked・succeeded、2 = refused（何も起動していない）、1 = 起動して止まった（承認は使用済み）。
+`refused` のうち、引数・場所の確認（`USAGE`・`GRANT_INVALID`・`PLACE_INSIDE_REPO`）の次に来るのが DEV-302 の jail の確認である。
+`RUN_INSIDE_JAIL_UNIT`（`sr-jail-*.service` の中）と `OWN_CGROUP_UNREADABLE`（`/proc/self/cgroup` が読めない）は、本番の実行と `--precheck` で、
+state dir・lock・audit 行・claim より前に返る（audit にも残らない）。cgroup v2 の行だけを見る（v1 だけの host では通る）。
+事故を防ぐための確認で、安全の境界ではない（`remote-control-resilience.md` §7）。
 
 置き場所（すべてリポジトリの外、0700）: state `~/.local/state/sr-design-worker/imagefirst-worker/`（`imagefirst.lock`、`claims/`、`audit.jsonl`）、
 結果 `~/sr-runs/<承認 ID>-<UTC>/` と（`~/sr-runs` は無ければ 0700 で作る。既にあって group / other に開いている・link・他人の所有なら `RUNS_DIR_UNSAFE`） `~/sr-runs/<承認 ID>-<UTC>.receipt.json`、入口の ledger（`~/.local/state/sr-design-worker/phase2f-live/`、変更なし）。
@@ -71,7 +75,18 @@ run ディレクトリを読み直して receipt → unlock。拒否はどれも
 ## 5. オーナーの手順（P2 の承認の後だけ。いまは読むだけ）
 
 **timer も systemd unit も作らない・enable しない。** root 所有の script と許可一覧（`image-autorun` の grant、`cycle.sh`）は変えない。
-（Issue #302 P1 で、OFF のままの自動起動を §6・§7 に足した。手で起動するこの手順はそのまま使える。）
+（Issue #302 P1 で、OFF のままの自動起動を §6・§7 に足した。）
+
+> **DEV-302 で変わった（PR #317）: この節の「手で起動する」手順は、WSL では使えなくなった。**
+> `sr-designgen` には jail の外の login shell が無く、`admin.sh shell`・`admin.sh run` は jail の unit（`sr-jail-*.service`）である。
+> worker は、jail の unit の中では本番の実行と `--precheck` を、lock・claim・書き込みの前に断る。
+> - `RUN_INSIDE_JAIL_UNIT`: jail の unit の中にいる
+> - `OWN_CGROUP_UNREADABLE`: 自分の cgroup が読めない
+>
+> jail の unit は、Remote Control・jail の network・WSL の再起動で中身ごと終わるので、claim の後で殺されて承認 ID だけを使う事故が起きうる。
+> 一度きりの生成の承認された経路は、root の **`imagefirst-pilot.sh`**（`docs/operations/imagefirst-pilot.md`）と、自動起動の **`imagefirst-autostart.sh`**（§6・§7）である。
+> どちらも jail の外で、`setpriv` で worker を起動する。
+> 下の読むだけの確認は、参考として残す。理由と限界は `docs/operations/remote-control-resilience.md` §7。
 
 読むだけの確認（何も変えない。WSL の `sr-designgen` で）:
 

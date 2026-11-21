@@ -1,7 +1,9 @@
 /**
- * Issue #298 P1: one cycle of the IMAGE_FIRST worker adapter (lib/design-agent/imagefirst-worker/cycle.ts). Started by
- * hand by the owner as the worker user (sr-designgen) in the worker's clone, after that clone was put on origin/develop
- * (docs/operations/imagefirst-worker-port.md §5). Issue #302 P1: or once by root's wrapper imagefirst-autostart.sh (pull
+ * Issue #298 P1: one cycle of the IMAGE_FIRST worker adapter (lib/design-agent/imagefirst-worker/cycle.ts), run as the
+ * worker user (sr-designgen) in the worker's clone on origin/develop. DEV-302: the approved one-shot paths are root's
+ * one-shot pilot and its automatic start (scripts imagefirst-pilot and imagefirst-autostart), which start it outside
+ * the requester jail with setpriv; the earlier manual run (docs/operations/imagefirst-worker-port.md §5) is refused from a jailed shell or `admin.sh run` (below), and
+ * sr-designgen has no login shell outside the jail. Issue #302 P1: root's wrapper imagefirst-autostart.sh (pull
  * model, OFF by default; its unit and timer are NOT installed or enabled by anything in this repository), which passes
  * the approval id of root's one-use run marker in GRANT_ENV: the packet's d3 approval id must then be exactly that one
  * (APPROVAL_NOT_GRANTED). A malformed grant is refused (GRANT_INVALID) before anything. Nothing else changes.
@@ -21,6 +23,14 @@
  *
  * Places (outside the repository, 0700): state ~/.local/state/sr-design-worker/imagefirst-worker (lock, claims,
  * audit.jsonl), runs ~/sr-runs/<approval>-<UTC> (+ .receipt.json), the entry's ledger (phase2f, unchanged).
+ *
+ * DEV-302: the run and `--precheck` are refused (RUN_INSIDE_JAIL_UNIT, OWN_CGROUP_UNREADABLE) inside a requester jail unit
+ * (sr-jail-*.service: Remote Control, a jailed shell, `admin.sh run`), which a restart of Remote Control, of the jail's
+ * network or of WSL kills with everything in it; root's pilot / automatic start run the worker outside the jail. It
+ * prevents accidents (a run that would spend the approval and then be killed); it is not a security boundary: a jailed
+ * process could get around it (NODE_OPTIONS, importing cycle.ts, the entry itself). The claim and the entry's ledger stay
+ * the once-only gate. It reads the cgroup v2 line: on a cgroup-v1-only host there is none and the run goes through; where
+ * /proc/self/cgroup does not exist (macOS, native Windows) the run is refused (OWN_CGROUP_UNREADABLE).
  *
  * One JSON line on stdout. Exit: 0 no job / locked / succeeded, 2 refused (nothing invoked), 1 invoked and stopped.
  * `--precheck`: every check of the cycle up to, not including, the claim, with no lock, audit line or write; exit 0 = it
@@ -49,7 +59,7 @@ import { join } from "node:path";
 import { runBounded } from "../../lib/design-agent/bounded-process";
 import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
-import { jailIdle } from "../../lib/design-agent/imagefirst-worker/jail-state";
+import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -70,7 +80,12 @@ const INVOKE_TIMEOUT_MS = WATCHDOG_MS + 2 * 60_000;
 const onOriginDevelop = (env: NodeJS.ProcessEnv) => async (commit: string) =>
   /^[0-9a-f]{40}$/.test(commit) && (await runBounded("git", ["merge-base", "--is-ancestor", commit, "origin/develop"], { cwd: REPO, env, timeoutMs: 60_000 }).then((r) => r.code === 0, () => false));
 
-async function main(): Promise<number> {
+/**
+ * The CLI. `readCgroup` is for the test entry only (tests/unit/design-agent/imagefirst-worker/fixtures/worker-cli-entry.ts):
+ * the production entry below passes nothing, so the guard reads this process's own /proc/self/cgroup, and no environment
+ * variable or argument reaches it.
+ */
+export async function main(readCgroup?: () => Promise<string>): Promise<number> {
   // the arguments: none, --precheck (Issue #302 P1, the automatic start asks before it uses root's marker), or
   // --deliver-review <approval id> (Issue #302 P3 follow-up: re-send a finished run's sealed bundle to the review inbox)
   const precheck = process.argv.length === 3 && process.argv[2] === "--precheck";
@@ -115,6 +130,11 @@ async function main(): Promise<number> {
       return 2;
     }
   }
+  // DEV-302: never a one-shot run (or its precheck) inside a requester jail unit, where a restart of Remote Control, of the
+  // jail's network or of WSL would kill it after the claim (KillMode=control-group). Root's pilot / automatic start run
+  // the worker outside the jail. Unreadable: refused as well. Before the lock, the claim and anything written.
+  const jailUnit = await ownJailUnit(readCgroup);
+  if (jailUnit !== null) return (say({ status: "refused", code: jailUnit === "unknown" ? "OWN_CGROUP_UNREADABLE" : "RUN_INSIDE_JAIL_UNIT", invoked: false }), 2);
   if (precheck) {
     // every check up to the claim; no lock, no audit, no write, nothing invoked
     const r = await precheckImagefirstCycle({ repoRoot: REPO, stateDir, runsDir, ...(grant ? { expectApprovalId: grant } : {}) }, { commit: () => gitCommitState(REPO, env), fileAt: (commit, rel) => fileAtCommit(commit, rel), ledger: openLedger(ledgerDir) });
@@ -140,4 +160,5 @@ async function main(): Promise<number> {
   return exitCodeOf(report.status);
 }
 
-runMain(main);
+// the production entry: started as a script (never when imported, e.g. by the test entry)
+if (require.main === module) runMain(() => main());
