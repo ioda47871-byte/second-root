@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -27,7 +27,7 @@ const SESSION = "cse_CANARYSESSION0123456789";
 const FORBIDDEN = ["tmux", "sudo", "runuser", "setpriv", "su", "pkill", "pgrep", "systemd-run", "loginctl", "claude", "codex", "kill", "nsenter", "machinectl"];
 const JAIL = "/system.slice/sr-jail-claude.service";
 
-type Proc = { comm: string; argv: string[]; cgroup?: string; uid?: number; start?: number; /** where /proc/<pid>/cwd points */ cwd?: string };
+type Proc = { comm: string; argv: string[]; cgroup?: string; uid?: number; start?: number; /** where /proc/<pid>/cwd points */ cwd?: string; /** index in procs of its parent (PPid) */ parent?: number };
 type World = {
   /** systemctl show answers per unit (key=value); a unit not listed is LoadState=not-found */
   units?: Record<string, Record<string, string>>;
@@ -169,7 +169,7 @@ prev=""; for a in "$@"; do [ "$prev" = -u ] && [ -f '${sc}'/journal-"$a" ] && ca
       const d = join(proc, String(pid));
       mkdirSync(d);
       const uid = p.uid ?? UID;
-      writeFileSync(join(d, "status"), `Name:\t${p.comm.slice(0, 15)}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\nGroups:\t${uid}\n`);
+      writeFileSync(join(d, "status"), `Name:\t${p.comm.slice(0, 15)}\nPPid:\t${p.parent === undefined ? 1 : 200 + p.parent}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\nGroups:\t${uid}\n`);
       writeFileSync(join(d, "cgroup"), `0::${p.cgroup ?? JAIL}\n`);
       writeFileSync(join(d, "comm"), `${p.comm.slice(0, 15)}\n`);
       writeFileSync(join(d, "cmdline"), p.argv.join("\0") + "\0");
@@ -195,6 +195,8 @@ prev=""; for a in "$@"; do [ "$prev" = -u ] && [ -f '${sc}'/journal-"$a" ] && ca
     utimesSync(pointer, NOW - world.pointerAge, NOW - world.pointerAge);
   }
   const before = snapshot(r);
+  // a file made and removed in TMPDIR (bash backs a here-string over 64 KiB with one) still changes its mtime
+  utimesSync(tmp, 1_000_000_000, 1_000_000_000);
   const res = spawnSync("bash", [SCRIPT, ...args], {
     encoding: "utf8",
     timeout: 60_000,
@@ -224,7 +226,7 @@ prev=""; for a in "$@"; do [ "$prev" = -u ] && [ -f '${sc}'/journal-"$a" ] && ca
     mutation: read("mutation.log"),
     forbidden: read("forbidden.log"),
     unchanged: JSON.stringify(snapshot(r)) === JSON.stringify(before),
-    tmpEmpty: readdirSync(tmp).length === 0,
+    tmpEmpty: readdirSync(tmp).length === 0 && statSync(tmp).mtimeMs === 1_000_000_000_000,
   };
 }
 
@@ -278,7 +280,8 @@ describe("rc-diagnose.sh: each cause", () => {
       "REQUESTER_OUTSIDE_JAIL_PROCS=0",
       "WSL_BOOTS_LISTED=2",
       "WSL_BOOT_AGE_MIN=2880",
-      "RC_UNIT_STARTS_24H=1",
+      "RC_UNIT_STARTS_THIS_BOOT=1",
+      "RC_SERVERS=1",
       "RC_PROC_STARTED=2026-11-21T03:00Z",
     ]) {
       expect(res.out).toContain(`rc-diagnose: ${line}\n`);
@@ -559,6 +562,103 @@ describe("rc-diagnose.sh: each cause", () => {
     expect(res.primary).toBe("RC_DIAGNOSE_UNREADABLE");
     expect(res.codes).toEqual(expect.arrayContaining(["WSL_BOOTS_UNREADABLE", "WSL_UPTIME_UNREADABLE", "RC_UNIT_UNREADABLE", "RC_NET_UNREADABLE", "RC_JOURNAL_UNREADABLE", "RC_PROC_UNREADABLE"]));
     expect(res.out).toContain("rc-diagnose: PILOT_UNIT sr-design-cycle.service UNREADABLE\n");
+  });
+
+  it("journals over 64 KiB are streamed: no temporary file in TMPDIR (the check itself is proven on a here-string)", () => {
+    // the control: a here-string over 64 KiB makes bash create and remove a file in TMPDIR, which changes its mtime
+    const ctl = realpathSync(mkdtempSync(join(tmpdir(), "sr-rcd-ctl-")));
+    roots.push(ctl);
+    utimesSync(ctl, 1_000_000_000, 1_000_000_000);
+    spawnSync("bash", ["-c", 'x=$(head -c 100000 /dev/zero | tr "\\0" a); cat <<<"$x" >/dev/null'], { env: { PATH: "/usr/bin:/bin", TMPDIR: ctl } as unknown as NodeJS.ProcessEnv });
+    expect(statSync(ctl).mtimeMs).not.toBe(1_000_000_000_000);
+    // the diagnostic over large journals (~600 KiB of resolved lines, ~200 KiB of probe lines in the unit)
+    const w = healthy();
+    const filler = "x".repeat(90);
+    w.journals!["systemd-resolved.service"] = Array.from({ length: 6000 }, (_, i) => [NOW - 6 * D + i * 60, `host systemd-resolved[300]: Using DNS server ${filler} ${i}`] as [number, string]);
+    w.journals!["systemd-resolved.service"]!.push([NOW - 2 * H - 600, "host systemd-resolved[300]: Network is unreachable"]);
+    w.journals!["systemd-resolved.service"]!.sort((x, y) => x[0] - y[0]);
+    const unit = w.journals!["sr-jail-claude.service"]!;
+    for (let i = 0; i < 2000; i++) unit.push([NOW - 5 * D + i * 60, `host python3[812]: JAIL_OK ${filler}`]);
+    unit.push([NOW - 2 * H, "host systemd[1]: sr-jail-claude.service: Deactivated successfully."], [NOW - 2 * H + 60, "host systemd[1]: sr-jail-claude.service: Scheduled restart job, restart counter is at 1."], [NOW - 2 * H + 61, "host systemd[1]: Started sr-jail-claude.service - Claude Code Remote Control (sr-designgen, jailed)."]);
+    unit.sort((x, y) => x[0] - y[0]);
+    const res = run(w);
+    expectSafe(res);
+    expect(res.out).toContain("rc-diagnose: RC_NETWORK_ERROR_LINES_7D=1\n");
+    expect(res.out).toContain("rc-diagnose: RC_EXIT_AFTER_NETWORK_LOSS=1\n");
+    expect(res.out).toContain("rc-diagnose: RC_UNIT_RESTARTS=1\n");
+  });
+
+  it("RC_UNIT_RESTARTS counts systemd's automatic restarts in this boot only: not a person's stop / start, not an earlier boot", () => {
+    const w = healthy();
+    w.journals!["sr-jail-claude.service"]!.push(
+      // an automatic restart in the previous boot
+      [NOW - 3 * D, "host systemd[1]: sr-jail-claude.service: Scheduled restart job, restart counter is at 1."],
+      [NOW - 3 * D + 1, "host systemd[1]: Started sr-jail-claude.service - Claude Code Remote Control (sr-designgen, jailed)."],
+      // claude-stop / claude-start in this boot
+      [NOW - 2 * H, "host systemd[1]: Stopped sr-jail-claude.service - Claude Code Remote Control (sr-designgen, jailed)."],
+      [NOW - H, "host systemd[1]: Started sr-jail-claude.service - Claude Code Remote Control (sr-designgen, jailed)."],
+    );
+    w.journals!["sr-jail-claude.service"]!.sort((x, y) => x[0] - y[0]);
+    const res = run(w);
+    expectSafe(res);
+    expect(res.codes).not.toContain("RC_UNIT_RESTARTS");
+    for (const line of ["RC_UNIT_AUTO_RESTARTS_7D=1", "RC_UNIT_AUTO_RESTARTS_THIS_BOOT=0", "RC_UNIT_STOPS_THIS_BOOT=1", "RC_UNIT_STARTS_THIS_BOOT=2", "RC_LAST_EXIT_TO_START_MIN=60"]) {
+      expect(res.out).toContain(`rc-diagnose: ${line}\n`);
+    }
+  });
+
+  it("Claude is recognised by its program only: Playwright's cli.js, `grep claude` and `tmux -s claude` are not Claude; `--rc` is interactive", () => {
+    const w = healthy();
+    w.procs!.push({ comm: "node", argv: ["node", "/home/sr-designgen/work/second-root/node_modules/playwright/cli.js", "test"] });
+    w.procs!.push({ comm: "grep", argv: ["grep", "claude", "notes.txt"], uid: 1000, cgroup: "/user.slice/user-1000.slice/session-2.scope" });
+    w.procs!.push({ comm: "tmux", argv: ["tmux", "attach", "-t", "claude"], uid: 1000, cgroup: "/user.slice/user-1000.slice/session-2.scope" });
+    const res = run(w);
+    expectSafe(res);
+    expect(res.out).toContain("rc-diagnose: RC_UNIT_OTHER_PROCS=1\n"); // the Playwright run is a job at risk
+    expect(res.out).toContain("rc-diagnose: OTHER_USER_CLAUDE_PROCS=0\n");
+    for (const argv of [["claude", "--rc"], ["claude", `--rc=${CANARY}`], ["node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js", "--remote-control"]]) {
+      const v = healthy();
+      v.procs![2] = { comm: argv[0]!, argv, start: NOW - 3 * H, cwd: WORKDIR };
+      const r = run(v);
+      expectSafe(r);
+      expect(r.out).toContain("rc-diagnose: RC_MODE=interactive\n");
+    }
+  });
+
+  it("RC_MULTIPLE_SERVERS counts servers, not their child processes (a Remote Control process whose parent is one)", () => {
+    const w = healthy();
+    w.procs!.push({ comm: "node", argv: [...RC_ARGV], start: NOW - H, parent: 2 });
+    const res = run(w);
+    expectSafe(res);
+    expect(res.out).toContain("rc-diagnose: RC_PROCESSES=2\n");
+    expect(res.out).toContain("rc-diagnose: RC_SERVERS=1\n");
+    expect(res.codes).not.toContain("RC_MULTIPLE_SERVERS");
+  });
+
+  it("no value of any parsed option is ever printed (a canary in each)", () => {
+    for (const extra of [
+      [`--spawn=${CANARY}`],
+      ["--spawn", CANARY],
+      ["--name", CANARY],
+      [`--name=${CANARY}`],
+      ["--session-id", CANARY],
+      [`--session-id=${CANARY}`],
+      ["--continue", CANARY],
+      ["--no-create-session-in-dir", CANARY],
+      ["--capacity", CANARY],
+      [CANARY],
+    ]) {
+      const w = healthy();
+      w.procs![2]!.argv = [...RC_ARGV, ...extra];
+      const res = run(w);
+      expectSafe(res);
+      if (extra[0]!.startsWith("--spawn")) expect(res.out).toContain("rc-diagnose: RC_ARGV_SPAWN=other\n");
+    }
+    for (const argv of [["claude", `--remote-control=${CANARY}`], ["claude", `--rc=${CANARY}`], ["claude", "--remote-control", CANARY]]) {
+      const w = healthy();
+      w.procs![2] = { comm: "claude", argv, start: NOW - 3 * H, cwd: `/home/${CANARY}` };
+      expectSafe(run(w));
+    }
   });
 
   it("usage: any argument is refused with exit 2; a copy outside the admin clone needs the test root", () => {

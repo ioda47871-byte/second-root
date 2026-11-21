@@ -30,8 +30,9 @@
 | 区分 | 意味 |
 |---|---|
 | **[コード]** コードで確認済み | この repo のコード（`admin.sh`・worker など）を読んで確かめた |
-| **[公式]** 公式仕様で確認済み | 公式文書（code.claude.com の remote-control・desktop-wsl の頁）による。オーナーと coordinator が全文を読んで引用した |
-| **[CLI]** CLI の help | この cloud 環境の `claude --help`・`claude remote-control --help`（2.1.330） |
+| **[公式]** 公式仕様で確認済み | 公式文書（code.claude.com の remote-control の頁）のうち、**オーナーが確かめた中核の事実だけ**。次の6つに限る。(1) 引数なしの再起動は、止まってから約 4 時間以内なら、前の server が仕えていたすべての session を戻す (2) `--continue` は最初の1つの session だけを戻す (3) server mode は約 10 分の network 断で終わる (4) interactive mode は断が続く間再試行する (5) `claude` の process が動き続けている必要がある (6) tmux / screen の中で動かすことを勧めている |
+| **[文書・未確認]** 文書にあるが、オーナーは未確認 | coordinator が同じ頁（と desktop-wsl の頁）を読んで引用したもの。オーナーはまだ確かめていない |
+| **[CLI --help]** CLI の help | この cloud 環境で `claude --help` と `claude remote-control --help`（2.1.330）を実行した結果。どちらもモデルを呼ばず、Remote Control も起動しない command で、option の事実を見るためだけに使った |
 | **[バイナリ]** バイナリの文字列の観察 | CLI 2.1.330 の実行ファイルの文字列から読んだもの。公式文書には書かれておらず、オーナーの WSL でも確かめていない |
 | **[未確認]** 実機未確認 | 推定である。オーナーの WSL での確認が要る |
 
@@ -61,7 +62,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 
 - systemctl は `show` だけを使う。journal は読むだけ
 - tmux には触れない
-- ファイルは一時ファイルも含めて1つも書かない
+- ファイルは一時ファイルも含めて1つも書かない（journal は pipe で流し、64 KiB を超える here-string で bash が一時ファイルを作らないようにした。テストが 64 KiB を超える journal で TMPDIR に何も作られないことを確かめる）
 - `sr-designgen` として何も動かさない（jail の外で動かすと `REQUESTER_OUTSIDE_JAIL` になるため）
 
 **読むもの（root として）:**
@@ -70,6 +71,8 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 - process の argv は、プログラムが Claude かどうかと、いくつかの option 名の有無だけを調べる。表示はしない
 - Remote Control の process の cwd は `~/work/second-root` と比べるだけで、表示しない
 - 他の利用者の process については、Claude の数だけを数える
+  - Claude かどうかはプログラムだけで判断する（`claude` の実行ファイル、または node が動かす Claude Code の script）。`grep claude` や Playwright の `cli.js` は数えない
+- PATH は、何かのコマンドを探す前に system の PATH にする（テストの偽 WSL を指す変数があるときだけ呼び出し側の PATH。その変数は root だけの clone では拒否される）
 
 **`sr-designgen` の home で見るのは、再開の記録 [バイナリ] 1つだけ。**
 
@@ -101,12 +104,12 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 
 | 候補 | 内容 | rc-diagnose の符号 | 根拠 |
 |---|---|---|---|
-| (a) | 長い network 断（Windows のスリープなど）で server が終わり、systemd が 60 秒後に起動し直した | `RC_EXIT_AFTER_NETWORK_LOSS=N`（終了の前 15 分以内に network の error の行があった終了の数。数だけで、本文は出さない）、`RC_UNIT_EXITS_7D`、`RC_LAST_EXIT_TO_START_MIN`、`RC_NETWORK_ERROR_LINES_7D` | [公式] server mode は約 10 分で諦めて終わる。[コード] Restart=always。network の error の行の形は [未確認]。スリープ中は journal に何も残らないこともある |
+| (a) | 長い network 断（Windows のスリープなど）で server が終わり、systemd が 60 秒後に起動し直した | `RC_EXIT_AFTER_NETWORK_LOSS=N`（終了の前 15 分以内に network の error の行があった終了の数。数だけで、本文は出さない）、`RC_UNIT_EXITS_7D`、`RC_LAST_EXIT_TO_START_MIN`、`RC_NETWORK_ERROR_LINES_7D` | [公式] server mode は約 10 分で終わる。[コード] Restart=always。network の error の行の形は [未確認]。スリープ中は journal に何も残らないこともある |
 | (b) | 止まっていた時間が 4 時間を超えた | `RC_STOP_GAP_OVER_4H=分`（unit の終了から次の起動まで、または前の boot の終わりから今の boot まで）、`RC_BRIDGE_POINTER_AGE=gt4h` / `RC_RESUME_WINDOW_EXPIRED` | [公式] 再開は止まってから約 4 時間 |
-| (c) | unit の再起動、起動回数の上限、sr-jail-net の再起動 | `RC_UNIT_RESTARTS=N`、`RC_UNIT_START_LIMIT`、`RC_UNIT_PROBE_FAILED`、`RC_NET_RESTARTS=N`、`RC_UNIT_NRESTARTS` | [コード] |
+| (c) | unit の再起動、起動回数の上限、sr-jail-net の再起動 | `RC_UNIT_RESTARTS=N`（**今の boot の中の systemd の自動の再起動だけ**: journal の `Scheduled restart job`。人の `claude-stop` → `claude-start` と、前の boot は数えない）、`RC_UNIT_AUTO_RESTARTS_THIS_BOOT` / `_7D`、`RC_UNIT_STOPS_THIS_BOOT`（人などの停止）、`RC_UNIT_STARTS_THIS_BOOT`、`RC_UNIT_START_LIMIT`、`RC_UNIT_PROBE_FAILED`、`RC_NET_RESTARTS=N`（今の boot での sr-jail-net の2回目以降の起動。自動・人の restart・approve / jail-install のどれでも Claude は一緒に起動し直す）、`RC_UNIT_NRESTARTS` | [コード]。「今の boot」が読めないときは直近 24 時間 |
 | (d) | WSL の VM・distro の再起動 | `WSL_RESTARTED_RECENTLY`、`WSL_DISTRO_RESTARTED_VM_KEPT`、`WSL_BOOT at=… down_before_min=…`、`WSL_BOOTS_7D` / `_PER_DAY` | [コード] `journalctl --list-boots`。JSON の形は [未確認] |
-| (e) | 別の server がいた／session が archive された／`--no-create-session-in-dir`／cwd が違う | `RC_MULTIPLE_SERVERS=N`、`RC_NO_CREATE_SESSION_IN_DIR`、`RC_PROC_CWD_UNEXPECTED`、`RC_ARGV_RESTORE`、`RC_ARGV_SPAWN`、`RC_ARGV_CREATE_SESSION_IN_DIR`、`RC_MODE` | [公式] Ctrl+C は archive しない。ただし同じディレクトリで別の server が動いていた場合と、`--no-create-session-in-dir` の場合は archive する。記録はディレクトリごと |
-| (f) | 問題の session は実は Claude Desktop の WSL ローカル session（Remote Control 付き）で、jail の unit ではなかった | `OTHER_USER_CLAUDE_PROCS` / `OTHER_USER_RC_PROCS`（他の利用者の Claude の数だけ）、`OTHER_USER_CLAUDE_RUNNING`。そのほかは §1 のオーナーの記録で判断する | [公式] Desktop の WSL ローカル session の idle の扱いと、アプリ再起動後の自動再接続は文書に無い。オーナーが挙げた報告（anthropics/claude-code#86563、#105690、#100114、#100743、#102534、#109264）は**オーナーの報告、未検証** |
+| (e) | 別の server がいた／session が archive された／`--no-create-session-in-dir`／cwd が違う | `RC_MULTIPLE_SERVERS=N`、`RC_NO_CREATE_SESSION_IN_DIR`、`RC_PROC_CWD_UNEXPECTED`、`RC_ARGV_RESTORE`、`RC_ARGV_SPAWN`、`RC_ARGV_CREATE_SESSION_IN_DIR`、`RC_MODE` | [文書・未確認] Ctrl+C は archive しない。ただし同じディレクトリで別の server が動いていた場合と、`--no-create-session-in-dir` の場合は archive する。記録はディレクトリごと。`RC_MULTIPLE_SERVERS` は、親が Remote Control の process でないものだけを server と数える（server が session を子の process として起こすかどうかは [未確認]） |
+| (f) | 問題の session は実は Claude Desktop の WSL ローカル session（Remote Control 付き）で、jail の unit ではなかった | `OTHER_USER_CLAUDE_PROCS` / `OTHER_USER_RC_PROCS`（他の利用者の Claude の数だけ）、`OTHER_USER_CLAUDE_RUNNING`。そのほかは §1 のオーナーの記録で判断する | [文書・未確認] Desktop の WSL ローカル session の idle の扱いと、アプリ再起動後の自動再接続は文書に無い。オーナーが挙げた報告（anthropics/claude-code#86563、#105690、#100114、#100743、#102534、#109264）は**オーナーの報告、未検証** |
 
 ほかにも次の行が出る。
 
@@ -157,7 +160,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 
 ### 再開の記録
 
-- [公式] 記録は「ディレクトリごと」に保たれ、他の worktree にも探しに行く。置き場所は文書に書かれていない
+- [文書・未確認] 記録は「ディレクトリごと」に保たれ、他の worktree にも探しに行く。置き場所は文書に書かれていない
 - [バイナリ] 置き場所は Claude の状態の下の `projects/<project key>/bridge-pointer.json` である
   - project key は、ディレクトリのパスの英数字以外を `-` にしたもの
   - 既定の有効期間は mtime から 4 時間（定数 14400000 ms）で、古いものは消される
@@ -182,19 +185,19 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 
 **`--continue` を常に付ける案は採らない。**
 
-- [公式] `--continue` は「server が最初に始めた1つの session だけ」を戻し、その session が終わると server も終わる
-- [CLI] 記録が無いとエラーで終わる
+- [公式] `--continue` は「server が最初に始めた1つの session だけ」を戻す。[文書・未確認] その session が終わると server も終わる
+- [CLI --help] 記録が無いとエラーで終わる
 - unit に入れると、戻せる session が減るうえ、失敗のたびに起動が繰り返されて、起動回数の上限に当たりうる
 
 ## 4. 場合ごとに戻れるか
 
 「戻れる」は、アプリの前の session がそのまま続きを受け付けることを指す。4 時間を超えたら、新しい Remote Control の session が要る。
-ローカルの会話の履歴（`claude --resume` の記録）と調査の台帳は、それとは別に残る [公式]。
+ローカルの会話の履歴（`claude --resume` の記録）と調査の台帳は、それとは別に残る [文書・未確認]。
 
 | 場合 | 引数なし（今） | `--continue` | `--session-id` | rc-diagnose |
 |---|---|---|---|---|
 | unit を再起動した直後（Claude の終了 → 60 秒後に起動） | 戻れる見込み（すべての session）[公式]。だめなら §3 の失敗 | 最初の session だけ | その session だけ | `RC_UNIT_RESTARTS`、`RC_LAST_EXIT_TO_START_MIN`、`RC_BRIDGE_POINTER_SINCE_PROC_START` |
-| 短い network 断（process は生きたまま） | process が自分でつなぎ直す [公式: 「マシンがオンラインに戻ると自動で再接続」。server mode でのスリープ時の動きは文書に無い] | 同じ | 同じ | 何も出ない（`RC_NO_LINUX_CAUSE_FOUND`） |
+| 短い network 断（process は生きたまま） | process が自分でつなぎ直す [文書・未確認: 「マシンがオンラインに戻ると自動で再接続」。server mode でのスリープ時の動きは文書に無い] | 同じ | 同じ | 何も出ない（`RC_NO_LINUX_CAUSE_FOUND`） |
 | 10 分を超える network 断（スリープなど） | server が終わる [公式] → systemd が起動し直す → 4 時間以内なら戻れる見込み | 同上（1 つだけ） | 同上 | `RC_EXIT_AFTER_NETWORK_LOSS`、`RC_UNIT_RESTARTS` |
 | 4 時間より短い停止（`claude-stop` → `claude-start`、WSL の再起動） | 戻れる見込み [公式] | 1 つだけ | その session | `WSL_RESTARTED_RECENTLY` / `RC_UNIT_STOPPED_BY_OWNER`、`RC_BRIDGE_POINTER_AGE=lt4h` |
 | 4 時間より長い停止（一晩の `wsl --shutdown`、Windows の長いスリープ） | **戻れない**。新しい session が要る | 戻れない | 戻れない | `RC_STOP_GAP_OVER_4H`、`RC_RESUME_WINDOW_EXPIRED` |
@@ -204,7 +207,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 
 ## 5. 方式の比較
 
-### 二つの mode [公式]
+### 二つの mode（10 分で終わる／再試行し続けるは [公式]、ほかは [文書・未確認]）
 
 | | server mode（`claude remote-control`、今の unit） | interactive（`claude --remote-control`） |
 |---|---|---|
@@ -212,7 +215,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 | 長い network 断 | 約 10 分で諦めて process が終わる | 断が続く間ずっと再試行し、自分でつなぎ直す（403 は最大 3 分再試行。presence の heartbeat が失敗すると「約 30 分 Remote Control の server に届かない」と表示） |
 | 落ちた session | 接続中の端末が送れば、また仕える（v2.1.238 以降） | — |
 | 止めた後の再開 | 4 時間以内なら、引数なし（すべて）／`--continue`（最初の1つ）／`--session-id`（その1つ） | `claude --continue` / `claude --resume` |
-| CLI の有無 [CLI] | あり | `--remote-control [name]` がある（「Start an interactive session with Remote Control enabled (optionally named)」） |
+| CLI の有無 [CLI --help] | あり | `--remote-control [name]` がある（「Start an interactive session with Remote Control enabled (optionally named)」） |
 
 ### 置き方
 
@@ -243,7 +246,7 @@ tmux の役割は pty とオーナーの覗き窓であり、通信は Remote Co
    - これが無いと、Windows を再起動したあと誰かが WSL を開くまで何も動かない
 3. **アプリから新しい session を始める**
    - server mode は、アプリからそのマシン・フォルダーに新しい session を作れる
-   - `same-dir` が既定、`--spawn session` / `worktree` も選べる [公式]
+   - `same-dir` が既定、`--spawn session` / `worktree` も選べる [文書・未確認]、[CLI --help]
    - 今の unit のままで使える [未確認: オーナーのアプリでの見え方]
 4. **続きは、session の同一性ではなく、保存された調査の記録から戻す**
    - 新しい session は最初に、決まった1つの調査の記録（例: `docs/` か `.ai/` の下の研究日誌）を読む
@@ -335,15 +338,28 @@ tmux の役割は pty とオーナーの覗き窓であり、通信は Remote Co
 - したがって、jail の Claude が自分の clone で worker を起動すると、承認された未使用のパケットがある限り claim まで進めた
 - その process は sr-jail-claude の cgroup の中にあり、unit が再起動すると一緒に殺される
 
-**この PR で足した拒否（断る側を増やすだけ）:**
+**この PR で足した拒否（断る側を増やすだけ。オーナーに知ってほしい挙動の変化）:**
 
 - worker は、引数なしの実行と `--precheck` の前に、自分の `/proc/self/cgroup` を読む
 - `/system.slice/sr-jail-*.service` の中にいれば、`RUN_INSIDE_JAIL_UNIT` で何もせずに止まる
   - 対象は Remote Control、jailed shell、`admin.sh run` で、どれも sr-jail-net と一緒に終わる
 - cgroup が読めなければ `OWN_CGROUP_UNREADABLE` で止まる
 - 止まるのは lock・claim・書き込みの前である
-- 解除する環境変数も引数も無い
+- 解除する環境変数も引数も無い。本番の入口は自分の `/proc/self/cgroup` だけを読む
+  - テストだけが、テスト用の入口（`tests/unit/design-agent/imagefirst-worker/fixtures/worker-cli-entry.ts`）から cgroup の文字列を渡せる
 - root のパイロット・自動起動は jail の外で worker を起動するので、影響を受けない
+- **挙動の変化**: `imagefirst-worker-port.md` §5 の「`sr-designgen` として手で起動する」手順は、WSL では使えなくなった
+  - `sr-designgen` には jail の外の login shell が無く、`admin.sh shell` / `admin.sh run` は jail の unit なので、`RUN_INSIDE_JAIL_UNIT` で断られる
+  - 一度きりの生成の承認された経路は、root の `imagefirst-pilot.sh` と `imagefirst-autostart.sh` だけになる
+  - jail の Claude の中で unit テスト一式を流すと、worker の CLI のテストは `RUN_INSIDE_JAIL_UNIT` を期待する（同じ reader で期待値を出す）
+- **これは事故を防ぐための確認で、安全の境界ではない**
+  - jail の中の process なら、`NODE_OPTIONS` で読み取りを差し替える、`cycle.ts` を直接 import する、入口を直接起動する、などで回り込める
+  - 一度きりであることを守るのは、今までどおり claim と入口の ledger である
+- **cgroup v2 に依存する**
+  - 確かめるのは `/proc/self/cgroup` の `0::` の行だけである
+  - cgroup v1 だけの host にはこの行が無いので、実行は通る。WSL2 と GitHub の ubuntu-latest は v2 か hybrid である
+  - `/proc/self/cgroup` が無い OS（macOS・native Windows）では `OWN_CGROUP_UNREADABLE` で断る
+  - worker の CLI のテストは、そこでもこの期待値を計算して合わせる（skip しない）
 - 実装は `lib/design-agent/imagefirst-worker/jail-state.ts` の `ownJailUnit`、テストは `tests/unit/design-agent/imagefirst-worker/jail-guard.test.ts`
 - `--check-codex-auth-only` と `--deliver-review` は生成しないので対象外である。`--deliver-review` には以前から jail の停止の確認がある
 
@@ -396,7 +412,7 @@ tmux の役割は pty とオーナーの覗き窓であり、通信は Remote Co
 ### (iv) start-limit は緩めない
 
 - 1 時間に 10 回の上限は、落ち続ける Claude を止めるためにある
-- `RC_UNIT_START_LIMIT` が出たら、原因を見てから人が `systemctl reset-failed` と `claude-start` を行う
+- `RC_UNIT_START_LIMIT` が出たら、原因を見てから**オーナーが**（Claude ではなく、承認のうえで）`sudo systemctl reset-failed sr-jail-claude` と `admin.sh claude-start` を行う
 
 ### (v) 研究日誌と CLAUDE.md の読み込み
 

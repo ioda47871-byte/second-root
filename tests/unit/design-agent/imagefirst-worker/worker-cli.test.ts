@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { runBounded } from "@/lib/design-agent/bounded-process";
 import { tsEntry } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { ownJailUnit } from "@/lib/design-agent/imagefirst-worker/jail-state";
 
 // Issue #302 P0 (PR #301 review L2): the IMAGE_FIRST worker CLI started as a real process, in a scratch HOME, and the
 // split-UTF-8 fix of runBounded. The CLI never gets an approved packet here: every run refuses (or finds no job) before
@@ -41,8 +42,15 @@ function nothingUsed(home: string) {
   expect(existsSync(join(home, ".local", "state", "sr-design-worker", "phase2f-live", "approvals"))).toBe(false);
 }
 
-/** What the commit gate must answer for this checkout (CI checkouts differ from a developer clone). */
-function expectedGate(): { status: string; code: string; exit: number } {
+/**
+ * What the CLI must answer for this checkout (CI checkouts differ from a developer clone). DEV-302: first the jail guard,
+ * with the CLI's own reader (the spawned CLI runs in this process's cgroup): inside a requester jail unit (the suite run by
+ * the jailed Claude or `admin.sh run`) RUN_INSIDE_JAIL_UNIT, where /proc/self/cgroup cannot be read OWN_CGROUP_UNREADABLE.
+ */
+async function expectedGate(): Promise<{ status: string; code: string; exit: number }> {
+  const unit = await ownJailUnit();
+  if (unit === "unknown") return { status: "refused", code: "OWN_CGROUP_UNREADABLE", exit: 2 };
+  if (unit !== null) return { status: "refused", code: "RUN_INSIDE_JAIL_UNIT", exit: 2 };
   const git = (...a: string[]) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" });
   const head = git("rev-parse", "HEAD");
   const base = git("rev-parse", "origin/develop");
@@ -72,11 +80,16 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
     nothingUsed(r.home);
   });
 
-  it("this checkout is not an approved worker clone: the commit gate refuses (e.g. NOT_ON_ORIGIN_DEVELOP), audit 0600, nothing claimed", () => {
-    const want = expectedGate();
+  it("this checkout is not an approved worker clone: the commit gate refuses (e.g. NOT_ON_ORIGIN_DEVELOP), audit 0600, nothing claimed", async () => {
+    const want = await expectedGate();
     const r = runCli([]);
     expect(r.status).toBe(want.exit);
     expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
+    if (want.code === "RUN_INSIDE_JAIL_UNIT" || want.code === "OWN_CGROUP_UNREADABLE") {
+      // refused by the jail guard, before the state dir, the lock and the audit line
+      expect(readdirSync(r.home)).toEqual([]);
+      return;
+    }
     const audit = join(stateOf(r.home), "audit.jsonl");
     expect(statSync(audit).mode & 0o777).toBe(0o600);
     expect(statSync(stateOf(r.home)).mode & 0o777).toBe(0o700);
@@ -87,8 +100,8 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
 });
 
 describe("Issue #302 P1: the worker's --precheck as a real process (no lock, no audit, no write)", () => {
-  it("answers the same gates with the precheck exit (2 refused / 3 no job) and creates nothing in HOME", () => {
-    const want = expectedGate();
+  it("answers the same gates with the precheck exit (2 refused / 3 no job) and creates nothing in HOME", async () => {
+    const want = await expectedGate();
     const r = runCli(["--precheck"]);
     expect(r.status).toBe(want.status === "no_job" ? 3 : 2);
     expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });

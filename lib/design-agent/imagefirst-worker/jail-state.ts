@@ -35,7 +35,10 @@ export async function jailIdle(env: NodeJS.ProcessEnv, systemctl: string = SYSTE
  * (KillMode=control-group): a restart of Remote Control, of the jail's network or of WSL would end it after its claim was
  * spent. The worker refuses such a run before its precheck and before any claim; one-shot generation runs only through
  * root's pilot / automatic start, which start the worker outside the jail in their own unit. Only narrows: no input of
- * the caller can turn the refusal off.
+ * the caller can turn the refusal off (the CLI's production entry passes no reader; only its test entry under tests/
+ * does). An accident guard, not a security boundary: a jailed process could get around it (NODE_OPTIONS, importing
+ * cycle.ts, the entry itself); the claim and the entry's ledger stay the once-only gate. Only the cgroup v2 line is read:
+ * a cgroup-v1-only host has none (the run goes through); without /proc/self/cgroup (macOS, Windows) it is "unknown".
  */
 export const JAIL_CGROUP_LINE = /^0::\/system\.slice\/(sr-jail-[a-z0-9-]+\.service)(?:\/.*)?$/m;
 

@@ -33,12 +33,15 @@ if [ "${1:-}" = "--sr-clean-env" ]; then
   shift
 else
   keep=()
-  for name in PATH LANG TZ SR_RC_DIAGNOSE_TEST_ROOT; do
+  for name in PATH LANG TZ TMPDIR SR_RC_DIAGNOSE_TEST_ROOT; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
   exec /usr/bin/env -i "${keep[@]}" /bin/bash "${BASH_SOURCE[0]}" --sr-clean-env "$@"
 fi
 export LC_ALL=C
+# The system PATH before any command is looked up (the production run never takes the test hook; a run with it is
+# refused below unless it is a copy outside the admin clone, i.e. the unit tests' fake WSL with its stubs on PATH).
+[ -n "${SR_RC_DIAGNOSE_TEST_ROOT:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
 SELF_DIR="$(dirname "$SELF")"
@@ -128,14 +131,22 @@ show() {
   return 0
 }
 
-# journal <unit> <since epoch>: the unit's journal lines as "<epoch> <text>" (only counted, never printed)
+# The journal is streamed through awk, never held in a shell variable or a here-string: bash writes a here-string larger
+# than a pipe (64 KiB) to a temporary file, and this script writes no file. Only small results (counts, a few epochs) are
+# kept. journal <since epoch> <unit...>: those units' lines as "<epoch> <text>", in time order (only counted, never printed)
 journal() {
-  journalctl -q --no-pager -o short-unix -u "$1" --since "@$2" 2>/dev/null
+  local since="$1" u args=()
+  shift
+  for u in "$@"; do args+=(-u "$u"); done
+  journalctl -q --no-pager -o short-unix --since "@$since" "${args[@]}" 2>/dev/null
 }
-# count <lines> <extended regex>
-count() { [ -n "$1" ] || { echo 0; return; }; grep -cE "$2" <<<"$1" || true; }
-# last <lines> <regex>: epoch of the last matching line, or empty
-last_at() { [ -n "$1" ] || return 0; grep -E "$2" <<<"$1" | tail -n 1 | awk '{ split($1, a, "."); print a[1] }'; }
+# kv <text>: sets each key=value word of an awk summary (keys are fixed in this script, values numbers)
+kv() {
+  local w
+  for w in $1; do
+    case "$w" in [A-Z]*=*) printf -v "J_${w%%=*}" '%s' "${w#*=}" ;; esac
+  done
+}
 
 DAY=86400
 WEEK=$((7 * DAY))
@@ -143,50 +154,54 @@ WEEK=$((7 * DAY))
 say "read only: nothing is started, stopped, enabled, written or run as $REQ"
 
 # ---------------------------------------------------------------- 1. WSL VM / distro restarts
-BOOTS_OK=0
+# Only index, first_entry and last_entry (microseconds) of each boot are read, never the boot id.
 BOOT_AGE=""
-if boots="$(journalctl --list-boots -o json --no-pager 2>/dev/null)" && [ -n "$boots" ]; then
-  # one object per line; only index, first_entry and last_entry (microseconds) are read, never the boot id
-  table="$(sed 's/},[[:space:]]*{/}\n{/g' <<<"$boots" | sed -nE 's/.*"index":(-?[0-9]+).*"first_entry":([0-9]+).*"last_entry":([0-9]+).*/\1 \2 \3/p' | awk '{ printf "%d %d %d\n", $1, $2 / 1000000, $3 / 1000000 }' | sort -n)"
-  if [ -n "$table" ]; then
-    BOOTS_OK=1
-    listed="$(wc -l <<<"$table" | tr -d ' ')"
-    b7="$(awk -v t=$((NOW - WEEK)) '$2 >= t' <<<"$table" | wc -l | tr -d ' ')"
-    b1="$(awk -v t=$((NOW - DAY)) '$2 >= t' <<<"$table" | wc -l | tr -d ' ')"
-    info WSL_BOOTS_LISTED "$listed"
-    info WSL_BOOTS_7D "$b7"
-    info WSL_BOOTS_24H "$b1"
-    info WSL_BOOTS_PER_DAY "$(awk -v n="$b7" 'BEGIN { printf "%.1f", n / 7 }')"
-    cur="$(awk '$1 == 0 { print $2 }' <<<"$table")"
-    if [[ "$cur" =~ ^[0-9]+$ ]]; then
-      BOOT_AGE=$((NOW - cur))
-      info WSL_BOOT_STARTED "$(minute "$cur")"
-      info WSL_BOOT_AGE_MIN "$(age_min "$cur")"
-    fi
-    # the most recent boots: when each began and how long WSL was down before it (rounded to the minute)
-    tail -n 6 <<<"$table" | awk 'NR > 1 { printf "%s %d\n", $2, ($2 - prev) / 60 } { prev = $3 }' | tail -n 5 | while read -r t gap; do
-      say "WSL_BOOT at=$(minute "$t") down_before_min=$gap"
-    done
-    if [ "$listed" -le 1 ]; then
-      # a volatile journal (or a new distro): earlier restarts cannot be counted from here
-      code WSL_JOURNAL_ONE_BOOT
-    fi
-    if [ -n "$BOOT_AGE" ] && [ "$BOOT_AGE" -lt "$DAY" ] && [ "$listed" -ge 2 ]; then
-      code WSL_RESTARTED_RECENTLY "$b1"
-    fi
+CUR_BOOT=""
+BOOT_GAP=""
+if boots="$(journalctl --list-boots -o json --no-pager 2>/dev/null | sed 's/},[[:space:]]*{/}\n{/g' \
+  | sed -nE 's/.*"index":(-?[0-9]+).*"first_entry":([0-9]+).*"last_entry":([0-9]+).*/\1 \2 \3/p' \
+  | awk -v now="$NOW" -v day="$DAY" -v week="$((7 * DAY))" '
+    { i = $1 + 0; f[i] = int($2 / 1000000); l[i] = int($3 / 1000000); n++; if (n == 1 || i < lo) lo = i; if (n == 1 || i > hi) hi = i }
+    END {
+      if (!n) exit 1
+      for (i = lo; i <= hi; i++) if (i in f) { if (f[i] >= now - week) b7++; if (f[i] >= now - day) b1++ }
+      printf "LISTED=%d B7=%d B1=%d", n, b7, b1
+      if (0 in f) printf " CUR=%d", f[0]
+      if ((0 in f) && (-1 in l)) printf " GAP=%d", f[0] - l[-1]
+      printf "\n"
+      # the most recent boots: when each began and how long WSL was down before it
+      for (i = (hi - 4 > lo + 1 ? hi - 4 : lo + 1); i <= hi; i++) if ((i in f) && ((i - 1) in l)) printf "BOOT %d %d\n", f[i], (f[i] - l[i - 1]) / 60
+    }')" && [ -n "$boots" ]; then
+  J_LISTED=0 J_B7=0 J_B1=0 J_CUR="" J_GAP=""
+  kv "$(head -n 1 <<<"$boots")"
+  info WSL_BOOTS_LISTED "$J_LISTED"
+  info WSL_BOOTS_7D "$J_B7"
+  info WSL_BOOTS_24H "$J_B1"
+  info WSL_BOOTS_PER_DAY "$(awk -v n="$J_B7" 'BEGIN { printf "%.1f", n / 7 }')"
+  if [[ "$J_CUR" =~ ^[0-9]+$ ]]; then
+    CUR_BOOT="$J_CUR"
+    BOOT_AGE=$((NOW - J_CUR))
+    info WSL_BOOT_STARTED "$(minute "$J_CUR")"
+    info WSL_BOOT_AGE_MIN "$(age_min "$J_CUR")"
   fi
+  [[ ! "$J_GAP" =~ ^[0-9]+$ ]] || BOOT_GAP="$J_GAP"
+  grep '^BOOT ' <<<"$boots" | while read -r _ t gap; do say "WSL_BOOT at=$(minute "$t") down_before_min=$gap"; done
+  # a volatile journal (or a new distro): earlier restarts cannot be counted from here
+  [ "$J_LISTED" -gt 1 ] || code WSL_JOURNAL_ONE_BOOT
+  if [ -n "$BOOT_AGE" ] && [ "$BOOT_AGE" -lt "$DAY" ] && [ "$J_LISTED" -ge 2 ]; then code WSL_RESTARTED_RECENTLY "$J_B1"; fi
+else
+  code WSL_BOOTS_UNREADABLE
 fi
-[ "$BOOTS_OK" = 1 ] || code WSL_BOOTS_UNREADABLE
 # the kernel's uptime is the VM's; a distro restarted inside a running VM (wsl --terminate) has a younger boot
 if up="$(cut -d' ' -f1 "$R/proc/uptime" 2>/dev/null)" && [[ "$up" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
   up="${up%.*}"
   info WSL_VM_UPTIME_MIN $((up / 60))
-  if [ -n "$BOOT_AGE" ] && [ $((up - BOOT_AGE)) -gt 600 ]; then
-    code WSL_DISTRO_RESTARTED_VM_KEPT
-  fi
+  if [ -n "$BOOT_AGE" ] && [ $((up - BOOT_AGE)) -gt 600 ]; then code WSL_DISTRO_RESTARTED_VM_KEPT; fi
 else
   code WSL_UPTIME_UNREADABLE
 fi
+# "this boot": since the current boot's first journal entry, or the last 24 h when the boots cannot be read
+SINCE_BOOT="${CUR_BOOT:-$((NOW - DAY))}"
 
 # ---------------------------------------------------------------- 2. sr-jail-claude.service
 UNIT_OK=0
@@ -217,74 +232,58 @@ else
   code RC_UNIT_UNREADABLE
 fi
 
+# systemd's own lines about the unit, counted over 7 days and in this boot. An exit is Claude ending (systemd logs one
+# exit as several lines: lines within 10 s are one exit). "Scheduled restart job" is systemd's automatic restart
+# (Restart=always); a stop and start by a person (claude-stop / claude-start, approve / jail-install) has none, and a
+# restart of sr-jail-net shows in section 3. For each exit a start followed, the gap until that start; resume after a
+# stop works for about 4 h. EXITS: the exit epochs (for section 3), one per exit.
 JOURNAL_OK=1
-if lines="$(journal "$JAIL_CLAUDE" $((NOW - WEEK)))"; then
-  day="$(awk -v t=$((NOW - DAY)) '{ split($1, a, "."); if (a[1] + 0 >= t) print }' <<<"$lines")"
-  starts7="$(count "$lines" ': Started ')"
-  starts1="$(count "$day" ': Started ')"
-  auto7="$(count "$lines" 'Scheduled restart job')"
-  auto1="$(count "$day" 'Scheduled restart job')"
-  stops7="$(count "$lines" ': Stopped ')"
-  limit7="$(count "$lines" 'Start request repeated too quickly|start-limit-hit')"
-  failed7="$(count "$lines" 'Failed with result|Failed to start')"
-  clean7="$(count "$lines" 'Deactivated successfully')"
-  probe7="$(count "$lines" 'JAIL_UNSAFE')"
-  info RC_UNIT_STARTS_7D "$starts7"
-  info RC_UNIT_STARTS_24H "$starts1"
-  info RC_UNIT_AUTO_RESTARTS_7D "$auto7"
-  info RC_UNIT_AUTO_RESTARTS_24H "$auto1"
-  info RC_UNIT_STOPS_7D "$stops7"
-  info RC_UNIT_EXITED_CLEANLY_7D "$clean7"
-  info RC_UNIT_FAILED_7D "$failed7"
-  lastStart="$(last_at "$lines" ': Started ')"
-  [ -z "$lastStart" ] || info RC_UNIT_LAST_START "$(minute "$lastStart")"
-  # one start is the boot's own; more than one in the last 24 h is a restart inside the boot
-  restarts=$((starts1 > 1 ? starts1 - 1 : 0))
-  [ "$auto1" -le "$restarts" ] || restarts="$auto1"
-  if [ "$restarts" -gt 0 ]; then code RC_UNIT_RESTARTS "$restarts"; fi
-  if [ "$limit7" -gt 0 ] && ! has RC_UNIT_START_LIMIT; then code RC_UNIT_START_LIMIT "$limit7"; fi
-  if [ "$probe7" -gt 0 ]; then code RC_UNIT_PROBE_FAILED "$probe7"; fi
-  # Claude's exits (systemd's lines: one exit can log several, so lines within 10 s are one exit) and, for each exit
-  # that a start followed, the gap until that start. Resume after a stop works for about 4 h (official docs).
-  EXITS="$(grep -E 'Deactivated successfully|Failed with result|Main process exited|: Stopped ' <<<"$lines" | awk '{ split($1, a, "."); t = a[1] + 0; if (t - last > 10) print t; last = t }')"
-  gaps="$(awk '
-    /Deactivated successfully|Failed with result|Main process exited|: Stopped / { split($1, a, "."); x = a[1] + 0; next }
-    /: Started / { split($1, a, "."); if (x) print a[1] - x; x = 0 }' <<<"$lines")"
-  info RC_UNIT_EXITS_7D "$( [ -n "$EXITS" ] && wc -l <<<"$EXITS" | tr -d ' ' || echo 0)"
-  lastExit="$(tail -n 1 <<<"$EXITS")"
-  [ -z "$lastExit" ] || info RC_UNIT_LAST_EXIT "$(minute "$lastExit")"
-  if [ -n "$gaps" ]; then
-    lastGap="$(tail -n 1 <<<"$gaps")"
-    maxGap="$(sort -n <<<"$gaps" | tail -n 1)"
-    info RC_LAST_EXIT_TO_START_MIN $((lastGap / 60))
-    info RC_MAX_EXIT_TO_START_MIN_7D $((maxGap / 60))
-    STOP_GAP="$lastGap"
+EXITS=""
+STOP_GAP=""
+EXIT_RE='Deactivated successfully|Failed with result|Main process exited|: Stopped '
+if sum="$(journal $((NOW - WEEK)) "$JAIL_CLAUDE" | awk -v boot="$SINCE_BOOT" -v exitre="$EXIT_RE" '
+    { split($1, a, "."); t = a[1] + 0; nb = (t >= boot) }
+    /: Started / { s7++; if (nb) sb++; last = t; if (x) gap = t - x; if (x && t - x > maxgap) maxgap = t - x; x = 0 }
+    /Scheduled restart job/ { a7++; if (nb) ab++ }
+    /: Stopped / { st7++; if (nb) stb++ }
+    /Start request repeated too quickly|start-limit-hit/ { lim7++ }
+    /Failed with result|Failed to start/ { f7++ }
+    /Deactivated successfully/ { c7++ }
+    /JAIL_UNSAFE/ { p7++ }
+    $0 ~ exitre { if (t - lx > 10) { e7++; ex = ex (ex == "" ? "" : ",") t; lastx = t } lx = t; x = t }
+    END {
+      printf "S7=%d SB=%d A7=%d AB=%d ST7=%d STB=%d LIM7=%d F7=%d C7=%d P7=%d E7=%d LAST=%d LASTX=%d GAP=%s MAXGAP=%s EXITS=%s\n",
+        s7, sb, a7, ab, st7, stb, lim7, f7, c7, p7, e7, last, lastx, (gap == "" ? "" : gap), (maxgap == "" ? "" : maxgap), ex
+    }')"; then
+  J_GAP="" J_MAXGAP="" J_EXITS=""
+  kv "$sum"
+  info RC_UNIT_STARTS_7D "$J_S7"
+  info RC_UNIT_STARTS_THIS_BOOT "$J_SB"
+  info RC_UNIT_AUTO_RESTARTS_7D "$J_A7"
+  info RC_UNIT_AUTO_RESTARTS_THIS_BOOT "$J_AB"
+  info RC_UNIT_STOPS_7D "$J_ST7"
+  info RC_UNIT_STOPS_THIS_BOOT "$J_STB"
+  info RC_UNIT_EXITED_CLEANLY_7D "$J_C7"
+  info RC_UNIT_FAILED_7D "$J_F7"
+  info RC_UNIT_EXITS_7D "$J_E7"
+  [ "$J_LAST" = 0 ] || info RC_UNIT_LAST_START "$(minute "$J_LAST")"
+  [ "$J_LASTX" = 0 ] || info RC_UNIT_LAST_EXIT "$(minute "$J_LASTX")"
+  if [[ "$J_GAP" =~ ^[0-9]+$ ]]; then
+    info RC_LAST_EXIT_TO_START_MIN $((J_GAP / 60))
+    info RC_MAX_EXIT_TO_START_MIN_7D $((J_MAXGAP / 60))
+    STOP_GAP="$J_GAP"
   fi
+  EXITS="$J_EXITS"
+  # automatic restarts in this boot only (not a person's stop / start, not a WSL restart)
+  if [ "$J_AB" -gt 0 ]; then code RC_UNIT_RESTARTS "$J_AB"; fi
+  if [ "$J_LIM7" -gt 0 ] && ! has RC_UNIT_START_LIMIT; then code RC_UNIT_START_LIMIT "$J_LIM7"; fi
+  if [ "$J_P7" -gt 0 ]; then code RC_UNIT_PROBE_FAILED "$J_P7"; fi
 else
   JOURNAL_OK=0
 fi
 # a WSL restart is a stop as well: how long WSL was down before this boot
-if [ -n "${table:-}" ]; then
-  bootGap="$(tail -n 2 <<<"$table" | awk 'NR == 1 { prev = $3 } NR == 2 && prev { print $2 - prev }')"
-  if [[ "${bootGap:-}" =~ ^[0-9]+$ ]] && { [ -z "${STOP_GAP:-}" ] || [ "$bootGap" -gt "$STOP_GAP" ]; }; then STOP_GAP="$bootGap"; fi
-fi
-if [[ "${STOP_GAP:-}" =~ ^[0-9]+$ ]] && [ "$STOP_GAP" -gt 14400 ]; then code RC_STOP_GAP_OVER_4H $((STOP_GAP / 60)); fi
-
-# Exits of Claude that followed a network failure in the 15 minutes before (server mode gives up after about 10 minutes
-# without the network and exits: official docs). Only counted; no journal text is printed.
-NET_RE='Network is unreachable|network is unreachable|ENETUNREACH|No route to host|Temporary failure in name resolution|DNS_NOT_WORKING|Connection timed out|carrier lost|Link DOWN|link down'
-if netlines="$(journalctl -q --no-pager -o short-unix --since "@$((NOW - WEEK))" -u "$JAIL_CLAUDE" -u "$JAIL_NET" -u systemd-resolved.service -u systemd-networkd.service 2>/dev/null)"; then
-  neterr="$(grep -E "$NET_RE" <<<"$netlines" | awk '{ split($1, a, "."); print a[1] + 0 }')"
-  info RC_NETWORK_ERROR_LINES_7D "$( [ -n "$neterr" ] && wc -l <<<"$neterr" | tr -d ' ' || echo 0)"
-  afterNet=0
-  if [ -n "${EXITS:-}" ] && [ -n "$neterr" ]; then
-    afterNet="$( { sed 's/$/ N/' <<<"$neterr"; sed 's/$/ X/' <<<"$EXITS"; } | sort -n -k1,1 -k2,2 | awk '$2 == "N" { n = $1 } $2 == "X" && n && $1 - n <= 900 { c++ } END { print c + 0 }')"
-  fi
-  info RC_EXITS_AFTER_NETWORK_ERROR_7D "$afterNet"
-  if [ "$afterNet" -gt 0 ]; then code RC_EXIT_AFTER_NETWORK_LOSS "$afterNet"; fi
-else
-  JOURNAL_OK=0
-fi
+if [[ "$BOOT_GAP" =~ ^[0-9]+$ ]] && { [ -z "$STOP_GAP" ] || [ "$BOOT_GAP" -gt "$STOP_GAP" ]; }; then STOP_GAP="$BOOT_GAP"; fi
+if [[ "$STOP_GAP" =~ ^[0-9]+$ ]] && [ "$STOP_GAP" -gt 14400 ]; then code RC_STOP_GAP_OVER_4H $((STOP_GAP / 60)); fi
 
 # ---------------------------------------------------------------- 3. sr-jail-net.service (BindsTo: a restart restarts Claude)
 if show "$JAIL_NET" N; then
@@ -295,14 +294,33 @@ if show "$JAIL_NET" N; then
 else
   code RC_NET_UNREADABLE
 fi
-if nlines="$(journal "$JAIL_NET" $((NOW - WEEK)))"; then
-  nday="$(awk -v t=$((NOW - DAY)) '{ split($1, a, "."); if (a[1] + 0 >= t) print }' <<<"$nlines")"
-  nstarts1="$(count "$nday" ': Started ')"
-  nauto1="$(count "$nday" 'Scheduled restart job')"
-  info RC_NET_STARTS_7D "$(count "$nlines" ': Started ')"
-  nrestarts=$((nstarts1 > 1 ? nstarts1 - 1 : 0))
-  [ "$nauto1" -le "$nrestarts" ] || nrestarts="$nauto1"
-  if [ "$nrestarts" -gt 0 ]; then code RC_NET_RESTARTS "$nrestarts"; fi
+# every start of the net unit in this boot after its first one (automatic, or a person's restart / approve /
+# jail-install) restarted Claude with it
+if sum="$(journal $((NOW - WEEK)) "$JAIL_NET" | awk -v boot="$SINCE_BOOT" '
+    /: Started / { split($1, a, "."); s7++; if (a[1] + 0 >= boot) sb++ }
+    END { printf "NS7=%d NSB=%d\n", s7, sb }')"; then
+  kv "$sum"
+  info RC_NET_STARTS_7D "$J_NS7"
+  info RC_NET_STARTS_THIS_BOOT "$J_NSB"
+  if [ "$J_NSB" -gt 1 ]; then code RC_NET_RESTARTS $((J_NSB - 1)); fi
+else
+  JOURNAL_OK=0
+fi
+
+# Exits of Claude that followed a network failure in the 15 minutes before (server mode gives up after about 10 minutes
+# without the network and exits: official docs). Only counted; no journal text is printed.
+NET_RE='Network is unreachable|network is unreachable|ENETUNREACH|No route to host|Temporary failure in name resolution|DNS_NOT_WORKING|Connection timed out|carrier lost|Link DOWN|link down'
+if sum="$(journal $((NOW - WEEK)) "$JAIL_CLAUDE" "$JAIL_NET" systemd-resolved.service systemd-networkd.service | awk -v netre="$NET_RE" -v exits="$EXITS" '
+    BEGIN { n = split(exits, x, ",") }
+    $0 ~ netre {
+      split($1, a, "."); t = a[1] + 0; lines++
+      for (i = 1; i <= n; i++) if (!(i in hit) && x[i] - t >= 0 && x[i] - t <= 900) { hit[i] = 1; c++ }
+    }
+    END { printf "NETLINES=%d AFTERNET=%d\n", lines, c }')"; then
+  kv "$sum"
+  info RC_NETWORK_ERROR_LINES_7D "$J_NETLINES"
+  info RC_EXITS_AFTER_NETWORK_ERROR_7D "$J_AFTERNET"
+  if [ "$J_AFTERNET" -gt 0 ]; then code RC_EXIT_AFTER_NETWORK_LOSS "$J_AFTERNET"; fi
 else
   JOURNAL_OK=0
 fi
@@ -330,33 +348,40 @@ TMUX_UNIT=""
 IN_UNIT_OTHER=0
 OTHER_CLAUDE=0
 OTHER_RC=0
+RC_PIDS=()
+RC_PPIDS=()
 # what admin.sh's unit itself starts around Claude (the tmux client and the shell of its ExecStart)
 LAUNCHERS='^(tmux|bash|sh)$'
 OUTSIDE=()
 uid="$(id -u "$REQ" 2>/dev/null)" || uid=""
 CLK="$(getconf CLK_TCK 2>/dev/null)"; [[ "$CLK" =~ ^[0-9]+$ ]] && [ "$CLK" -gt 0 ] || CLK=100
 BTIME="$(awk '$1 == "btime" { print $2 }' "$SR_PROC/stat" 2>/dev/null)"
-# is_claude <argv...>: the program is Claude Code (its path's last part)
-is_claude() {
-  local a
-  for a in "$@"; do
-    case "${a##*/}" in claude | claude-code | claude.exe | cli.js) return 0 ;; esac
-  done
+# claude_at <comm> <argv...>: where Claude Code's program is in this argv (0: the native `claude` binary, or comm says
+# claude; 1: node / bun running Claude Code's script), or nothing when the process is not Claude Code. Only the program
+# counts: `grep claude`, `tmux ... -s claude` or another tool's cli.js (Playwright's) are not Claude.
+claude_at() {
+  local comm="$1"
+  shift
+  case "${1##*/}" in
+    claude | claude.exe) echo 0; return 0 ;;
+    node | node[0-9]* | bun)
+      case "${2:-}" in
+        */claude | */@anthropic-ai/claude-code/cli.js | */@anthropic-ai/claude-code/cli.mjs) echo 1; return 0 ;;
+      esac
+      ;;
+  esac
+  if [ "$comm" = claude ]; then echo 0; return 0; fi
   return 1
 }
-# rc_mode <argv...>: server / interactive / empty (not Remote Control). Only the program name and option names count.
+# rc_mode <program index> <argv...>: server (the word right after the program is `remote-control` or its alias `rc`),
+# interactive (`--remote-control` / `--rc`, with or without a name), or nothing.
 rc_mode() {
-  local a mode="" after=0
-  is_claude "$@" || return 0
+  local p="$1" a mode=""
+  shift
+  shift $((p + 1))
+  case "${1:-}" in remote-control | rc) echo server; return 0 ;; esac
   for a in "$@"; do
-    case "$a" in
-      remote-control) mode=server; break ;;
-      rc) if [ "$after" = 1 ]; then mode=server; break; fi ;;
-      --remote-control | --remote-control=*) mode=interactive ;;
-    esac
-    # `rc` counts only as the word right after the program
-    after=0
-    case "${a##*/}" in claude | claude-code | claude.exe | cli.js) after=1 ;; esac
+    case "$a" in --remote-control | --remote-control=* | --rc | --rc=*) mode=interactive ;; esac
   done
   echo "$mode"
 }
@@ -368,9 +393,13 @@ elif [ -d "$SR_PROC" ]; then
     owner="$(awk '/^Uid:/ { print $2 " " $3 " " $4 " " $5; exit }' "$d/status" 2>/dev/null)" || continue
     mapfile -d '' -t argv <"$d/cmdline" 2>/dev/null || argv=()
     [ "${#argv[@]}" -gt 0 ] || argv=("")
-    mode="$(rc_mode "${argv[@]}")"
+    comm="$(cat "$d/comm" 2>/dev/null)"
     claude=0
-    is_claude "${argv[@]}" && claude=1
+    mode=""
+    if at="$(claude_at "$comm" "${argv[@]}")"; then
+      claude=1
+      mode="$(rc_mode "$at" "${argv[@]}")"
+    fi
     case " $owner " in
       *" $uid "*) ;;
       *)
@@ -382,9 +411,10 @@ elif [ -d "$SR_PROC" ]; then
     cg="$(sed -n 's/^0:://p' "$d/cgroup" 2>/dev/null | head -n 1)"
     unit="${cg##*/}"
     case "$unit" in *.service | *.scope) ;; *) unit=other ;; esac
-    comm="$(cat "$d/comm" 2>/dev/null)"
     if [ -n "$mode" ]; then
       RC_COUNT=$((RC_COUNT + 1))
+      RC_PIDS+=("${d##*/}")
+      RC_PPIDS+=("$(awk '/^PPid:/ { print $2; exit }' "$d/status" 2>/dev/null)")
       start=""
       st="$(sed -E 's/^.*\) //' "$d/stat" 2>/dev/null)"
       ticks="$(awk '{ print $20 }' <<<"$st")"
@@ -457,8 +487,14 @@ if [ "$PROC_OK" = 1 ]; then
       code RC_PROC_CWD_UNEXPECTED
     fi
   fi
-  # two servers for the same directory: a stop of one archives the sessions (official docs)
-  [ "$RC_COUNT" -le 1 ] || code RC_MULTIPLE_SERVERS "$RC_COUNT"
+  # two servers for the same directory: a stop of one archives the sessions (official docs). A Remote Control process
+  # whose parent is itself one (a session it started, if it does so: unverified on a real machine) is not another server.
+  servers=0
+  for i in "${!RC_PIDS[@]}"; do
+    case " ${RC_PIDS[*]} " in *" ${RC_PPIDS[$i]:-x} "*) ;; *) servers=$((servers + 1)) ;; esac
+  done
+  info RC_SERVERS "$servers"
+  [ "$servers" -le 1 ] || code RC_MULTIPLE_SERVERS "$servers"
   if [ "$RC_COUNT" = 0 ] && [ "$UNIT_OK" = 1 ] && [ "${U_ActiveState:-}" = active ]; then code RC_PROC_MISSING; fi
   info RC_TMUX_SERVERS "$TMUX_COUNT"
   [ "$TMUX_COUNT" = 0 ] || info RC_TMUX_UNIT "$([ "$TMUX_UNIT" = "$JAIL_CLAUDE" ] && echo "$JAIL_CLAUDE" || echo other)"
