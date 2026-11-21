@@ -104,6 +104,15 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
     expect(rec.binding.images.every((i) => i.media_type === "image/jpeg" && i.preview_bytes > 0 && i.audit_bytes > 0)).toBe(true);
     const md = readFileSync(join(auditDir(s), "AUDIT.md"), "utf8");
     for (const i of rec.binding.images) expect(md).toContain(`\`${i.preview_sha256}\` | \`${i.audit_sha256}\``);
+    // owner comment 7053442141: AUDIT.md names the rubric v2 and, per viewport, which examples' principles were used (with their source)
+    expect(rec.binding.rubric_version).toBe("if-claude-audit-v2");
+    expect(rec.schema).toBe("imagefirst_claude_audit_v2");
+    expect(md).toContain("`if-claude-audit-v2`");
+    expect(md.match(/Closeness to an example is not a criterion; imitating another shop's design, colours or layout is penalised\./g)).toHaveLength(2);
+    expect(md).toContain("CP-003-pc (design-library/phase2f/references/success-references-v1.json)");
+    expect(md).toContain("CP-003-sp (design-library/phase2f/references/success-references-v1.json)");
+    expect(md).toContain("CP-001-concept (design-library/research/quality-pipeline/visual-reads/CP-001/concept.read.json)");
+    expect(md).not.toMatch(/success_example_distance/);
     expect(rec.derived.desktop_1440).toEqual(deriveViewport(rec.viewports.desktop_1440!));
     expect(rec.auditor).toMatchObject({ via: "claude_cli_print_no_tools", model_reported: "fake-test-model", cli_version: "0.0.0-test", calls: 2, reasks: 0 });
     // private: 0700 directories, 0600 files; the one-use marker; AUDIT.md for the owner; nothing in the repository
