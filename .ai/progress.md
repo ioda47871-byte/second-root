@@ -342,3 +342,5 @@
 - 2026-10-31 DEV-131 merged (#167 → 439cf08): 実装と元デザインの PC1440/SP390 比較（修正ループの原因コード、passing は常に false、閾値は仮）と架空店舗オフライン実験（2b/2c/2e/2g を実モジュールで連結）。独立レビュー 3 ラウンド目 PASS（C0/H0/M0/L3、Low は .ai/reviews/DEV-131.md）。Issue #159 の許可済みオフライン範囲はこれで一巡。以降は承認待ち（実Codex 実行、閾値・語彙の確定、interaction_spec、実ポート接続、jail 下の実装レーン）。
 
 - 2026-11-03 DEV-161 (PR #201): 段B の設計 (`docs/design/phase-b-design.md`) と、旗が下りた今の振る舞いを固定するテスト。許可一覧・閾値・worker・能力の表は不変。Fresh Review 1回目 M4/L4 を文書とテストで修正 (書体は信頼できる側が同じバイト列を差し込む、描く範囲、`STACKING_CONTEXT`/`PSEUDO_GEOMETRY_UNKNOWN` を狭めるのは承認事項、`rem` の掛け合わせで今の上限をすり抜けられる穴)。段B の実装 PR は merge 前にオーナーの承認が要る。
+
+- 2026-11-21 DEV-302p5 (review): デザイン研究ループ。`design-library/research-log/`（来歴・オーナー判断・brief・状態、メタデータのみ）、`scripts/design-research/research.ts`（status は読み取りのみ・intake・review-page・decide・queue-add・next-shop）、スキル `second-root-research-loop`、CLAUDE.md の再開手順。ほし窯 d3 を記録し、オーナー判断 revise（2026-11-21）と d4 brief を保存。画像生成・承認 ID は未使用。

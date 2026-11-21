@@ -10544,6 +10544,47 @@
       "blocked_reason": "Owner approved 10→4 for draft demo creation only (PR comment 6908926087). Post-R4 fix HEAD still needs full CI + independent Fresh Review PASS. Explicit merge authorization not included; hosted migration/publication/outreach remain unapproved.",
       "branch": "feature/dev-263k-optional-real-shop-facts",
       "note": "R4 PASS on 634438b6, CI run 43815976366 all jobs passed. L1 privacy in review log and L2 optional-fields notice condition+tests fixed after R4; recorded in .ai/reviews/DEV-263k.md. Need final-head CI and review; keep feature unmerged."
+    },
+    {
+      "id": "DEV-302p5",
+      "title": "Design research loop: persistent research log, owner decisions (改善して / 成功例として保存 / 次の店へ) and session resume (Issue #302 P5)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "purpose": "Let the owner review and decide designs from the Claude app while Claude records provenance, decisions and next steps in a committed, metadata-only log that a new session resumes from. No image generation, no approval IDs.",
+      "acceptance_criteria": [
+        "design-library/research-log/ holds write-once entries (SHA-256 provenance of the reviewed previews and the advisory audit's numbers) and append-only owner decisions; fictional shops only; no pictures and no audit findings text.",
+        "scripts/design-research/research.ts status is read-only (tested: no file in the log or inbox changes) and prints the resume summary.",
+        "intake refuses previews or audits that do not match INDEX.json; review-page refuses to write inside the repository.",
+        "The hoshigama d3 run is recorded with the owner's revise decision and the d4 brief.",
+        "CI green and independent Fresh Review PASS on the same head."
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/research-log/research-log.test.ts",
+        "npm run typecheck",
+        "npm run lint"
+      ],
+      "allowed_scope": [
+        "design-library/research-log/",
+        "lib/design-agent/research-log/",
+        "scripts/design-research/",
+        "tests/unit/design-agent/research-log/",
+        ".claude/skills/second-root-research-loop/",
+        "docs/operations/design-research-loop.md",
+        "CLAUDE.md (research-loop pointer only)"
+      ],
+      "forbidden_scope": [
+        "image generation, Codex, worker, pilot, autostart",
+        "issuing, claiming or consuming approval IDs",
+        "real-shop data in the repository",
+        "private images or audit findings text in the repository"
+      ],
+      "human_approval_triggers": [
+        "any image generation (new approval packet and approval ID, OWNER MERGE ONLY)",
+        "registering an adopted design as a CP-* research case"
+      ],
+      "attempts": 1,
+      "last_failure": null
     }
   ]
 }
