@@ -91,7 +91,11 @@ export const tsEntry = (file: string, argv: readonly string[] = []) => ({ bin: p
 
 /** would_run: only from precheckImagefirstCycle (every check up to the claim passed; nothing was written). */
 export type CycleStatus = "no_job" | "locked" | "refused" | "succeeded" | "stopped" | "would_run";
-export type CycleReport = { status: CycleStatus; code: string | null; invoked: boolean; approval_id?: string; run_dir?: string; receipt?: string };
+/**
+ * expires_at: only on "would_run" (Issue #302 pilot preflight): the packet's §10 expiry as committed (UTC, the same text the
+ * cycle just checked), so root's pilot preflight can require a wider margin than PRECHECK_MIN_LEFT_MS without a parser of its own.
+ */
+export type CycleReport = { status: CycleStatus; code: string | null; invoked: boolean; approval_id?: string; run_dir?: string; receipt?: string; expires_at?: string };
 export const exitCodeOf = (s: CycleStatus) => (s === "refused" ? 2 : s === "stopped" ? 1 : 0);
 /** The precheck's exit: 0 = would run, 3 = no job (not approved), 2 = refused; nothing was claimed or written either way. */
 export const precheckExitOf = (s: CycleStatus) => (s === "would_run" ? 0 : s === "no_job" ? 3 : s === "refused" ? 2 : 1);
@@ -390,7 +394,7 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   if (precheckOnly) {
     if (!(await privateOrMissing(o.stateDir)) || !(await privateOrMissing(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE", approvalId);
     if (!(await privateOrMissing(o.runsDir))) return refuse("RUNS_DIR_UNSAFE", approvalId);
-    return { status: "would_run", code: null, invoked: false, approval_id: approvalId };
+    return { status: "would_run", code: null, invoked: false, approval_id: approvalId, expires_at: packet.expires };
   }
   // Keep both the claim marker and its parents private: O_NOFOLLOW guards only the final file.
   if (!(await privateDir(o.stateDir)) || !(await privateDir(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE", approvalId);

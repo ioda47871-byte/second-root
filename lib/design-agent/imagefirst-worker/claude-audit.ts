@@ -527,7 +527,8 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
 
 /**
  * Issue #302 (the owner's one-shot pilot, docs/operations/imagefirst-pilot.md): the audit's own sign-in check ALONE, for
- * the read-only preflight. The jail must be idle (as for the audit: both use the same ~/.claude), then claude-cli.ts
+ * the read-only preflight. The jail must be idle (as for the audit: both use the same ~/.claude), `parentDir` (the worker's state
+ * directory) must be a private directory of ours (STATE_DIR_UNSAFE), then claude-cli.ts
  * assertClaudeSignedIn — `claude --setting-sources "" auth status` with the same scrubbed environment, from an empty
  * private directory under `parentDir` that is removed afterwards — must report the claude.ai subscription, first party,
  * with no API key. No model call, no marker, no bundle read, nothing else written. Refusals throw AuditStop.
@@ -535,6 +536,9 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
 export async function checkAuditAuth(o: { claudeBin: string; env: Record<string, string | undefined>; parentDir: string; jailIdle: () => Promise<boolean | null>; signal?: AbortSignal }): Promise<void> {
   const idle = await o.jailIdle().catch(() => null);
   if (idle !== true) stop(idle === null ? "JAIL_STATE_UNKNOWN" : "JAIL_ACTIVE");
+  // the worker's state directory, as for the audit's own call: a real directory of ours, closed to group and others
+  const info = await lstat(o.parentDir).catch(() => null);
+  if (!info || !info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0) stop("STATE_DIR_UNSAFE");
   const cwd = await mkdtemp(join(o.parentDir, ".claude-auth-"));
   try {
     await assertClaudeSignedIn({ claudeBin: o.claudeBin, env: claudeEnvironment(o.env), cwd, ...(o.signal ? { signal: o.signal } : {}) });

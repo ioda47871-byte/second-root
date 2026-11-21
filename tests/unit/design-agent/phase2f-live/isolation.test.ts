@@ -169,7 +169,8 @@ describe("isolation of the Phase 2f-2 steps", () => {
     // Issue #302: the pilot starts the adapter's run once, its preflight only the --precheck; neither names the entry or a model API (code lines)
     const codeOf = (f: string) => readFileSync(resolve(REPO, f), "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     expect(codeOf(WORKER_PILOT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &']);
-    expect(codeOf(WORKER_PILOT_PREFLIGHT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-']);
+    // the preflight: the --precheck, and (review H1) the read-only Codex sign-in check, which uses nothing
+    expect(codeOf(WORKER_PILOT_PREFLIGHT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
     for (const f of [WORKER_PILOT, WORKER_PILOT_PREFLIGHT]) expect(codeOf(f), f).not.toMatch(/image-first-generate|generateImage|anthropic|openai/i);
     // the automatic start never names the entry, Codex or a model itself: it only starts the adapter
     expect(readFileSync(resolve(REPO, WORKER_AUTOSTART), "utf8")).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);

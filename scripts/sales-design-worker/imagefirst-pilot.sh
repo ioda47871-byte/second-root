@@ -33,14 +33,20 @@
 # (the claim, APPROVAL_ALREADY_CLAIMED) fail, and the audit's marker would refuse too. It never installs, enables,
 # starts or stops a systemd unit or timer, and never creates the automatic start's switch or marker.
 #
-# A stop signal while the worker or the audit runs is passed on and waited for (the worker writes its receipt, the audit
-# its stopped record); a stop before the worker starts ends the pilot there.
+# A stop signal (as the automatic start's handler, keyed on PHASE): before the worker starts it ends the pilot there
+# (PILOT_STOP_SIGNAL, exit 40, phase=before_claim: nothing used). From the worker's start on it is passed on to the running
+# worker or audit and waited for (the worker writes its receipt, the audit its stopped record), and the pilot ends at the
+# next step boundary: PILOT_INTERRUPTED, exit 1, phase=after_claim (the approval may be spent: read the receipt). Press
+# Ctrl-C once and wait (a second one within the worker's grace is a hard stop by design).
 #
-# Output: the preflight's table, fixed lines, the workers' one JSON lines, the summary. The last line is machine-readable:
+# Output: the preflight's table, fixed lines, the workers' one JSON lines with local paths replaced by <local>, then the
+# summary in two parts: "share:" lines (codes, counts, yes/no only: what may go to Issue #302) and "local-only:" lines
+# (SHA-256s, raw stderr: keep them on the machine). The last line is machine-readable and shareable:
 #   IMAGEFIRST_PILOT <CODE> phase=<before_claim|after_claim> approval=<id|none> exit=<n>
 # Exit: 0 done (or synced), 20 preflight FAIL / clone (nothing started), 12 busy before the worker, 2 usage / refused,
-#       1 stopped after the worker started (worker stopped, not delivered, busy, dry run or audit not as expected),
-#       40/41 signal / internal.
+#       1 stopped after the worker started (worker stopped, not delivered, busy, interrupted, dry run or audit not as
+#       expected), 40 a signal before the worker (nothing used), 41 an internal error (with phase=after_claim the approval
+#       may be spent: read the receipt and the summary).
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
 {
@@ -104,14 +110,18 @@ on_exit() {
   finish PILOT_STOP_INTERNAL 41
 }
 on_signal() {
-  # while the worker or the audit runs: pass the stop on and wait for it (below); before the worker: stop here
-  if [ -n "$WPID" ]; then
+  # after the marker: pass the stop on to the worker and wait for its receipt (below); before it: stop here
+  # (the automatic start's handler, keyed on PHASE, review M2: a stop between the fork and WPID=$! is passed on right after
+  # the fork; a stop during a later step ends the pilot at the next step boundary: PILOT_INTERRUPTED)
+  if [ "$PHASE" = after_claim ]; then
     INTERRUPTED=1
-    kill -TERM "$WPID" 2>/dev/null || true
+    [ -z "$WPID" ] || kill -TERM "$WPID" 2>/dev/null || true
     return 0
   fi
   finish PILOT_STOP_SIGNAL 40
 }
+# a stop already requested ends the pilot at a step boundary (after the worker started: the approval may be spent)
+stop_if_interrupted() { if [ "$INTERRUPTED" = 1 ]; then finish PILOT_INTERRUPTED 1; fi; }
 trap on_exit EXIT
 trap on_signal INT TERM HUP
 
@@ -155,6 +165,28 @@ NPM_HASH_FILE=.local/state/sr-design-worker/imagefirst-autostart.npm-lock.sha256
 
 in_clone() { "${AS_WORKER[@]}" "$@" 8>&- 9>&-; }
 
+# The file and every directory above it owned by root and writable by nobody else (as cycle.sh / admin.sh).
+# (Verbatim from imagefirst-autostart.sh.)
+trusted_path() {
+  local p
+  p="$(readlink -f "$1")" || return 1
+  while :; do
+    [ "$(stat -c %u "$p")" = 0 ] || return 1
+    [ $(( 0$(stat -c %a "$p") & 022 )) -eq 0 ] || return 1
+    [ "$p" = / ] && return 0
+    p="$(dirname "$p")"
+  done
+}
+# The production copy: root's admin clone clean, and every script root runs from it trusted (review M1).
+if [ -z "$R" ]; then
+  for f in "$SELF" "$PREFLIGHT" "$DELIVER"; do
+    trusted_path "$f" || { say "PILOT_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish PILOT_USAGE 2; }
+  done
+  admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+  [ -z "$admin_dirty" ] || { say "PILOT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish PILOT_USAGE 2; }
+  say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+fi
+
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
 # (Verbatim from imagefirst-autostart.sh; pilot.test.ts pins that the two stay identical.)
 BUSY_WHY=""
@@ -183,8 +215,10 @@ idle_or_stop() {
   fi
 }
 
-# The summary (step 7): read by the worker user from its own files, every value checked against a fixed shape and
-# printed as code / hash / number only. Root parses none of the worker's files.
+# The summary (step 7): read by the worker user from its own files, every value checked against a fixed shape. Two kinds of
+# line (review L1 / L2): "S" = shareable (codes, counts, sizes, yes/no only: what may go to Issue #302), "L" = local only
+# (SHA-256s of the receipt, the pictures, the bundle and the pins: keep them on the machine). No path is printed. Root
+# parses none of the worker's files.
 SUMMARY_PY='
 import hashlib, json, os, re, struct, sys
 aid, receipt_path = sys.argv[1], sys.argv[2]
@@ -196,10 +230,12 @@ home = os.path.realpath(os.path.expanduser("~"))
 runs = os.path.join(home, "sr-runs")
 state = os.path.join(home, ".local", "state", "sr-design-worker", "imagefirst-worker")
 inbox = os.path.join(runs, "review-inbox")
-def out(k, v): print(k + "=" + v)
+def share(k, v): print("S " + k + "=" + v)
+def local(k, v): print("L " + k + "=" + v)
 def s(v, rx): return v if isinstance(v, str) and rx.match(v) else "invalid"
 def n(v): return str(v) if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 10 ** 9 else "invalid"
 def d(v): return v if isinstance(v, dict) else {}
+def code(v): return s(v, WORD) if v is not None else "none"
 def load(p):
     try:
         if os.path.islink(p) or not os.path.isfile(p): return None
@@ -212,23 +248,24 @@ def under(p, root):
     p = os.path.realpath(p)
     return p.startswith(root + os.sep)
 r = load(receipt_path) if under(receipt_path, runs) else None
+bundle = None
 if r:
     b, j = r
-    out("approval_id", s(j.get("approval_id"), AID))
-    out("commit", s(j.get("commit"), COMMIT))
-    out("receipt_status", s(j.get("status"), WORD) + " stop_code=" + (s(j.get("stop_code"), WORD) if j.get("stop_code") is not None else "none"))
-    out("receipt_sha256", hashlib.sha256(b).hexdigest())
-    out("packet_sha256", s(j.get("packet_sha256"), HEX))
-    out("plan_sha256", s(j.get("plan_sha256"), HEX))
-    out("prompt_sha256", s(j.get("prompt_sha256"), HEX))
+    share("approval_id", s(j.get("approval_id"), AID))
+    share("commit", s(j.get("commit"), COMMIT) + " (the approved develop commit)")
+    share("receipt", "status=" + code(j.get("status")) + " stop_code=" + code(j.get("stop_code")))
     c = d(j.get("counts"))
-    out("images", "pc=" + n(c.get("pc")) + " sp=" + n(c.get("sp")) + " total=" + n(c.get("total")) + " verified=" + str(j.get("verified") is True).lower())
+    share("images", "pc=" + n(c.get("pc")) + " sp=" + n(c.get("sp")) + " total=" + n(c.get("total")) + " verified=" + str(j.get("verified") is True).lower())
+    local("receipt_sha256", hashlib.sha256(b).hexdigest())
+    local("packet_sha256", s(j.get("packet_sha256"), HEX))
+    local("plan_sha256", s(j.get("plan_sha256"), HEX))
+    local("prompt_sha256", s(j.get("prompt_sha256"), HEX))
     run_dir = j.get("run_dir") if isinstance(j.get("run_dir"), str) and under(j.get("run_dir"), runs) else None
     for im in j.get("images") if isinstance(j.get("images"), list) else []:
         im = d(im)
         f = im.get("file")
         if not isinstance(f, str) or not re.match(r"parts/(pc|sp)-[0-9]\.png\Z", f):
-            out("image", "invalid"); continue
+            share("image", "invalid"); continue
         size, match = "unreadable", "no"
         try:
             p = os.path.join(run_dir, f) if run_dir else None
@@ -239,38 +276,44 @@ if r:
                 match = "yes" if hashlib.sha256(data).hexdigest() == im.get("sha256") else "no"
         except Exception:
             pass
-        out("image", f + " sha256=" + s(im.get("sha256"), HEX) + " size=" + size + " sha_matches_file=" + match)
+        share("image", f[6:-4] + " size=" + size + " sha_matched=" + match)
+        local("image_sha256", f[6:-4] + " " + s(im.get("sha256"), HEX))
 else:
-    out("receipt", "unreadable")
+    share("receipt", "unreadable")
 job = load(os.path.join(state, "deliveries", aid + ".json"))
-out("delivery", ("state=" + s(job[1].get("state"), WORD) + " bundle_sha256=" + s(job[1].get("bundle_sha256"), HEX)) if job else "none")
+if job:
+    bundle = job[1].get("bundle_sha256")
+    share("delivery", "state=" + code(job[1].get("state")))
+    local("bundle_sha256", s(bundle, HEX))
+else:
+    share("delivery", "none")
 a = load(os.path.join(inbox, "audits", aid, "audit.json"))
 if a:
     j = a[1]
     bnd, der, vps = d(j.get("binding")), d(j.get("derived")), d(j.get("viewports"))
-    out("audit_status", s(j.get("status"), WORD) + " stop_code=" + (s(j.get("stop_code"), WORD) if j.get("stop_code") is not None else "none"))
-    out("audit_bundle_sha256", s(bnd.get("bundle_sha256"), HEX))
-    out("rubric", "version=" + s(bnd.get("rubric_version"), WORD) + " sha256=" + s(bnd.get("rubric_sha256"), HEX))
+    share("audit", "status=" + code(j.get("status")) + " stop_code=" + code(j.get("stop_code")) + " rubric=" + s(bnd.get("rubric_version"), WORD) + " bundle_sha_matched=" + ("yes" if isinstance(bundle, str) and bnd.get("bundle_sha256") == bundle else "no"))
+    local("rubric_sha256", s(bnd.get("rubric_sha256"), HEX))
     for vp in ("desktop_1440", "mobile_390"):
         dv = d(der.get(vp))
         sc = d(d(vps.get(vp)).get("scores"))
         parts = [k + "=" + n(d(v).get("score")) for k, v in sorted(sc.items()) if isinstance(k, str) and WORD.match(k)]
         hits = dv.get("hard_fail_hits")
-        out("scores_" + vp, " ".join(["total=" + n(dv.get("total")), "lowest=" + n(dv.get("lowest")), "verdict=" + s(dv.get("verdict"), WORD), "hard_fails=" + (str(len(hits)) if isinstance(hits, list) else "invalid")] + parts))
-    out("verdict", s(der.get("verdict"), WORD) + " (advisory only; the owner decides)")
+        share("scores_" + vp, " ".join(["total=" + n(dv.get("total")), "lowest=" + n(dv.get("lowest")), "verdict=" + s(dv.get("verdict"), WORD), "hard_fails=" + (str(len(hits)) if isinstance(hits, list) else "invalid")] + parts))
+    share("verdict", s(der.get("verdict"), WORD) + " (advisory only; the owner decides)")
 else:
-    out("audit", "none")
+    share("audit", "none")
 '
 SUMMARIZED=0
 summary() {
   [ "$SUMMARIZED" = 0 ] || return 0
   SUMMARIZED=1
-  say "summary: approval=$APPROVAL codex_runs=1 (one worker run; never retried) delivery=$DELIVERY"
-  [ -n "$RECEIPT" ] || { say "summary: no receipt reported by the worker"; return 0; }
+  say "share: approval=$APPROVAL codex_runs=1 (one worker run; never retried) delivery=$DELIVERY"
+  [ -n "$RECEIPT" ] || { say "share: receipt=none (the worker reported no receipt)"; return 0; }
   in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" python3 -I -c "$SUMMARY_PY" "$APPROVAL" "$RECEIPT" 2>/dev/null |
-    tr -d '\000-\010\013-\037' | cut -c1-400 | sed 's/^/imagefirst-pilot: summary: /' || say "summary: unreadable"
-  [ -z "$AUDIT_LINE" ] || say "summary: audit line: $AUDIT_LINE"
+    tr -d '\000-\010\013-\037' | cut -c1-400 | sed -n -e 's/^S /imagefirst-pilot: share: /p' -e 's/^L /imagefirst-pilot: local-only: /p' || say "share: summary=unreadable"
 }
+# A worker, hand-off or audit JSON line with its local places and the bundle SHA replaced by <local> (review L2).
+redact() { sed -E -e 's/"(run_dir|receipt|dir)":"[^"]*"/"\1":"<local>"/g' -e 's/"(bundle_sha256)":"[0-9a-f]{64}"/"\1":"<local>"/g'; }
 
 # ---------------------------------------------------------------- 1. the locks (no automatic start poll, no design cycle meanwhile)
 mkdir -p "$STATE"
@@ -343,6 +386,8 @@ set +e
 "${AS_WORKER[@]}" timeout --foreground --kill-after="$WORKER_KILL_AFTER" "$WORKER_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
   node --import tsx scripts/sales-design-worker/imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &
 WPID=$!
+# a stop that came between PHASE=after_claim and here is passed on now (review M2)
+if [ "$INTERRUPTED" = 1 ]; then kill -TERM "$WPID" 2>/dev/null || true; fi
 wait "$WPID"
 rc=$?
 # a stop signal interrupts wait (rc > 128) while the worker still writes its receipt: wait for it to end
@@ -353,14 +398,14 @@ done
 set -e
 WPID=""
 line="$(tail -n 1 "$WORK/out" | tr -d '\000-\037' | cut -c1-2000)"
-say "worker: ${line:-<no line>}"
+say "worker: $(printf '%s' "${line:-<no line>}" | redact)"
 # the receipt the worker reported, only in its own place (<worker home>/sr-runs/<approval>-<UTC>.receipt.json)
 if [[ "$line" =~ \"receipt\":\"([^\"]+)\" ]]; then
   cand="${BASH_REMATCH[1]}"
   if [[ "$cand" =~ ^"$WORKER_HOME"/sr-runs/"$APPROVAL"-[0-9]{8}T[0-9]{6}Z\.receipt\.json$ ]]; then RECEIPT="$cand"; fi
 fi
 if [ "$rc" -ne 0 ]; then
-  tail -n 20 "$WORK/err" | tr -d '\000-\010\013-\037' | cut -c1-300 | sed 's/^/imagefirst-pilot: worker stderr: /'
+  tail -n 20 "$WORK/err" | tr -d '\000-\010\013-\037' | cut -c1-300 | sed 's/^/imagefirst-pilot: local-only: worker stderr: /'
 fi
 if [ "$INTERRUPTED" = 1 ]; then finish PILOT_INTERRUPTED 1; fi
 case "$rc" in
@@ -372,11 +417,12 @@ esac
 [ -n "$RECEIPT" ] || { say "the worker reported no receipt in its place"; finish PILOT_RECEIPT_MISSING 1; }
 
 # ---------------------------------------------------------------- 3. the jail must not have started meanwhile
+stop_if_interrupted
 idle_or_stop "after the worker"
 
 # ---------------------------------------------------------------- 4. the delivery: the worker's own hand-off, else ONE re-send
 review="$(grep -a '^imagefirst-worker: review ' "$WORK/err" | tail -n 1 | tr -d '\000-\037' | cut -c1-400)" || review=""
-say "hand-off: ${review:-<no line>}"
+say "hand-off: $(printf '%s' "${review:-<no line>}" | redact)"
 if [[ "$review" == *'"status":"delivered"'* ]] || [[ "$review" == *'"status":"duplicate"'* ]]; then
   DELIVERY=delivered
 else
@@ -386,9 +432,10 @@ else
   env ${R:+"SR_IMAGEFIRST_DELIVER_TEST_ROOT=$R"} bash "$DELIVER" "$APPROVAL" >"$WORK/deliver" 2>&1
   drc=$?
   set -e
-  tr -d '\000-\010\013-\037' <"$WORK/deliver" | cut -c1-400
+  tr -d '\000-\010\013-\037' <"$WORK/deliver" | cut -c1-400 | redact
   dline="$(tail -n 1 "$WORK/deliver" | tr -d '\000-\037')"
   take_locks || { say "busy: the locks were taken while the re-send ran"; finish PILOT_BUSY 1; }
+  stop_if_interrupted
   if [ "$drc" -eq 0 ] && [[ "$dline" == "IMAGEFIRST_DELIVER_REVIEW DELIVER_DONE approval=$APPROVAL exit=0" ]]; then
     DELIVERY=delivered_by_resend
   else
@@ -399,6 +446,7 @@ else
 fi
 
 # ---------------------------------------------------------------- 5. the audit dry run (verify and plan; the size caps)
+stop_if_interrupted
 idle_or_stop "before the audit dry run"
 set +e
 "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$DRY_RUN_TIMEOUT" \
@@ -406,19 +454,21 @@ set +e
 yrc=$?
 set -e
 yline="$(tail -n 1 "$WORK/dry" | tr -d '\000-\037' | cut -c1-2000)"
-say "audit dry run: ${yline:-<no line>}"
+say "audit dry run: $(printf '%s' "${yline:-<no line>}" | redact)"
 if [ "$yrc" -ne 0 ] || [[ "$yline" != *'"status":"planned"'* ]]; then
   say "the dry run did not plan (over the caps, not delivered, jail, ...): no audit"
   finish PILOT_AUDIT_DRY_RUN_FAILED 1
 fi
 
 # ---------------------------------------------------------------- 6. the ONE audit
+stop_if_interrupted
 idle_or_stop "before the audit"
 say "starting the audit once (approval $APPROVAL)"
 set +e
 "${AS_WORKER[@]}" timeout --foreground --kill-after="$AUDIT_KILL_AFTER" "$AUDIT_TIMEOUT" \
   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts "$APPROVAL" >"$WORK/audit" 2>/dev/null 8>&- 9>&- &
 WPID=$!
+if [ "$INTERRUPTED" = 1 ]; then kill -TERM "$WPID" 2>/dev/null || true; fi
 wait "$WPID"
 rc=$?
 while [ "$rc" -gt 128 ] && kill -0 "$WPID" 2>/dev/null; do
@@ -428,7 +478,7 @@ done
 set -e
 WPID=""
 AUDIT_LINE="$(tail -n 1 "$WORK/audit" | tr -d '\000-\037' | cut -c1-2000)"
-say "audit: ${AUDIT_LINE:-<no line>}"
+say "audit: $(printf '%s' "${AUDIT_LINE:-<no line>}" | redact)"
 if [ "$INTERRUPTED" = 1 ]; then finish PILOT_INTERRUPTED 1; fi
 if [ "$rc" -ne 0 ] || [[ "$AUDIT_LINE" != *'"status":"completed"'* ]]; then
   say "the audit did not complete (it is not retried)"

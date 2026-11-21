@@ -1,10 +1,12 @@
-import { spawnSync } from "node:child_process";
+import { spawn as spawnChild, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DUMMY_ID } from "@/lib/design-agent/imagefirst-worker/review-poc";
-import { cleanupTemps, commitFiles, git, REPO, sha, tmp, workerRepo } from "./support";
+import { SandboxError, type CodexSandbox } from "@/lib/design-agent/sandbox";
+import { codexSignInCheck } from "@/scripts/design-artifact/phase2f-live-cli";
+import { cleanupTemps, commitFiles, git, pointOrigin, REPO, sha, tmp, workerRepo } from "./support";
 
 // Issue #302 (owner pre-approval 2026-11-21): root's one-shot pilot (scripts/sales-design-worker/imagefirst-pilot.sh) and its
 // read-only preflight (imagefirst-pilot-preflight.sh), the real files, against a fake WSL under SR_IMAGEFIRST_PILOT_TEST_ROOT,
@@ -25,6 +27,9 @@ const PREFLIGHT = join(SCRIPTS, "imagefirst-pilot-preflight.sh");
 const AUTOSTART = join(SCRIPTS, "imagefirst-autostart.sh");
 const ID = "hoshigama-imagefirst-d3-20261121-01";
 const LOCK = '{"lockfileVersion":3}\n';
+/** The audit rubric v2 files the preflight's rubric row reads in the clone (copied from this repository). */
+const RUBRIC_FILES = ["lib/design-agent/imagefirst-worker/audit-rubric.ts", "lib/design-agent/imagefirst-worker/audit-schema.ts"];
+const RUBRIC = Object.fromEntries(RUBRIC_FILES.map((f) => [f, readFileSync(join(REPO, f))]));
 const SYSTEM_PATH = ["/usr/local/bin", "/usr/bin", "/bin"];
 const exe = (path: string, body: string) => {
   writeFileSync(path, `#!/bin/bash\n${body}\n`);
@@ -55,7 +60,12 @@ const claim = join(state, "claims", grant + ".used");
 if (argv[0] === "--precheck") {
   if (existsSync(claim)) { say({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED", invoked: false, approval_id: grant }); process.exit(2); }
   if (flag("stub-precheck")) { say({ status: "refused", code: text("stub-precheck"), invoked: false, approval_id: grant }); process.exit(2); }
-  say({ status: "would_run", code: null, invoked: false, approval_id: grant });
+  say({ status: "would_run", code: null, invoked: false, approval_id: grant, ...(flag("stub-no-expiry") ? {} : { expires_at: flag("stub-expires") ? text("stub-expires") : "2099-01-01T00:00:00Z" }) });
+  process.exit(0);
+}
+if (argv[0] === "--check-codex-auth-only") {
+  if (flag("stub-codex-auth")) { say({ status: "refused", code: text("stub-codex-auth"), invoked: false }); process.exit(2); }
+  say({ status: "codex_auth_ok", code: null, invoked: false });
   process.exit(0);
 }
 if (argv[0] === "--deliver-review") {
@@ -68,6 +78,8 @@ if (argv[0] === "--deliver-review") {
 mkdirSync(join(state, "claims"), { recursive: true, mode: 0o700 });
 try { writeFileSync(claim, "{}\\n", { flag: "wx" }); } catch { say({ status: "refused", code: "APPROVAL_ALREADY_CLAIMED", invoked: false, approval_id: grant }); process.exit(2); }
 const mode = flag("stub-worker-mode") ? text("stub-worker-mode") : "ok";
+if (mode === "refuse") { say({ status: "refused", code: "APPROVAL_NOT_GRANTED", invoked: false, approval_id: grant }); process.exit(2); }
+if (mode === "timeout") process.exit(124);
 const runDir = join(runs, grant + "-20261121T040000Z");
 const receiptPath = runDir + ".receipt.json";
 mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
@@ -78,6 +90,17 @@ if (mode === "ok") for (const p of ["pc-1", "pc-2", "sp-1", "sp-2", "sp-3", "sp-
   const b = readFileSync(to);
   images.push({ file: "parts/" + p + ".png", sha256: sha(b), bytes: b.length });
 }
+if (mode === "sleep") {
+  // as the real worker: a stop ends the run with a receipt (WORKER_INTERRUPTED), exit 1
+  process.on("SIGTERM", () => {
+    appendFileSync(join(home, "stub-term.log"), "term\\n");
+    writeFileSync(receiptPath, JSON.stringify({ schema: "imagefirst_worker_receipt_v1", status: "stopped", stop_code: "WORKER_INTERRUPTED", approval_id: grant, commit: "c".repeat(40), run_dir: runDir, images: [], counts: { pc: 0, sp: 0, total: 0, stopped: 0 }, verified: false }) + "\\n", { mode: 0o600 });
+    say({ status: "stopped", code: "WORKER_INTERRUPTED", invoked: true, approval_id: grant, run_dir: runDir, receipt: receiptPath });
+    process.exit(1);
+  });
+  appendFileSync(join(home, "stub-sleeping"), "1");
+  setTimeout(() => process.exit(3), 60_000);
+} else {
 const ok = mode === "ok";
 writeFileSync(receiptPath, JSON.stringify({ schema: "imagefirst_worker_receipt_v1", status: ok ? "succeeded" : "stopped", stop_code: ok ? null : "CODEX_NO_IMAGE", approval_id: grant, plan_id: "hoshigama-imagefirst-p3-20261121", commit: "c".repeat(40), packet_sha256: "1".repeat(64), plan_sha256: "2".repeat(64), prompt_sha256: "3".repeat(64), prompt_chars: 12338, run_dir: runDir, images, counts: { pc: ok ? 2 : 0, sp: ok ? 4 : 0, total: images.length, stopped: 0 }, verified: ok }, null, 2) + "\\n", { mode: 0o600 });
 if (!ok) { say({ status: "stopped", code: "CODEX_NO_IMAGE", invoked: true, approval_id: grant, run_dir: runDir, receipt: receiptPath }); process.exit(1); }
@@ -85,6 +108,7 @@ say({ status: "succeeded", code: null, invoked: true, approval_id: grant, run_di
 if (flag("stub-review-fail")) process.stderr.write("imagefirst-worker: review " + JSON.stringify({ status: "not_delivered", code: "RECEIVER_UNAVAILABLE", bundle_sha256: BUNDLE }) + "\\n");
 else { delivered(grant); process.stderr.write("imagefirst-worker: review " + JSON.stringify({ status: "delivered", code: null, bundle_sha256: BUNDLE }) + "\\n"); }
 process.exit(0);
+}
 `;
 
 /** The stub audit CLI (imagefirst-audit.ts in the clone): --check-auth-only, <id> --dry-run, <id>; audit.json in the real shape. */
@@ -161,7 +185,7 @@ esac`,
   writeFileSync(join(home, "fixtures", "pc.png"), PC_PNG);
   writeFileSync(join(home, "fixtures", "sp.png"), SP_PNG);
   const src = workerRepo();
-  commitFiles(src, { ".gitignore": Buffer.from("node_modules\n"), "package-lock.json": Buffer.from(LOCK), "scripts/sales-design-worker/imagefirst-worker.ts": Buffer.from(STUB_WORKER), "scripts/sales-design-worker/imagefirst-audit.ts": Buffer.from(STUB_AUDIT) }, "stub worker and audit (test)");
+  commitFiles(src, { ".gitignore": Buffer.from("node_modules\n"), "package-lock.json": Buffer.from(LOCK), ...RUBRIC, "scripts/sales-design-worker/imagefirst-worker.ts": Buffer.from(STUB_WORKER), "scripts/sales-design-worker/imagefirst-audit.ts": Buffer.from(STUB_AUDIT) }, "stub worker and audit (test)");
   // npm ci is skipped when the lock's hash is the one recorded (as the automatic start; the test world never runs npm)
   mkdirSync(join(home, ".local", "state", "sr-design-worker"), { recursive: true, mode: 0o700 });
   writeFileSync(join(home, ".local", "state", "sr-design-worker", "imagefirst-autostart.npm-lock.sha256"), `${sha(Buffer.from(LOCK))}\n`);
@@ -213,10 +237,10 @@ describe("Issue #302 pilot: the read-only preflight (fake WSL)", () => {
     const w = wsl();
     const p = w.preflight([ID]);
     expect([p.status, p.verdict, p.failed]).toEqual([0, "PASS", 0]);
-    expect(Object.keys(p.rows)).toEqual(["resource", "disk", "exclusion", "timers", "clone", "no_prior_run", "approval", "codex", "claude_bin", "claude_auth"]);
+    expect(Object.keys(p.rows)).toEqual(["resource", "disk", "exclusion", "timers", "clone", "no_prior_run", "rubric", "approval", "codex", "claude_bin", "claude_auth"]);
     expect(Object.values(p.rows).every((r) => r.ok)).toBe(true);
     // it ran only the worker's precheck (with this approval as the grant) and the audit's auth-only check
-    expect(w.starts().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", "--precheck"], ["audit", "--check-auth-only"]]);
+    expect(w.starts().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", "--precheck"], ["worker", "--check-codex-auth-only"], ["audit", "--check-auth-only"]]);
     expect(w.starts()[0]!.grant).toBe(ID);
     expect(existsSync(join(w.home, ".local", "state", "sr-design-worker", "imagefirst-worker", "claims"))).toBe(false);
     expect(existsSync(join(w.home, "sr-runs"))).toBe(false);
@@ -243,6 +267,11 @@ describe("Issue #302 pilot: the read-only preflight (fake WSL)", () => {
       ["an audit already exists", (w) => mkdirSync(join(w.home, "sr-runs", "review-inbox", "audits", ID), { recursive: true }), "no_prior_run"],
       ["precheck: not approved (no job)", (w) => writeFileSync(join(w.home, "stub-precheck"), "APPROVAL_EXPIRED"), "approval"],
       ["codex missing", (w) => rmSync(join(w.bin, "codex")), "codex"],
+      ["codex: an API-key login (the sandboxed sign-in check)", (w) => writeFileSync(join(w.home, "stub-codex-auth"), "CODEX_API_KEY_AUTH"), "codex"],
+      ["codex: the sandbox cannot start", (w) => writeFileSync(join(w.home, "stub-codex-auth"), "CODEX_SANDBOX_UNAVAILABLE"), "codex"],
+      ["the clone's audit is not rubric v2", (w) => { commitFiles(w.clone, { [RUBRIC_FILES[0]!]: Buffer.from('export const AUDIT_RUBRIC_VERSION = "if-claude-audit-v1";\n') }, "old rubric"); pointOrigin(w.clone); }, "rubric"],
+      ["under 20 min of the approval left", (w) => writeFileSync(join(w.home, "stub-expires"), new Date(Date.now() + 10 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z")), "approval"],
+      ["the precheck reports no expiry", (w) => writeFileSync(join(w.home, "stub-no-expiry"), ""), "approval"],
       ["codex not signed in", (w) => rmSync(join(w.home, ".codex", "auth.json")), "codex"],
       ["codex .env present", (w) => writeFileSync(join(w.home, ".codex", ".env"), "X=1\n"), "codex"],
       ["claude missing", (w) => rmSync(join(w.bin, "claude")), "claude_bin"],
@@ -302,12 +331,13 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     expect([r.status, r.code, r.phase, r.approval]).toEqual([0, "PILOT_DONE", "after_claim", ID]);
     expect(w.starts().map((s) => [s.cli, s.argv.join(" ")])).toEqual([
       ["worker", "--precheck"],
+      ["worker", "--check-codex-auth-only"],
       ["audit", "--check-auth-only"],
       ["worker", ""],
       ["audit", `${ID} --dry-run`],
       ["audit", ID],
     ]);
-    const run = w.starts()[2]!;
+    const run = w.starts()[3]!;
     expect(run.grant).toBe(ID);
     expect(run.cwd).toBe(w.clone);
     expect(run.execArgv!.join(" ")).toMatch(/--import tsx/);
@@ -316,19 +346,39 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     const gid = spawnSync("id", ["-g"], { encoding: "utf8" }).stdout.trim();
     const drops = readFileSync(join(w.sc, "setpriv.log"), "utf8").trim().split("\n");
     expect(new Set(drops)).toEqual(new Set([`--reuid=${uid} --regid=${gid} --init-groups --reset-env --no-new-privs`]));
-    // the summary: codes, hashes and numbers only
+    // the summary (review L1 / L2): "share:" lines carry codes, counts, sizes and yes/no only; every SHA-256 is "local-only:"
     const receipt = readFileSync(join(w.home, "sr-runs", `${ID}-20261121T040000Z.receipt.json`));
-    const summary = r.stdout.split("\n").filter((l) => l.startsWith("imagefirst-pilot: summary: ")).map((l) => l.slice("imagefirst-pilot: summary: ".length));
-    expect(summary).toContain(`approval=${ID} codex_runs=1 (one worker run; never retried) delivery=delivered`);
-    expect(summary).toContain(`receipt_sha256=${sha(receipt)}`);
-    expect(summary).toContain(`commit=${"c".repeat(40)}`);
-    expect(summary).toContain("images=pc=2 sp=4 total=6 verified=true");
-    expect(summary).toContain(`image=parts/pc-1.png sha256=${sha(PC_PNG)} size=12x18 sha_matches_file=yes`);
-    expect(summary).toContain(`image=parts/sp-4.png sha256=${sha(SP_PNG)} size=6x9 sha_matches_file=yes`);
-    expect(summary).toContain(`delivery=state=delivered bundle_sha256=${"4".repeat(64)}`);
-    expect(summary).toContain(`rubric=version=if-claude-audit-v1 sha256=${"5".repeat(64)}`);
-    expect(summary).toContain("scores_desktop_1440=total=22 lowest=4 verdict=show_owner hard_fails=0 beauty=5 fit=4 implementability=4 originality=5 structure=4");
-    expect(summary).toContain("verdict=show_owner (advisory only; the owner decides)");
+    const part = (kind: string) => r.stdout.split("\n").filter((l) => l.startsWith(`imagefirst-pilot: ${kind}: `)).map((l) => l.slice(`imagefirst-pilot: ${kind}: `.length));
+    const share = part("share");
+    const local = part("local-only");
+    expect(share).toEqual([
+      `approval=${ID} codex_runs=1 (one worker run; never retried) delivery=delivered`,
+      `approval_id=${ID}`,
+      `commit=${"c".repeat(40)} (the approved develop commit)`,
+      "receipt=status=succeeded stop_code=none",
+      "images=pc=2 sp=4 total=6 verified=true",
+      "image=pc-1 size=12x18 sha_matched=yes",
+      "image=pc-2 size=12x18 sha_matched=yes",
+      "image=sp-1 size=6x9 sha_matched=yes",
+      "image=sp-2 size=6x9 sha_matched=yes",
+      "image=sp-3 size=6x9 sha_matched=yes",
+      "image=sp-4 size=6x9 sha_matched=yes",
+      "delivery=state=delivered",
+      "audit=status=completed stop_code=none rubric=if-claude-audit-v1 bundle_sha_matched=yes",
+      "scores_desktop_1440=total=22 lowest=4 verdict=show_owner hard_fails=0 beauty=5 fit=4 implementability=4 originality=5 structure=4",
+      "scores_mobile_390=total=23 lowest=4 verdict=show_owner hard_fails=0 beauty=5 fit=4 implementability=4 originality=5 structure=4",
+      "verdict=show_owner (advisory only; the owner decides)",
+    ]);
+    // nothing shareable carries a SHA-256 or a local path
+    for (const l of share) expect(l, l).not.toMatch(/[0-9a-f]{64}|\/home\/|sr-runs|\/tmp\//);
+    expect(local).toContain(`receipt_sha256=${sha(receipt)}`);
+    expect(local).toContain(`image_sha256=pc-1 ${sha(PC_PNG)}`);
+    expect(local).toContain(`image_sha256=sp-4 ${sha(SP_PNG)}`);
+    expect(local).toContain(`bundle_sha256=${"4".repeat(64)}`);
+    expect(local).toContain(`rubric_sha256=${"5".repeat(64)}`);
+    // the echoed worker / hand-off / audit lines carry no local path and no bundle SHA
+    for (const l of r.stdout.split("\n").filter((x) => /^imagefirst-pilot: (worker|hand-off|audit dry run|audit): /.test(x))) expect(l, l).not.toMatch(/[0-9a-f]{64}|\/home\/|sr-runs|\/tmp\//);
+    expect(r.stdout).toMatch(/^imagefirst-pilot: worker: \{"status":"succeeded".*"run_dir":"<local>","receipt":"<local>"\}$/m);
     expect(r.stdout).not.toMatch(/auth\.json|\{\}|BEGIN|token/i);
   });
 
@@ -349,7 +399,7 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     expect([r.status, r.code, r.phase]).toEqual([1, "PILOT_WORKER_STOPPED", "after_claim"]);
     expect(w.starts().filter((s) => s.cli === "audit").map((s) => s.argv.join(" "))).toEqual(["--check-auth-only"]);
     expect(w.starts().filter((s) => s.argv[0] === "--deliver-review")).toEqual([]);
-    expect(r.stdout).toMatch(/summary: receipt_status=stopped stop_code=CODEX_NO_IMAGE/);
+    expect(r.stdout).toMatch(/share: receipt=status=stopped stop_code=CODEX_NO_IMAGE/);
     // never retried: the next pilot is refused by the claim
     expect(w.pilot([ID]).code).toBe("PILOT_PREFLIGHT_FAILED");
     expect(w.spent().filter((s) => s.cli === "worker")).toHaveLength(1);
@@ -382,6 +432,59 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     expect(w.spent().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", ""], ["audit", ID]]);
   });
 
+  it("the worker refuses (exit 2) or times out (124): stop with that code, no delivery, no dry run, no audit (review L6)", () => {
+    for (const [mode, status, code] of [["refuse", 2, "PILOT_WORKER_REFUSED"], ["timeout", 1, "PILOT_WORKER_TIMEOUT"]] as const) {
+      const w = wsl();
+      writeFileSync(join(w.home, "stub-worker-mode"), mode);
+      const r = w.pilot([ID]);
+      expect([r.status, r.code, r.phase], mode).toEqual([status, code, "after_claim"]);
+      expect(w.spent().map((s) => s.cli), mode).toEqual(["worker"]);
+      expect(w.starts().filter((s) => s.argv.includes("--dry-run") || s.argv[0] === "--deliver-review"), mode).toEqual([]);
+    }
+  });
+
+  it("a stop signal while the worker runs is passed on, the worker's receipt is waited for, and the pilot ends PILOT_INTERRUPTED (review M2 / L6)", async () => {
+    const w = wsl();
+    writeFileSync(join(w.home, "stub-worker-mode"), "sleep");
+    const child = spawnChild("bash", [PILOT, ID], { env: w.env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout!.on("data", (b: Buffer) => (out += b.toString()));
+    const closed = new Promise<number | null>((res) => child.on("close", (c) => res(c)));
+    for (let i = 0; i < 3000 && !existsSync(join(w.home, "stub-sleeping")); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(existsSync(join(w.home, "stub-sleeping")), out).toBe(true);
+    child.kill("SIGTERM");
+    const code = await closed;
+    expect(out.trim().split("\n").pop(), out).toBe(`IMAGEFIRST_PILOT PILOT_INTERRUPTED phase=after_claim approval=${ID} exit=1`);
+    expect(code).toBe(1);
+    expect(readFileSync(join(w.home, "stub-term.log"), "utf8")).toContain("term");
+    expect(out).toMatch(/share: receipt=status=stopped stop_code=WORKER_INTERRUPTED/);
+    expect(w.spent().map((s) => s.cli)).toEqual(["worker"]);
+    expect(w.starts().filter((s) => s.argv.includes("--dry-run"))).toEqual([]);
+    expect(existsSync(join(w.sc, "model-cli.log"))).toBe(false);
+  });
+
+  it("a stop signal before the worker (during the preflight) ends the pilot there: exit 40, phase=before_claim, nothing spent", async () => {
+    const w = wsl();
+    // the preflight's claude auth check sleeps, so the stop arrives while the pilot waits for its preflight
+    const audit = join(w.clone, "scripts", "sales-design-worker", "imagefirst-audit.ts");
+    writeFileSync(audit, `import { appendFileSync } from "node:fs";\nimport { join } from "node:path";\nappendFileSync(join(process.env.HOME ?? "", "stub-sleeping"), "1");\nsetTimeout(() => process.exit(0), 5_000);\n`);
+    git(w.clone, "commit", "-q", "-am", "sleeping audit stub");
+    pointOrigin(w.clone);
+    git(w.clone, "push", "-q", "origin", "HEAD:refs/heads/develop");
+    const child = spawnChild("bash", [PILOT, ID], { env: w.env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout!.on("data", (b: Buffer) => (out += b.toString()));
+    const closed = new Promise<number | null>((res) => child.on("close", (c) => res(c)));
+    for (let i = 0; i < 3000 && !existsSync(join(w.home, "stub-sleeping")); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(existsSync(join(w.home, "stub-sleeping")), out).toBe(true);
+    child.kill("SIGTERM");
+    const code = await closed;
+    expect(out.trim().split("\n").pop(), out).toBe(`IMAGEFIRST_PILOT PILOT_STOP_SIGNAL phase=before_claim approval=${ID} exit=40`);
+    expect(code).toBe(40);
+    expect(w.spent()).toEqual([]);
+  });
+
+
   it("not delivered after the one re-send: stop, no dry run, no audit", () => {
     const w = wsl();
     writeFileSync(join(w.home, "stub-review-fail"), "");
@@ -401,7 +504,7 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     writeFileSync(join(v.home, "stub-audit-quota"), "");
     const r = v.pilot([ID]);
     expect([r.status, r.code]).toEqual([1, "PILOT_AUDIT_STOPPED"]);
-    expect(r.stdout).toMatch(/summary: audit_status=stopped stop_code=CLAUDE_QUOTA/);
+    expect(r.stdout).toMatch(/share: audit=status=stopped stop_code=CLAUDE_QUOTA/);
     expect(v.spent().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", ""], ["audit", ID]]);
   });
 });
@@ -428,6 +531,17 @@ describe("Issue #302 pilot: the copied primitives stay identical; nothing instal
       expect(fn(f), f).toBe(fn(AUTOSTART));
       const drop = (file: string) => src(file).split("\n").find((l) => l.startsWith("AS_WORKER=(setpriv "));
       expect(drop(f), f).toBe(drop(AUTOSTART));
+      // the admin clone's files checked with the automatic start's trusted_path (review M1), verbatim
+      const tp = (file: string) => {
+        const s = src(file);
+        const start = s.indexOf("\ntrusted_path() {\n");
+        return s.slice(start, s.indexOf("\n}\n", start) + 3);
+      };
+      expect(tp(f).length, f).toBeGreaterThan(150);
+      expect(tp(f), f).toBe(tp(AUTOSTART));
+      // and the signal handler keyed on PHASE (review M2), as the automatic start's
+      const handler = (file: string) => /\non_signal\(\) \{\n[\s\S]*?\n\}\n/.exec(src(file))![0].split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+      if (f === PILOT) expect(handler(f).replace("PILOT_STOP_SIGNAL", "X")).toBe(handler(AUTOSTART).replace("AUTOSTART_STOP_SIGNAL", "X"));
     }
     const pre = '"${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT"';
     expect(lineAndNext(PREFLIGHT, pre)).toBe(lineAndNext(AUTOSTART, pre));
@@ -452,7 +566,7 @@ describe("Issue #302 pilot: the copied primitives stay identical; nothing instal
     expect(pilot.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &']);
     expect(pilot.match(/imagefirst-audit\.ts[^\n]*/g)).toEqual(['imagefirst-audit.ts "$APPROVAL" --dry-run >"$WORK/dry" 2>/dev/null 8>&- 9>&-', 'imagefirst-audit.ts "$APPROVAL" >"$WORK/audit" 2>/dev/null 8>&- 9>&- &']);
     expect(pilot.match(/bash "\$(PREFLIGHT|DELIVER)"[^\n]*/g)).toEqual(['bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-', 'bash "$DELIVER" "$APPROVAL" >"$WORK/deliver" 2>&1']);
-    expect(pre.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-']);
+    expect(pre.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
     expect(pre.match(/imagefirst-audit\.ts[^\n]*/g)).toEqual(["imagefirst-audit.ts --check-auth-only >\"$WORK/auth\" 2>/dev/null 8>&- 9>&-"]);
     for (const [name, c] of [["pilot", pilot], ["preflight", pre]] as const) {
       expect(c, name).not.toMatch(/image-first-generate|generateImage|anthropic|openai|imagefirst-autostart\.json|imagefirst-run\.json|\/etc\/sr-design-worker/i);
@@ -467,5 +581,44 @@ describe("Issue #302 pilot: the copied primitives stay identical; nothing instal
     // nothing installs, enables or schedules either script
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "(ExecStart|OnCalendar|systemctl.*(enable|start)).*imagefirst-pilot", "--", ".", ":!tests/**"], { cwd: REPO, encoding: "utf8" });
     expect(g.stdout.trim()).toBe("");
+  });
+});
+
+describe("Issue #302 pilot review H1: the Codex sign-in is checked before any approval is used (stubs only)", () => {
+  type Run = CodexSandbox["run"];
+  const sandboxOf = (run: Run): CodexSandbox => ({ env: {}, run });
+  const answer = (stdout: string, code = 0) => async () => ({ code, signal: null, stdout, stderr: "", timedOut: false });
+
+  it("ChatGPT: ok; an API-key login, signed out, a broken sandbox (set-up or probe), a .env: the fixed code; only `login status` is ever run", async () => {
+    const seen: string[][] = [];
+    const ctx = (preflight: string | null, run: Run) => ({ preflight: async () => preflight, sandbox: () => (preflight === null ? sandboxOf(async (a, o) => (seen.push([...a]), run(a, o))) : null) });
+    expect(await codexSignInCheck(ctx(null, answer("Logged in using ChatGPT\n")))).toBeNull();
+    expect(await codexSignInCheck(ctx(null, answer("Logged in using an API key - sk-...\n")))).toBe("CODEX_API_KEY_AUTH");
+    expect(await codexSignInCheck(ctx(null, answer("Not logged in\n", 1)))).toBe("CODEX_NOT_SIGNED_IN");
+    // the per-call sandbox probe fails inside run(): the sandbox's own code
+    expect(await codexSignInCheck(ctx(null, async () => Promise.reject(new SandboxError("CODEX_SANDBOX_LEAK"))))).toBe("CODEX_SANDBOX_LEAK");
+    // the generation path's preflight refuses (no bubblewrap, no codex, a .env): that code, and nothing is run
+    for (const code of ["CODEX_SANDBOX_UNAVAILABLE", "CODEX_NOT_INSTALLED", "CODEX_DOTENV_PRESENT"]) expect(await codexSignInCheck(ctx(code, answer("Logged in using ChatGPT\n")))).toBe(code);
+    expect(await codexSignInCheck({ preflight: async () => null, sandbox: () => null })).toBe("CODEX_SANDBOX_UNAVAILABLE");
+    expect(seen.every((a) => a.join(" ") === "login status")).toBe(true);
+    expect(seen.length).toBe(4);
+  });
+
+  it("the real worker CLI --check-codex-auth-only (no codex on PATH): refused with a fixed code, exit 2, nothing claimed or written", () => {
+    const home = tmp("sr-ifp-codexauth-");
+    const bin = join(home, "bin");
+    mkdirSync(bin);
+    symlinkSync(process.execPath, join(bin, "node"));
+    mkdirSync(join(home, "sr-runs"), { mode: 0o700 });
+    const r = spawnSync(process.execPath, ["--import", "tsx", join(REPO, "scripts/sales-design-worker/imagefirst-worker.ts"), "--check-codex-auth-only"], { cwd: REPO, encoding: "utf8", env: { HOME: home, PATH: [bin, ...SYSTEM_PATH].join(":") } as unknown as NodeJS.ProcessEnv, timeout: 120_000 });
+    expect(r.status, r.stdout + r.stderr).toBe(2);
+    const out = JSON.parse(r.stdout.trim().split("\n").pop()!) as { status: string; code: string; invoked: boolean };
+    expect(out.status).toBe("refused");
+    expect(out.code).toMatch(/^CODEX_(NOT_INSTALLED|SANDBOX_UNAVAILABLE|SANDBOX_CONFIG)$/);
+    expect(out.invoked).toBe(false);
+    expect(Object.keys(out).sort()).toEqual(["code", "invoked", "status"]);
+    // no claim, no ledger, no run directory
+    expect(existsSync(join(home, ".local", "state", "sr-design-worker", "imagefirst-worker"))).toBe(false);
+    expect(existsSync(join(home, "sr-runs", ".codex-sign-in-check"))).toBe(false);
   });
 });

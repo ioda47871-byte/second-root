@@ -26,7 +26,7 @@
  * marker. {"status":"auth_ok"} and exit 0, or refused with the fixed code and exit 2.
  */
 import { readFile, realpath } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { AuditStop, checkAuditAuth, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
 import { jailIdle, SYSTEMCTL } from "../../lib/design-agent/imagefirst-worker/jail-state";
@@ -70,7 +70,13 @@ export async function auditCli(args: readonly string[], bins: { claudeBin: strin
   try {
     if (rest[0] === "--check-auth-only") {
       if (dryRun) return (say({ status: "refused", code: "USAGE" }), 2);
-      await checkAuditAuth({ claudeBin, env, parentDir: tmpdir(), jailIdle: () => jailIdle(env, systemctl), signal: controller.signal });
+      // from an empty private directory under the worker's state directory, as the audit itself (review L3)
+      try {
+        await checkAuditAuth({ claudeBin, env, parentDir: stateDir, jailIdle: () => jailIdle(env, systemctl), signal: controller.signal });
+      } catch (error) {
+        say({ status: "refused", code: error instanceof AuditStop ? error.code : "AUDIT_UNEXPECTED" });
+        return 2;
+      }
       say({ status: "auth_ok", code: null });
       return 0;
     }

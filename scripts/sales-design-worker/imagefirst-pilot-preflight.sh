@@ -18,11 +18,16 @@
 #   timers       sr-design-cycle.timer, sr-imagefirst-autostart.timer and .service neither active nor enabled (or not installed)
 #   clone        as the worker: git fetch origin develop (the automatic start's line), the tree clean, HEAD = origin/develop
 #   no_prior_run as the worker: no claim, receipt, run, delivery job, inbox copy or audit for this approval id
+#   rubric       the clone's audit is rubric v2 (AUDIT_RUBRIC_VERSION if-claude-audit-v2, schema imagefirst_claude_audit_v2)
 #   approval     the worker's own --precheck (the automatic start's line, with this approval id as the grant): "would_run"
-#                for exactly this id (the packet at HEAD approved for it, inside its window with 5 min left, the pins,
-#                never claimed, unused in the ledger). It writes nothing
+#                for exactly this id (the packet at HEAD approved for it, inside its window, the pins, never claimed,
+#                unused in the ledger), and at least MIN_LEFT_SECONDS (20 min) before the expiry it reports. It writes nothing
 #   codex        as the worker: the codex binary on its PATH, ~/.codex/auth.json present (never read or printed), no
-#                ~/.codex/.env in any form
+#                ~/.codex/.env in any form, then imagefirst-worker.ts --check-codex-auth-only (the generation path's own
+#                sandbox and one sandboxed sign-in status read: an API-key login or a broken sandbox fails here, before
+#                any approval is used; no model call)
+# The production copy also refuses (exit 2) unless root's admin clone is clean and this script and the memory check it runs
+# are root's and writable by nobody else up to / (the automatic start's trusted_path).
 #   claude_bin   as the worker: claude on its PATH outside the jail
 #   claude_auth  as the worker: imagefirst-audit.ts --check-auth-only (claude-cli.ts's `auth status` check: the
 #                claude.ai subscription, first party, no API key). No model call
@@ -60,6 +65,8 @@ PRECHECK_TIMEOUT=300
 AUTH_TIMEOUT=120
 # the run writes six pictures, previews, a bundle and its inbox copy (tens of MiB); a wide margin
 MIN_FREE_MIB=4096
+# the pilot starts only with at least 20 min of the approval left (the worker's own precheck asks for 5)
+MIN_LEFT_SECONDS=1200
 GRANT_ENV=SR_IMAGEFIRST_EXPECT_APPROVAL_ID
 
 APPROVAL=none
@@ -131,6 +138,31 @@ CLONE="$WORKER_HOME/imagefirst/second-root"
 WORK="$(mktemp -d)"
 
 in_clone() { "${AS_WORKER[@]}" "$@" 8>&- 9>&-; }
+now() {
+  if [ -n "$R" ] && [ -f "$R/clock" ]; then cat "$R/clock"; else date +%s; fi
+}
+
+# The file and every directory above it owned by root and writable by nobody else (as cycle.sh / admin.sh).
+# (Verbatim from imagefirst-autostart.sh.)
+trusted_path() {
+  local p
+  p="$(readlink -f "$1")" || return 1
+  while :; do
+    [ "$(stat -c %u "$p")" = 0 ] || return 1
+    [ $(( 0$(stat -c %a "$p") & 022 )) -eq 0 ] || return 1
+    [ "$p" = / ] && return 0
+    p="$(dirname "$p")"
+  done
+}
+# The production copy: root's admin clone must be root's own, clean, and the files root runs from it trusted (review M1).
+if [ -z "$R" ]; then
+  for f in "$SELF" "$REPO/scripts/ops/wsl-resource-preflight.sh"; do
+    trusted_path "$f" || { say "PREFLIGHT_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish USAGE 2; }
+  done
+  admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+  [ -z "$admin_dirty" ] || { say "PREFLIGHT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish USAGE 2; }
+  say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+fi
 
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
 # (Verbatim from imagefirst-autostart.sh; pilot.test.ts pins that the two stay identical.)
@@ -199,7 +231,7 @@ if [ "$UNITS_OK" = 1 ]; then row timers PASS "sr-design-cycle.timer, sr-imagefir
 
 skip_rest() {
   local n
-  for n in clone no_prior_run approval codex claude_bin claude_auth; do row "$n" FAIL "skipped: $1"; done
+  for n in clone no_prior_run rubric approval codex claude_bin claude_auth; do row "$n" FAIL "skipped: $1"; done
   finish FAIL 20
 }
 [ "$IDLE" = 1 ] || skip_rest "not idle (nothing is run as the worker)"
@@ -245,6 +277,16 @@ else
   row no_prior_run FAIL "something already exists for $APPROVAL (a claim, run, receipt, delivery or audit): it is never run twice"
 fi
 
+# ---------------------------------------------------------------- the audit rubric v2 in the clone (PR #314; the audit records its version)
+if [ "$CLONE_OK" = 1 ] && in_clone grep -qxF 'export const AUDIT_RUBRIC_VERSION = "if-claude-audit-v2";' lib/design-agent/imagefirst-worker/audit-rubric.ts 2>/dev/null &&
+  in_clone grep -qxF 'export const AUDIT_SCHEMA = "imagefirst_claude_audit_v2";' lib/design-agent/imagefirst-worker/audit-schema.ts 2>/dev/null; then
+  row rubric PASS "the clone's audit is rubric if-claude-audit-v2 (schema imagefirst_claude_audit_v2)"
+elif [ "$CLONE_OK" = 1 ]; then
+  row rubric FAIL "the clone's audit is not rubric if-claude-audit-v2 / schema imagefirst_claude_audit_v2"
+else
+  row rubric FAIL "skipped: the clone is not on origin/develop"
+fi
+
 # ---------------------------------------------------------------- the worker's own precheck (the packet at HEAD, the window, the pins, unused)
 if [ "$CLONE_OK" = 1 ]; then
   set +e
@@ -253,26 +295,46 @@ if [ "$CLONE_OK" = 1 ]; then
   prc=$?
   set -e
   pline="$(tail -n 1 "$WORK/precheck" | tr -d '\000-\037' | cut -c1-400)"
-  if [ "$prc" -eq 0 ] && [[ "$pline" == *'"status":"would_run"'* ]] && [[ "$pline" == *"\"approval_id\":\"$APPROVAL\""* ]]; then
-    row approval PASS "the worker would run now: $pline"
-  else
+  # the expiry the worker just checked (its own report of the packet at HEAD); the pilot needs MIN_LEFT_SECONDS of it
+  left=-1
+  if [[ "$pline" =~ \"expires_at\":\"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)\" ]]; then
+    exp_s="$(date -u -d "${BASH_REMATCH[1]}" +%s 2>/dev/null)" || exp_s=""
+    if [[ "$exp_s" =~ ^[0-9]+$ ]]; then left=$((exp_s - $(now))); fi
+  fi
+  if [ "$prc" -ne 0 ] || [[ "$pline" != *'"status":"would_run"'* ]] || [[ "$pline" != *"\"approval_id\":\"$APPROVAL\""* ]]; then
     row approval FAIL "precheck exit $prc: ${pline:-<no line>}"
+  elif [ "$left" -lt "$MIN_LEFT_SECONDS" ]; then
+    row approval FAIL "under $((MIN_LEFT_SECONDS / 60)) min of the approval left ($((left < 0 ? 0 : left / 60)) min, or the expiry unreadable): start with at least $((MIN_LEFT_SECONDS / 60)) min left"
+  else
+    row approval PASS "the worker would run now, $((left / 60)) min of the approval left: $pline"
   fi
 else
   row approval FAIL "skipped: the clone is not on origin/develop"
 fi
 
-# ---------------------------------------------------------------- codex: present, signed in (presence only), no .env
-if in_clone bash -c 'command -v codex' >/dev/null 2>&1; then
-  if ! in_clone bash -c 'f="$HOME/.codex/auth.json"; [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ]'; then
-    row codex FAIL "no sign-in (~/.codex/auth.json missing or empty)"
-  elif ! in_clone bash -c 'f="$HOME/.codex/.env"; [ ! -e "$f" ] && [ ! -L "$f" ]'; then
-    row codex FAIL "~/.codex/.env exists (CODEX_DOTENV_PRESENT): remove it first"
-  else
-    row codex PASS "on PATH, a sign-in is present (not read), no .env"
-  fi
-else
+# ---------------------------------------------------------------- codex: present, no .env, signed in with ChatGPT (checked in the sandbox)
+if ! in_clone bash -c 'command -v codex' >/dev/null 2>&1; then
   row codex FAIL "the codex binary is not on $WORKER_USER's PATH ($WORKER_PATH)"
+elif ! in_clone bash -c 'f="$HOME/.codex/auth.json"; [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ]'; then
+  row codex FAIL "no sign-in (~/.codex/auth.json missing or empty)"
+elif ! in_clone bash -c 'f="$HOME/.codex/.env"; [ ! -e "$f" ] && [ ! -L "$f" ]'; then
+  row codex FAIL "~/.codex/.env exists (CODEX_DOTENV_PRESENT): remove it first"
+elif [ "$CLONE_OK" != 1 ]; then
+  row codex FAIL "skipped: the clone is not on origin/develop"
+else
+  # the worker's own read-only check (review H1): the generation path's .env rule and sandbox, then one sandboxed sign-in
+  # status read; an API-key login or a broken sandbox fails HERE, before any approval is used. No model call
+  set +e
+  "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$AUTH_TIMEOUT" \
+    node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-
+  crc=$?
+  set -e
+  cline="$(tail -n 1 "$WORK/codex" | tr -d '\000-\037' | cut -c1-400)"
+  if [ "$crc" -eq 0 ] && [[ "$cline" == *'"status":"codex_auth_ok"'* ]]; then
+    row codex PASS "on PATH, no .env, signed in with ChatGPT (sandboxed check; an expired sign-in cannot be seen here)"
+  else
+    row codex FAIL "exit $crc: ${cline:-<no line>}"
+  fi
 fi
 
 # ---------------------------------------------------------------- claude: on PATH outside the jail, the subscription login
