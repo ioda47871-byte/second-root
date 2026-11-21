@@ -22,6 +22,10 @@
  * Places (outside the repository, 0700): state ~/.local/state/sr-design-worker/imagefirst-worker (lock, claims,
  * audit.jsonl), runs ~/sr-runs/<approval>-<UTC> (+ .receipt.json), the entry's ledger (phase2f, unchanged).
  *
+ * DEV-302: the run and `--precheck` are refused (RUN_INSIDE_JAIL_UNIT, OWN_CGROUP_UNREADABLE) inside a requester jail unit
+ * (sr-jail-*.service: Remote Control, a jailed shell, `admin.sh run`), which a restart of Remote Control, of the jail's
+ * network or of WSL kills with everything in it; root's pilot / automatic start run the worker outside the jail.
+ *
  * One JSON line on stdout. Exit: 0 no job / locked / succeeded, 2 refused (nothing invoked), 1 invoked and stopped.
  * `--precheck`: every check of the cycle up to, not including, the claim, with no lock, audit line or write; exit 0 = it
  * would run now ("would_run"), 3 = no job, 2 = refused.
@@ -49,7 +53,7 @@ import { join } from "node:path";
 import { runBounded } from "../../lib/design-agent/bounded-process";
 import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
-import { jailIdle } from "../../lib/design-agent/imagefirst-worker/jail-state";
+import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -115,6 +119,11 @@ async function main(): Promise<number> {
       return 2;
     }
   }
+  // DEV-302: never a one-shot run (or its precheck) inside a requester jail unit, where a restart of Remote Control, of the
+  // jail's network or of WSL would kill it after the claim (KillMode=control-group). Root's pilot / automatic start run
+  // the worker outside the jail. Unreadable: refused as well. Before the lock, the claim and anything written.
+  const jailUnit = await ownJailUnit();
+  if (jailUnit !== null) return (say({ status: "refused", code: jailUnit === "unknown" ? "OWN_CGROUP_UNREADABLE" : "RUN_INSIDE_JAIL_UNIT", invoked: false }), 2);
   if (precheck) {
     // every check up to the claim; no lock, no audit, no write, nothing invoked
     const r = await precheckImagefirstCycle({ repoRoot: REPO, stateDir, runsDir, ...(grant ? { expectApprovalId: grant } : {}) }, { commit: () => gitCommitState(REPO, env), fileAt: (commit, rel) => fileAtCommit(commit, rel), ledger: openLedger(ledgerDir) });
