@@ -75,7 +75,8 @@ WORKER_TIMEOUT=1800
 # a stopped worker gets more than its own 50 s hard stop + 10 s receipt (cycle.ts WORKER_STOP) before SIGKILL
 WORKER_KILL_AFTER=90
 MAX_WINDOW=86400
-PACKET_PATH=docs/design/image-first-hoshigama-p3-packet.md
+# No packet path here: the worker picks the packet from the approval id's direction (run-directions.ts: d3 → the p3
+# packet, d4 → the d4 packet). Do not wire a fixed packet path into this script (PR #320 review L1).
 GRANT_ENV=SR_IMAGEFIRST_EXPECT_APPROVAL_ID
 
 PHASE=before_claim

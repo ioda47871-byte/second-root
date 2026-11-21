@@ -726,5 +726,5 @@ describe("IMAGE_FIRST d4: its own packet, never the P3 packet (and the other way
       expect(s.calls, name).toEqual([]);
       expect(ledgerEntries(s), name).toEqual([]);
     }
-  });
+  }, 30_000); // nine entry refusals plus two plan builds: ~3.4 s alone, over the 5 s default under a parallel run (PR #320 review M1)
 });

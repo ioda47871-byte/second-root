@@ -60,6 +60,8 @@ d4 は d3 と同じ一回限りの経路（pilot・worker・自動起動・bundl
   d3 の ID で d4 は動かず、d4 の ID で d3 は動かない。日付 `00000000` は使えない。
 - worker は root の一回限りのマーカー（`SR_IMAGEFIRST_EXPECT_APPROVAL_ID`）が d4 の ID を名指したときだけ d4 の行を使う。
   マーカーが無い手動の実行は従来どおり d3 だけ。
+- worker を通さない手動の入口 `scripts/design-artifact/image-first-generate.ts --direction d4` も、d3 と同じく使える。こちらも
+  承認済みのこのパケット・一致する承認 ID と計画 ID・ピン・`--expected-commit`・台帳がそろわなければ何も使わずに止まる。
 - §3 の 3 行（plan SHA-256・バッチ SHA-256・バッチの文字数）がコードの表の値と一致しなければ止まる。
 
 この経路の変更は root が動かすスクリプトを含むので **OWNER MERGE ONLY**。その変更がマージされるまで、このパケットを承認しても実行はできない。

@@ -16,4 +16,4 @@ export const UNAPPROVED_PACKET_FIXTURE_SHA256 = "d26a807fe197411a82750d1908e93f2
  * never committed anywhere). Pinned by the SHA-256 below.
  */
 export const UNAPPROVED_D4_PACKET_FIXTURE = resolve(__dirname, "image-first-d4-packet-unapproved.md");
-export const UNAPPROVED_D4_PACKET_FIXTURE_SHA256 = "75bf96c10c0b7a24702ff7626de1190b828f0d838d541687be814a6ba6222798";
+export const UNAPPROVED_D4_PACKET_FIXTURE_SHA256 = "5a6ee322a43aae409310edf8a02d466a79411d776ef6cbd3e1496630924a4b9c";

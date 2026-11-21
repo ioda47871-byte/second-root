@@ -1,5 +1,11 @@
 # IMAGE_FIRST 限定パイロット（ほし窯 d3、1回だけ）— オーナーの手順
 
+> **d4 について（PR #320）**: この手順書の本文は d3 の 1 回（実施済み・承認 ID は使用済み）を書いたもの。d4 も同じ scripts で動くが、
+> 承認は `docs/design/image-first-hoshigama-d4-packet.md`（冒頭と §10）だけで行い、承認 ID は `hoshigama-imagefirst-d4-<YYYYMMDD>-<NN>`、
+> 計画 ID は `hoshigama-imagefirst-p4-<YYYYMMDD>`。どの承認パケット・ピンを使うかは ID の方向性から worker が選ぶ
+> （`lib/design-agent/imagefirst-worker/run-directions.ts` の `IMAGEFIRST_RUNS`）。下の §1 のコマンドの d3 の ID を、承認した d4 の ID に
+> 置き換えて使う。d4 用の期待される出力・停止のコードは d3 と同じ。d4 の 1 回も、パケットの承認とマージの後だけ。
+
 Issue #302 のオーナー事前承認（2026-11-21、コメント 7053442141）に基づく、**1回だけ**の限定パイロットの手順。
 
 1. 実 Codex の画像生成を 1回（`codex exec` 1回、最大 15 分、PC 2 + SP 4、再試行なし）
