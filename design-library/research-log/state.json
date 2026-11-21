@@ -1,0 +1,31 @@
+{
+  "schema": "design_research_state_v1",
+  "current": {
+    "shop": "hoshigama",
+    "direction": "d3",
+    "entry_id": "hoshigama-imagefirst-d3-20261121-01",
+    "phase": "improving",
+    "brief": "briefs/hoshigama-d4.md"
+  },
+  "shop_queue": [
+    {
+      "shop": "bicycle",
+      "note": "fictional; facts pack design-library/research/quality-pipeline/poc/bicycle/facts-pack.json"
+    },
+    {
+      "shop": "cafe",
+      "note": "fictional; facts pack design-library/research/quality-pipeline/poc/cafe/facts-pack.json"
+    },
+    {
+      "shop": "sento",
+      "note": "fictional; facts pack design-library/research/quality-pipeline/poc/sento/facts-pack.json"
+    },
+    {
+      "shop": "wagashi",
+      "note": "fictional; facts pack design-library/research/quality-pipeline/poc/wagashi/facts-pack.json"
+    }
+  ],
+  "next_action": "Build the d4 prompt from briefs/hoshigama-d4.md (prompt.ts pins + IMAGEFIRST_ALLOWLIST), open a PR, then draft the d4 approval packet for the owner. No generation before the owner approves a new approval ID.",
+  "waiting_on_owner": [],
+  "updated_at": "2026-11-21T14:18:27.007Z"
+}

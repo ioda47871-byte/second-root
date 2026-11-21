@@ -1,0 +1,100 @@
+{
+  "schema": "design_research_entry_v1",
+  "entry_id": "hoshigama-imagefirst-d3-20261121-01",
+  "shop": "hoshigama",
+  "fictional": true,
+  "direction": "d3",
+  "iteration": 0,
+  "parent_entry_id": null,
+  "provenance": {
+    "approval_id": "hoshigama-imagefirst-d3-20261121-01",
+    "plan_id": "hoshigama-imagefirst-p3-20261121",
+    "commit": "7327c689b76abc628ad6da390b39caebb1807ba8",
+    "bundle_sha256": "d77a771088389e9e2bc63363b9f604a3b726849ea5ab1ea10ed08725c660f170",
+    "previews_index_sha256": "ffb342a6650a539aff470d726222017fa16a86bfb111cd5e1582d3fcfe6139c9",
+    "previews": [
+      {
+        "file": "pc-1.png",
+        "viewport": "desktop_1440",
+        "source": "parts/pc-1.png",
+        "source_sha256": "a9182aea3efd4e37aeacdb8421731cffd8e38ce20b8e91a7450f918dee1568e0",
+        "preview_sha256": "25b45fab8d10cc9403569e5a5fe5ddfa93d4cba8a3e5f53259a766f90bb61bfb",
+        "width": 1536,
+        "height": 1024
+      },
+      {
+        "file": "pc-2.png",
+        "viewport": "desktop_1440",
+        "source": "parts/pc-2.png",
+        "source_sha256": "e7e2847bdd38e672aa63f01b103e56e95f727d14877f18b58ec63378a53090ad",
+        "preview_sha256": "c157e480c1b22bdf6363e043250b0c9e318f7ed99090cfed83dafd647a141f38",
+        "width": 1536,
+        "height": 1024
+      },
+      {
+        "file": "sp-1.png",
+        "viewport": "mobile_390",
+        "source": "parts/sp-1.png",
+        "source_sha256": "35fd2e7f6c00f83714cf17a631da0ec0493cd206efcacea85c447d9a7a6bf74a",
+        "preview_sha256": "d371fac38c4e92d55a0e89dcd3c5646bfc31194e85a639b46bb02ddf8e847f62",
+        "width": 1024,
+        "height": 1536
+      },
+      {
+        "file": "sp-2.png",
+        "viewport": "mobile_390",
+        "source": "parts/sp-2.png",
+        "source_sha256": "0f63af68021a5364db7b9b4870f88e5989f8ba5d08e66c3eef2a13cef8565062",
+        "preview_sha256": "68fc98e1b6fa7cabfb2145e5cd1fdaffbb03d0802fb695604bc1bfba89a7e27f",
+        "width": 1024,
+        "height": 1536
+      },
+      {
+        "file": "sp-3.png",
+        "viewport": "mobile_390",
+        "source": "parts/sp-3.png",
+        "source_sha256": "07d6a900f5123a1d44e8acb1bd91590cbb47de358a7c138a6adcb23054bbe355",
+        "preview_sha256": "49e3b7d694305c97cbccb35f21fe478b5fb65c92b2525caf3f73c0a60093dcc6",
+        "width": 1024,
+        "height": 1536
+      },
+      {
+        "file": "sp-4.png",
+        "viewport": "mobile_390",
+        "source": "parts/sp-4.png",
+        "source_sha256": "e4e4611e9079f2f8674bc96148698c21cdc0e3f8e1542fc7fbbeb50ef1314318",
+        "preview_sha256": "d642b12a39733a0645c5940134c0339425d8b2ba8ca7a3a3fd1f23a33f2f4c87",
+        "width": 1024,
+        "height": 1536
+      }
+    ]
+  },
+  "audit": {
+    "schema": "imagefirst_claude_audit_v2",
+    "rubric_version": "if-claude-audit-v2",
+    "rubric_sha256": "3d8e7297cea0d895258c4e6843ab2fd82f28c983788a5a9ff3a68e9da494b589",
+    "audit_json_sha256": "62080af55aa43e6e07b79b918ec2e5063d241a9c13823d93524974d7da9a8cd1",
+    "advisory_only": true,
+    "verdict": "revise",
+    "viewports": {
+      "desktop_1440": {
+        "total": 18,
+        "lowest": 3,
+        "verdict": "revise",
+        "low_criteria": [
+          "structure",
+          "implementability"
+        ]
+      },
+      "mobile_390": {
+        "total": 19,
+        "lowest": 3,
+        "verdict": "revise",
+        "low_criteria": [
+          "structure"
+        ]
+      }
+    }
+  },
+  "recorded_at": "2026-11-21T14:18:03.772Z"
+}
