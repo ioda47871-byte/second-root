@@ -408,7 +408,7 @@ describe("the delivery cannot start anything", () => {
     const imports = [...src.matchAll(/^import[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1]!).sort();
     expect(imports).toEqual(["../worker/state", "./bundle", "./cycle", "./local-inbox", "./preview", "./transport", "node:fs", "node:fs/promises", "node:path"]);
     const fromCycle = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*"\.\/cycle"/g)].flatMap((m) => m[1]!.split(",").map((s) => s.trim())).sort();
-    expect(fromCycle).toEqual(["IMAGEFIRST_ALLOWLIST", "checkRealApprovalId", "readApprovalAt", "sha256", "type CycleDeps", "type CycleReport"]);
+    expect(fromCycle).toEqual(["checkRealApprovalId", "readApprovalAt", "runOfApprovalId", "sha256", "type CycleDeps", "type CycleReport"]);
     expect(src).not.toMatch(/\brequire\(|import\(|child_process|runBounded|bounded-process|runImagefirstCycle|precheckImagefirstCycle|claimApproval|invoke|ledger|node:net|node:https?|fetch\(|codex|image-once|image-first-generate|spool|github|anthropic|openai/i);
   });
 

@@ -35,13 +35,14 @@ import { constants } from "node:fs";
 import { lstat, mkdir, mkdtemp, open, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
-import { loadPromptInputs, type Reader } from "../image-first/prompt";
+import { DIRECTIONS, loadPromptInputs, type Reader } from "../image-first/prompt";
 import { acquireLock } from "../worker/state";
 import { AUDIT_RUBRIC_VERSION, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, principlesFor, RUBRIC_SHA256, VIEWPORT_IDS, VIEWPORTS, type AuditMaterial, type AuditViewport, type SentImage } from "./audit-rubric";
 import { AUDIT_SCHEMA, AuditRecord, deriveViewport, incoherence, overallVerdict, ViewportAnswer, type Derived, type Verdict } from "./audit-schema";
 import { APPROVAL_ID_RE, BundleStop, verifyBundleDir } from "./bundle";
 import { assertClaudeSignedIn, buildUserMessage, claudeEnvironment, ClaudeCallError, extractJsonObject, runClaudeWithoutTools, type ClaudeImage } from "./claude-cli";
 import { PREVIEW_LIMITS, PreviewStop, verifyPreviewsDetailed, type PreviewEntry } from "./preview";
+import { runOfApprovalId, type RunDirection } from "./run-directions";
 
 const MiB = 1024 * 1024;
 /**
@@ -84,12 +85,16 @@ export function auditIdCheck(id: string, dummy: boolean): "ok" | "APPROVAL_ID_IN
   return y >= 2000 && t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? "ok" : "APPROVAL_ID_INVALID";
 }
 
+/** The direction an audit id names (d3 / d4); d3 for anything else, which auditIdCheck then refuses anyway. */
+export const auditDirectionOf = (id: string): RunDirection => runOfApprovalId(id)?.direction ?? "d3";
+
 /**
  * The material the request quotes: the facts pack's key / value lines and the chosen direction's concept and protect
- * list (ほし窯 d3), read through the IMAGE_FIRST prompt builder's own loader, so every SHA-256 pin it holds applies.
+ * list (ほし窯 d3 by default; d4 for a d4 approval — the CLI passes the direction its approval id names), read through
+ * the IMAGE_FIRST prompt builder's own loader, so every SHA-256 pin it holds applies.
  */
-export async function loadAuditMaterial(reader: Reader): Promise<AuditMaterial> {
-  const inputs = await loadPromptInputs(reader, "d3");
+export async function loadAuditMaterial(reader: Reader, direction: RunDirection = "d3"): Promise<AuditMaterial> {
+  const inputs = await loadPromptInputs(reader, direction);
   const d = JSON.parse(inputs.directionBytes.toString("utf8")) as { id?: unknown; concept?: unknown; protect?: unknown };
   if (typeof d.id !== "string" || typeof d.concept !== "string" || !Array.isArray(d.protect) || d.protect.some((p) => typeof p !== "string")) throw new AuditStop("MATERIAL_INVALID");
   return { facts: inputs.facts.facts.map((f) => ({ key: f.key, value: f.value })), direction: { id: d.id, concept: d.concept, protect: d.protect as string[] } };
@@ -323,6 +328,9 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
     const m = v.manifest;
     if (v.bundle_sha256 !== bundleSha || m.bundle_id !== id || m.approval_id !== id) stop("BUNDLE_UNVERIFIED");
     if (dummy && (m.plan_id !== DUMMY_AUDIT_RECORD.plan_id || m.commit !== DUMMY_AUDIT_RECORD.commit)) stop("BUNDLE_UNVERIFIED");
+    // the quoted direction is the bundle's own (the id names it; verifyBundleDir tied the manifest's direction to the
+    // receipt's and the id's): a d3 material never audits a d4 bundle, nor the other way round
+    if (runOfApprovalId(id)?.direction !== m.direction || o.material.direction.id !== DIRECTIONS[m.direction as RunDirection].id) stop("AUDIT_MATERIAL_MISMATCH");
     // 3. the previews already delivered next to it, for exactly this bundle (INDEX.json hashed as verifyPreviews read it)
     const previewsDir = join(inbox, PREVIEWS, id);
     if (!(await exists(previewsDir))) stop("AUDIT_NOT_DELIVERED");

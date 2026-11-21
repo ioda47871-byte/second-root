@@ -3,13 +3,14 @@
  * is started by hand by the owner, on the owner's WSL, only after the owner approved the per-run packet. One approval =
  * one Codex run = one batch of PC + SP section pictures of ONE direction (lib/design-agent/phase2f-live/full-page-call.ts).
  *
- *   npx tsx scripts/design-artifact/image-first-generate.ts --direction d1|d3 --out <~/sr-runs/<run>>
+ *   npx tsx scripts/design-artifact/image-first-generate.ts --direction d1|d3|d4 --out <~/sr-runs/<run>>
  *     --plan-id <id> --approval-id <id> --approval-expires <YYYY-MM-DDTHH:MM:SSZ> --packet <approval packet in the repo>
  *     --expected-prompt-sha256 <sha> --expected-prompt-chars <n> --expected-plan-sha256 <sha>
  *     --expected-packet-sha256 <sha> --expected-commit <sha> --human-approval-confirmed
  *
  * Before the approval is used: the plan is rebuilt from the pinned inputs (image-first/prompt.ts) and must be the
- * approved one; the packet must be exactly docs/design/image-first-hoshigama-p3-packet.md (nothing else, never a test
+ * approved one; the packet must be exactly the direction's own packet — d1 / d3: docs/design/image-first-hoshigama-p3-packet.md,
+ * d4: docs/design/image-first-hoshigama-d4-packet.md (lib/design-agent/phase2f-live/approval-packets.ts; nothing else, never a test
  * fixture); after the commit pin, its bytes as committed at that commit (git show, never the working tree) must be the
  * approved bytes, and its own header and §10 are read: it
  * must be filled in and 承認済み, and its direction, approval id, expiry (UTC, at most 24 h ahead) and plan id must be the
@@ -27,7 +28,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { cleanupActiveImageCalls, generateImagesInOneRun } from "../../lib/design-agent/design-image/image-once";
 import { buildPromptPlan, loadPromptInputs, PromptStop, type DirectionKey } from "../../lib/design-agent/image-first/prompt";
-import { runFullPageCall } from "../../lib/design-agent/phase2f-live/full-page-call";
+import { packetOfDirection, runFullPageCall } from "../../lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
 import { fileAtCommit, liveContext, parseArgs, REPO, runMain, say, stopSignals } from "./phase2f-live-cli";
 
@@ -43,7 +44,8 @@ async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2), FLAGS, VALUES);
   const chars = Number(args?.get("--expected-prompt-chars"));
   const key = args?.get("--direction");
-  if (!args || REQUIRED.some((f) => !args.has(f)) || !Number.isInteger(chars) || (key !== "d1" && key !== "d3")) return (say({ status: "refused", code: "USAGE" }), 2);
+  // only a direction with an approval packet of its own (d1 / d3: the P3 packet; d4: the d4 packet)
+  if (!args || REQUIRED.some((f) => !args.has(f)) || !Number.isInteger(chars) || key === undefined || packetOfDirection(key) === null) return (say({ status: "refused", code: "USAGE" }), 2);
   let plan;
   let inputs;
   try {

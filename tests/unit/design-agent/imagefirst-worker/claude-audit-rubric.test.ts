@@ -286,7 +286,7 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
       const s = src(f);
       expect(ids.filter((id) => s.includes(id)), f).toEqual([]);
     }
-    expect(imports(`${W}/claude-audit.ts`)).toEqual(["../image-first/prompt", "../worker/state", "./audit-rubric", "./audit-schema", "./bundle", "./claude-cli", "./preview", "node:crypto", "node:fs", "node:fs/promises", "node:path", "sharp"]);
+    expect(imports(`${W}/claude-audit.ts`)).toEqual(["../image-first/prompt", "../worker/state", "./audit-rubric", "./audit-schema", "./bundle", "./claude-cli", "./preview", "./run-directions", "node:crypto", "node:fs", "node:fs/promises", "node:path", "sharp"]);
     expect(imports("scripts/sales-design-worker/imagefirst-audit.ts")).toEqual(["../../lib/design-agent/imagefirst-worker/claude-audit", "../../lib/design-agent/imagefirst-worker/jail-state", "../../lib/design-agent/worker/env", "node:fs/promises", "node:os", "node:path"]);
   });
 

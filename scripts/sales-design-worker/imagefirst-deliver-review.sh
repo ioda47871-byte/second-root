@@ -14,7 +14,7 @@
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin), by a person. Nothing installs, enables or
 # schedules it (no unit, no timer). Root never runs git, node or a parser on files the worker user controls: every
 # command in the worker's clone runs as the worker user. In this order; anything unexpected stops it, nothing is retried:
-#   1. exactly one argument, a ほし窯 d3 approval id (hoshigama-imagefirst-d3-YYYYMMDD-NN), never the dummy PoC's
+#   1. exactly one argument, a ほし窯 d3 or d4 approval id (hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN), never the dummy PoC's
 #      reserved date 00000000
 #   2. the automatic start's lock and cycle.sh's lock, both held for the whole re-send (no poll or cycle starts meanwhile)
 #   3. busy() (as the automatic start): sr-jail-claude.service and sr-design-cycle.service inactive / failed,
@@ -95,9 +95,9 @@ trap on_signal INT TERM HUP
 
 # ---------------------------------------------------------------- 1. the approval id
 [ "$#" -eq 1 ] || { say "usage: imagefirst-deliver-review.sh <approval id>"; finish DELIVER_USAGE 2; }
-[[ "$1" =~ ^hoshigama-imagefirst-d3-[0-9]{8}-[0-9]{2}$ ]] || { say "DELIVER_ID_INVALID: expected hoshigama-imagefirst-d3-YYYYMMDD-NN"; finish DELIVER_ID_INVALID 2; }
+[[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "DELIVER_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish DELIVER_ID_INVALID 2; }
 APPROVAL="$1"
-[[ "$APPROVAL" != hoshigama-imagefirst-d3-00000000-* ]] || { say "DELIVER_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish DELIVER_ID_RESERVED 2; }
+[[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "DELIVER_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish DELIVER_ID_RESERVED 2; }
 
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"

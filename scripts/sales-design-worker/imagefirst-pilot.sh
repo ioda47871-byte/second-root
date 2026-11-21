@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Second Root IMAGE_FIRST limited pilot (Issue #302, owner pre-approval 2026-11-21): ONE ほし窯 d3 generation by the
-# EXISTING worker, its delivery to the private review inbox, an audit dry run and ONE Claude CLI audit, started once by
+# EXISTING worker (or d4: the approval id names the direction, and only d4's own packet approves it), its delivery to the private review inbox, an audit dry run and ONE Claude CLI audit, started once by
 # root by hand (docs/operations/imagefirst-pilot.md). It has no runner, approval parser, retry or agent of its own: it
 # runs the read-only preflight (imagefirst-pilot-preflight.sh), then the existing pieces in order, and stops at the
 # first thing that is not exactly as expected.
@@ -131,9 +131,9 @@ if [ "$#" -eq 1 ] && [ "$1" = --sync-clone ]; then
   MODE=sync
 else
   [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot.sh <approval id> | --sync-clone"; finish PILOT_USAGE 2; }
-  [[ "$1" =~ ^hoshigama-imagefirst-d3-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-d3-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
+  [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
   APPROVAL="$1"
-  [[ "$APPROVAL" != hoshigama-imagefirst-d3-00000000-* ]] || { say "PILOT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish PILOT_ID_RESERVED 2; }
+  [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PILOT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish PILOT_ID_RESERVED 2; }
 fi
 
 # ---------------------------------------------------------------- where things are
@@ -225,7 +225,7 @@ aid, receipt_path = sys.argv[1], sys.argv[2]
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 WORD = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
-AID = re.compile(r"hoshigama-imagefirst-d3-[0-9]{8}-[0-9]{2}\Z")
+AID = re.compile(r"hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}\Z")
 home = os.path.realpath(os.path.expanduser("~"))
 runs = os.path.join(home, "sr-runs")
 state = os.path.join(home, ".local", "state", "sr-design-worker", "imagefirst-worker")

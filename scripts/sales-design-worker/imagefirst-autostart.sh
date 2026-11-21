@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Second Root IMAGE_FIRST automatic start (Issue #302 P1): pull model, OFF by default, at most ONE owner-approved
-# ほし窯 d3 run per root-owned one-use marker. It starts the EXISTING worker (scripts/sales-design-worker/imagefirst-worker.ts)
+# ほし窯 d3 (or d4, with its own packet) run per root-owned one-use marker. It starts the EXISTING worker (scripts/sales-design-worker/imagefirst-worker.ts)
 # once; it has no runner, approval parser or retry of its own.
 #
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autostart.sh
@@ -18,7 +18,8 @@
 #      {"enabled": false}: OFF, exit 0, nothing touched (not even this script's state directory)
 #   2. this script's lock (one poll at a time; a second one: exit 11)
 #   3. the owner's one-use run marker /etc/sr-design-worker/imagefirst-run.json (root's,
-#      {"approval_id": "hoshigama-imagefirst-d3-YYYYMMDD-NN", "expires_at": "<UTC>Z"}, at most 24 h ahead); missing,
+#      {"approval_id": "hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN", "expires_at": "<UTC>Z"}, at most 24 h ahead; the id's
+#      direction selects the worker's allowlist row and packet, run-directions.ts); missing,
 #      expired or already used (root's state used/<approval id>, never removed): idle, exit 10
 #   4. mutual exclusion: sr-jail-claude.service and sr-design-cycle.service stopped (inactive / failed; anything else,
 #      an error included, is busy), sr-jail-claude.service also disabled or masked (as cycle.sh's DEV-187 grant: when it
@@ -195,9 +196,9 @@ except Exception:
 if not isinstance(d, dict) or set(d) != {"approval_id", "expires_at"}:
     print("INVALID"); sys.exit(0)
 a, e = d["approval_id"], d["expires_at"]
-if not isinstance(a, str) or not re.fullmatch(r"hoshigama-imagefirst-d3-[0-9]{8}-[0-9]{2}", a, re.ASCII):
+if not isinstance(a, str) or not re.fullmatch(r"hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}", a, re.ASCII):
     print("INVALID"); sys.exit(0)
-if a.startswith("hoshigama-imagefirst-d3-00000000-"):
+if re.match(r"hoshigama-imagefirst-d[34]-00000000-", a, re.ASCII):
     print("INVALID"); sys.exit(0)  # the dummy PoC reserved date: never a real run (PR #308 review L4, PR #309 review N-2)
 if not isinstance(e, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", e, re.ASCII):
     print("INVALID"); sys.exit(0)
@@ -267,7 +268,7 @@ case "$marker" in
   "OK "*) APPROVAL="${marker#OK }" ;;
   "EXPIRED "*) APPROVAL="${marker#EXPIRED }"; say "the run marker has expired: nothing to do"; finish AUTOSTART_IDLE_MARKER_EXPIRED 10 ;;
   "TOO_FAR "*) APPROVAL="${marker#TOO_FAR }"; say "AUTOSTART_MARKER_TOO_FAR: expires_at more than 24 h ahead"; finish AUTOSTART_MARKER_INVALID 2 ;;
-  *) say "AUTOSTART_MARKER_INVALID: expected exactly {\"approval_id\": \"hoshigama-imagefirst-d3-YYYYMMDD-NN\", \"expires_at\": \"<UTC>Z\"}"; finish AUTOSTART_MARKER_INVALID 2 ;;
+  *) say "AUTOSTART_MARKER_INVALID: expected exactly {\"approval_id\": \"hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN\", \"expires_at\": \"<UTC>Z\"}"; finish AUTOSTART_MARKER_INVALID 2 ;;
 esac
 if [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/used/$APPROVAL" ]; then
   say "the run marker was already used: nothing to do"

@@ -11,11 +11,11 @@ import { encodePng, type RgbImage } from "@/lib/design-agent/image-first/pixels"
 import { buildPromptPlan, loadPromptInputs, type PromptInputs, type PromptPlan } from "@/lib/design-agent/image-first/prompt";
 import { CODEX_STOP_CODES } from "@/lib/design-agent/image-first/record";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
-import { APPROVAL_PACKET_PATH, MAX_APPROVAL_WINDOW_MS, PACKET_FIELDS, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { APPROVAL_PACKET_PATH, D4_PACKET, MAX_APPROVAL_WINDOW_MS, P3_PACKET, PACKET_FIELDS, packetFieldsOf, packetOfDirection, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { CommitState } from "@/lib/design-agent/phase2f-live/steps";
 import { fileAtCommit } from "@/scripts/design-artifact/phase2f-live-cli";
-import { UNAPPROVED_PACKET_FIXTURE, UNAPPROVED_PACKET_FIXTURE_SHA256 } from "../image-first/fixtures/unapproved-packet";
+import { UNAPPROVED_D4_PACKET_FIXTURE, UNAPPROVED_D4_PACKET_FIXTURE_SHA256, UNAPPROVED_PACKET_FIXTURE, UNAPPROVED_PACKET_FIXTURE_SHA256 } from "../image-first/fixtures/unapproved-packet";
 
 // Issue #293 P3 (preparation): the gated IMAGE_FIRST real-call step. The batch is a stub (an injected function): nothing
 // here calls Codex, a model, the image tool, the network or a process. The ledger lives in a temporary directory.
@@ -605,4 +605,126 @@ describe("IMAGE_FIRST P3 real-call step: one stubbed success reaches AWAITING_OW
     expect(verdict.warnings).toEqual(["IMAGE_MODEL_UNKNOWN", "SESSION_MODEL_UNKNOWN"]);
     expect(verdict.parts).toHaveLength(6);
   }, 60_000);
+});
+
+// Issue #302 (d4 run path): d4 is approved only by its own packet, read with its own rows; d1 / d3 only by the P3 packet.
+describe("IMAGE_FIRST d4: its own packet, never the P3 packet (and the other way round)", () => {
+  const D4_UNAPPROVED = readFileSync(UNAPPROVED_D4_PACKET_FIXTURE);
+  const D4_ID = "hoshigama-imagefirst-d4-20261120-01";
+  const D4_PLAN = "hoshigama-imagefirst-p4-20261120";
+  const D4_EXPIRES = "2026-11-20T09:00:00Z";
+  /** The unapproved d4 fixture filled in memory exactly as its own §10 says (never written to the repository). */
+  const fillD4 = (values: Partial<Record<string, string>> = {}) => {
+    let text = D4_UNAPPROVED.toString("utf8");
+    expect(text.slice(0, text.indexOf("\n## "))).toContain("**状態: 未承認。**");
+    text = text.replace("**状態: 未承認。**", "**状態: 承認済み。**");
+    const at = text.indexOf("## 10. 承認欄");
+    let section = text.slice(at);
+    const base: Record<string, string> = { status: "`承認済み`", directions: "`d4`", d4: `\`${D4_ID}\``, expires: `\`${D4_EXPIRES}\``, planId: `\`${D4_PLAN}\``, approvedBy: "2026-11-20 owner (test)" };
+    for (const [k, label] of Object.entries(packetFieldsOf(D4_PACKET))) {
+      const re = new RegExp(`^(\\| ${label}(?:（[^|]*)? \\| ).*( \\|)$`, "m");
+      expect(re.test(section), label).toBe(true);
+      section = section.replace(re, `$1${values[k] ?? base[k]}$2`);
+    }
+    return Buffer.from(text.slice(0, at) + section);
+  };
+  let cachedD4: { plan: PromptPlan; inputs: PromptInputs } | null = null;
+  const planD4 = async () => {
+    cachedD4 ??= await (async () => {
+      const inputs = await loadPromptInputs((p) => readFile(resolve(REPO, p)), "d4");
+      return { plan: buildPromptPlan(inputs), inputs };
+    })();
+    return cachedD4;
+  };
+  const d4Input = async (s: ReturnType<typeof setup>, packet: Buffer, over: Partial<Omit<FullPageCallInput, "expected">> = {}) => {
+    const { plan, inputs } = await planD4();
+    return input(s, { plan, inputs, packetPath: resolve(REPO, D4_PACKET.path), approvalId: D4_ID, planId: D4_PLAN, approvalExpires: D4_EXPIRES, packetBytes: packet, expected: { promptSha256: plan.batch.sha256, promptChars: plan.batch.chars, planSha256: plan.plan_sha256, packetSha256: sha(packet) }, ...over });
+  };
+
+  it("the packet table: one packet per direction; the P3 rows are PACKET_FIELDS, the d4 packet has a d4 row only", () => {
+    expect(packetOfDirection("d1")).toBe(P3_PACKET);
+    expect(packetOfDirection("d3")).toBe(P3_PACKET);
+    expect(packetOfDirection("d4")).toBe(D4_PACKET);
+    for (const k of ["d2", "d5", "toString", "__proto__", ""]) expect(packetOfDirection(k), k).toBeNull();
+    expect(P3_PACKET.path).toBe(APPROVAL_PACKET_PATH);
+    expect(D4_PACKET.path).toBe("docs/design/image-first-hoshigama-d4-packet.md");
+    expect(packetFieldsOf(P3_PACKET)).toEqual(PACKET_FIELDS);
+    expect(Object.values(packetFieldsOf(D4_PACKET)).sort()).toEqual(["d4 の承認 ID", "承認する方向性", "承認日・承認者", "期限", "状態", "計画 ID"].sort());
+  });
+
+  it("the d4 fixture is the unapproved draft (pinned), reads as approved for d4 only once filled, and never with the P3 rows", () => {
+    expect(sha(D4_UNAPPROVED)).toBe(UNAPPROVED_D4_PACKET_FIXTURE_SHA256);
+    expect(readApprovalPacket(D4_UNAPPROVED, D4_PACKET)).toBeNull();
+    const filled = fillD4();
+    expect(readApprovalPacket(filled, D4_PACKET)).toEqual({ status: "承認済み", directions: ["d4"], approvalIds: { d4: D4_ID }, expires: D4_EXPIRES, planId: D4_PLAN, approvedBy: "2026-11-20 owner (test)" });
+    // a d4 packet is never a P3 approval, a P3 packet never a d4 one
+    expect(readApprovalPacket(filled)).toBeNull();
+    expect(readApprovalPacket(fillUnapproved(D3_ONLY), D4_PACKET)).toBeNull();
+    for (const bad of ["`d3`", "`d1`", "`d3,d4`", "`d4,d4`", "``"]) expect(readApprovalPacket(fillD4({ directions: bad }), D4_PACKET), bad).toBeNull();
+    expect(readApprovalPacket(fillD4({ d4: "`なし`" }), D4_PACKET)).toBeNull();
+    expect(readApprovalPacket(Buffer.from(filled.toString("utf8").replace("**状態: 承認済み。**", "**状態: 未承認。**")), D4_PACKET)).toBeNull();
+    // the P3 packet's d3 row added to a d4 packet: an extra row, not read
+    expect(readApprovalPacket(Buffer.from(filled.toString("utf8").replace("| 計画 ID", `| d3 の承認 ID | \`hoshigama-imagefirst-d3-20261120-01\` |\n| 計画 ID`)), D4_PACKET)).toBeNull();
+  });
+
+  it("no packet under tests/ reads as an approved d4 packet either", () => {
+    const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (e.name === "__screenshots__" ? [] : walk(join(dir, e.name))) : e.name.endsWith(".md") ? [join(dir, e.name)] : []));
+    for (const f of walk(resolve(REPO, "tests"))) expect(readApprovalPacket(readFileSync(f), D4_PACKET), f).toBeNull();
+  });
+
+  it("the real d4 packet: the draft (header 未承認, §10 未記入, not read), or approved for d4 alone", () => {
+    const real = readFileSync(resolve(REPO, D4_PACKET.path));
+    const text = real.toString("utf8");
+    if (text.slice(0, text.indexOf("\n## ")).includes("**状態: 未承認。**")) {
+      const section = text.slice(text.lastIndexOf("\n## 10."));
+      for (const label of Object.values(packetFieldsOf(D4_PACKET))) expect(new RegExp(`^\\| ${label}(?:（[^|]*)? \\| 未記入 \\|$`, "m").test(section), label).toBe(true);
+      expect(readApprovalPacket(real, D4_PACKET)).toBeNull();
+    } else {
+      expect(readApprovalPacket(real, D4_PACKET)?.directions).toEqual(["d4"]);
+    }
+    expect(readApprovalPacket(real)).toBeNull();
+  });
+
+  it("a d4 plan with its filled packet runs once (stub batch); the same approval never runs again", async () => {
+    const filled = fillD4();
+    const s = setup();
+    const ok = await runFullPageCall(await d4Input(s, filled), deps(s, s.batchOf(okBatch())));
+    expect(ok).toMatchObject({ status: "succeeded", images: 6 });
+    expect(s.calls).toEqual([{ prompt: (await planD4()).plan.batch.prompt, maxImages: 6 }]);
+    expect(packetAsked).toEqual([[COMMIT, D4_PACKET.path]]);
+    const again = await runFullPageCall(await d4Input(s, filled, { outDir: join(s.runs, "run-2") }), deps(s, s.batchOf(okBatch())));
+    expect(again).toMatchObject({ status: "stopped", code: "APPROVAL_ALREADY_USED", stage: "precheck" });
+    expect(s.calls).toHaveLength(1);
+  });
+
+  it("refused before anything is used: the other direction's packet path, id or packet, or the unapproved draft", async () => {
+    const filled = fillD4();
+    const { plan: d3Plan, inputs: d3Inputs } = await planD3();
+    const cases: [string, (s: ReturnType<typeof setup>) => Promise<FullPageCallInput>, string][] = [
+      ["d4 with the P3 packet's path", (s) => d4Input(s, filled, { packetPath: resolve(REPO, APPROVAL_PACKET_PATH) }), "PACKET_PATH_NOT_ALLOWED"],
+      ["d4 with a d3 approval id", (s) => d4Input(s, filled, { approvalId: "hoshigama-imagefirst-d3-20261120-01" }), "APPROVAL_ID_DIRECTION_MISMATCH"],
+      ["d4 with the unapproved d4 draft", (s) => d4Input(s, D4_UNAPPROVED), "PACKET_NOT_APPROVED"],
+      ["d4 with an approved P3 packet (d3) at the d4 path", (s) => d4Input(s, fillUnapproved(D3_ONLY)), "PACKET_NOT_APPROVED"],
+      ["d4 with another d4 id than the packet's", (s) => d4Input(s, filled, { approvalId: "hoshigama-imagefirst-d4-20261120-02" }), "PACKET_APPROVAL_MISMATCH"],
+      ["d4 with another plan id than the packet's", (s) => d4Input(s, filled, { planId: "hoshigama-imagefirst-p4-20261121" }), "PACKET_APPROVAL_MISMATCH"],
+      [
+        "d3 with the d4 packet's path",
+        (s) => input(s, { plan: d3Plan, inputs: d3Inputs, packetPath: resolve(REPO, D4_PACKET.path), approvalId: "hoshigama-imagefirst-d3-20261120-01", planId: "hoshigama-imagefirst-p3-20261120", approvalExpires: D4_EXPIRES, packetBytes: filled, expected: { promptSha256: d3Plan.batch.sha256, promptChars: d3Plan.batch.chars, planSha256: d3Plan.plan_sha256, packetSha256: sha(filled) } }),
+        "PACKET_PATH_NOT_ALLOWED",
+      ],
+      [
+        "d3 with the approved d4 packet's bytes at the P3 path",
+        (s) => input(s, { plan: d3Plan, inputs: d3Inputs, approvalId: "hoshigama-imagefirst-d3-20261120-01", planId: "hoshigama-imagefirst-p3-20261120", approvalExpires: D4_EXPIRES, packetBytes: filled, expected: { promptSha256: d3Plan.batch.sha256, promptChars: d3Plan.batch.chars, planSha256: d3Plan.plan_sha256, packetSha256: sha(filled) } }),
+        "PACKET_NOT_APPROVED",
+      ],
+      ["a direction with no packet (d2-like key)", async (s) => d4Input(s, filled, { plan: { ...(await planD4()).plan, direction_key: "d2" as PromptPlan["direction_key"] }, approvalId: "hoshigama-imagefirst-d2-20261120-01" }), "PACKET_PATH_NOT_ALLOWED"],
+    ];
+    for (const [name, make, code] of cases) {
+      const s = setup();
+      const r = await runFullPageCall(await make(s), deps(s, s.batchOf(okBatch())));
+      expect(r, name).toEqual({ status: "stopped", code, stage: "precheck", aborted: false });
+      expect(s.calls, name).toEqual([]);
+      expect(ledgerEntries(s), name).toEqual([]);
+    }
+  });
 });

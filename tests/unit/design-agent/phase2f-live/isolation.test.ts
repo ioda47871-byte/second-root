@@ -27,6 +27,8 @@ const FULL_PAGE_CLI = "scripts/design-artifact/image-first-generate.ts";
  * entry as a process; it never takes the image call, the sandbox or Codex itself (checked below).
  */
 const WORKER_LIB = "lib/design-agent/imagefirst-worker/cycle.ts";
+/** Issue #302 (d4 run path): the worker's per-direction allowlist (d3 / d4), which reads only the packet table. */
+const RUN_DIRECTIONS = "lib/design-agent/imagefirst-worker/run-directions.ts";
 const WORKER_CLI = "scripts/sales-design-worker/imagefirst-worker.ts";
 /** Issue #302 P1: root's automatic start (OFF by default; its unit and timer are never installed or enabled here). */
 const WORKER_AUTOSTART = "scripts/sales-design-worker/imagefirst-autostart.sh";
@@ -64,9 +66,12 @@ const ALLOWED: Record<string, string[]> = {
   // DEV-150: one DIRECTION_FIRST call; the answer checked by the three-method lane (pure)
   [`${LIB}/direction-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../three-methods/direction", "../codex", "./ledger", "./steps"],
   // Issue #293 P3: one IMAGE_FIRST batch under one approval; the batch call is passed in by its CLI
-  [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./ledger", "./steps"],
+  // Issue #302 (d4 run path): plus the per-direction packet table (data only, no import)
+  [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./approval-packets", "./ledger", "./steps"],
+  [`${LIB}/approval-packets.ts`]: [],
   [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
-  [WORKER_LIB]: ["node:crypto", "node:fs", "node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state"],
+  // Issue #302 (d4 run path): plus the per-direction allowlist (run-directions.ts: data and pure lookups)
+  [WORKER_LIB]: ["node:crypto", "node:fs", "node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state", "./run-directions"],
   // Issue #302 P3 follow-up (owner instruction 2026-11-20, exact path): plus the review delivery of a finished run
   // (deliver-review.ts: bundle + local inbox + previews; starts nothing, claims nothing; its imports are pinned in
   // tests/unit/design-agent/imagefirst-worker/deliver-review.test.ts)
@@ -157,7 +162,9 @@ describe("isolation of the Phase 2f-2 steps", () => {
   });
 
   it("is imported by nobody else (the CLIs are entry points; the shared helper only by the real-call CLIs)", () => {
-    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI].sort());
+    // Issue #302 (d4 run path): plus the per-direction allowlist, which takes only the packet table (data, no import)
+    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI, RUN_DIRECTIONS].sort());
+    expect(specifiers(readFileSync(resolve(REPO, RUN_DIRECTIONS), "utf8"))).toEqual(["../phase2f-live/approval-packets"]);
     expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI, FULL_PAGE_CLI, WORKER_CLI].sort());
     // Issue #293 P3: nothing starts the IMAGE_FIRST entry (run by hand by the owner only). Issue #298 P1: except the worker
     // adapter, which names it once (GENERATE_ENTRY) and is itself started by hand only (nothing starts the adapter)
