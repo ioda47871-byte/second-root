@@ -10,10 +10,18 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { assertFictionalShop } from "./shops";
 import { LogStop } from "./store";
 import { Sha, Slug, type ResearchEntry } from "./schema";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+const parseJson = (b: Buffer, code: string, what: string): unknown => {
+  try {
+    return JSON.parse(b.toString("utf8"));
+  } catch {
+    throw new LogStop(code, `${what} is not JSON`);
+  }
+};
 
 const PreviewIndex = z.object({
   schema: z.literal("imagefirst_review_previews_v1"),
@@ -36,6 +44,8 @@ const AuditRecord = z.object({
 });
 
 export type IntakeInput = {
+  /** The repository whose facts packs decide which shops are fictional (shops.ts). */
+  repo: string;
   inbox: string;
   bundleId: string;
   shop: string;
@@ -48,11 +58,12 @@ export type IntakeInput = {
 /** Builds (does not write) the entry. Throws LogStop with a fixed code on any disagreement. */
 export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
   if (!Slug.safeParse(o.bundleId).success) throw new LogStop("INTAKE_ID_INVALID", o.bundleId);
+  await assertFictionalShop(o.repo, o.shop);
   const dir = join(o.inbox, "previews", o.bundleId);
   const indexBytes = await readFile(join(dir, "INDEX.json")).catch(() => {
     throw new LogStop("INTAKE_NO_PREVIEWS", `${dir}/INDEX.json is missing`);
   });
-  const idx = PreviewIndex.safeParse(JSON.parse(indexBytes.toString("utf8")));
+  const idx = PreviewIndex.safeParse(parseJson(indexBytes, "INTAKE_INDEX_INVALID", "INDEX.json"));
   if (!idx.success) throw new LogStop("INTAKE_INDEX_INVALID", "INDEX.json does not match imagefirst_review_previews_v1");
   if (idx.data.bundle_id !== o.bundleId) throw new LogStop("INTAKE_INDEX_INVALID", "INDEX.json names another bundle");
 
@@ -73,7 +84,7 @@ export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
   let audit: ResearchEntry["audit"] = null;
   const auditBytes = await readFile(join(o.inbox, "audits", o.bundleId, "audit.json")).catch(() => null);
   if (auditBytes) {
-    const a = AuditRecord.safeParse(JSON.parse(auditBytes.toString("utf8")));
+    const a = AuditRecord.safeParse(parseJson(auditBytes, "INTAKE_AUDIT_INVALID", "audit.json"));
     if (!a.success) throw new LogStop("INTAKE_AUDIT_INVALID", "audit.json is not a completed advisory audit");
     const b = a.data.binding;
     if (b.bundle_sha256 !== idx.data.bundle_sha256 || b.previews_index_sha256 !== indexSha || b.approval_id !== idx.data.approval_id || b.plan_id !== idx.data.plan_id) {

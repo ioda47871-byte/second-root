@@ -4,7 +4,8 @@
  *
  * The committed log (design-library/research-log/) holds metadata only: SHA-256s, IDs, scores, and the owner's own
  * decision and reasons. Never the pictures, never the audit's findings text (those stay in the private review inbox).
- * Fictional shops only: a real shop's log is refused here (DEV-263h: a real shop's data never enters the repository).
+ * Fictional shops only (DEV-263h: a real shop's data never enters the repository): intake and queue-add refuse any slug
+ * that is not in shops.ts FICTIONAL_SHOPS with a facts pack whose shop_id starts with "fictional-" (SHOP_NOT_FICTIONAL).
  *
  * Nothing in this log is an approval. An entry never issues, claims or spends an approval ID, and an `adopt` decision
  * records the owner's choice; it does not register a CP-* research case (design-library/success-cases/).
@@ -102,6 +103,11 @@ export const ResearchState = z.strictObject({
   current: z
     .strictObject({ shop: Slug, direction: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/), entry_id: Slug.nullable(), phase: z.enum(PHASES), brief: z.string().regex(/^briefs\/[a-z0-9-]+\.md$/).nullable() })
     .nullable(),
+  /** Shops left behind by "次の店へ", with where they stood: the trail of what was set aside. */
+  closed_shops: z
+    .array(z.strictObject({ shop: Slug, direction: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/), entry_id: Slug.nullable(), phase: z.enum(PHASES), closed_at: IsoTime }))
+    .max(100)
+    .default([]),
   /** Fictional shops to study next, in order. "次の店へ" takes the first. */
   shop_queue: z.array(z.strictObject({ shop: Slug, note: Text })).max(50),
   /** One plain sentence: what the next session does first. */

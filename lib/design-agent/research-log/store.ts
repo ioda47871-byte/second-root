@@ -67,13 +67,17 @@ export async function readEntry(root: string, id: string): Promise<ResearchEntry
 
 export async function listEntries(root: string): Promise<ResearchEntry[]> {
   const dir = logPaths(root).entries;
-  const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).sort();
+  const names = (await readdir(dir).catch(() => [] as string[])).sort();
+  const bad = names.filter((n) => !/^[a-z0-9][a-z0-9-]{1,63}\.json$/.test(n));
+  if (bad.length) throw new LogStop("ENTRY_UNREADABLE", `unexpected files in ${dir}: ${bad.join(", ")}`);
   return Promise.all(names.map((n) => readEntry(root, n.slice(0, -5))));
 }
 
 export async function listDecisions(root: string, entryId?: string): Promise<OwnerDecision[]> {
   const dir = logPaths(root).decisions;
-  const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => /^[a-z0-9-]+--\d{1,2}\.json$/.test(n));
+  const names = (await readdir(dir).catch(() => [] as string[])).sort();
+  const bad = names.filter((n) => !/^[a-z0-9-]+--\d{1,2}\.json$/.test(n));
+  if (bad.length) throw new LogStop("DECISION_UNREADABLE", `unexpected files in ${dir}: ${bad.join(", ")}`);
   const all = await Promise.all(names.map((n) => parseFile(join(dir, n), OwnerDecision, "DECISION_UNREADABLE")));
   for (const [i, d] of all.entries()) {
     if (names[i] !== `${d.entry_id}--${d.seq}.json`) throw new LogStop("DECISION_UNREADABLE", `${names[i]} does not match its entry_id/seq`);
@@ -114,13 +118,19 @@ export async function writeState(root: string, raw: unknown): Promise<ResearchSt
   return s.data;
 }
 
-/** "次の店へ": close the current shop (unless adopted) and move to the first queued one. Pure. */
-export function advanceToNextShop(s: ResearchState, now: string): ResearchState {
+/** Phases in which the owner still owes a decision: "次の店へ" refuses them unless forced (the owner said to drop it). */
+const UNDECIDED: readonly (typeof PHASES)[number][] = ["awaiting_owner_review", "awaiting_generation_approval"];
+
+/** "次の店へ": record where the current shop stood in closed_shops and move to the first queued one. Pure. */
+export function advanceToNextShop(s: ResearchState, now: string, o: { force?: boolean } = {}): ResearchState {
   const [next, ...rest] = s.shop_queue;
   if (!next) throw new LogStop("QUEUE_EMPTY", "no fictional shop is queued; add one to shop_queue first");
+  if (s.current && UNDECIDED.includes(s.current.phase) && !o.force) throw new LogStop("CURRENT_UNDECIDED", `${s.current.shop} is ${s.current.phase}; decide it first, or pass --force-close if the owner said to drop it`);
+  const closed = s.current ? [...s.closed_shops, { shop: s.current.shop, direction: s.current.direction, entry_id: s.current.entry_id, phase: s.current.phase, closed_at: now }] : s.closed_shops;
   return {
     ...s,
-    current: { shop: next.shop, direction: "d1", entry_id: null, phase: "improving" satisfies (typeof PHASES)[number], brief: null },
+    current: { shop: next.shop, direction: "d1", entry_id: null, phase: "improving", brief: null },
+    closed_shops: closed,
     shop_queue: rest,
     next_action: `${next.shop}: read its facts pack and write two or more directions (second-root-design-director), then prepare the generation packet for the owner's approval.`,
     waiting_on_owner: [],

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -60,13 +60,13 @@ function fakeInbox(o: { auditBundleSha?: string } = {}) {
   return { inbox, pdir };
 }
 
-const intakeArgs = (inbox: string) => ({ inbox, bundleId: ID, shop: "fakeshop", direction: "d1", iteration: 0, parentEntryId: null, now: NOW });
+const intakeArgs = (inbox: string) => ({ repo: REPO, inbox, bundleId: ID, shop: "hoshigama", direction: "d1", iteration: 0, parentEntryId: null, now: NOW });
 
 function freshLog(): string {
   const root = tmp("rl-log-");
   writeFileSync(
     join(root, "state.json"),
-    JSON.stringify({ schema: "design_research_state_v1", current: null, shop_queue: [{ shop: "nextshop", note: "fictional test shop" }], next_action: "start", waiting_on_owner: [], updated_at: NOW }),
+    JSON.stringify({ schema: "design_research_state_v1", current: null, shop_queue: [{ shop: "bicycle", note: "fictional test shop" }], next_action: "start", waiting_on_owner: [], updated_at: NOW }),
   );
   return root;
 }
@@ -133,7 +133,7 @@ describe("the log store", () => {
   it("次の店へ takes the first queued shop, and refuses an empty queue", async () => {
     const s = await readState(freshLog());
     const moved = advanceToNextShop(s, NOW);
-    expect(moved.current?.shop).toBe("nextshop");
+    expect(moved.current?.shop).toBe("bicycle");
     expect(moved.shop_queue).toEqual([]);
     expect(() => advanceToNextShop(moved, NOW)).toThrow(LogStop);
   });
@@ -158,7 +158,7 @@ describe("the CLI", () => {
     const { inbox } = fakeInbox();
     const root = freshLog();
     const env = { SR_RESEARCH_LOG_ROOT: root, SR_REVIEW_INBOX: inbox };
-    expect(run(["intake", ID, "--shop", "fakeshop", "--direction", "d1", "--iteration", "0"], env).status).toBe(0);
+    expect(run(["intake", ID, "--shop", "hoshigama", "--direction", "d1", "--iteration", "0"], env).status).toBe(0);
     expect(JSON.parse(readFileSync(join(root, "state.json"), "utf8")).current.phase).toBe("awaiting_owner_review");
     const d = run(["decide", ID, "--decision", "revise", "--words", "改善して", "--reason", "情報に見出しが無い", "--keep", "Hero"], env);
     expect(d.status, d.stderr).toBe(0);
@@ -169,10 +169,87 @@ describe("the CLI", () => {
     expect(readdirSync(join(out, "img")).sort()).toEqual(["pc-1.png", "sp-1.png"]);
     const bad = run(["review-page", ID, "--out", join(REPO, "tmp-review")], env);
     expect(bad.status).toBe(2);
-    expect(bad.stderr).toContain("OUT_IN_REPO");
+    expect(bad.stderr).toContain("OUT_UNSAFE");
     expect(run(["next-shop"], env).status).toBe(0);
     expect(run(["next-shop"], env).stderr).toContain("QUEUE_EMPTY");
     expect(run(["decide", ID, "--decision", "maybe", "--words", "x", "--reason", "y"], env).status).toBe(2);
+  });
+});
+
+describe("the review's guards (Fresh Review 1: H1, M1-M5, L3)", () => {
+  const run = (args: string[], env: Record<string, string>) =>
+    spawnSync(process.execPath, ["--import", "tsx", join(REPO, "scripts/design-research/research.ts"), ...args], { encoding: "utf8", env: { ...process.env, ...env } });
+  const setup = () => {
+    const { inbox } = fakeInbox();
+    const root = freshLog();
+    const env = { SR_RESEARCH_LOG_ROOT: root, SR_REVIEW_INBOX: inbox };
+    expect(run(["intake", ID, "--shop", "hoshigama", "--direction", "d1", "--iteration", "0"], env).status).toBe(0);
+    return { inbox, root, env };
+  };
+  const decide = (env: Record<string, string>, decision: string, extra: string[] = []) => run(["decide", ID, "--decision", decision, "--words", "w", "--reason", "r", ...extra], env);
+  const state = (root: string) => ResearchState.parse(JSON.parse(readFileSync(join(root, "state.json"), "utf8")));
+
+  it("H1: only listed fictional shops — intake and queue-add refuse anything else", async () => {
+    const { inbox } = fakeInbox();
+    await expect(entryFromInbox({ ...intakeArgs(inbox), shop: "real-bakery" })).rejects.toThrow("SHOP_NOT_FICTIONAL");
+    await expect(entryFromInbox({ ...intakeArgs(inbox), shop: "constructor" })).rejects.toThrow("SHOP_NOT_FICTIONAL");
+    const root = freshLog();
+    const env = { SR_RESEARCH_LOG_ROOT: root, SR_REVIEW_INBOX: inbox };
+    const r = run(["intake", ID, "--shop", "some-real-shop", "--direction", "d1", "--iteration", "0"], env);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("SHOP_NOT_FICTIONAL");
+    expect(readdirSync(root)).toEqual(["state.json"]);
+    expect(run(["queue-add", "some-real-shop", "--note", "x"], env).stderr).toContain("SHOP_NOT_FICTIONAL");
+  });
+
+  it("M1 + L3: decide only on the current entry; intake needs a consistent parent", () => {
+    const { env, root } = setup();
+    writeFileSync(join(root, "state.json"), JSON.stringify({ ...state(root), current: { ...state(root).current, shop: "bicycle" } }));
+    expect(decide(env, "revise").stderr).toContain("SHOP_NOT_CURRENT");
+    expect(readdirSync(root)).not.toContain("decisions");
+    const r = run(["intake", "other-run-01", "--shop", "hoshigama", "--direction", "d2", "--iteration", "1"], env);
+    expect(r.stderr).toMatch(/SHOP_NOT_CURRENT|PARENT_MISMATCH|INTAKE_NO_PREVIEWS/);
+  });
+
+  it("M2: a brief that does not exist is refused; M3: reject closes the shop", () => {
+    const { env, root } = setup();
+    expect(decide(env, "revise", ["--brief", "briefs/missing.md"]).stderr).toContain("BRIEF_MISSING");
+    expect(decide(env, "reject").status).toBe(0);
+    expect(state(root).current?.phase).toBe("closed");
+    expect(state(root).next_action).toMatch(/rejected/);
+  });
+
+  it("M4: 次の店へ refuses an undecided shop unless forced, and keeps a trail", () => {
+    const { env, root } = setup();
+    expect(run(["next-shop"], env).stderr).toContain("CURRENT_UNDECIDED");
+    expect(run(["next-shop", "--force-close"], env).status).toBe(0);
+    const s = state(root);
+    expect(s.current?.shop).toBe("bicycle");
+    expect(s.closed_shops).toEqual([expect.objectContaining({ shop: "hoshigama", entry_id: ID, phase: "awaiting_owner_review" })]);
+  });
+
+  it("M5: the review page goes only under the temp directory, never through a symlink", () => {
+    const { env } = setup();
+    const t = tmp("rl-link-");
+    symlinkSync(REPO, join(t, "repo-link"));
+    const viaLink = run(["review-page", ID, "--out", join(t, "repo-link", "tmp-review-page")], env);
+    expect(viaLink.status).toBe(2);
+    expect(viaLink.stderr).toContain("OUT_UNSAFE");
+    expect(existsSync(join(REPO, "tmp-review-page"))).toBe(false);
+    const out = join(tmp("rl-imglink-"), "page");
+    mkdirSync(out);
+    symlinkSync(tmp("rl-elsewhere-"), join(out, "img"));
+    expect(run(["review-page", ID, "--out", out], env).stderr).toContain("OUT_UNSAFE");
+    expect(run(["review-page", ID, "--out", "/home"], env).stderr).toContain("OUT_UNSAFE");
+  });
+
+  it("L2: bad notes are a refusal with a code, not a stack trace", () => {
+    const { env } = setup();
+    const notes = join(tmp("rl-notes-"), "n.json");
+    writeFileSync(notes, "{not json");
+    const r = run(["review-page", ID, "--out", join(tmp("rl-p-"), "p"), "--notes", notes], env);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("NOTES_INVALID");
   });
 });
 

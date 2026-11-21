@@ -26,11 +26,12 @@ design-library/research-log/
 - `status` — 再開用の要約。読み取りのみ（テストでファイルが変わらないことを確認）。新しい session は最初にこれを読む（CLAUDE.md）。
 - `intake <bundle id> --shop --direction --iteration [--parent]` — inbox の INDEX.json・プレビュー・audit.json を互いに照合してから記録。
 - `review-page <entry> --out <dir> [--notes notes.json]` — レビュー画面（HTML + img/）。リポジトリの中には書けない。
-- `decide <entry> --decision adopt|revise|reject --words … --reason … [--keep …] [--improve …] [--brief …]`
-- `queue-add <shop> --note …` / `next-shop`
+- `decide <entry> --decision adopt|revise|reject --words … --reason … [--keep …] [--improve …] [--brief …]` — 今の店の今の entry だけ（`SHOP_NOT_CURRENT` / `ENTRY_NOT_CURRENT`）。brief は存在するものだけ。adopt → adopted、revise → improving、reject → closed。
+- `queue-add <shop> --note …` / `next-shop [--force-close]` — 判定待ちの店は `--force-close`（オーナーが外すと言ったときだけ）が無いと進まない。外した店は `closed_shops` に残る。
+- `review-page` の出力先は一時ディレクトリ（Claude の scratchpad）か `~/sr-runs/review-pages/` の下だけ。symlink 経由は拒否（`OUT_UNSAFE`）。
 
 ## 境界
 
 - 記録は承認ではない。`adopt` はオーナーの選択の記録で、CP-* 研究事例（`design-library/success-cases/`）への登録ではない。
 - 画像生成・Codex・worker・pilot・自動起動・承認 ID の発行と消費は、既存の承認ルール（`docs/operations/claude-autonomy.md` §3・§7.8、各承認パケット）のまま。
-- 実店舗は記録しない（`fictional: true` だけを受け付ける。DEV-263h）。
+- 実店舗は記録しない（DEV-263h）。intake と queue-add は `lib/design-agent/research-log/shops.ts` の一覧にあり、事実パックの `shop_id` が `fictional-` で始まる店だけを受け付ける（`SHOP_NOT_FICTIONAL`）。店の追加はレビューつきのコード変更。

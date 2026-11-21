@@ -26,12 +26,12 @@ node --import tsx scripts/design-research/research.ts status
 | 「改善して」（＋理由） | `decide <entry> --decision revise --words "<原文>" --reason … --keep … --improve … --brief briefs/<shop>-<next>.md` → brief を書く／直す → 指示文と承認パケットの準備（§3） |
 | 「成功例として保存」 | `decide <entry> --decision adopt --words "<原文>" --reason …`。CP-* 研究事例への登録は別作業（オーナーに聞く） |
 | 「不採用」 | `decide <entry> --decision reject --words "<原文>" --reason …`。失敗の理由は次の方向案で避ける |
-| 「次の店へ」 | `next-shop`（キューの先頭の架空店舗へ）。今の店が未判定なら、先にそれを一言確認する |
+| 「次の店へ」 | `next-shop`（キューの先頭の架空店舗へ）。今の店が判定待ちなら拒否される: 先に判断を聞く。オーナーが「外して」と言ったときだけ `--force-close` |
 
 - `--words` はオーナーの言葉そのまま（短く）。`--reason` `--keep` `--improve` はオーナーの言葉と、オーナーが同意した所見から書く。
   オーナーが言っていない理由を判断として記録しない。
 - 記録は追記のみ。判断を変えるときは新しい `decide`（seq が増え、最新が有効）。ファイルを手で書き換えない。
-- 実店舗は記録しない（ログは架空店舗だけを受け付ける）。
+- 実店舗は記録しない。CLI は `shops.ts` の架空店舗一覧にない店を `SHOP_NOT_FICTIONAL` で拒否する。新しい架空店舗は一覧へのコード変更（PR）で足す。
 
 ## 2. レビュー画面（オーナーが Claude アプリで見る）
 
