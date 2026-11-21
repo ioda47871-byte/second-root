@@ -10548,7 +10548,7 @@
     {
       "id": "DEV-302p5",
       "title": "Design research loop: persistent research log, owner decisions (改善して / 成功例として保存 / 次の店へ) and session resume (Issue #302 P5)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "purpose": "Let the owner review and decide designs from the Claude app while Claude records provenance, decisions and next steps in a committed, metadata-only log that a new session resumes from. No image generation, no approval IDs.",
@@ -10582,6 +10582,41 @@
       "human_approval_triggers": [
         "any image generation (new approval packet and approval ID, OWNER MERGE ONLY)",
         "registering an adopted design as a CP-* research case"
+      ],
+      "attempts": 1,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-302p6",
+      "title": "Hoshigama d4 (revise of d3): direction, prompt pins and an unapproved approval packet (Issue #302 P6)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": ["DEV-302p5"],
+      "purpose": "Turn the owner's revise decision on d3 (research-log decision and brief hoshigama-d4.md) into a pinned d4 prompt and an approval packet draft, offline, without moving d1/d3's approved pins.",
+      "acceptance_criteria": [
+        "d4 lives in its own direction file; d1/d3 prompt bytes and plan pins are unchanged (prompt.test.ts PINNED).",
+        "The d4 prompt shows only exact fact strings, the facts schema's labels in the info block, three navigation words on SP, and the name and description in the footer.",
+        "docs/design/image-first-hoshigama-d4-packet.md shows exactly the builder's pins and stays 未承認 / 未記入.",
+        "No entry can run d4 yet (full-page-call and image-first-generate refuse it).",
+        "CI green and independent Fresh Review PASS on the same head."
+      ],
+      "required_tests": ["tests/unit/design-agent/image-first/prompt-d4.test.ts", "tests/unit/design-agent/image-first/prompt.test.ts", "npm run typecheck", "npm run lint"],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/bakery/direction-d4.json",
+        "lib/design-agent/image-first/prompt.ts",
+        "lib/design-agent/phase2f-live/full-page-call.ts (refuse non-d1/d3 only)",
+        "scripts/design-artifact/image-first-prompt.ts",
+        "docs/design/image-first-hoshigama-d4-packet.md",
+        "tests/unit/design-agent/image-first/"
+      ],
+      "forbidden_scope": [
+        "direction-set.json and the p3 packet (d1/d3 approved pins)",
+        "worker, pilot, autostart, bundle, delivery and their shell scripts (separate OWNER MERGE ONLY PR)",
+        "image generation, Codex, approval IDs"
+      ],
+      "human_approval_triggers": [
+        "approving the d4 packet (§10, new approval ID, OWNER MERGE ONLY)",
+        "the d4 run-path PR (root-run scripts, OWNER MERGE ONLY)"
       ],
       "attempts": 1,
       "last_failure": null
