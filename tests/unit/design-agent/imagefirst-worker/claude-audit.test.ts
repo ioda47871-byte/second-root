@@ -104,6 +104,15 @@ describe("Issue #302: the Claude CLI audit, happy path", () => {
     expect(rec.binding.images.every((i) => i.media_type === "image/jpeg" && i.preview_bytes > 0 && i.audit_bytes > 0)).toBe(true);
     const md = readFileSync(join(auditDir(s), "AUDIT.md"), "utf8");
     for (const i of rec.binding.images) expect(md).toContain(`\`${i.preview_sha256}\` | \`${i.audit_sha256}\``);
+    // owner comment 7053442141: AUDIT.md names the rubric v2 and, per viewport, which examples' principles were used (with their source)
+    expect(rec.binding.rubric_version).toBe("if-claude-audit-v2");
+    expect(rec.schema).toBe("imagefirst_claude_audit_v2");
+    expect(md).toContain("`if-claude-audit-v2`");
+    expect(md.match(/Closeness to an example is not a criterion; imitating another shop's design, colours or layout is penalised\./g)).toHaveLength(2);
+    expect(md).toContain("CP-003-pc (design-library/phase2f/references/success-references-v1.json)");
+    expect(md).toContain("CP-003-sp (design-library/phase2f/references/success-references-v1.json)");
+    expect(md).toContain("CP-001-concept (design-library/research/quality-pipeline/visual-reads/CP-001/concept.read.json)");
+    expect(md).not.toMatch(/success_example_distance/);
     expect(rec.derived.desktop_1440).toEqual(deriveViewport(rec.viewports.desktop_1440!));
     expect(rec.auditor).toMatchObject({ via: "claude_cli_print_no_tools", model_reported: "fake-test-model", cli_version: "0.0.0-test", calls: 2, reasks: 0 });
     // private: 0700 directories, 0600 files; the one-use marker; AUDIT.md for the owner; nothing in the repository
@@ -610,6 +619,38 @@ describe("Issue #302: the CLI as a process (fakes only through the test entry un
     expect(readFileSync(h.sysLog, "utf8")).toContain("ActiveState");
     expect(h.test([DUMMY_ID]).out).toMatchObject({ status: "refused", code: "APPROVAL_ID_RESERVED" });
     expect(readLog(h.log)).toEqual([]);
+  });
+
+  it("Issue #302 --check-auth-only: only `auth status` (no model call, no bundle, no marker); API key / signed out / jail refuse with exit 2", () => {
+    const h = homeWith();
+    const ok = h.test(["--check-auth-only"]);
+    expect(ok).toMatchObject({ status: 0, out: { status: "auth_ok", code: null } });
+    const calls = readLog(h.log);
+    expect(calls.map((c) => c.bin)).toEqual(["auth"]);
+    expect(calls[0]!.argv).toEqual(["--setting-sources", "", "auth", "status"]);
+    expect(calls[0]!.forbidden).toEqual([]);
+    expect(existsSync(join(h.d.state, "audits"))).toBe(false);
+    expect(existsSync(join(h.home, "sr-runs", "review-inbox", "audits"))).toBe(false);
+    for (const [mode, code] of [["console", "CLAUDE_API_KEY_AUTH"], ["apikey", "CLAUDE_API_KEY_AUTH"], ["signedout", "CLAUDE_NOT_SIGNED_IN"], ["provider-bedrock", "CLAUDE_AUTH_METHOD_REFUSED"]] as const) {
+      const v = homeWith({ auth: mode });
+      expect(v.test(["--check-auth-only"]), mode).toMatchObject({ status: 2, out: { status: "refused", code } });
+      expect(readLog(v.log).filter((c) => c.bin === "claude"), mode).toEqual([]);
+    }
+    // the jail running or unreadable: refused before claude is even asked
+    const j = homeWith();
+    const sysDir = tmp("sr-audit-sys-active-");
+    const active = join(sysDir, "systemctl");
+    writeFileSync(active, `#!/bin/sh\nif [ "$1" = show ]; then echo active; else echo enabled; fi\n`, { mode: 0o755 });
+    expect(spawnOut([ENTRY, j.bin, active, "--check-auth-only"], { HOME: j.home, XDG_STATE_HOME: join(j.home, ".local", "state") })).toMatchObject({ status: 2, out: { code: "JAIL_ACTIVE" } });
+    expect(readLog(j.log)).toEqual([]);
+    expect(h.test(["--check-auth-only", "--dry-run"])).toMatchObject({ status: 2, out: { code: "USAGE" } });
+    // review L3: it runs from under the worker's state directory (as the audit), which must be a private one of ours;
+    // a refusal carries only a status and a code (no approval_id label)
+    const m = homeWith();
+    const missing = spawnOut([ENTRY, m.bin, m.sys, "--check-auth-only"], { HOME: m.home, XDG_STATE_HOME: join(m.home, "no-such-state") });
+    expect(missing).toMatchObject({ status: 2, out: { status: "refused", code: "STATE_DIR_UNSAFE" } });
+    expect(Object.keys(missing.out!).sort()).toEqual(["code", "status"]);
+    expect(readLog(m.log)).toEqual([]);
   });
 
   it("a stopped audit exits 1 with the fixed code", () => {

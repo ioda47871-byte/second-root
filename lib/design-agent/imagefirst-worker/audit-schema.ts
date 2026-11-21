@@ -9,7 +9,8 @@
 import { z } from "zod";
 import { AUDIT_THRESHOLDS, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, VIEWPORT_IDS, type AuditViewport, type CheckId, type CriterionId, type HardFailId, type SentImage } from "./audit-rubric";
 
-export const AUDIT_SCHEMA = "imagefirst_claude_audit_v1";
+/** v2 (owner comment 7053442141): the check `success_example_distance` became `success_principles_applied`. */
+export const AUDIT_SCHEMA = "imagefirst_claude_audit_v2";
 const Line = (max: number) => z.string().trim().min(1).max(max);
 const Viewport = z.enum(VIEWPORT_IDS as [AuditViewport, ...AuditViewport[]]);
 const keyed = <K extends string, T extends z.ZodType>(ids: readonly K[], t: T) => z.strictObject(Object.fromEntries(ids.map((k) => [k, t])) as Record<K, T>);

@@ -490,7 +490,7 @@ describe("Issue #302 P1: the precheck (every check up to the claim, nothing writ
   it("an approved, unused d3 job: would_run (exit 0), no lock, claim, audit or ledger entry; the real cycle then runs once", async () => {
     const w = world();
     const r = await precheck(w, ID);
-    expect(r).toEqual({ status: "would_run", code: null, invoked: false, approval_id: ID });
+    expect(r).toEqual({ status: "would_run", code: null, invoked: false, approval_id: ID, expires_at: "2026-11-20T09:00:00Z" });
     expect(precheckExitOf(r.status)).toBe(0);
     nothingWritten(w);
     expect((await w.cycle()).status).toBe("succeeded");

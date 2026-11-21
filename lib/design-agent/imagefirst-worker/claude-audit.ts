@@ -37,7 +37,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { loadPromptInputs, type Reader } from "../image-first/prompt";
 import { acquireLock } from "../worker/state";
-import { AUDIT_RUBRIC_VERSION, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, RUBRIC_SHA256, VIEWPORT_IDS, VIEWPORTS, type AuditMaterial, type AuditViewport, type SentImage } from "./audit-rubric";
+import { AUDIT_RUBRIC_VERSION, buildViewportAuditRequest, CHECK_IDS, CRITERION_IDS, HARD_FAIL_IDS, principlesFor, RUBRIC_SHA256, VIEWPORT_IDS, VIEWPORTS, type AuditMaterial, type AuditViewport, type SentImage } from "./audit-rubric";
 import { AUDIT_SCHEMA, AuditRecord, deriveViewport, incoherence, overallVerdict, ViewportAnswer, type Derived, type Verdict } from "./audit-schema";
 import { APPROVAL_ID_RE, BundleStop, verifyBundleDir } from "./bundle";
 import { assertClaudeSignedIn, buildUserMessage, claudeEnvironment, ClaudeCallError, extractJsonObject, runClaudeWithoutTools, type ClaudeImage } from "./claude-cli";
@@ -225,7 +225,8 @@ function renderAuditMd(r: AuditRecord): string {
       continue;
     }
     L.push(`- verdict: \`${d.verdict}\` · total ${d.total}/25 · lowest ${d.lowest}${d.low_criteria.length ? ` · below 4: ${d.low_criteria.join(", ")}` : ""}${d.low_checks.length ? ` · checks below 4: ${d.low_checks.join(", ")}` : ""}`);
-    L.push(`- hard fails: ${d.hard_fail_hits.length ? d.hard_fail_hits.join(", ") : "none"}`, "");
+    L.push(`- hard fails: ${d.hard_fail_hits.length ? d.hard_fail_hits.join(", ") : "none"}`);
+    L.push(`- success_principles_applied: the principles (text only) of ${principlesFor(vp).map((p) => `${p.id} (${p.provenance.source})`).join(", ")}. Closeness to an example is not a criterion; imitating another shop's design, colours or layout is penalised.`, "");
     L.push("| item | score | reason |", "|---|---|---|");
     for (const k of CRITERION_IDS) L.push(`| ${k} | ${a.scores[k].score} | ${a.scores[k].reason.replace(/\|/g, "/")} |`);
     for (const k of CHECK_IDS) L.push(`| ${k} (check) | ${a.checks[k].score} | ${a.checks[k].reason.replace(/\|/g, "/")} |`);
@@ -521,5 +522,30 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
   } finally {
     if (cwd) await rm(cwd, { recursive: true, force: true }).catch(() => undefined);
     await lock.release().catch(() => undefined);
+  }
+}
+
+/**
+ * Issue #302 (the owner's one-shot pilot, docs/operations/imagefirst-pilot.md): the audit's own sign-in check ALONE, for
+ * the read-only preflight. The jail must be idle (as for the audit: both use the same ~/.claude), `parentDir` (the worker's state
+ * directory) must be a private directory of ours (STATE_DIR_UNSAFE), then claude-cli.ts
+ * assertClaudeSignedIn — `claude --setting-sources "" auth status` with the same scrubbed environment, from an empty
+ * private directory under `parentDir` that is removed afterwards — must report the claude.ai subscription, first party,
+ * with no API key. No model call, no marker, no bundle read, nothing else written. Refusals throw AuditStop.
+ */
+export async function checkAuditAuth(o: { claudeBin: string; env: Record<string, string | undefined>; parentDir: string; jailIdle: () => Promise<boolean | null>; signal?: AbortSignal }): Promise<void> {
+  const idle = await o.jailIdle().catch(() => null);
+  if (idle !== true) stop(idle === null ? "JAIL_STATE_UNKNOWN" : "JAIL_ACTIVE");
+  // the worker's state directory, as for the audit's own call: a real directory of ours, closed to group and others
+  const info = await lstat(o.parentDir).catch(() => null);
+  if (!info || !info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0) stop("STATE_DIR_UNSAFE");
+  const cwd = await mkdtemp(join(o.parentDir, ".claude-auth-"));
+  try {
+    await assertClaudeSignedIn({ claudeBin: o.claudeBin, env: claudeEnvironment(o.env), cwd, ...(o.signal ? { signal: o.signal } : {}) });
+  } catch (error) {
+    if (error instanceof ClaudeCallError) stop(error.code);
+    throw error;
+  } finally {
+    await rm(cwd, { recursive: true, force: true }).catch(() => undefined);
   }
 }

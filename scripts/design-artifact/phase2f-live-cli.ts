@@ -19,7 +19,7 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
-import { codexDotenvPresent, parseCliVersion } from "../../lib/design-agent/codex";
+import { assertChatGptSignIn, CodexAbortedError, CodexError, codexDotenvPresent, parseCliVersion } from "../../lib/design-agent/codex";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS, type CallKind, type Ledger, type Route } from "../../lib/design-agent/phase2f-live/ledger";
 import { readStep, StepStop, type CommitState } from "../../lib/design-agent/phase2f-live/steps";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
@@ -187,6 +187,27 @@ export type LiveContext = {
   /** DEV-150: the earlier calls' model when a generation pin was checked (null otherwise). */
   previousModel: () => string | null;
 };
+
+/**
+ * Issue #302 (the owner's one-shot pilot, review H1): the Codex sign-in check ALONE, before any approval is used. With a
+ * context from liveContext (the generation path's own places, protected paths and environment), it runs the same
+ * preflight as a real call (the .env rule, prepareCodexSandbox) and then assertChatGptSignIn: ONE sandboxed `codex login
+ * status` (the sandbox probe runs before it, as before every Codex process). No model call, nothing read from the sign-in
+ * here, no claim, no ledger. null = signed in with ChatGPT; otherwise a fixed code (never the CLI's words). It cannot see a
+ * revoked or expired refresh token (login status reads only the local file): that still fails at the call.
+ */
+export async function codexSignInCheck(ctx: Pick<LiveContext, "preflight" | "sandbox">, signal?: AbortSignal): Promise<string | null> {
+  const refused = await ctx.preflight().catch(() => "CODEX_SANDBOX_UNAVAILABLE");
+  if (refused) return refused;
+  const sandbox = ctx.sandbox();
+  if (sandbox === null) return "CODEX_SANDBOX_UNAVAILABLE";
+  try {
+    await assertChatGptSignIn({ sandbox, ...(signal ? { signal } : {}) });
+    return null;
+  } catch (error) {
+    return error instanceof CodexError || error instanceof CodexAbortedError ? error.code : "CODEX_SIGN_IN_UNKNOWN";
+  }
+}
 
 /** Checks the places and builds what a real call needs; a stop code when a place is refused (nothing used). */
 export async function liveContext(out: string, stop: () => void, pin: GenerationPin | null = null): Promise<LiveContext | { code: string }> {
