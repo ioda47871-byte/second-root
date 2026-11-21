@@ -84,6 +84,7 @@ on_exit() {
   finish FAIL 20
 }
 on_signal() {
+  say "stopped by a signal before every check had run (nothing was started)"
   FAILS=$((FAILS + 1))
   finish FAIL 20
 }
@@ -171,7 +172,8 @@ set +e
 res="$(bash "$REPO/scripts/ops/wsl-resource-preflight.sh" 2>&1 8>&- 9>&-)"
 rrc=$?
 set -e
-mem="$(printf '%s\n' "$res" | head -n 1)"
+# the first line, without a pipe (head closing early would SIGPIPE the writer, a failure under pipefail)
+mem="${res%%$'\n'*}"
 case "$rrc" in
   0) row resource PASS "OK: $mem" ;;
   10) row resource PASS "SERIAL (one heavy job at a time; the pilot is one): $mem" ;;

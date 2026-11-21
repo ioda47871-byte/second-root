@@ -15,7 +15,9 @@ import { cleanupTemps, commitFiles, git, REPO, sha, tmp, workerRepo } from "./su
 // imagefirst-deliver-review.sh. `codex` and `claude` on PATH are logging stubs that must never run; the PATH holds no
 // other directory with either. No root, no systemd, no network, no model.
 
-vi.setConfig({ testTimeout: 120_000 });
+// generous: under a loaded machine each script starts several node processes (the stub CLIs) and git
+vi.setConfig({ testTimeout: 600_000 });
+const SPAWN_TIMEOUT_MS = 240_000;
 afterAll(cleanupTemps, 60_000);
 const SCRIPTS = join(REPO, "scripts/sales-design-worker");
 const PILOT = join(SCRIPTS, "imagefirst-pilot.sh");
@@ -173,7 +175,10 @@ esac`,
   symlinkSync(join(REPO, "node_modules", "tsx"), join(clone, "node_modules", "tsx"), "dir");
   const env = { PATH: [bin, ...SYSTEM_PATH].join(":"), SR_IMAGEFIRST_PILOT_TEST_ROOT: t, OPENAI_API_KEY: "should-not-pass", ANTHROPIC_API_KEY: "should-not-pass" } as unknown as NodeJS.ProcessEnv;
   const spawn = (script: string, args: string[], re: RegExp) => {
-    const r = spawnSync("bash", [script, ...args], { env, encoding: "utf8", timeout: 110_000 });
+    const started = Date.now();
+    const r = spawnSync("bash", [script, ...args], { env, encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
+    // a script cut by this test's own timeout traps the SIGTERM and exits as a stop: never mistake that for a check's result
+    expect(/stopped by a signal|PILOT_STOP_SIGNAL/.test(r.stdout), `${script} was stopped by a signal after ${Date.now() - started} ms (this test's ${SPAWN_TIMEOUT_MS} ms spawn timeout?), not by a check\n${r.stdout}`).toBe(false);
     const last = r.stdout.trim().split("\n").pop() ?? "";
     const m = re.exec(last);
     expect(m, r.stdout + r.stderr).not.toBeNull();
@@ -248,7 +253,7 @@ describe("Issue #302 pilot: the read-only preflight (fake WSL)", () => {
     arrange(w);
     const p = w.preflight([ID]);
     expect([p.status, p.verdict], name).toEqual([20, "FAIL"]);
-    expect(p.rows[row]?.ok, `${name}: ${row}`).toBe(false);
+    expect(p.rows[row]?.ok, `${name}: ${row}\n${p.stdout}`).toBe(false);
     expect(w.spent(), name).toEqual([]);
     const r = w.pilot([ID]);
     expect([r.status, r.code, r.phase], name).toEqual([20, "PILOT_PREFLIGHT_FAILED", "before_claim"]);
@@ -271,7 +276,8 @@ describe("Issue #302 pilot: the read-only preflight (fake WSL)", () => {
     expect([s.status, s.code]).toEqual([0, "PILOT_SYNCED"]);
     expect(git(w.clone, "rev-parse", "HEAD")).toBe(git(ahead, "rev-parse", "HEAD"));
     expect(w.spent()).toEqual([]);
-    expect(w.preflight([ID]).status).toBe(0);
+    const after = w.preflight([ID]);
+    expect(after.status, after.stdout).toBe(0);
     // a dirty clone is never synced (nothing is cleaned)
     const v = wsl();
     writeFileSync(join(v.clone, "untracked.txt"), "x");
