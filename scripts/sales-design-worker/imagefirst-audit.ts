@@ -3,7 +3,8 @@
  * claude-audit.ts; docs/operations/imagefirst-claude-audit.md). No Remote Control: the owner's signed-in `claude` CLI is
  * started once per viewport with no tools, and sees only the verified preview bytes. Not chained into anything: the
  * automatic start and the worker never start this script; the owner runs it by hand, as the worker user, outside the jail,
- * while sr-jail-claude is stopped (both use the same ~/.claude).
+ * while sr-jail-claude is stopped (both use the same ~/.claude). Issue #302: or root's one-shot pilot
+ * (imagefirst-pilot.sh, run by hand once) starts it as the worker user: --dry-run, then the audit once.
  *
  *   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts <approval id> [--dry-run]
  *   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts --dummy [--dry-run]     (the review PoC's dummy bundle)
@@ -16,11 +17,18 @@
  * One JSON line on stdout: codes, counts, SHA-256s and the advisory verdict only (never the findings text, which stays in
  * the private audit.json / AUDIT.md). Exit: 0 completed or planned, 1 stopped after the marker (a code is recorded),
  * 2 refused (nothing spent, nothing written).
+ *
+ *   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts --check-auth-only
+ *
+ * Issue #302 (the owner's one-shot pilot's read-only preflight, scripts/sales-design-worker/imagefirst-pilot-preflight.sh):
+ * only the sign-in check the audit itself makes before its marker (checkAuditAuth: the jail idle, then `claude
+ * --setting-sources "" auth status` = the claude.ai subscription, first party, no API key). No model call, no bundle, no
+ * marker. {"status":"auth_ok"} and exit 0, or refused with the fixed code and exit 2.
  */
 import { readFile, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { AuditStop, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
+import { AuditStop, checkAuditAuth, DUMMY_AUDIT_ID, loadAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
 import { jailIdle, SYSTEMCTL } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
@@ -60,6 +68,12 @@ export async function auditCli(args: readonly string[], bins: { claudeBin: strin
   const controller = new AbortController();
   for (const s of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(s, () => controller.abort());
   try {
+    if (rest[0] === "--check-auth-only") {
+      if (dryRun) return (say({ status: "refused", code: "USAGE" }), 2);
+      await checkAuditAuth({ claudeBin, env, parentDir: tmpdir(), jailIdle: () => jailIdle(env, systemctl), signal: controller.signal });
+      say({ status: "auth_ok", code: null });
+      return 0;
+    }
     const material = await loadAuditMaterial((rel) => readFile(join(REPO, rel)));
     const r = await runClaudeAudit({ approvalId, runsDir, stateDir, material, claudeBin, env: process.env, jailIdle: () => jailIdle(env, systemctl), dummy, dryRun, signal: controller.signal });
     // the plan: per viewport the image count, the bytes sent (audit tier) and the preview bytes, against the cap

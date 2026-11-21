@@ -35,6 +35,13 @@ const WORKER_AUTOSTART = "scripts/sales-design-worker/imagefirst-autostart.sh";
  * run by hand only; it starts the adapter's --deliver-review mode once (no cycle; tests/unit/design-agent/imagefirst-worker/deliver-review-wrapper.test.ts).
  */
 const WORKER_DELIVER = "scripts/sales-design-worker/imagefirst-deliver-review.sh";
+/**
+ * Issue #302 (owner pre-approval 2026-11-21, exact paths): root's one-shot pilot, run by hand once, which starts the
+ * adapter ONCE with the automatic start's own line, and its read-only preflight, which starts only the adapter's
+ * --precheck (tests/unit/design-agent/imagefirst-worker/pilot.test.ts). Never installed, enabled or scheduled.
+ */
+const WORKER_PILOT = "scripts/sales-design-worker/imagefirst-pilot.sh";
+const WORKER_PILOT_PREFLIGHT = "scripts/sales-design-worker/imagefirst-pilot-preflight.sh";
 const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
@@ -158,7 +165,12 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(git(["grep", "--untracked", "-lF", "image-first-generate", "--", "lib", "app", "components", "scripts", ".github", "package.json", `:!${FULL_PAGE_CLI}`])).toEqual([WORKER_LIB]);
     // Issue #302 P1 (owner-approved scope): one exception, root's automatic start (WORKER_AUTOSTART), which starts the
     // adapter once per root-owned one-use marker; its unit names only that script (tests/unit/design-agent/imagefirst-worker/autostart.test.ts)
-    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_AUTOSTART, WORKER_DELIVER].sort());
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_AUTOSTART, WORKER_DELIVER, WORKER_PILOT, WORKER_PILOT_PREFLIGHT].sort());
+    // Issue #302: the pilot starts the adapter's run once, its preflight only the --precheck; neither names the entry or a model API (code lines)
+    const codeOf = (f: string) => readFileSync(resolve(REPO, f), "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    expect(codeOf(WORKER_PILOT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &']);
+    expect(codeOf(WORKER_PILOT_PREFLIGHT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-']);
+    for (const f of [WORKER_PILOT, WORKER_PILOT_PREFLIGHT]) expect(codeOf(f), f).not.toMatch(/image-first-generate|generateImage|anthropic|openai/i);
     // the automatic start never names the entry, Codex or a model itself: it only starts the adapter
     expect(readFileSync(resolve(REPO, WORKER_AUTOSTART), "utf8")).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);
     // the re-send wrapper names the adapter only in its --deliver-review mode, and never the entry, Codex or a model (code lines)
