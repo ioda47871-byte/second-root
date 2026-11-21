@@ -34,6 +34,13 @@ function refuse(code: string, msg: string): never {
   throw new LogStop(code, msg);
 }
 
+/** The next state, validated before any write-once record so a bad value never strands one (coded refusal, no trace). */
+function checkedState(raw: unknown): ResearchState {
+  const r = ResearchState.safeParse(raw);
+  if (!r.success) refuse("STATE_INVALID", r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+  return r.data;
+}
+
 /**
  * The review page's folder: only under the temp directory (Claude's scratchpad) or ~/sr-runs/review-pages, resolved through
  * symlinks, never a symlink itself (nor its img/), so private previews cannot land in a checkout or anywhere else.
@@ -47,8 +54,10 @@ async function reviewOutDir(raw: string): Promise<string> {
   const intended = join(await realpath(probe), relative(probe, out));
   const inside = (p: string) => roots.some((r) => r && p.startsWith(`${r}/`));
   if (!inside(intended)) refuse("OUT_UNSAFE", `${intended} is not inside ${roots.filter(Boolean).join(" or ")}`);
+  const isLink = (p: string) => lstat(p).then((st) => st.isSymbolicLink(), () => false);
+  for (const p of [out, join(out, "img")]) if (await isLink(p)) refuse("OUT_UNSAFE", `${p} is a symlink`); // before anything is created
   await mkdir(join(intended, "img"), { recursive: true, mode: 0o700 });
-  for (const p of [out, join(out, "img")]) if ((await lstat(p)).isSymbolicLink()) refuse("OUT_UNSAFE", `${p} is a symlink`);
+  for (const p of [out, join(out, "img")]) if (await isLink(p)) refuse("OUT_UNSAFE", `${p} is a symlink`);
   if ((await realpath(join(out, "img"))) !== join(intended, "img")) refuse("OUT_UNSAFE", `${out}/img resolves elsewhere`);
   return intended;
 }
@@ -92,7 +101,7 @@ async function main(argv: string[]): Promise<void> {
         const parent = await readEntry(LOG, e.parent_entry_id);
         if (parent.shop !== e.shop || e.iteration !== parent.iteration + 1) refuse("PARENT_MISMATCH", `--parent must be a ${e.shop} entry with iteration ${e.iteration - 1}`);
       } else if (e.iteration !== 0) refuse("PARENT_MISMATCH", "an improved version (iteration > 0) needs --parent");
-      const nextState = ResearchState.parse({
+      const nextState = checkedState({
         ...s,
         current: { shop: e.shop, direction: e.direction, entry_id: e.entry_id, phase: "awaiting_owner_review", brief: s.current?.shop === e.shop ? s.current.brief : null },
         next_action: `Publish the review page of ${e.entry_id} and wait for the owner's decision.`,
@@ -122,7 +131,9 @@ async function main(argv: string[]): Promise<void> {
         const want = e.provenance.previews.find((p) => p.file === f)!.preview_sha256;
         const bytes = await readFile(src);
         if (createHash("sha256").update(bytes).digest("hex") !== want) refuse("PREVIEW_CHANGED", `${src} no longer matches the recorded SHA-256`);
-        await writeFile(join(out, "img", f), bytes, { mode: 0o600 }); // the bytes that were checked, not a second read
+        const dest = join(out, "img", f);
+        if (await lstat(dest).then((st) => !st.isFile(), () => false)) refuse("OUT_UNSAFE", `${dest} exists and is not a plain file`);
+        await writeFile(dest, bytes, { mode: 0o600 }); // the bytes that were checked, not a second read
       }
       await writeFile(join(out, "index.html"), html, { mode: 0o600 });
       process.stdout.write(`${JSON.stringify({ status: "written", page: join(out, "index.html"), images: files.map((f) => `img/${f}`) })}\n`);
@@ -147,7 +158,7 @@ async function main(argv: string[]): Promise<void> {
           revise: `Write the improved direction for ${e.shop} from decision ${id} (keep / improve), update the prompt and packet, and ask the owner to approve one generation.`,
           reject: `${e.shop} ${e.direction} was rejected. Write new directions for ${e.shop} that avoid the reasons, or say 次の店へ.`,
         }[decision];
-      const nextState = ResearchState.parse({
+      const nextState = checkedState({
         ...s,
         current: { shop: e.shop, direction: e.direction, entry_id: id, phase, brief: v.brief ?? s.current.brief },
         next_action: next,
