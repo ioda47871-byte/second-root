@@ -143,9 +143,10 @@ PC か SP か（SP は PC の縮小でない別の設計）／全頁の何枚目
 
 起動の手順（承認とマージの後だけ。root の端末で。値は §10）:
 
-1. `docs/operations/imagefirst-pilot.md` §1 の手順 2〜5 をそのまま行う（`imagefirst-pilot.sh --sync-clone` で root の clone を承認コミット
-   （40 字の SHA）に detached でそろえる・Codex と claude.ai のサインインをし直す・`~/sr-runs` を 0700 にする、など）。この節では d3 の ID を
-   §10 の d4 の ID に置き換える。
+1. `docs/operations/imagefirst-pilot.md` §1 の手順 2〜5 をそのまま行う。中身は別々のコマンド: root の管理用 clone
+   `/root/sr-capture-admin` を承認コミット（40 字の SHA）に `git checkout --detach <SHA>` でそろえる（手順 2）、Codex と claude.ai の
+   サインインをし直し `~/sr-runs` を 0700 にする、worker の clone を `imagefirst-pilot.sh --sync-clone` で origin/develop に早送りする（手順 4）。
+   手順 4〜5 には下の 2・3（preflight と pilot）も含まれる（同じもの）。この節では d3 の ID を §10 の d4 の ID に置き換える。
 2. `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <§10 の d4 の承認 ID>` — 最後の行が
    `IMAGEFIRST_PILOT_PREFLIGHT PASS … failed=0 exit=0` でなければ止める（何も使っていない）。
 3. `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot.sh <§10 の d4 の承認 ID>` — 1 回だけ。成功なら
