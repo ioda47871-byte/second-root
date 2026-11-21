@@ -435,7 +435,7 @@ else
   env ${R:+"SR_IMAGEFIRST_DELIVER_TEST_ROOT=$R"} bash "$DELIVER" "$APPROVAL" >"$WORK/deliver" 2>&1
   drc=$?
   set -e
-  tr -d '\000-\010\013-\037' <"$WORK/deliver" | cut -c1-400 | redact
+  tr -d '\000-\010\013-\037' <"$WORK/deliver" | redact | cut -c1-400
   dline="$(tail -n 1 "$WORK/deliver" | tr -d '\000-\037')"
   take_locks || { say "busy: the locks were taken while the re-send ran"; finish PILOT_BUSY 1; }
   stop_if_interrupted
