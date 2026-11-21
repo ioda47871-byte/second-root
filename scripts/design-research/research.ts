@@ -135,7 +135,9 @@ async function main(argv: string[]): Promise<void> {
         if (await lstat(dest).then((st) => !st.isFile(), () => false)) refuse("OUT_UNSAFE", `${dest} exists and is not a plain file`);
         await writeFile(dest, bytes, { mode: 0o600 }); // the bytes that were checked, not a second read
       }
-      await writeFile(join(out, "index.html"), html, { mode: 0o600 });
+      const page = join(out, "index.html");
+      if (await lstat(page).then((st) => !st.isFile(), () => false)) refuse("OUT_UNSAFE", `${page} exists and is not a plain file`);
+      await writeFile(page, html, { mode: 0o600 });
       process.stdout.write(`${JSON.stringify({ status: "written", page: join(out, "index.html"), images: files.map((f) => `img/${f}`) })}\n`);
       return;
     }

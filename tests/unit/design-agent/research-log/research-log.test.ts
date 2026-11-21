@@ -243,6 +243,22 @@ describe("the review's guards (Fresh Review 1: H1, M1-M5, L3)", () => {
     expect(run(["review-page", ID, "--out", "/home"], env).stderr).toContain("OUT_UNSAFE");
   });
 
+  it("final-head Lows: a symlink at img/<file> or index.html is refused; a bad state is a coded refusal", () => {
+    const { env, root } = setup();
+    const out = join(tmp("rl-files-"), "p");
+    mkdirSync(join(out, "img"), { recursive: true });
+    symlinkSync(join(tmp("rl-target-"), "x.png"), join(out, "img", "pc-1.png"));
+    expect(run(["review-page", ID, "--out", out], env).stderr).toContain("OUT_UNSAFE");
+    const out2 = join(tmp("rl-files2-"), "p");
+    mkdirSync(out2);
+    symlinkSync(join(tmp("rl-target2-"), "i.html"), join(out2, "index.html"));
+    expect(run(["review-page", ID, "--out", out2], env).stderr).toContain("OUT_UNSAFE");
+    const r = run(["decide", ID, "--decision", "revise", "--words", "w", "--reason", "r", "--next", "x".repeat(401)], env);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("STATE_INVALID");
+    expect(readdirSync(root)).not.toContain("decisions");
+  });
+
   it("L2: bad notes are a refusal with a code, not a stack trace", () => {
     const { env } = setup();
     const notes = join(tmp("rl-notes-"), "n.json");

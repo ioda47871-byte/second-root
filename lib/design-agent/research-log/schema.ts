@@ -6,6 +6,7 @@
  * decision and reasons. Never the pictures, never the audit's findings text (those stay in the private review inbox).
  * Fictional shops only (DEV-263h: a real shop's data never enters the repository): intake and queue-add refuse any slug
  * that is not in shops.ts FICTIONAL_SHOPS with a facts pack whose shop_id starts with "fictional-" (SHOP_NOT_FICTIONAL).
+ * store.writeEntry itself does not check the shop: any other caller must call assertFictionalShop first.
  *
  * Nothing in this log is an approval. An entry never issues, claims or spends an approval ID, and an `adopt` decision
  * records the owner's choice; it does not register a CP-* research case (design-library/success-cases/).
