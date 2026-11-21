@@ -142,6 +142,10 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-de
   をすべて満たすときだけ。`apiKeySource` があれば（API キーの資格情報が別にある）API キーとして `CLAUDE_API_KEY_AUTH`、`api_key` / `api_key_helper` も
   `CLAUDE_API_KEY_AUTH`。それ以外・不明（長期 token の `oauth_token`、`third_party`、`none`、first-party 以外の provider や provider 無し）は
   `CLAUDE_AUTH_METHOD_REFUSED`、`loggedIn` が true でない・exit が 0 でないものは `CLAUDE_NOT_SIGNED_IN`。どれも何も使わない。
+- サインインの形だけを確かめる: `imagefirst-audit.ts --check-auth-only`（jail が止まっていることと上の `auth status` の判定だけ。モデルは呼ばない・
+  bundle も marker も触らない。`{"status":"auth_ok"}` で exit 0、それ以外は拒否のコードで exit 2）。Issue #302 の限定パイロットの preflight が使う
+  （[`imagefirst-pilot.md`](imagefirst-pilot.md)。パイロットは worker と同じく jail の外から、root の `setpriv` で `sr-designgen` として起動する。
+  jail の中の `admin.sh run` では systemctl が systemd を見られず、`JAIL_STATE_UNKNOWN` で拒否される）。
 - jail: 開始時と、marker を作る直前（ここで動いていれば拒否・何も使わない）と、呼び出しのたびに確かめる。
 - 呼び出し: `claude -p --input-format stream-json --output-format stream-json --verbose --tools "" --strict-mcp-config --no-session-persistence --setting-sources ""`、
   作業ディレクトリは state の下の空の一時ディレクトリ（リポジトリの外。終わったら消す）、環境は worker の許可リストから `ANTHROPIC_*` と

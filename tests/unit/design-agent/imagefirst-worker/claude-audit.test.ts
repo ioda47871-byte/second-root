@@ -621,6 +621,38 @@ describe("Issue #302: the CLI as a process (fakes only through the test entry un
     expect(readLog(h.log)).toEqual([]);
   });
 
+  it("Issue #302 --check-auth-only: only `auth status` (no model call, no bundle, no marker); API key / signed out / jail refuse with exit 2", () => {
+    const h = homeWith();
+    const ok = h.test(["--check-auth-only"]);
+    expect(ok).toMatchObject({ status: 0, out: { status: "auth_ok", code: null } });
+    const calls = readLog(h.log);
+    expect(calls.map((c) => c.bin)).toEqual(["auth"]);
+    expect(calls[0]!.argv).toEqual(["--setting-sources", "", "auth", "status"]);
+    expect(calls[0]!.forbidden).toEqual([]);
+    expect(existsSync(join(h.d.state, "audits"))).toBe(false);
+    expect(existsSync(join(h.home, "sr-runs", "review-inbox", "audits"))).toBe(false);
+    for (const [mode, code] of [["console", "CLAUDE_API_KEY_AUTH"], ["apikey", "CLAUDE_API_KEY_AUTH"], ["signedout", "CLAUDE_NOT_SIGNED_IN"], ["provider-bedrock", "CLAUDE_AUTH_METHOD_REFUSED"]] as const) {
+      const v = homeWith({ auth: mode });
+      expect(v.test(["--check-auth-only"]), mode).toMatchObject({ status: 2, out: { status: "refused", code } });
+      expect(readLog(v.log).filter((c) => c.bin === "claude"), mode).toEqual([]);
+    }
+    // the jail running or unreadable: refused before claude is even asked
+    const j = homeWith();
+    const sysDir = tmp("sr-audit-sys-active-");
+    const active = join(sysDir, "systemctl");
+    writeFileSync(active, `#!/bin/sh\nif [ "$1" = show ]; then echo active; else echo enabled; fi\n`, { mode: 0o755 });
+    expect(spawnOut([ENTRY, j.bin, active, "--check-auth-only"], { HOME: j.home, XDG_STATE_HOME: join(j.home, ".local", "state") })).toMatchObject({ status: 2, out: { code: "JAIL_ACTIVE" } });
+    expect(readLog(j.log)).toEqual([]);
+    expect(h.test(["--check-auth-only", "--dry-run"])).toMatchObject({ status: 2, out: { code: "USAGE" } });
+    // review L3: it runs from under the worker's state directory (as the audit), which must be a private one of ours;
+    // a refusal carries only a status and a code (no approval_id label)
+    const m = homeWith();
+    const missing = spawnOut([ENTRY, m.bin, m.sys, "--check-auth-only"], { HOME: m.home, XDG_STATE_HOME: join(m.home, "no-such-state") });
+    expect(missing).toMatchObject({ status: 2, out: { status: "refused", code: "STATE_DIR_UNSAFE" } });
+    expect(Object.keys(missing.out!).sort()).toEqual(["code", "status"]);
+    expect(readLog(m.log)).toEqual([]);
+  });
+
   it("a stopped audit exits 1 with the fixed code", () => {
     const h = homeWith({ mode: "quota" });
     expect(h.test([h.d.id])).toMatchObject({ status: 1, out: { status: "stopped", code: "CLAUDE_QUOTA" } });

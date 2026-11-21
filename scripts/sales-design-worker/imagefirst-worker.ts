@@ -25,6 +25,9 @@
  * One JSON line on stdout. Exit: 0 no job / locked / succeeded, 2 refused (nothing invoked), 1 invoked and stopped.
  * `--precheck`: every check of the cycle up to, not including, the claim, with no lock, audit line or write; exit 0 = it
  * would run now ("would_run"), 3 = no job, 2 = refused.
+ * `--check-codex-auth-only` (Issue #302 pilot preflight): the Codex sign-in alone, with nothing used: the generation path's
+ * .env rule and sandbox, then one sandboxed sign-in status read (phase2f-live-cli.ts codexSignInCheck); no claim, no
+ * ledger, no model call. Exit 0 {"status":"codex_auth_ok"}, 2 refused with a fixed code only.
  *
  * Issue #302 P3 follow-up (docs/operations/imagefirst-review-handoff.md §4): after a cycle that ended "succeeded", the
  * same process hands that run to the local review inbox (~/sr-runs/review-inbox) with deliverAfterRun
@@ -50,7 +53,7 @@ import { jailIdle } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, gitCommitState, grantFromEnv, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
-import { expand, fileAtCommit, insideRepo, REPO, runMain, say, stopSignals } from "../design-artifact/phase2f-live-cli";
+import { codexSignInCheck, expand, fileAtCommit, insideRepo, liveContext, REPO, runMain, say, stopSignals } from "../design-artifact/phase2f-live-cli";
 
 process.umask(0o077);
 /** Set once the approval is claimed: ends the run with a WORKER_INTERRUPTED receipt and audit line (never invokes). */
@@ -72,8 +75,20 @@ async function main(): Promise<number> {
   // --deliver-review <approval id> (Issue #302 P3 follow-up: re-send a finished run's sealed bundle to the review inbox)
   const precheck = process.argv.length === 3 && process.argv[2] === "--precheck";
   const deliver = process.argv[2] === "--deliver-review";
+  // Issue #302 (the owner's one-shot pilot's read-only preflight, review H1): the Codex sign-in alone, before anything is used
+  const codexAuth = process.argv.length === 3 && process.argv[2] === "--check-codex-auth-only";
   if (deliver && process.argv.length !== 4) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
-  if (process.argv.length > 2 && !precheck && !deliver) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  if (process.argv.length > 2 && !precheck && !deliver && !codexAuth) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  if (codexAuth) {
+    // the generation path's own context (places, protected paths, environment) for a run directory under ~/sr-runs that is
+    // never created; then its .env rule, its sandbox set-up and ONE sandboxed sign-in status read (the shared helper's
+    // codexSignInCheck). No claim, no ledger
+    // write, no model call; only a code is printed
+    const ctx = await liveContext(join(homedir(), "sr-runs", ".codex-sign-in-check"), () => undefined);
+    const code = "code" in ctx ? ctx.code : await codexSignInCheck(ctx, controller.signal);
+    say(code === null ? { status: "codex_auth_ok", code: null, invoked: false } : { status: "refused", code, invoked: false });
+    return code === null ? 0 : 2;
+  }
   const deliverId = deliver ? process.argv[3]! : null;
   if (deliverId !== null && checkRealApprovalId(deliverId) !== "ok") return (say({ status: "refused", code: checkRealApprovalId(deliverId), invoked: false }), 2);
   const grant = grantFromEnv(process.env);

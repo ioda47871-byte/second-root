@@ -298,9 +298,16 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     expect(code(`${W}/claude-audit.ts`)).not.toMatch(/runBounded|bounded-process/);
   });
 
-  it("nothing starts the audit: no unit, timer, wrapper, worker or automatic start names it", () => {
+  it("nothing starts the audit: no unit, timer, wrapper, worker or automatic start names it (only the owner's one-shot pilot, by hand)", () => {
     const hits = spawnSync("git", ["grep", "--untracked", "-lE", "(tsx|node|sh|ExecStart)\\b.*imagefirst-audit|runClaudeAudit\\(", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
-    expect(hits).toEqual(["lib/design-agent/imagefirst-worker/claude-audit.ts", "scripts/sales-design-worker/imagefirst-audit.ts"]);
+    expect(hits).toEqual([
+      "lib/design-agent/imagefirst-worker/claude-audit.ts",
+      // Issue #302 (owner pre-approval 2026-11-21, exact paths): root's one-shot pilot, run by hand once (--dry-run, then the
+      // audit once), and its read-only preflight (--check-auth-only: no model call); pinned in pilot.test.ts, never scheduled
+      "scripts/sales-design-worker/imagefirst-audit.ts",
+      "scripts/sales-design-worker/imagefirst-pilot-preflight.sh",
+      "scripts/sales-design-worker/imagefirst-pilot.sh",
+    ]);
   });
 
   it("PR #311 re-review L-a: the audit tier and the cap are pinned (changing the quality, sampling or fill fails here)", () => {
