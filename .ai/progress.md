@@ -349,3 +349,4 @@
 - 2026-11-22 DEV-302p6 merged（PR #319 → develop 5d359cd2、squash。CI success・Fresh Review PASS on 5f7ea08a）。
 - 2026-11-22 d4 実行経路 merged（PR #320 → develop 745d0388、OWNER MERGE ONLY、オーナーがマージ。CI success・Fresh Review PASS on e605b655、記録はPRコメント 7067513407 と `.ai/reviews/DEV-302-d4-run.md`）。方向性ごとの表 `run-directions.ts`、d3 は不変、d4 は d4 パケットだけで承認。
 - 2026-11-22 d4 承認パケットの提案（OWNER MERGE ONLY の PR、**未承認のまま**）: §6 画像 6 枚の内訳、§7 モデル・CLI・利用枠、§8 回数と時間の上限、§9 失敗時の扱い、§9a 提案値（承認 ID `hoshigama-imagefirst-d4-20261122-01`・計画 ID `hoshigama-imagefirst-p4-20261122`・期限 `2026-11-23T03:00:00Z`）。§10 と冒頭はオーナーの明示承認まで「未記入／未承認」。実画像生成はしていない。
+- 2026-11-22 オーナーが Claude アプリで d4 承認パケットの提案値を明示承認（承認 ID `hoshigama-imagefirst-d4-20261122-01`・計画 ID `hoshigama-imagefirst-p4-20261122`・期限 `2026-11-23T03:00:00Z`、codex exec 1 回・画像最大 6 枚・15 分以内・再試行なし）。PR #321 の §10 と冒頭を「承認済み」に記入（記入は Claude）。承認が確定するのはオーナーのマージ（OWNER MERGE ONLY）。実画像生成はマージと root の preflight の後だけ。
