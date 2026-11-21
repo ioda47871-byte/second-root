@@ -111,16 +111,19 @@ PC か SP か（SP は PC の縮小でない別の設計）／全頁の何枚目
 | 再試行 | **しない**。止まった・足りなかった・気に入らなかった、のどれでも同じ ID で作り直さない |
 | 時間 | 1 回 15 分まで（`LIVE_LIMITS.callTimeoutMs`）。超えたら止める |
 | 台帳 | `phase2f-live` の台帳（種類 `full_page_comp`、経路 `image_first`）。この ID の受領記録を 1 つだけ書く |
-| 後続 | 届いた画像は非公開の review inbox・プレビュー・Claude CLI の監査（助言のみ）へ。GitHub には画像・プロンプト・manifest を出さない |
+| 後続 | 届いた画像は非公開の review inbox・プレビュー・Claude CLI の監査（助言のみ）へ。pilot は**本物の Claude CLI の監査を 1 回**使う（claude.ai の利用枠）。GitHub には画像・プロンプト・manifest を出さない |
 
 ## 9. 失敗時の扱い（停止条件。再試行しない）
 
-- 承認を使う前に止まる（何も使わない。同じ ID で直して再実行できる）: パケットが未承認・パケットの値と起動の値の不一致
-  （`PACKET_NOT_APPROVED`・`PACKET_APPROVAL_MISMATCH`）、パケットのパスやピンの不一致（`PACKET_PATH_NOT_ALLOWED`・`PACKET_PIN_MISMATCH`・
-  `PLAN_PIN_MISMATCH`・`PROMPT_PIN_MISMATCH`・`COMMIT_PIN_MISMATCH`）、承認 ID と方向性の不一致（`APPROVAL_ID_DIRECTION_MISMATCH`）、
-  期限（`APPROVAL_EXPIRY_INVALID`・`APPROVAL_EXPIRED`・`APPROVAL_EXPIRY_TOO_FAR`）、出力先の不正（`RUN_DIR_IN_REPO`・`OUT_DIR_*`）、
-  使用済みの ID（`APPROVAL_ALREADY_USED`）、preflight の停止（Codex 未サインイン・`.env` あり・サンドボックス不可・資源不足）。
-- 承認を使った後に止まる（**この ID は使用済みになる**。続けるには新しいパケットと新しい承認 ID）: `CODEX_NO_IMAGE`・`CODEX_IMAGE_INVALID`・
+- **同じ ID をまだ使えるのは、worker が ID を claim する前に止まったときだけ**: root の pilot の preflight が FAIL のとき（何も使わない）と、
+  worker の precheck が `phase=after_claim` より前に拒否したとき（パケットが未承認・期限切れ・ピンや ID の形の不一致など）。
+  `docs/operations/imagefirst-pilot.md` の出力で `phase=after_claim` が出ていなければ、原因を直して同じ ID でもう一度始められる。
+- **worker が ID を claim した後の停止は、すべてこの ID を使い切る**（続けるには新しいパケットと新しい承認 ID）。入口自身の確認で止まる場合も含む:
+  `PACKET_NOT_APPROVED`・`PACKET_APPROVAL_MISMATCH`・`PACKET_PATH_NOT_ALLOWED`・`PACKET_PIN_MISMATCH`・`PLAN_PIN_MISMATCH`・`PROMPT_PIN_MISMATCH`・
+  `COMMIT_PIN_MISMATCH`・`APPROVAL_ID_DIRECTION_MISMATCH`・`APPROVAL_EXPIRY_*`・`APPROVAL_EXPIRED`・`RUN_DIR_IN_REPO`・`OUT_DIR_*`（`OUT_DIR_UNWRITABLE`
+  は台帳の予約の後）・`APPROVAL_ALREADY_USED`・入口の preflight（サンドボックス不可・`.env` あり）。同じ ID で直して再実行しても
+  `APPROVAL_ALREADY_CLAIMED` と preflight の `no_prior_run` で拒否される。
+- 画像の呼び出しで止まる（同じく **この ID は使用済み**）: `CODEX_NO_IMAGE`・`CODEX_IMAGE_INVALID`・
   `CODEX_IMAGE_UNSUPPORTED_FORMAT`・`CODEX_QUOTA`（利用枠の上限）・`CODEX_IMAGE_TOOL_FAILED`・`CODEX_TIMEOUT`（15 分）・`CODEX_EXEC_FAILED`・
   `CODEX_NOT_SIGNED_IN`・`CODEX_IMAGE_CALLS_EXCEEDED`・`CODEX_IMAGE_COUNT_MISMATCH`（6 枚そろわない）・`CODEX_ABORTED`（中断）など。
   止まった実行は停止コードを記録し、返ってきた画像があれば `stopped/` に置く（部品にもレビューにも使わない）。中断・停止でも受領記録は必ず残る。
@@ -136,11 +139,13 @@ PC か SP か（SP は PC の縮小でない別の設計）／全頁の何枚目
 | 提案する方向性 | `d4` | このパケットが承認できるのは d4 だけ |
 | 提案する d4 の承認 ID | `hoshigama-imagefirst-d4-20261122-01` | 形式 `hoshigama-imagefirst-d4-<YYYYMMDD>-<NN>`。作成日・この日の 1 番目。未使用（使用済みは d3 の `…-d3-20261121-01` だけ） |
 | 提案する計画 ID | `hoshigama-imagefirst-p4-20261122` | 形式 `hoshigama-imagefirst-p4-<YYYYMMDD>` |
-| 提案する期限 | `2026-11-23T03:00:00Z`（日本時間 11 月 23 日 12:00） | 入口は起動の時点から 24 時間以内の期限だけを受け付けるので、起動できるのは `2026-11-22T03:00:00Z`〜`2026-11-23T03:00:00Z`（日本時間 11/22 12:00〜11/23 12:00）。過ぎたら期限を書き直して新しい版として承認し直す |
+| 提案する期限 | `2026-11-23T03:00:00Z`（日本時間 11 月 23 日 12:00） | 入口は起動の時点から 24 時間以内の期限だけを受け付けるので、早くて `2026-11-22T03:00:00Z`（日本時間 11/22 12:00）から。pilot の preflight は期限まで 20 分以上（`MIN_LEFT_SECONDS=1200`）、worker の precheck は 5 分以上を求めるので、**pilot を始める最終時刻は `2026-11-23T02:40:00Z`（日本時間 11/23 11:40）**。過ぎたら期限を書き直した新しい版を承認し直す（ID がまだ claim されていなければ同じ ID でよい） |
 
 起動の手順（承認とマージの後だけ。root の端末で。値は §10）:
 
-1. root の clone を承認コミット（develop）にそろえる。
+1. `docs/operations/imagefirst-pilot.md` §1 の手順 2〜5 をそのまま行う（`imagefirst-pilot.sh --sync-clone` で root の clone を承認コミット
+   （40 字の SHA）に detached でそろえる・Codex と claude.ai のサインインをし直す・`~/sr-runs` を 0700 にする、など）。この節では d3 の ID を
+   §10 の d4 の ID に置き換える。
 2. `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <§10 の d4 の承認 ID>` — 最後の行が
    `IMAGEFIRST_PILOT_PREFLIGHT PASS … failed=0 exit=0` でなければ止める（何も使っていない）。
 3. `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot.sh <§10 の d4 の承認 ID>` — 1 回だけ。成功なら
