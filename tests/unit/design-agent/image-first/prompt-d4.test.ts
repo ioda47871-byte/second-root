@@ -55,9 +55,10 @@ describe("IMAGE_FIRST d4 (revise of d3)", () => {
     if (header[0] === "承認済み") {
       expect(row("状態")).toBe("承認済み");
       expect(row("承認する方向性")).toBe("d4");
-      expect(row("d4 の承認 ID")).toMatch(/^hoshigama-imagefirst-d4-(?!00000000)\d{8}-\d{2}$/);
-      expect(row("計画 ID")).toMatch(/^hoshigama-imagefirst-p4-\d{8}$/);
-      expect(row("期限")).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+      // exactly the values the owner approved in the Claude app on 2026-11-22 (a new approval changes these lines with its review)
+      expect(row("d4 の承認 ID")).toBe("hoshigama-imagefirst-d4-20261122-01");
+      expect(row("計画 ID")).toBe("hoshigama-imagefirst-p4-20261122");
+      expect(row("期限")).toBe("2026-11-23T03:00:00Z");
       // the entry's own reader accepts exactly these values (and the P3 reader never does)
       expect(readApprovalPacket(Buffer.from(text, "utf8"), D4_PACKET_SPEC)).toMatchObject({ status: "承認済み", directions: ["d4"], approvalIds: { d4: row("d4 の承認 ID") }, expires: row("期限"), planId: row("計画 ID") });
       expect(readApprovalPacket(Buffer.from(text, "utf8"))).toBeNull();

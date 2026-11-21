@@ -3,7 +3,8 @@
 2026-11-22 作成（Issue #302 P5、d3 へのオーナー判断 revise 2026-11-21 から）。**状態: 承認済み。**
 
 承認の状態を表すのは、すぐ上の「状態」の行と §10 の表だけである。両方が「承認済み」になるまで、この文書は Codex の実呼び出し・画像生成・
-課金・WSL 操作のどれも認めない。**この版は下書きで、オーナーの承認とマージの前に何も実行しない（OWNER MERGE ONLY）。**
+課金・WSL 操作のどれも認めない。**この版はオーナーが明示承認した値を記入したもの。承認が効くのはオーナーがこの版をマージした後だけで
+（OWNER MERGE ONLY）、実行は root の pilot の preflight が PASS した後の 1 回だけ（§9a）。**
 
 - 改善元: `hoshigama-imagefirst-d3-20261121-01`（研究ログ `design-library/research-log/entries/…`、判断 `decisions/…--1.json`、brief `briefs/hoshigama-d4.md`）。
 - 方向性: `design-library/research/quality-pipeline/poc/bakery/direction-d4.json` の `d4-flour-crust-shelf`。d3 の承認済みピン（plan の SHA は
