@@ -40,10 +40,15 @@ export const PROMPT_INPUTS = {
   principles: { path: "design-library/research/quality-pipeline/principles-v1.json", sha256: "a7c9a3f467f46787520885edf67df692a23e4c37ac05934fcfabb67ea9c4bf6d" },
 } as const;
 
-/** The two directions this preparation covers, and the canonical direction.json SHA-256 of each (a changed object refuses). */
+/**
+ * The directions this preparation covers, the file each is read from, and the canonical direction.json SHA-256 of each
+ * (a changed object refuses). d4 (Issue #302 P5: the owner's revise of d3) lives in its own file so d1/d3's approved plan
+ * pins, which include the SHA-256 of direction-set.json, do not move.
+ */
 export const DIRECTIONS = {
-  d1: { id: "d1-kiln-clock", sha256: "3c2a50de5ddd42d5f98e120553ebf82cc400b4319e1195b9d37d15b866e4c48b" },
-  d3: { id: "d3-flour-crust", sha256: "91b4dcfca9a7df561bc2cbebb4c8720aa453f11ddfa030c60fd7a5737237bd23" },
+  d1: { id: "d1-kiln-clock", sha256: "3c2a50de5ddd42d5f98e120553ebf82cc400b4319e1195b9d37d15b866e4c48b", set: PROMPT_INPUTS.directionSet.path },
+  d3: { id: "d3-flour-crust", sha256: "91b4dcfca9a7df561bc2cbebb4c8720aa453f11ddfa030c60fd7a5737237bd23", set: PROMPT_INPUTS.directionSet.path },
+  d4: { id: "d4-flour-crust-shelf", sha256: "02118ed83819146e21fc1ba6711ce93aa075146cc443b1c9b80384793fb59fa3", set: `${BAKERY}/direction-d4.json` },
 } as const;
 export type DirectionKey = keyof typeof DIRECTIONS;
 
@@ -111,7 +116,23 @@ export const SECTION_TEXT_KEYS: Readonly<Record<DirectionKey, Readonly<Record<st
     hours: ["hours"],
     visit: ["closed_days", "address", "access", "phone"],
   },
+  d4: {
+    name: ["name"],
+    "spread-flour": ["statement_2", "description"],
+    "spread-fire": ["statement_1"],
+    shelf: ["statement_3", "service_1", "service_2", "service_3", "service_4", "service_5"],
+    info: ["hours", "closed_days", "address", "access", "phone"],
+  },
 };
+/**
+ * Sections whose values may carry the facts schema's own label as a small heading (d4: the owner asked for a labelled
+ * shop-information block, revise 2026-11-21). Directions without an entry are unchanged (no label line in their prompts).
+ */
+export const SECTION_LABEL_KEYS: Readonly<Partial<Record<DirectionKey, Readonly<Record<string, readonly string[]>>>>> = {
+  d4: { info: ["hours", "closed_days", "address", "access", "phone"] },
+};
+/** Facts the footer of the last picture may repeat (d4: the shop name and the fictional-shop note). Others: none. */
+export const FOOTER_TEXT_KEYS: Readonly<Partial<Record<DirectionKey, readonly string[]>>> = { d4: ["name", "description"] };
 /** Navigation words a header may show: labels of the facts schema's own label table (copy-record LABELS_BY_KEY; checked). */
 export const NAV_LABELS: readonly (readonly [key: string, label: string])[] = [
   ["hours", "営業時間"],
@@ -203,6 +224,18 @@ function directionUse(obj: unknown, key: DirectionKey): DirectionUse {
 }
 
 /**
+ * The canonical direction.json SHA-256 of `key`'s object as it is in its file now (pin not checked): the value
+ * DIRECTIONS[key].sha256 must hold. Reads only that direction's file (image-first-prompt.ts --print-direction-sha).
+ */
+export async function currentDirectionSha256(reader: Reader, key: DirectionKey): Promise<string> {
+  if (!Object.hasOwn(DIRECTIONS, key)) throw new PromptStop("DIRECTION_UNKNOWN");
+  const set = JSON.parse((await readChecked(reader, DIRECTIONS[key].set)).toString("utf8")) as { directions?: { id?: unknown }[] };
+  const chosen = (Array.isArray(set.directions) ? set.directions : []).filter((d) => d && d.id === DIRECTIONS[key].id);
+  if (chosen.length !== 1) throw new PromptStop("DIRECTION_INVALID");
+  return sha256(`${JSON.stringify(chosen[0], null, 2)}\n`);
+}
+
+/**
  * Reads the three inputs (and nothing else) and checks their pins: the facts pack's bytes, the principle record's
  * bytes and the chosen direction object's canonical bytes.
  */
@@ -222,7 +255,7 @@ export async function loadPromptInputs(reader: Reader, key: DirectionKey): Promi
       .map((c) => c.id as string)
       .sort();
   if (Object.values(principleCases).some((ids) => ids.length === 0)) throw new PromptStop("PRINCIPLES_INVALID");
-  const setBytes = await readChecked(reader, PROMPT_INPUTS.directionSet.path);
+  const setBytes = await readChecked(reader, DIRECTIONS[key].set);
   const set = JSON.parse(setBytes.toString("utf8")) as { shop_id?: unknown; facts_sha256?: unknown; directions?: unknown };
   if (set.shop_id !== facts.data.shop_id || set.facts_sha256 !== PROMPT_INPUTS.factsPack.sha256 || !Array.isArray(set.directions)) throw new PromptStop("DIRECTION_SET_INVALID");
   // only the chosen object is kept; the set itself is held only for its SHA-256 (provenance)
@@ -308,7 +341,14 @@ function partPrompt(o: { inputs: PromptInputs; viewport: ImageFirstViewport; gro
   const pc = viewport === "desktop_1440";
   const first = k === 1;
   const last = k === n;
-  const texts = [...new Set(o.sections.flatMap((s) => SECTION_TEXT_KEYS[inputs.key][s.id] ?? []))].map((key) => factValue(inputs.facts, key));
+  const footerKeys = last ? (FOOTER_TEXT_KEYS[inputs.key] ?? []) : [];
+  const texts = [...new Set([...o.sections.flatMap((s) => SECTION_TEXT_KEYS[inputs.key][s.id] ?? []), ...footerKeys])].map((key) => factValue(inputs.facts, key));
+  const labelOf = (key: string) => {
+    const label = NAV_LABELS.find(([k]) => k === key)?.[1];
+    if (!label || !LABELS_BY_KEY[key]?.includes(label)) throw new PromptStop("NAV_LABEL_INVALID");
+    return label;
+  };
+  const sectionLabels = o.sections.flatMap((s) => (SECTION_LABEL_KEYS[inputs.key]?.[s.id] ?? []).length ? [{ id: s.id, labels: SECTION_LABEL_KEYS[inputs.key]![s.id]!.map(labelOf) }] : []);
   const nav = NAV_LABELS.map(([key, label]) => {
     if (!LABELS_BY_KEY[key]?.includes(label)) throw new PromptStop("NAV_LABEL_INVALID");
     return label;
@@ -346,6 +386,8 @@ function partPrompt(o: { inputs: PromptInputs; viewport: ImageFirstViewport; gro
   lines.push("画像に書いてよい文字（次の文字列だけを、一字一句そのまま。言い換え・要約・翻訳・分割をしない）:");
   for (const t of texts) lines.push(`- 「${t}」`);
   if (first) lines.push(`ナビゲーションの項目に使ってよい語: ${nav.map((x) => `「${x}」`).join(" ")}`);
+  for (const l of sectionLabels) lines.push(`区画「${l.id}」の値の上に小さな見出しとして使ってよい語: ${l.labels.map((x) => `「${x}」`).join(" ")}`);
+  if (footerKeys.length) lines.push(`フッターに書いてよい文字: 上の一覧のうち ${footerKeys.map((k) => `「${factValue(inputs.facts, k)}」`).join(" ")}`);
   lines.push("それ以外の文字・英字・見出し・キャッチコピー・ロゴは描かない。数字だけの目盛りや時刻のラベルを単独で書かない（数字が現れるのは上の文字列の中だけ）。文字の代わりに読めない模様の文字を描かない。");
   lines.push("画像の文字は店の事実の根拠にならない。価格・受賞・歴史や創業の年・人物（店主・職人など）・評判・お客様の声・メニュー・予約・限定の表示を作らない。人の顔や手を描かない。");
   return `${lines.join("\n")}\n`;

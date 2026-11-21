@@ -1,0 +1,105 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-bakery-hoshigama",
+  "facts_sha256": "d46adc81bee7b7096e47f57091d88df348ac37cf389d7cce071a76f634fcf715",
+  "note": "d3-flour-crust の改善版（オーナー判断 revise 2026-11-21、design-library/research-log/briefs/hoshigama-d4.md）。d3 の承認済みピンを動かさないため direction-set.json とは別のファイルに置く。",
+  "directions": [
+    {
+      "id": "d4-flour-crust-shelf",
+      "motif_focus": "M3",
+      "concept": "白い粉の面と焼き色の面を、見開きのように交互に開く (F11 粉は二種類を季節で割合を変えて合わせる、F12 石窯で焼く田舎パンとバゲット)。Hero は店名を巨大な文字で組み、文字の上半分を粉の白、下半分を焼き色に塗り分ける。見開きごとに粉と焼き色の左右・上下・面積の比を入れ替え、同じ形の帯を二度続けない。物語の終幕は「棚」の章: 焼き上がった順に店先の棚へ並べるという事実 (F9) を構図の根拠にし、5つの品名を棚の段として並べ、粉と焼き色の境をまたがせる。石窯で焼く2品 (田舎パンとバゲット) を「石窯で焼くのは田舎パンとバゲットです」の文と組にして最上段に大きく置き、残り3品を下の段に続ける。品の説明・値段・写真は作らない。最後に、見出しつきの店舗情報を1つの区画にまとめて閉じる。文字が載る所は質感を落とした平らな面にし、粉とパン皮の質感は文字の無い面で見せる。 SP（390px）では、二色に分かれた巨大な店名を縦に組み、上が粉の白、下が焼き色。",
+      "composition": {
+        "hero": "type_led",
+        "flow": "alternating_spreads"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": { "value": "type_led", "source": "declared" },
+        "flow": { "value": "alternating_spreads", "source": "declared" },
+        "navigation": { "value": "side_index", "source": "declared" },
+        "reading_path": { "value": "z_pattern", "source": "declared" },
+        "section_layouts": {
+          "value": ["vertical_text", "overlap_collage", "split_copy_media", "diagram", "single_column_text"],
+          "source": "declared"
+        },
+        "transitions": { "value": ["hard_cut", "hard_cut", "hard_cut", "hard_cut"], "source": "declared" },
+        "text_direction": { "value": "mixed", "source": "declared" },
+        "imagery": { "value": "none", "source": "declared" }
+      },
+      "sections": [
+        {
+          "id": "name",
+          "motif_facet": "巨大な店名の上半分が粉の白、下半分が焼き色に分かれる",
+          "ground": "粉の白と焼き色の二色",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "spread-flour",
+          "motif_facet": "左が粉の面で「粉は二種類を、季節で割合を変えて合わせます」、右が焼き色の平らな面で店の説明の文。文字の下だけ質感を落とす",
+          "ground": "粉の白と濃い焼き色",
+          "layout": "overlap_collage",
+          "image_slots": []
+        },
+        {
+          "id": "spread-fire",
+          "motif_facet": "左右を入れ替え、左が焼き色の面、右が粉の面で「毎朝4時半に石窯へ薪をくべます」。高さは前の見開きより低く、焼き色の面にはパン皮の質感だけを見せる",
+          "ground": "焼き色と生成り",
+          "layout": "split_copy_media",
+          "image_slots": []
+        },
+        {
+          "id": "shelf",
+          "motif_facet": "棚の章。粉と焼き色の境をまたいで棚の段が3段並ぶ。最上段に石窯の文と、品名の一覧の最初の2つを大きく、下の2段に残りの3つの品名を続ける（品名は一覧の文字列そのまま）",
+          "ground": "上半分が粉の白、下半分が焼き色",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "info",
+          "motif_facet": "1つの区画に、小見出しつきの2組: 営業時間と定休日の組、所在地・道順・電話の組。値の上に小さな見出しを置く",
+          "ground": "焼き色の平らな面",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "棚の章で5つの品名が粉と焼き色の境をまたいで並んだあと、見出しつきの店舗情報の区画で閉じ、最後に店名と架空店舗である旨の小さなフッターを置く",
+      "pc_plan": "1440 を左右に二分した見開きを縦に重ね、見開きごとに粉と焼き色の左右と高さを入れ替える（同じ形の帯を二度続けない）。左端に見開きの位置を示す細い目次を置く。焼き色の色相はページ全体で1つにそろえる",
+      "sp_plan": {
+        "first_screen": "二色に分かれた巨大な店名だけを縦に組み、上が粉の白、下が焼き色。ヘッダーのナビゲーションは「営業時間」「所在地」「電話」の3語だけを大きめの文字で、押しやすい間隔で置く",
+        "reorder": "見開きの左右を上下にし、見開きごとに粉と焼き色の上下の順を入れ替えて縦へ積む。目次は外して見開きごとの小さな色の印にする",
+        "overlaps": "棚の段は粉の面の下端から焼き色の面の上端へまたがせ、最上段の石窯の2品を一番大きくする"
+      },
+      "protect": [
+        "粉の白と焼き色の二色が見開きごとに入れ替わること",
+        "巨大な店名が二色に分かれること",
+        "文字が載る所は平らな面にし、質感は文字の無い面で見せること"
+      ],
+      "references": [
+        {
+          "principle": "P5",
+          "case_id": "CP-001",
+          "use": "巨大な文字を面の区切りをまたぐ構造の板として使う方法 (字形と三連の比率は写さない)／翻訳：店名そのものを粉の白と焼き色の境にまたがせ、1画面目で二つの面を示す"
+        },
+        {
+          "principle": "P4",
+          "case_id": "CP-018",
+          "use": "2つの版を重ねてずらす考え方 (版の色・トンボ・網点は写さない)／翻訳：粉と焼き色という2つの面を見開きごとに左右と高さを入れ替える"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-019",
+          "reason": "時間の地点を並べる型は d1 の時刻の軸で使うので、ここでは使わない"
+        }
+      ],
+      "checklist": {
+        "C1": { "answer": "yes", "evidence": "中心は M3 (F11 二種類の粉と F12 石窯の焼き色) と F9 の棚。粉を扱わない店に替えると二色の入れ替えも棚の段も意味を失う" },
+        "C2": { "answer": "yes", "evidence": "d3 から Hero・流れは保ち、終幕を棚の章 (diagram) にし、店舗情報を見出しつきの1区画にした" },
+        "C3": { "answer": "yes", "evidence": "店名 → 粉の文と説明 → 火の文 → 棚の章 (石窯の2品が最上段) → 見出しつきの店舗情報とフッター" },
+        "C4": { "answer": "yes", "evidence": "SP は見開きを上下に積み、ナビを3語にし、棚の段を縦にまたがせる" },
+        "C5": { "answer": "yes", "evidence": "split_copy_media は5区画中1つ。各見開きの比を変え、同じ帯を続けない" }
+      }
+    }
+  ]
+}

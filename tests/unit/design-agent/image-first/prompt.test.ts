@@ -13,7 +13,8 @@ import { UNAPPROVED_PACKET_FIXTURE, UNAPPROVED_PACKET_FIXTURE_SHA256 } from "./f
 
 const REPO = resolve(__dirname, "../../../..");
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
-const KEYS: DirectionKey[] = ["d1", "d3"];
+/** The p3 packet's directions (d4 has its own packet and tests: prompt-d4.test.ts). */
+const KEYS = ["d1", "d3"] as const satisfies readonly DirectionKey[];
 const BAKERY = "design-library/research/quality-pipeline/poc/bakery";
 
 function recordingReader(over: Record<string, (b: Buffer) => Buffer> = {}): { reader: Reader; opened: string[] } {

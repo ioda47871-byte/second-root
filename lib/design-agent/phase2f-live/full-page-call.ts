@@ -213,6 +213,8 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   const packet = readApprovalPacket(packetBytes);
   if (!packet) return refuse("PACKET_NOT_APPROVED");
   const key = plan.direction_key;
+  // this entry reads only the p3 packet (d1 / d3); a d4 run needs its own packet and entry (docs/design/image-first-hoshigama-d4-packet.md §4)
+  if (key !== "d1" && key !== "d3") return refuse("PACKET_APPROVAL_MISMATCH");
   if (!packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
 
   // ---- the approval is used from here on ------------------------------------------------------
