@@ -10563,7 +10563,28 @@
         "tests/unit/design-agent/research-log/research-log.test.ts",
         "npm run typecheck",
         "npm run lint"
-      ]
+      ],
+      "allowed_scope": [
+        "design-library/research-log/",
+        "lib/design-agent/research-log/",
+        "scripts/design-research/",
+        "tests/unit/design-agent/research-log/",
+        ".claude/skills/second-root-research-loop/",
+        "docs/operations/design-research-loop.md",
+        "CLAUDE.md (research-loop pointer only)"
+      ],
+      "forbidden_scope": [
+        "image generation, Codex, worker, pilot, autostart",
+        "issuing, claiming or consuming approval IDs",
+        "real-shop data in the repository",
+        "private images or audit findings text in the repository"
+      ],
+      "human_approval_triggers": [
+        "any image generation (new approval packet and approval ID, OWNER MERGE ONLY)",
+        "registering an adopted design as a CP-* research case"
+      ],
+      "attempts": 1,
+      "last_failure": null
     }
   ]
 }
