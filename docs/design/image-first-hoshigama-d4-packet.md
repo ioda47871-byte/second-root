@@ -33,22 +33,22 @@ SP では分け方の都合で `shelf` は 3 枚目（`spread-fire` と同じ画
 
 | 項目 | d4 |
 |---|---|
-| plan SHA-256 | 383c0a25c774b4d88bfa34bd3d34bea7a74c4a63d4bc52dd78ca96fe114b3c58 |
-| バッチ SHA-256 | 9babc0b16069fd472b1df44ed54fee282ee687688ff74b5d3b25d329a57fc753 |
-| バッチの文字数 | 14438 |
-| 方向性 SHA-256（`direction.json` の正規形） | ae61cfcc4e605bc096a74134ca14a8374dea85802be05e08fc8f78acb1f84008 |
-| 方向性ファイル SHA-256（`direction-d4.json`） | 7490396ac73fbf73f75a1e9712d40cc81183669933d209395e143f88bdab84ea |
+| plan SHA-256 | 0c3849b2d2e22f65601c7c3515028a999eb1ef39256b2fe08681bd8f771338cd |
+| バッチ SHA-256 | 993d938ab72df308fefef55f84d1fca0b197cb5f913273809dcd7ad464ae7e7e |
+| バッチの文字数 | 14408 |
+| 方向性 SHA-256（`direction.json` の正規形） | b3bee6b6b7f762917027480a88e700dec93fce136edc28fa7423a2541d5e1c1c |
+| 方向性ファイル SHA-256（`direction-d4.json`） | 64c6deb72179889f201321d78aa883b85bbcc4438e4d2ce7f07d14ca460f1533 |
 | facts SHA-256 | d46adc81bee7b7096e47f57091d88df348ac37cf389d7cce071a76f634fcf715 |
 | 成功原理 SHA-256 | a7c9a3f467f46787520885edf67df692a23e4c37ac05934fcfabb67ea9c4bf6d |
 
 | 画像 | プロンプト SHA-256 / 文字数 |
 |---|---|
-| pc-1 | `13947eed72a153032f73da74353f0bde9a31a3faf2dd3ff680b24c886c4c3395` / 2223 |
-| pc-2 | `d0fb215a2c71a7dc22872cd3b0eef4c1d4c87a7418e30e518ad18853ca6a98d4` / 2433 |
-| sp-1 | `bf2647857f05fb661cae3a71e0bd3695fd252e0a91fc1f3c5a4447fbf83f1925` / 1974 |
-| sp-2 | `097e3933f37a8b1e58d5a3c47e0c81d73b08f14ae75200c2efb1720c917cf218` / 2088 |
-| sp-3 | `73b4c5f7e2b9223f60ea074bb4e470a2b7938bf8fde1958ef2780f3fb12b1617` / 2271 |
-| sp-4 | `92ccad9ae0c475e78d0a631f29dd497f628b049945c4f156424f6e51676c09db` / 2362 |
+| pc-1 | `ca6a53e75a3f66d7c6be9a1fffcb6b870fcd3f423a9f102461de74abfa9b1c00` / 2218 |
+| pc-2 | `bcaa76644a4f414a2a2dfde1f6085cb5c599c4d264483236f65d6d3ed2bfe235` / 2428 |
+| sp-1 | `9350da6837135b0ffc105e4f1d64c1d6ef5f1733eae6f1f0ed8e9eb4a0da1297` / 1969 |
+| sp-2 | `d8b96ee4fefca93166841b993b991b7cba1a34ce691e1a80c541c316f338f1d7` / 2083 |
+| sp-3 | `cbc28fa7da57d595a1832a28a0a00f3b3eb53e322eb5c87de8803aa0fcb352d5` / 2266 |
+| sp-4 | `cce2773590310f500f136ffa29044e80724638752ce8a73c91d4c22dd894de6b` / 2357 |
 
 ## 4. 実行の経路（この版の時点では **d4 を受け付ける入口はまだ無い**）
 

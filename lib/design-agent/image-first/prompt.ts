@@ -48,7 +48,7 @@ export const PROMPT_INPUTS = {
 export const DIRECTIONS = {
   d1: { id: "d1-kiln-clock", sha256: "3c2a50de5ddd42d5f98e120553ebf82cc400b4319e1195b9d37d15b866e4c48b", set: PROMPT_INPUTS.directionSet.path },
   d3: { id: "d3-flour-crust", sha256: "91b4dcfca9a7df561bc2cbebb4c8720aa453f11ddfa030c60fd7a5737237bd23", set: PROMPT_INPUTS.directionSet.path },
-  d4: { id: "d4-flour-crust-shelf", sha256: "ae61cfcc4e605bc096a74134ca14a8374dea85802be05e08fc8f78acb1f84008", set: `${BAKERY}/direction-d4.json` },
+  d4: { id: "d4-flour-crust-shelf", sha256: "b3bee6b6b7f762917027480a88e700dec93fce136edc28fa7423a2541d5e1c1c", set: `${BAKERY}/direction-d4.json` },
 } as const;
 export type DirectionKey = keyof typeof DIRECTIONS;
 
