@@ -6,7 +6,7 @@
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 #
 # It changes nothing: no systemctl verb but `show`, no journal rotation / vacuum, no tmux command, nothing started or
-# stopped, no file written (not even a temporary one). It runs NOTHING as the requester (sr-designgen): a process of the
+# stopped, no file written (not even a temporary one, on bash 5.1+; older bash backs every here-string with a file). It runs NOTHING as the requester (sr-designgen): a process of the
 # requester outside the jail would trip REQUESTER_OUTSIDE_JAIL (host-check.sh). It looks only as root, through
 # `systemctl show`, `journalctl` and /proc (status, cgroup, stat, comm, the argv of the processes, of which it only tests
 # whether the program is Claude and a few option names are present, and where the Remote Control process's cwd points,

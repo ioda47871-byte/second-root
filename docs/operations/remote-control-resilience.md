@@ -62,7 +62,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 
 - systemctl は `show` だけを使う。journal は読むだけ
 - tmux には触れない
-- ファイルは一時ファイルも含めて1つも書かない（journal は pipe で流し、64 KiB を超える here-string で bash が一時ファイルを作らないようにした。テストが 64 KiB を超える journal で TMPDIR に何も作られないことを確かめる）
+- ファイルは一時ファイルも含めて1つも書かない（journal は pipe で流し、64 KiB を超える here-string で bash が一時ファイルを作らないようにした。テストが 64 KiB を超える journal で TMPDIR に何も作られないことを確かめる。残る小さな here-string が一時ファイルを作らないのは bash 5.1 以上の動作で、WSL の Ubuntu 24.04 の bash 5.2 と CI はこれに当たる。古い bash では小さな here-string ごとに一時ファイルができて即座に消える）
 - `sr-designgen` として何も動かさない（jail の外で動かすと `REQUESTER_OUTSIDE_JAIL` になるため）
 
 **読むもの（root として）:**
@@ -227,7 +227,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/rc-diagnose.sh
 | オーナーが手で tmux を開く（systemd なし） | 何も入れない | 毎回コマンドが要る。WSL と一緒に消える | 目標に合わない |
 | `systemd --user` + linger | — | jail の設計が `sr-designgen` の linger・cron・at を拒否し、すべての process が `sr-jail-*.service` にあることを求める | 不採用 |
 
-tmux の役割は pty とオーナーの覗き窓であり、通信は Remote Control が担う。公式文書は tmux / screen の中で動かすことを勧めており、systemd についての案内は無い [公式]。
+tmux の役割は pty とオーナーの覗き窓であり、通信は Remote Control が担う。公式文書は tmux / screen の中で動かすことを勧めており、systemd についての案内は見当たらない [文書・未確認]。
 
 ## 6. 翌日の再開（最小の構成）
 
