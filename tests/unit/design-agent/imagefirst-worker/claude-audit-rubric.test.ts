@@ -261,6 +261,16 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     expect(provLines[0]!).not.toMatch(/\b(readFile|writeFile|open|stat|lstat|readdir|mkdir|rm|rename|copyFile|access|realpath|createReadStream|createWriteStream)\s*\(/);
     // node:path's join / resolve / dirname are imported bare; the line's only `.join(", ")` is the array join of the label text
     expect(provLines[0]!).not.toMatch(/(?<![.\w])(join|resolve|dirname|basename|relative)\s*\(/);
+    // PR #314 second review L1': the per-file pins above only cover named files. Repo-wide, only audit-rubric.ts may import
+    // the principles (everyone else reaches them through the rubric), and no non-test source ever names provenance.record
+    const tracked = spawnSync("git", ["ls-files", "-z", "--", "lib", "app", "scripts", "components"], { cwd: REPO, encoding: "utf8" });
+    expect(tracked.status).toBe(0);
+    const sources = tracked.stdout.split("\0").filter((f) => /\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(f));
+    expect(sources.length).toBeGreaterThan(50);
+    const principlesImporters = sources.filter((f) => /["']\.{0,2}[\w./-]*audit-principles["']/.test(src(f)));
+    expect(principlesImporters).toEqual([`${W}/audit-rubric.ts`]);
+    const recordUsers = sources.filter((f) => /provenance\s*(\?\.|\.)\s*record\b|["']record["']\s*\]/.test(src(f)) && /provenance/.test(src(f)));
+    expect(recordUsers).toEqual([]);
     expect(imports(`${W}/audit-schema.ts`)).toEqual(["./audit-rubric", "zod"]);
     // the gated structure modules are never reached (the path is assembled, so this test does not name it either)
     const gated = new RegExp(["struct", "ure/", "(descr", "iptor|measure|references|observe)"].join(""));
