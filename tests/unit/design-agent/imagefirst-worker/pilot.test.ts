@@ -71,7 +71,7 @@ if (argv[0] === "--check-codex-auth-only") {
 if (argv[0] === "--deliver-review") {
   const code = flag("stub-deliver-exit") ? Number(text("stub-deliver-exit")) : 0;
   if (code === 0) delivered(argv[1]!);
-  say({ status: code === 0 ? "delivered" : "not_delivered", code: code === 0 ? null : "RECEIVER_UNAVAILABLE", invoked: false });
+  say({ status: code === 0 ? "delivered" : "not_delivered", code: code === 0 ? null : "RECEIVER_UNAVAILABLE", bundle_sha256: BUNDLE, inbox_dir: join(runs, "review-inbox"), previews_dir: join(runs, "review-inbox", "previews", argv[1]!), invoked: false });
   process.exit(code);
 }
 // the run: the one-use claim, the private run, the receipt, the hand-off line on stderr
@@ -174,7 +174,13 @@ case "$1" in
 esac`,
   );
   exe(join(bin, "setpriv"), `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${sc}/setpriv.log'; exec "$@"`);
-  exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0; exit 1`);
+  exe(
+    join(bin, "pgrep"),
+    `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0
+# pgrep-hold-after N: the (N+1)th call holds once for 3 s (pgrep-holding marks it), then answers "none"
+if [ -f '${sc}/pgrep-hold-after' ]; then echo x >> '${sc}/pgrep-calls'; if [ "$(wc -l < '${sc}/pgrep-calls')" -gt "$(cat '${sc}/pgrep-hold-after')" ] && [ ! -f '${sc}/pgrep-held' ]; then touch '${sc}/pgrep-held' '${sc}/pgrep-holding'; sleep 3; fi; fi
+exit 1`,
+  );
   // the real model CLIs must never run: logging stubs that fail
   for (const name of ["codex", "claude"]) exe(join(bin, name), `echo "${name} $*" >> '${sc}/model-cli.log'; exit 97`);
   symlinkSync(process.execPath, join(bin, "node"));
@@ -269,6 +275,7 @@ describe("Issue #302 pilot: the read-only preflight (fake WSL)", () => {
       ["codex missing", (w) => rmSync(join(w.bin, "codex")), "codex"],
       ["codex: an API-key login (the sandboxed sign-in check)", (w) => writeFileSync(join(w.home, "stub-codex-auth"), "CODEX_API_KEY_AUTH"), "codex"],
       ["codex: the sandbox cannot start", (w) => writeFileSync(join(w.home, "stub-codex-auth"), "CODEX_SANDBOX_UNAVAILABLE"), "codex"],
+      ["codex: ~/sr-runs missing (OUT_DIR_PARENT_MISSING)", (w) => writeFileSync(join(w.home, "stub-codex-auth"), "OUT_DIR_PARENT_MISSING"), "codex"],
       ["the clone's audit is not rubric v2", (w) => { commitFiles(w.clone, { [RUBRIC_FILES[0]!]: Buffer.from('export const AUDIT_RUBRIC_VERSION = "if-claude-audit-v1";\n') }, "old rubric"); pointOrigin(w.clone); }, "rubric"],
       ["under 20 min of the approval left", (w) => writeFileSync(join(w.home, "stub-expires"), new Date(Date.now() + 10 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z")), "approval"],
       ["the precheck reports no expiry", (w) => writeFileSync(join(w.home, "stub-no-expiry"), ""), "approval"],
@@ -289,6 +296,16 @@ describe("Issue #302 pilot: the read-only preflight (fake WSL)", () => {
     expect(w.spent(), name).toEqual([]);
     expect(r.stdout, name).not.toMatch(/starting the worker/);
   });
+
+  it("round 2 review L2: the Codex check refusing with OUT_DIR_PARENT_MISSING names the fix (create ~/sr-runs, mode 700)", () => {
+    const w = wsl();
+    writeFileSync(join(w.home, "stub-codex-auth"), "OUT_DIR_PARENT_MISSING");
+    const p = w.preflight([ID]);
+    expect(p.status).toBe(20);
+    expect(p.rows.codex!.ok).toBe(false);
+    expect(p.rows.codex!.why).toMatch(/^OUT_DIR_PARENT_MISSING: create ~sr-designgen\/sr-runs first \(owned by \S+, mode 700\)/);
+  });
+
 
   it("a clone behind origin/develop fails with the hint; --sync-clone fast-forwards it (as the automatic start's step 5), then it passes", () => {
     const w = wsl();
@@ -429,6 +446,9 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     expect(r.stdout).toMatch(/^IMAGEFIRST_DELIVER_REVIEW DELIVER_DONE approval=hoshigama-imagefirst-d3-20261121-01 exit=0$/m);
     expect(w.starts().filter((s) => s.argv[0] === "--deliver-review").map((s) => s.argv)).toEqual([["--deliver-review", ID]]);
     expect(r.stdout).toMatch(/delivery=delivered_by_resend/);
+    // round 2 review L1: the re-send's result line names its places (previews_dir, inbox_dir): replaced by <local>
+    expect(r.stdout).toMatch(/^imagefirst-deliver-review: worker: \{"status":"delivered".*"inbox_dir":"<local>","previews_dir":"<local>"/m);
+    for (const l of r.stdout.split("\n").filter((x) => !x.startsWith("imagefirst-pilot: local-only: "))) expect(l, l).not.toMatch(/\/home\/|sr-runs\/|\/tmp\/|[0-9a-f]{64}/);
     expect(w.spent().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", ""], ["audit", ID]]);
   });
 
@@ -482,6 +502,29 @@ describe("Issue #302 pilot: the one-shot run (fake WSL, stub worker and audit)",
     expect(out.trim().split("\n").pop(), out).toBe(`IMAGEFIRST_PILOT PILOT_STOP_SIGNAL phase=before_claim approval=${ID} exit=40`);
     expect(code).toBe(40);
     expect(w.spent()).toEqual([]);
+  });
+
+
+  it.each([
+    // pgrep calls: 2 in the preflight's busy(), 2 before the worker, 2 after it, 2 before the dry run, 2 before the audit
+    ["the dry run", 6],
+    ["the audit", 8],
+  ] as const)("round 2 review L3: a stop during the idle check before %s does not start it (PILOT_INTERRUPTED)", async (step, holdAfter) => {
+    const w = wsl();
+    writeFileSync(join(w.sc, "pgrep-hold-after"), String(holdAfter));
+    const child = spawnChild("bash", [PILOT, ID], { env: w.env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout!.on("data", (b: Buffer) => (out += b.toString()));
+    const closed = new Promise<number | null>((res) => child.on("close", (c) => res(c)));
+    for (let i = 0; i < 3000 && !existsSync(join(w.sc, "pgrep-holding")); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(existsSync(join(w.sc, "pgrep-holding")), out).toBe(true);
+    child.kill("SIGTERM");
+    const code = await closed;
+    expect(out.trim().split("\n").pop(), `${step}\n${out}`).toBe(`IMAGEFIRST_PILOT PILOT_INTERRUPTED phase=after_claim approval=${ID} exit=1`);
+    expect(code).toBe(1);
+    const audits = w.starts().filter((s) => s.cli === "audit").map((s) => s.argv.join(" "));
+    expect(audits, step).toEqual(step === "the dry run" ? ["--check-auth-only"] : ["--check-auth-only", `${ID} --dry-run`]);
+    expect(w.spent().map((s) => s.cli), step).toEqual(["worker"]);
   });
 
 

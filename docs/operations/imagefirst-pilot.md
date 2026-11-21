@@ -53,7 +53,8 @@ Issue #302 のオーナー事前承認（2026-11-21、コメント 7053442141）
 3. **パイロットの直前に、`sr-designgen` として Codex（ChatGPT）と claude.ai にサインインし直す。** どちらの確認も、ローカルの
    サインインの記録の形しか見られない。期限の切れた・取り消されたサインインは、Codex では claim の後、claude では監査の marker の後に
    初めて失敗し、承認 ID や監査の1回を使ってしまう（§3）。`~/sr-runs` が `sr-designgen` の 0700 のディレクトリとしてあること
-   （Codex のサインイン確認が生成と同じ場所の設定で動くため）。
+   （Codex のサインイン確認が生成と同じ場所の設定で動くため。無ければ preflight の `codex` の行が `OUT_DIR_PARENT_MISSING` で FAIL する。
+   先に root で `install -d -o sr-designgen -g sr-designgen -m 700 /home/sr-designgen/sr-runs`）。
 4. worker の clone を origin/develop へ早送りして（パケットのマージで develop が進むため）、preflight を実行する。
 
    ```bash
@@ -132,7 +133,10 @@ sandbox が使えない（`CODEX_SANDBOX_*`）は、**承認を使う前に**こ
   - `clone` が behind → `--sync-clone`
   - `rubric` → worker の clone の develop に採点基準 v2（PR #314）が入っていない。`--sync-clone`
   - `approval` が `APPROVAL_EXPIRY_TOO_FAR` → まだ使える時間の前。20 分未満 → この承認では始めない（新しいパケットが要る）
-  - `codex` → `sr-designgen` で Codex に ChatGPT でサインインし直す（`codex login --device-auth`）・`~/.codex/.env` を消す・bubblewrap を確かめる
+  - `codex` → `sr-designgen` で Codex に ChatGPT でサインインし直す（`codex login --device-auth`）・`~/.codex/.env` を消す・bubblewrap を確かめる。
+    `OUT_DIR_PARENT_MISSING` なら `~sr-designgen/sr-runs` が無い: 先に `sr-designgen` の持ち物・mode 700 で作る
+    （root で `install -d -o sr-designgen -g sr-designgen -m 700 /home/sr-designgen/sr-runs`）。Codex のサインイン確認は生成と同じ場所の設定で動くため、
+    このディレクトリが要る（worker の precheck だけなら無くても通る）
   - `claude_bin` → `sr-designgen` の PATH（`/usr/local/bin:/usr/bin:/bin`）に `claude` を置く。`claude_auth` → `sr-designgen` で claude.ai にサインイン
 - **途中で止めたい**: パイロットの端末で **Ctrl-C を1回だけ押して待つ**。worker や監査の実行中なら止める合図を渡し、worker は receipt
   （`WORKER_INTERRUPTED`）を、監査は停止の記録を書いてから終わる。パイロットは `PILOT_INTERRUPTED`（exit 1、`phase=after_claim`）で終わる。

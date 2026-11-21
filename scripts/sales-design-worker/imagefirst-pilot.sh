@@ -312,8 +312,8 @@ summary() {
   in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" python3 -I -c "$SUMMARY_PY" "$APPROVAL" "$RECEIPT" 2>/dev/null |
     tr -d '\000-\010\013-\037' | cut -c1-400 | sed -n -e 's/^S /imagefirst-pilot: share: /p' -e 's/^L /imagefirst-pilot: local-only: /p' || say "share: summary=unreadable"
 }
-# A worker, hand-off or audit JSON line with its local places and the bundle SHA replaced by <local> (review L2).
-redact() { sed -E -e 's/"(run_dir|receipt|dir)":"[^"]*"/"\1":"<local>"/g' -e 's/"(bundle_sha256)":"[0-9a-f]{64}"/"\1":"<local>"/g'; }
+# A worker, hand-off or audit JSON line with its local places (every "...dir" key and "receipt") and the bundle SHA replaced by <local> (review L2, round 2 L1).
+redact() { sed -E -e 's/"([a-z_]*dir|receipt)":"[^"]*"/"\1":"<local>"/g' -e 's/"(bundle_sha256)":"[0-9a-f]{64}"/"\1":"<local>"/g'; }
 
 # ---------------------------------------------------------------- 1. the locks (no automatic start poll, no design cycle meanwhile)
 mkdir -p "$STATE"
@@ -379,6 +379,9 @@ fi
 idle_or_stop "before the worker"
 PHASE=after_claim
 say "starting the worker once (approval $APPROVAL): one claim, one generation, never retried"
+# a stop that came during the last checks or since PHASE changed: nothing has started yet, so end as a stop before the
+# worker (round 2 review L3; the post-fork forwarding below covers only the fork itself)
+if [ "$INTERRUPTED" = 1 ]; then PHASE=before_claim; finish PILOT_STOP_SIGNAL 40; fi
 set +e
 # node with the tsx loader is timeout's direct child, and timeout --foreground signals only that child: one stop is one
 # SIGTERM to the worker (the tsx CLI would relay it again within 30 ms, and the worker would take it as a hard stop).
@@ -448,6 +451,8 @@ fi
 # ---------------------------------------------------------------- 5. the audit dry run (verify and plan; the size caps)
 stop_if_interrupted
 idle_or_stop "before the audit dry run"
+# a stop during the idle check: the dry run is not started (round 2 review L3)
+stop_if_interrupted
 set +e
 "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$DRY_RUN_TIMEOUT" \
   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts "$APPROVAL" --dry-run >"$WORK/dry" 2>/dev/null 8>&- 9>&-
@@ -464,6 +469,8 @@ fi
 stop_if_interrupted
 idle_or_stop "before the audit"
 say "starting the audit once (approval $APPROVAL)"
+# a stop during the idle check: the audit is not started (round 2 review L3)
+stop_if_interrupted
 set +e
 "${AS_WORKER[@]}" timeout --foreground --kill-after="$AUDIT_KILL_AFTER" "$AUDIT_TIMEOUT" \
   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts "$APPROVAL" >"$WORK/audit" 2>/dev/null 8>&- 9>&- &

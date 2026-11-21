@@ -332,6 +332,9 @@ else
   cline="$(tail -n 1 "$WORK/codex" | tr -d '\000-\037' | cut -c1-400)"
   if [ "$crc" -eq 0 ] && [[ "$cline" == *'"status":"codex_auth_ok"'* ]]; then
     row codex PASS "on PATH, no .env, signed in with ChatGPT (sandboxed check; an expired sign-in cannot be seen here)"
+  elif [[ "$cline" == *'"code":"OUT_DIR_PARENT_MISSING"'* ]]; then
+    # the check uses the generation run's own places: ~/sr-runs must exist first (the precheck alone accepts it missing)
+    row codex FAIL "OUT_DIR_PARENT_MISSING: create ~sr-designgen/sr-runs first (owned by $WORKER_USER, mode 700), then run the preflight again"
   else
     row codex FAIL "exit $crc: ${cline:-<no line>}"
   fi

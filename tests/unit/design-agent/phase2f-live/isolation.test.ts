@@ -172,6 +172,30 @@ describe("isolation of the Phase 2f-2 steps", () => {
     // the preflight: the --precheck, and (review H1) the read-only Codex sign-in check, which uses nothing
     expect(codeOf(WORKER_PILOT_PREFLIGHT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
     for (const f of [WORKER_PILOT, WORKER_PILOT_PREFLIGHT]) expect(codeOf(f), f).not.toMatch(/image-first-generate|generateImage|anthropic|openai/i);
+    // Issue #302 (PR #316 round 2 review L4): the adapter's only route to a Codex process is the read-only sign-in check:
+    // codexSignInCheck and liveContext are each called exactly once, both inside the argv-gated `if (codexAuth) {` block,
+    // which returns before the grant, the places, the precheck and the cycle
+    const tsCode = (f: string) => readFileSync(resolve(REPO, f), "utf8").split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    const cli = tsCode(WORKER_CLI);
+    expect(cli.match(/\bcodexSignInCheck\(/g)).toHaveLength(1);
+    expect(cli.match(/\bliveContext\(/g)).toHaveLength(1);
+    const gate = cli.indexOf("  if (codexAuth) {\n");
+    expect(gate).toBeGreaterThan(0);
+    const block = cli.slice(gate, cli.indexOf("\n  }\n", gate));
+    expect(block).toMatch(/\bliveContext\(join\(homedir\(\), "sr-runs", "\.codex-sign-in-check"\), \(\) => undefined\)/);
+    expect(block).toMatch(/\bcodexSignInCheck\(ctx, controller\.signal\)/);
+    expect(block).toMatch(/return code === null \? 0 : 2;$/);
+    expect(block).not.toMatch(/claimApproval|openLedger|ledger\.|\binvoke\(|runImagefirstCycle|precheckImagefirstCycle|deliverReview|deliverAfterRun|GENERATE_ENTRY|tsEntry/);
+    expect(cli.indexOf("const codexAuth = process.argv.length === 3 && process.argv[2] === \"--check-codex-auth-only\";")).toBeGreaterThan(0);
+    // and the helper runs only the sandboxed sign-in status read: its preflight (the .env rule + the sandbox set-up) and
+    // assertChatGptSignIn, nothing else that could start Codex
+    const shared = tsCode(CLI_SHARED);
+    const at = shared.indexOf("export async function codexSignInCheck(");
+    expect(at).toBeGreaterThan(0);
+    const body = shared.slice(at, shared.indexOf("\n}\n", at) + 2);
+    expect(body.match(/assertChatGptSignIn\(/g)).toHaveLength(1);
+    expect(body.match(/ctx\.preflight\(\)/g)).toHaveLength(1);
+    expect(body).not.toMatch(/\.run\(|exec|runCodexJson|generateImage|image-once|probeCliVersion|checkGeneration|runBounded|ledger|spawn/);
     // the automatic start never names the entry, Codex or a model itself: it only starts the adapter
     expect(readFileSync(resolve(REPO, WORKER_AUTOSTART), "utf8")).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);
     // the re-send wrapper names the adapter only in its --deliver-review mode, and never the entry, Codex or a model (code lines)
