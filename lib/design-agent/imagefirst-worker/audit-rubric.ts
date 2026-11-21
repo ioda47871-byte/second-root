@@ -87,7 +87,7 @@ export const AUDIT_THRESHOLDS = { passTotal: 22, minCriterion: 4, minCheck: 4 } 
 
 /** The fixed rule on examples and imitation, stated in the request (a test checks it is there). */
 export const IMITATION_RULE =
-  "成功例は品質の原則を示す材料で、見た目の目標ではありません。成功例や別の店に見た目が近いことは評価しません。成功例や別の店のデザイン・配色・割り付け・モチーフを写していれば減点します (success_principles_applied を 1、originality を 2 以下)。頁が別の店の頁に見えるなら other_shop を hit にしてください。";
+  "成功例は品質の原則を示す材料で、見た目の目標ではありません。成功例や別の店に見た目が近いことは加点しません。成功例や別の店のデザイン・配色・割り付け・モチーフを写していれば減点します (success_principles_applied を 1、originality を 2 以下)。頁が別の店の頁に見えるなら other_shop を hit にしてください。";
 
 /** The principles and do-not-copy lines handed to one viewport (audit-principles.ts; pinned to their sources by a test). */
 export const principlesFor = (viewport: AuditViewport) => SUCCESS_PRINCIPLES.filter((p) => p.viewports.includes(viewport));

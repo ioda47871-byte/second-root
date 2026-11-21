@@ -78,7 +78,9 @@ v1 の `success_example_distance`（CP-003 への近さ）は、**`success_princ
 - **CP-003 との見た目の近さは合否の基準にしない。** 例は構図の違う複数の店で、見た目の目標ではない。構図・配色・書体が例と違っても、
   原則を満たしていれば高く付ける。依頼文に「CP-003 への近さ」の文言は無い（テストで確かめる）。
 - **模倣は減点する。** 例や別の店のデザイン・配色・割り付け・モチーフを写していれば `success_principles_applied` を 1、`originality` を 2 以下にする
-  （依頼文の決まり `IMITATION_RULE`）。6点はどれも 4 以上が要るので、写した頁は 25/25 でも `show_owner` にならない（`revise`）。頁が別の店の頁に
+  （依頼文の決まり `IMITATION_RULE`。近いことは「加点しない」）。**模倣を見つけるのは助言のモデルで、コードは写しを検出できない。**
+  モデルが模倣と判定して決まりどおり `success_principles_applied` に 3 以下（模倣なら 1）を付ければ、6点はどれも 4 以上が要るので、
+  ほかが 25/25 でも `show_owner` にならない（`revise`）。モデルが写しを見落として 4 以上を付ければ、コードは止められない。頁が別の店の頁に
   見えるなら、既存のハード失格 `other_shop` を使う（`drop`）。新しいハード失格は足していない（`other_shop` が覆うため）。
 - 使う例（`lib/design-agent/imagefirst-worker/audit-principles.ts`、各項目に例の id・事例の記録・写した元のファイルと場所・画像の SHA-256）:
 
@@ -97,9 +99,14 @@ v1 の `success_example_distance`（CP-003 への近さ）は、**`success_princ
 - **テストで固定しているもの**（`claude-audit-rubric.test.ts`）: 原則・`do_not_copy`・失敗原因の文が、provenance の元ファイルの値と逐語で一致すること、
   事例の記録が存在すること、`*.read.json` が `actually_viewed`・画像の SHA が一致・visual-read matrix で `VISUAL_VERIFIED` であること、
   CP-003 は参照の `webp_sha256` と一致すること、失敗原因の記録に不採用の言葉があること。各例の `structure` の1行はここで書いた文で、固定していない。
-  `audit-principles.ts` は import の無いデータだけで、パスは来歴であって開かない（テストで固定）。
+  `audit-principles.ts` は import の無いデータだけで、パスは来歴であって開かない（テストで固定）。`provenance` を使ってよいのは
+  `claude-audit.ts` の AUDIT.md の1行で `provenance.source` を文字にするところだけで、`provenance.record` やファイル操作・パスの組み立てには
+  使わず、`audit-rubric.ts` では触れない（テストで固定。データ経由で成功例の台帳へ届く道を塞ぐ）。
 - 版を `if-claude-audit-v2` にしたので RUBRIC_SHA256 と 1回きりの marker の名前も変わる。v1 の監査結果（`imagefirst_claude_audit_v1`）は v2 の
   schema に通らず、混同されない。
+- **同じ承認 ID に v1 の監査の結果（`~/sr-runs/review-inbox/audits/<ID>/`）が既にあれば、v2 の実行は `AUDIT_EXISTS` で拒否される**
+  （結果は上書きしない）。marker の名前は変わるので v2 で監査し直すことはできるが、その前にオーナーが v1 の `audits/<ID>/` を手で別の場所へ
+  移す（または保管する）。
 
 判定（コード）: ハード失格が1つでも → `drop`。そうでなく、5項目の合計 22/25 以上・各項目 4 以上・6点すべて 4 以上 → `show_owner`。それ以外 → `revise`。
 全体はふたつの表示幅の悪い方。

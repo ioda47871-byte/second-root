@@ -91,7 +91,8 @@ describe("Issue #302: the rubric is the adopted one", () => {
       expect(t).not.toMatch(/近さ|近いほど|に近いか|似ているか|success_example_distance|<success-example>|close to|closeness|similar to/i);
       expect(t).toContain("success_principles_applied");
       expect(t).toContain(IMITATION_RULE);
-      expect(t).toContain("見た目が近いことは評価しません");
+      expect(t).toContain("見た目が近いことは加点しません"); // PR #314 review L2: "no credit", not "not assessed"
+      expect(t).not.toContain("評価しません");
       expect(t).toMatch(/デザイン・配色・割り付け・モチーフを写していれば減点/);
       // every example for the viewport and every failure cause is in the material, neutralised
       for (const p of principlesFor(viewport)) {
@@ -170,6 +171,10 @@ describe("Issue #302: the schema and the verdict computed in code", () => {
   });
 
   it("owner comment 7053442141 (a): a composition unlike CP-003 that applies the principles well is not failed → show_owner", () => {
+    // PR #314 review L4: fairness to a design unlike the examples comes from the request wording, which the test above checks
+    // (no closeness wording; "a different composition can score high"). This test only shows the code side: the verdict reads the
+    // scores and hard fails, never the reason text, and the answer has no similarity / closeness field at all to read.
+    expect(Object.keys(ViewportAnswer.shape.checks.shape).filter((k) => /similar|close|distance|near/i.test(k))).toEqual([]);
     // a fake answer: high scores everywhere, the principles check 5 with a reason that names a composition unlike CP-003's
     const a = ViewportAnswer.parse(fill(answerTemplate({ score: 4 }), "desktop_1440"));
     const unlike = { ...a, scores: { ...a.scores, beauty: { score: 5, reason: "窯の炎の層で組んだ独自の構図" }, fit: { score: 5, reason: "この店だけ" } }, checks: { ...a.checks, success_principles_applied: { score: 5, reason: "CP-003 とは構図も配色も違うが、境をまたぐ大きな文字と節ごとの律動の原則を窯の層で満たす" } } };
@@ -179,7 +184,9 @@ describe("Issue #302: the schema and the verdict computed in code", () => {
     expect(overallVerdict([deriveViewport(unlike).verdict, deriveViewport(sp).verdict])).toBe("show_owner");
   });
 
-  it("owner comment 7053442141 (b): imitating CP-003 can never reach show_owner, however high the other scores", () => {
+  it("owner comment 7053442141 (b): an imitation the model scores as the rubric directs cannot reach show_owner, however high the other scores", () => {
+    // PR #314 review L1: the code cannot detect copying. Spotting it is the advisory model's job (IMITATION_RULE); what the code
+    // guarantees is that once the model scores it as directed (the check ≤ 3, or other_shop hit), no other score can outweigh it.
     const a = ViewportAnswer.parse(fill(answerTemplate({ score: 5 }), "desktop_1440"));
     // the check scores imitation 1 → revise, even at 25/25
     const copied = { ...a, checks: { ...a.checks, success_principles_applied: { score: 1, reason: "CP-003 の地図と配色を写している" } } };
@@ -240,6 +247,20 @@ describe("Issue #302: module boundaries (the audit can never write a success cas
     // the principles are data only: no import, no file, no process, no network (the paths in it are provenance, never opened)
     expect(imports(`${W}/audit-principles.ts`)).toEqual([]);
     expect(code(`${W}/audit-principles.ts`)).not.toMatch(/\bimport\b|require\(|\bfetch\(|readFile|process\.|child_process|spawn/);
+    // PR #314 review M1: the principles' paths must not let the audit reach the success-example catalogue by data instead of text
+    // (the guard below checks path TEXT only). The rubric never touches provenance; claude-audit.ts uses only provenance.source,
+    // only as text inside the AUDIT.md line, never provenance.record, never in a file-system call or path join
+    expect(code(`${W}/audit-rubric.ts`)).not.toMatch(/provenance/);
+    for (const f of [`${W}/claude-cli.ts`, `${W}/audit-schema.ts`, "scripts/sales-design-worker/imagefirst-audit.ts"]) expect(code(f), f).not.toMatch(/provenance/);
+    const auditCode = code(`${W}/claude-audit.ts`);
+    expect(auditCode.match(/provenance\s*(\?\.|\.|\[)\s*\w*/g)).toEqual(["provenance.source"]);
+    expect(auditCode.match(/provenance/g)).toHaveLength(1);
+    const provLines = auditCode.split("\n").filter((l) => l.includes("provenance"));
+    expect(provLines).toHaveLength(1);
+    expect(provLines[0]!).toMatch(/^\s*L\.push\(`- success_principles_applied: /);
+    expect(provLines[0]!).not.toMatch(/\b(readFile|writeFile|open|stat|lstat|readdir|mkdir|rm|rename|copyFile|access|realpath|createReadStream|createWriteStream)\s*\(/);
+    // node:path's join / resolve / dirname are imported bare; the line's only `.join(", ")` is the array join of the label text
+    expect(provLines[0]!).not.toMatch(/(?<![.\w])(join|resolve|dirname|basename|relative)\s*\(/);
     expect(imports(`${W}/audit-schema.ts`)).toEqual(["./audit-rubric", "zod"]);
     // the gated structure modules are never reached (the path is assembled, so this test does not name it either)
     const gated = new RegExp(["struct", "ure/", "(descr", "iptor|measure|references|observe)"].join(""));
