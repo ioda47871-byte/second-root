@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildPromptPlan, DIRECTIONS, EXCLUDED_READS, LINEAGE_PATTERNS, LINEAGE_TOKENS, loadPromptInputs, pinOf, PROMPT_INPUTS, type DirectionKey } from "@/lib/design-agent/image-first/prompt";
+import { D4_PACKET as D4_PACKET_SPEC } from "@/lib/design-agent/phase2f-live/approval-packets";
+import { readApprovalPacket } from "@/lib/design-agent/phase2f-live/full-page-call";
 
 // Issue #302 P5: d4, the owner's revise of d3 (design-library/research-log/briefs/hoshigama-d4.md). Offline: builds the
 // plan from the repository files; no model, no image, no approval.
@@ -41,13 +43,29 @@ describe("IMAGE_FIRST d4 (revise of d3)", () => {
     for (const p of opened) expect(EXCLUDED_READS.some((re) => re.test(p)), p).toBe(false);
   });
 
-  it("the packet shows exactly the pins the builder prints, and stays unapproved until the owner fills §10", async () => {
+  it("the packet shows exactly the pins the builder prints; header and §10 agree (both unapproved, or both approved with well-formed d4 values)", async () => {
     const pin = pinOf(await planOf("d4"));
     const text = await readFile(resolve(REPO, D4_PACKET), "utf8");
     for (const v of [pin.plan_sha256, pin.batch.sha256, String(pin.batch.chars), pin.direction_sha256, pin.facts_sha256, pin.principles_sha256]) expect(text).toContain(v);
     for (const p of pin.parts) expect(text).toContain(`\`${p.prompt_sha256}\` / ${p.prompt_chars}`);
-    expect(text.slice(0, text.indexOf("\n## "))).toContain("**状態: 未承認。**");
-    expect(/^\| 状態（[^|]*\| (.*) \|$/m.exec(text.slice(text.lastIndexOf("\n## 10.")))?.[1]).toBe("未記入");
+    const header = [...text.slice(0, text.indexOf("\n## ")).matchAll(/\*\*状態[:：]\s*([^。*\s]+)。?\*\*/g)].map((m) => m[1]);
+    expect(header).toHaveLength(1);
+    const s10 = text.slice(text.lastIndexOf("\n## 10."));
+    const row = (label: string) => new RegExp(`^\\| ${label}(?:（[^|]*)? \\| (.*) \\|$`, "m").exec(s10)?.[1];
+    if (header[0] === "承認済み") {
+      expect(row("状態")).toBe("承認済み");
+      expect(row("承認する方向性")).toBe("d4");
+      // exactly the values the owner approved in the Claude app on 2026-11-22 (a new approval changes these lines with its review)
+      expect(row("d4 の承認 ID")).toBe("hoshigama-imagefirst-d4-20261122-01");
+      expect(row("計画 ID")).toBe("hoshigama-imagefirst-p4-20261122");
+      expect(row("期限")).toBe("2026-11-23T03:00:00Z");
+      // the entry's own reader accepts exactly these values (and the P3 reader never does)
+      expect(readApprovalPacket(Buffer.from(text, "utf8"), D4_PACKET_SPEC)).toMatchObject({ status: "承認済み", directions: ["d4"], approvalIds: { d4: row("d4 の承認 ID") }, expires: row("期限"), planId: row("計画 ID") });
+      expect(readApprovalPacket(Buffer.from(text, "utf8"))).toBeNull();
+    } else {
+      expect(header[0]).toBe("未承認");
+      expect(row("状態")).toBe("未記入");
+    }
     expect(text).not.toContain(pin.parts[0]!.prompt.split("\n")[0]!);
   });
 

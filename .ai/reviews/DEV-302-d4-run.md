@@ -18,3 +18,9 @@ sound; import-allowlist edits limited to two data-only modules.
 
 Known host-only failures (also on develop; CI green): 4 in `pilot.test.ts` (a real codex / claude on this WSL's PATH),
 1 in `claude-audit.test.ts`.
+
+## Round 2 — e605b655 — PASS (C0 / H0 / M0, no new findings)
+
+M1 and L1–L3 confirmed fixed; the three unit folders: 558 passed, only the 5 known host failures; the d4 packet stayed
+未承認 / 未記入. CI run 44933238961 success on e605b655. Recorded on the PR (comment 7067513407) and merged by the owner
+(PR #320 → develop 745d0388, OWNER MERGE ONLY).
