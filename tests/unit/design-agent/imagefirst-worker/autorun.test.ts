@@ -2,6 +2,7 @@ import { spawn as spawnChild, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { exe, ID, loadPngs, PILOT, PREFLIGHT, SCRIPTS, wsl } from "./pilot-world";
 import { cleanupTemps, commitFiles, git, REPO, tmp } from "./support";
 
@@ -554,6 +555,65 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     expect(resend.map((s) => s.argv)).toEqual([["--deliver-review", ID]]);
     expect(resend[0]!.cwd).toMatch(new RegExp(`/imagefirst/autorun-${ID}-\\d{8}T\\d{6}Z$`));
     expect(readFileSync(w.review(), "utf8")).toMatch(/delivery=delivered_by_resend/);
+  });
+
+  it("re-review M1: a node_modules / .node_modules / .node_libraries / package.json in the worker's home or ~/imagefirst: refused before the claim", () => {
+    const plants: [string, (w: World) => void][] = [
+      ["~/node_modules/bufferutil", (w) => { mkdirSync(join(w.home, "node_modules", "bufferutil"), { recursive: true }); writeFileSync(join(w.home, "node_modules", "bufferutil", "index.js"), "module.exports = {};\n"); }],
+      ["~/.node_modules (a link)", (w) => symlinkSync(tmp("sr-ifr-nm-"), join(w.home, ".node_modules"))],
+      ["~/.node_libraries", (w) => mkdirSync(join(w.home, ".node_libraries"))],
+      ["~/imagefirst/node_modules", (w) => mkdirSync(join(w.home, "imagefirst", "node_modules"))],
+      ["~/package.json", (w) => writeFileSync(join(w.home, "package.json"), '{"type":"module"}')],
+      ["~/imagefirst/package.json", (w) => writeFileSync(join(w.home, "imagefirst", "package.json"), '{"imports":{}}')],
+    ];
+    for (const [name, plant] of plants) {
+      const w = world();
+      w.switchOn();
+      w.marker();
+      plant(w);
+      const r = w.run();
+      expect(r, `${name}\n${r.stdout}`).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", pilot: "PILOT_AUTORUN_NODE_PATHS", rc: "restored" });
+      expect(w.starts(), name).toEqual([]);
+      expect(w.used(), name).toEqual([]);
+      expect(readdirSync(join(w.home, "imagefirst")).filter((n) => n.startsWith("autorun-")), name).toEqual([]);
+    }
+  });
+
+  it("re-review L1: a planted name with a newline (or any other name) is never removed, and nothing else is removed because of it", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    const base = join(w.home, "imagefirst");
+    const valid = join(base, "autorun-hoshigama-imagefirst-d3-20200101-01-20200101T000000Z");
+    const nl = join(base, "autorun-hoshigama-imagefirst-d3-20200101-02-20200102T000000Z\nkeepme");
+    const odd = join(base, "autorun-hoshigama-imagefirst-d3-odd");
+    for (const d of [valid, nl, odd, join(base, "keepme")]) mkdirSync(d);
+    const t = new Date(Date.UTC(2020, 0, 1));
+    utimesSync(nl, t, t);
+    utimesSync(odd, t, t);
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE" });
+    // the only valid earlier clone is the newest valid one: kept; the others are not fresh clones: untouched
+    for (const d of [valid, nl, odd, join(base, "keepme"), join(base, "second-root")]) expect(existsSync(d), d).toBe(true);
+  });
+
+  it("re-review L2 / L3: the worker gets no user / system git config and no attributes file (and no NODE_PATH); the disk row asks 2 GiB more", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE" });
+    const run = w.starts().find((s) => s.cli === "worker" && s.argv.length === 0)!;
+    for (const k of ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]) expect(run.env, k).toContain(k);
+    expect(run.env).not.toContain("NODE_PATH");
+    // and the worker passes them on to its own git (worker/env.ts), never NODE_PATH
+    const child = childEnvironment({ PATH: "/usr/bin", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.attributesFile", GIT_CONFIG_VALUE_0: "/dev/null", NODE_PATH: "/x" });
+    expect(child).toMatchObject({ GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.attributesFile", GIT_CONFIG_VALUE_0: "/dev/null" });
+    expect(child.NODE_PATH).toBeUndefined();
+    // the test world asks 1 MiB; inside the automatic run 2048 MiB more (production: 4096 + 2048)
+    expect(r.stdout).toMatch(/\| disk +\| PASS \| \d+ MiB free \(at least 2049\)/);
+    expect(readFileSync(PREFLIGHT, "utf8")).toMatch(/^MIN_FREE_MIB=4096$/m);
+    expect(readFileSync(PREFLIGHT, "utf8")).toMatch(/^AUTORUN_EXTRA_MIB=2048$/m);
   });
 
   it("the manual preflight refuses while the automatic run's timer or service is on; inside the service it accepts exactly that service", () => {

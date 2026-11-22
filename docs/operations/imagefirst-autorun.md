@@ -156,6 +156,14 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
   - 古い新規 clone: `~/imagefirst` の直下で `autorun-hoshigama-imagefirst-*` という名前の本物のディレクトリだけを対象に、いちばん新しい 1 つを残し、
     それより古いものを pilot が sr-designgen として消す（自動実行が lock を持ち Remote Control を止めている間なので、使っている run は無い）。
     symlink・ほかの名前・ほかの場所は消さない。画像・receipt・bundle は `~/sr-runs` にあり、clone を消しても残る。
+  - Node は clone の親ディレクトリと全体のフォルダからも module や `package.json` を探す。だから `~/node_modules`・`~/.node_modules`・
+    `~/.node_libraries`・`~/imagefirst/node_modules`・`~/package.json`・`~/imagefirst/package.json` のどれかがあれば（symlink も）、clone を作る前と
+    npm ci の後に `PILOT_AUTORUN_NODE_PATHS` で止まる（claim の前）。`NODE_PATH` は worker に渡らない（`env -i`、`worker/env.ts` も渡さない）。
+  - node の worker が起動する git にも `core.attributesFile=/dev/null` が効く（`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0=/dev/null`）。
+  - 古い clone の掃除は NUL 区切りで名前を読み、名前全体が `autorun-hoshigama-imagefirst-d[34]-YYYYMMDD-NN-<UTC>` で、親がちょうど `~/imagefirst`、
+    本物のディレクトリのものだけを対象にする（改行を含む名前などは触らない）。
+  - ディスク: 新しい clone と `node_modules` で約 1 GiB、さらに 1 つ前のものを残す。自動実行の中では preflight の `disk` の行が
+    4096 + 2048 = 6144 MiB 以上の空きを求める（手動のパイロットは 4096 MiB のまま）。
   - 手で動かすパイロットは今まで通り `~/imagefirst/second-root` を使う（変えていない）。
   印の期限（最長 24 時間）は「いつまで拾うか」だけを決め、パケットの期限は worker が守る。
 
@@ -179,7 +187,7 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
 4. `Conflicts=` は古い自動起動の **timer** にだけ付けた（自動実行の service が動くとその timer は止まる）。service には付けない
    （生成の途中の worker を止めてしまうため）。service が動いている・enable のときは、script・preflight・承認コマンドが断る。
 5. 新しい clone と `npm ci` のぶん、ディスク（clone 1 つ + `node_modules`。古いものは 1 つだけ残す）と時間（clone 最大 10 分 + npm ci 最大 15 分）が
-   増える。preflight の `disk` の行（4 GiB 以上の空き）は今まで通り。unit の `TimeoutStartSec` は 10800 秒。
+   増える。自動実行の中では preflight の `disk` の行が 6144 MiB 以上の空きを求める。unit の `TimeoutStartSec` は 10800 秒。
 
 ## 8. テスト
 

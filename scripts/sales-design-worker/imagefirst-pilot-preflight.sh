@@ -71,6 +71,8 @@ PRECHECK_TIMEOUT=300
 AUTH_TIMEOUT=120
 # the run writes six pictures, previews, a bundle and its inbox copy (tens of MiB); a wide margin
 MIN_FREE_MIB=4096
+# inside the automatic run: its fresh clone + npm ci (~1 GiB) and the newest earlier one kept: 2 GiB more (6144 in all)
+AUTORUN_EXTRA_MIB=2048
 # the pilot starts only with at least 20 min of the approval left (the worker's own precheck asks for 5)
 MIN_LEFT_SECONDS=1200
 GRANT_ENV=SR_IMAGEFIRST_EXPECT_APPROVAL_ID
@@ -214,6 +216,8 @@ if [[ $'\n'"$(own_cgroup)"$'\n' == *$'\n'"$AUTORUN_CGROUP"$'\n'* ]]; then IN_AUT
 # Inside the automatic run every worker row looks at the pilot's fresh clone (named in root's own state file, written by the
 # pilot; its form checked here: ~/imagefirst/autorun-<this id>-<UTC>), never at the reused one
 if [ "$IN_AUTORUN" = 1 ]; then
+  # the fresh clone and its node_modules (about 1 GiB; the newest earlier one is kept too) come on top of the run's pictures
+  if [[ "$MIN_FREE_MIB" =~ ^[0-9]+$ ]]; then MIN_FREE_MIB=$((MIN_FREE_MIB + AUTORUN_EXTRA_MIB)); fi
   fresh_file="$R/var/lib/sr-imagefirst-autostart/autorun-clone"
   fresh=""
   if [ -f "$fresh_file" ] && [ ! -L "$fresh_file" ]; then fresh="$(head -c 512 -- "$fresh_file" | tr -d '\n')"; fi
@@ -282,7 +286,7 @@ for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE
   if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
 done
 # inside the automatic run: no user or system git config for any git of the worker (the pilot's rule)
-if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1); fi
+if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0=/dev/null); fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
 if [ "$IN_AUTORUN" = 1 ]; then

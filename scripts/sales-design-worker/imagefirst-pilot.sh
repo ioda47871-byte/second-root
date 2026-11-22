@@ -377,7 +377,8 @@ done
 # while Remote Control ran): a fresh clone at a root-chosen new path, and every git of the worker without the user's or
 # the system's git config (the worker's own git, started by node, gets the same variables: worker/env.ts passes them on)
 if [ "$MODE" = autorun ]; then
-  AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1)
+  # ... and core.attributesFile=/dev/null for every git, the worker's own included (git's GIT_CONFIG_COUNT variables)
+  AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0=/dev/null)
   AS_HOME=("${AS_WORKER[@]}" bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$WORKER_HOME")
   FRESH="$WORKER_HOME/imagefirst/autorun-$APPROVAL-$(date -u +%Y%m%dT%H%M%SZ)"
   CLONE="$FRESH"
@@ -431,11 +432,31 @@ fi
 if [ "$MODE" = autorun ]; then
   idle_or_stop "before the fresh clone"
   GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
+  # Node looks for modules (and package.json "type" / "imports") in every parent directory of the clone and in the global
+  # folders: none of them may exist (lstat: links count), here and again after npm ci. NODE_PATH never reaches the worker
+  # (env -i; worker/env.ts does not pass it on)
+  node_paths_clean() {
+    "${AS_HOME[@]}" bash -c 'for p in "$HOME/node_modules" "$HOME/.node_modules" "$HOME/.node_libraries" "$HOME/imagefirst/node_modules" "$HOME/package.json" "$HOME/imagefirst/package.json"; do
+        if [ -e "$p" ] || [ -L "$p" ]; then exit 5; fi
+      done' 8>&- 9>&-
+  }
+  node_paths_clean || { say "a node_modules / .node_modules / .node_libraries / package.json is in the worker's home or ~/imagefirst (Node would load it): stopped"; finish PILOT_AUTORUN_NODE_PATHS 20; }
+  # old fresh clones, NUL-safe: only real directories directly under ~/imagefirst whose whole name is a fresh clone's
+  # (autorun-<id>-<UTC>); the newest of them is kept, the older ones removed. Any other name is never touched
   "${AS_HOME[@]}" bash -c 'base="$HOME/imagefirst"; p="$1"
+    re="^autorun-hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}-[0-9]{8}T[0-9]{6}Z$"
     [ -d "$base" ] && [ ! -L "$base" ] || exit 3
     case "$p" in "$base"/autorun-hoshigama-imagefirst-d[34]-*) ;; *) exit 3 ;; esac
-    find "$base" -mindepth 1 -maxdepth 1 -type d -name "autorun-hoshigama-imagefirst-d[34]-*" -printf "%T@ %p\n" | sort -rn | tail -n +2 | cut -d" " -f2- |
-      while IFS= read -r d; do rm -rf -- "$d"; done
+    valid=()
+    while IFS= read -r -d "" d; do
+      n="${d##*/}"
+      if [ "${d%/*}" = "$base" ] && [[ "$n" =~ $re ]] && [ -d "$d" ] && [ ! -L "$d" ]; then valid+=("$(stat -c %Y -- "$d") $n"); fi
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name "autorun-hoshigama-imagefirst-*" -print0)
+    if [ "${#valid[@]}" -gt 1 ]; then
+      printf "%s\n" "${valid[@]}" | sort -rn | tail -n +2 | while read -r _ n; do
+        [[ "$n" =~ $re ]] && [ -d "$base/$n" ] && [ ! -L "$base/$n" ] && rm -rf -- "${base:?}/$n"
+      done
+    fi
     if [ -e "$p" ] || [ -L "$p" ]; then exit 4; fi
     mkdir -m 700 -- "$p"' _ "$FRESH" 8>&- 9>&- ||
     { say "the fresh clone's directory could not be made (no ~/imagefirst directory, a link, or it exists)"; finish PILOT_AUTORUN_CLONE 20; }
@@ -452,6 +473,7 @@ if [ "$MODE" = autorun ]; then
   [ -z "$extra" ] || { say "the fresh clone is not exactly the commit (changed, untracked or ignored files): stopped"; finish PILOT_AUTORUN_TREE_DIRTY 20; }
   in_clone env npm_config_userconfig=/dev/null npm_config_globalconfig=/dev/null timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ||
     { say "npm ci failed"; finish PILOT_AUTORUN_NPM 20; }
+  node_paths_clean || { say "a node_modules / package.json appeared in the worker's home or ~/imagefirst during npm ci: stopped"; finish PILOT_AUTORUN_NODE_PATHS 20; }
   # where the preflight finds it (root's own file in root's 0700 state; the preflight checks its form)
   printf '%s\n' "$FRESH" >"$STATE/autorun-clone"
   say "a fresh clone at root's verified commit $AUTORUN_SHA (no user git config, status --ignored empty, npm ci)"
