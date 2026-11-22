@@ -191,12 +191,25 @@ Codex の sandbox は `CODEX_HOME` だけを読み書きで bind する）。サ
 
 **FAIL CLOSED（claim の前）**: preflight の新しい行 `config_trust`（自動実行の中だけ）が、root の config が無い・root だけのものでない（他人が書ける・symlink）・
 SHA-256 が違う、`.cfg` に予定外のもの（`codex/` は `auth.json` と `config.toml` だけ、`claude/` は `.credentials.json` だけ、symlink なし）がある、
-監査の作業 dir（`~/.local/state/...`）の親に `CLAUDE.md` / `CLAUDE.local.md` がある、のどれかで FAIL にし、pilot は何も始めない。
+監査の作業 dir（`~/.local/state/...`）の親（`~` を含む）に `CLAUDE.md`・`CLAUDE.local.md`・`.claude/CLAUDE.md`・`.claude/rules` がある
+（Claude は作業 dir の親のこれらを project の memory として読む。だから `~/.claude/CLAUDE.md` も断る）、
+worker の PATH で見た `claude`・`codex`・`node` の実体（symlink をたどった先）が root のもの・他人が書けないもの（`/` まで。`trusted_path`）でない
+（`~/.local/bin`・nvm・npm-global など worker の home の中の CLI は jail の Claude が差し替えられる）、のどれかで FAIL にし、pilot は何も始めない。
+**オーナーの前提**: 自動実行を使うには、`claude`・`codex`・`node` を root 所有の場所（`/usr/local/bin` など）に入れておく必要がある
+（いまの WSL では `claude` は `~/.npm-global`、`codex` は `~/.local/bin` にあり、このままでは `config_trust` が FAIL する）。
+tsx の loader は新しい clone の `node_modules`（固定の lockfile からの `npm ci`）のものを使う。
+
+**途中で殺された run のサインイン**: pilot が SIGKILL などで終わると、その copy-back は走らない。(1) 自動実行は、pilot を回収した後に結果が無い・
+signal で終わったときは、pilot の state ファイルが指す（形を厳密に確かめた）その run の `.cfg` について、sr-designgen の process が無ければ、
+写しが元より新しい（`-nt`）サインインだけを sr-designgen として戻し、`.cfg` を消す。(2) それができなかった `.cfg` は、次の実行の始めに同じ規則
+（新しいものだけ戻す・symlink/大きさ/本物のファイルの確認）で戻してから消す。更新された OAuth の refresh token を失わないため。
+CLI が実行中に `.cfg` へ書くログ・バックアップなどは戻さず、`.cfg` ごと消える（戻すのは 2 つのサインインのファイルだけ）。
 
 **Claude のサインインのファイル（確かめたこと・前提）**: この WSL の sr-designgen では、claude.ai のサインインは `~/.claude/.credentials.json` にある
 （Linux の Claude Code の既定の置き場所。`CLAUDE_CONFIG_DIR` を指定すると `$CLAUDE_CONFIG_DIR/.credentials.json` を読む）。`~/.claude.json`
 （アカウントの表示用の情報のほか、利用者の MCP 設定なども入る）は**写さない**。**前提**: `claude auth status` と `-p` の呼び出しが
-`.credentials.json` だけで claude.ai のサインインとして通ること。本物の claude はこの開発では動かしていないので未確認。通らなければ preflight の
+`.credentials.json` だけで claude.ai のサインインとして通ること。もう 1 つの**前提**: `CLAUDE_CONFIG_DIR` を指定すると、CLI は全体の設定を
+`~/.claude.json` ではなく `$CLAUDE_CONFIG_DIR/.claude.json` から読む（無ければ作る。`.cfg` ごと消える）。`~/.claude.json` は読まれない前提。本物の claude はこの開発では動かしていないので未確認。通らなければ preflight の
 `claude_auth` の行が `CLAUDE_NOT_SIGNED_IN` などで FAIL し、claim の前に止まる（その場合の対応は §7）。
 
 **手で動かすパイロットは変えていない**: 承認済みのコミットに固定して run sheet で動かす手順（d4 の実行シート）の見える動きを変えないため、

@@ -647,7 +647,8 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     writeFileSync(join(w.home, ".codex", "AGENTS.md"), "planted instructions\n");
     mkdirSync(join(w.home, ".codex", "prompts"));
     writeFileSync(join(w.home, ".codex", "prompts", "x.md"), "planted\n");
-    writeFileSync(join(w.home, ".claude", "CLAUDE.md"), "planted memory\n");
+    // (~/.claude/CLAUDE.md is not "invisible": the audit's directory lies under the home, and Claude reads .claude/CLAUDE.md
+    // in its parents as project memory, so config_trust refuses it: see the next test)
     writeFileSync(join(w.home, ".claude", "settings.json"), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "touch /tmp/planted" }] }] } }));
     mkdirSync(join(w.home, ".claude", "agents"));
     writeFileSync(join(w.home, ".claude.json"), JSON.stringify({ mcpServers: { evil: { command: "/bin/sh" } } }));
@@ -685,6 +686,12 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
       ["~/.claude a link", (w) => { const d = join(w.t, "claude-elsewhere"); mkdirSync(d); writeFileSync(join(d, ".credentials.json"), "x"); rmSync(join(w.home, ".claude"), { recursive: true }); symlinkSync(d, join(w.home, ".claude")); }],
       ["the Claude sign-in missing", (w) => rmSync(join(w.home, ".claude", ".credentials.json"))],
       ["a CLAUDE.md in ~/.local", (w) => { mkdirSync(join(w.home, ".local"), { recursive: true }); writeFileSync(join(w.home, ".local", "CLAUDE.md"), "planted\n"); }],
+      ["~/.claude/CLAUDE.md (project memory of the home)", (w) => writeFileSync(join(w.home, ".claude", "CLAUDE.md"), "planted\n")],
+      ["~/.claude/rules/x.md", (w) => { mkdirSync(join(w.home, ".claude", "rules")); writeFileSync(join(w.home, ".claude", "rules", "x.md"), "planted\n"); }],
+      ["~/.local/state/.claude/CLAUDE.md", (w) => { mkdirSync(join(w.home, ".local", "state", ".claude"), { recursive: true }); writeFileSync(join(w.home, ".local", "state", ".claude", "CLAUDE.md"), "planted\n"); }],
+      // review M2: a model CLI program the worker could replace (resolved through a link into its home)
+      ["claude resolves into the worker's home", (w) => { const d = join(w.home, ".npm-global", "bin"); mkdirSync(d, { recursive: true }); exe(join(d, "claude"), "exit 97"); rmSync(join(w.bin, "claude")); symlinkSync(join(d, "claude"), join(w.bin, "claude")); }],
+      ["codex in the worker's home", (w) => { const d = join(w.home, ".local", "bin"); mkdirSync(d, { recursive: true }); exe(join(d, "codex"), "exit 97"); rmSync(join(w.bin, "codex")); symlinkSync(join(d, "codex"), join(w.bin, "codex")); }],
     ];
     for (const [name, arrange] of cases) {
       const w = world();
@@ -698,6 +705,60 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
       expect(w.used(), name).toEqual([]);
       expect(readdirSync(join(w.home, "imagefirst")).filter((n) => n.endsWith(".cfg")), name).toEqual([]);
     }
+  });
+
+  it("review M1a: a stale .cfg left by a killed run: its sign-in copies newer than their places go back before it is removed; older ones do not", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    const stale = join(w.home, "imagefirst", "autorun-hoshigama-imagefirst-d3-20200101-01-20200101T000000Z.cfg");
+    mkdirSync(join(stale, "codex"), { recursive: true });
+    mkdirSync(join(stale, "claude"), { recursive: true });
+    writeFileSync(join(stale, "codex", "auth.json"), "rotated-codex\n");
+    writeFileSync(join(stale, "claude", ".credentials.json"), "older-claude\n");
+    const later = new Date(Date.now() + 3600_000);
+    const earlier = new Date(Date.now() - 3600_000);
+    utimesSync(join(stale, "codex", "auth.json"), later, later);
+    utimesSync(join(stale, "claude", ".credentials.json"), earlier, earlier);
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE" });
+    expect(readFileSync(join(w.home, ".codex", "auth.json"), "utf8")).toBe("rotated-codex\n");
+    expect(readFileSync(join(w.home, ".claude", ".credentials.json"), "utf8")).toBe("claude-sign-in\n");
+    expect(existsSync(stale)).toBe(false);
+    // and the run itself used the rotated sign-in (built after the cleanup)
+    expect(readdirSync(join(w.home, "imagefirst")).filter((n) => n.endsWith(".cfg"))).toEqual([]);
+  });
+
+  it("review M1b: a pilot killed after the run's .cfg was built: autorun copies the refreshed sign-ins back (as the worker) before Remote Control returns", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    const fresh = join(w.home, "imagefirst", `autorun-${ID}-20261122T000000Z`);
+    const cfg = `${fresh}.cfg`;
+    writeFileSync(
+      join(w.t, "pilot-stand-in.sh"),
+      `mkdir -p '${cfg}/codex' '${cfg}/claude'
+echo refreshed-codex > '${cfg}/codex/auth.json'
+echo refreshed-claude > '${cfg}/claude/.credentials.json'
+echo '${fresh}' > '${join(w.state, "autorun-clone")}'
+kill -KILL $$
+`,
+    );
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", pilot: "PILOT_NO_RESULT", rc: "restored" });
+    expect(r.stdout).toContain("the killed pilot's sign-in copies were handled");
+    expect(readFileSync(join(w.home, ".codex", "auth.json"), "utf8")).toBe("refreshed-codex\n");
+    expect(readFileSync(join(w.home, ".claude", ".credentials.json"), "utf8")).toBe("refreshed-claude\n");
+    expect(existsSync(cfg)).toBe(false);
+    // a state file naming a path outside the strict form: nothing is touched
+    const v = world();
+    v.switchOn();
+    v.marker();
+    const odd = join(v.home, "imagefirst", "elsewhere.cfg");
+    writeFileSync(join(v.t, "pilot-stand-in.sh"), `mkdir -p '${odd}/codex'\necho x > '${odd}/codex/auth.json'\necho '${join(v.home, "imagefirst", "elsewhere")}' > '${join(v.state, "autorun-clone")}'\nkill -KILL $$\n`);
+    expect(v.run()).toMatchObject({ status: 1, pilot: "PILOT_NO_RESULT", rc: "restored" });
+    expect(readFileSync(join(v.home, ".codex", "auth.json"), "utf8")).toBe("codex-sign-in\n");
+    expect(existsSync(odd)).toBe(true);
   });
 
   it("config trust: the pinned SHA-256 is the repository's codex-config.toml in both scripts; the manual preflight has no config_trust row", () => {
@@ -857,7 +918,7 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     expect(step).not.toMatch(/STEP_RC" -gt 128/);
     // the pilot's result is its result file, read after the step; never a line taken from its stdout
     expect(code).not.toMatch(/grep -a '\^IMAGEFIRST_PILOT /);
-    expect(code).toMatch(/\nRESULT="\$STATE\/autorun-result"\nrm -f -- "\$RESULT" "\$STATE"\/\.autorun-result\.\*\nstep "\$WORK\/pilot" /);
+    expect(code).toMatch(/\nRESULT="\$STATE\/autorun-result"\nrm -f -- "\$RESULT" "\$STATE"\/\.autorun-result\.\* "\$STATE\/autorun-clone"\nstep "\$WORK\/pilot" /);
     expect(code).not.toMatch(/imagefirst-worker\.ts|imagefirst-audit\.ts|image-first-generate|anthropic|openai/i);
     for (const c of [code, src(APPROVE).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")]) for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"]).toContain(m[1]);
     // approve starts no pilot, no admin.sh, never the worker run (only its precheck), never claims

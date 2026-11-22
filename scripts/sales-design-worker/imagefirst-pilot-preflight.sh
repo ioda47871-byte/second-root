@@ -415,12 +415,30 @@ if [ "$IN_AUTORUN" = 1 ]; then
       done
       [ "$(sha256sum <"$c/codex/config.toml" | cut -d" " -f1)" = "$want" ] || { echo "CODEX_HOME/config.toml is not the reviewed one"; exit 1; }
       for d in "$HOME" "$HOME/.local" "$HOME/.local/state" "$HOME/.local/state/sr-design-worker" "$HOME/.local/state/sr-design-worker/imagefirst-worker"; do
-        for m in CLAUDE.md CLAUDE.local.md; do if [ -e "$d/$m" ] || [ -L "$d/$m" ]; then echo "a $m in the audit directory'"'"'s parents"; exit 1; fi; done
+        for m in CLAUDE.md CLAUDE.local.md .claude/CLAUDE.md .claude/rules; do if [ -e "$d/$m" ] || [ -L "$d/$m" ]; then echo "a $m in the audit directory'"'"'s parents"; exit 1; fi; done
       done
       echo ok' _ "$CFG" "$CODEX_CONFIG_SHA256" 2>/dev/null)"; then
     row config_trust FAIL "the run's own CODEX_HOME / CLAUDE_CONFIG_DIR are not exactly as built: ${cfg_out:-unreadable}"
   else
-    row config_trust PASS "root's reviewed Codex config; the run's CODEX_HOME / CLAUDE_CONFIG_DIR hold only it and the sign-in copies"
+    # the CLI programs themselves, as the worker's PATH resolves them (links followed): root's and writable by nobody else
+    # up to / (the test world: outside the worker's home). A claude / codex / node in ~/.local, an nvm or npm-global dir of
+    # the worker could be replaced by the jailed Claude. (The tsx loader is the fresh clone's, from npm ci of the pinned lock)
+    bins="$(in_clone bash -c 'for b in claude codex node; do p="$(command -v "$b")" || { echo "missing:$b"; continue; }; readlink -f -- "$p" || echo "missing:$b"; done' 2>/dev/null)" || bins=""
+    bin_why=""
+    n=0
+    while IFS= read -r p; do
+      n=$((n + 1))
+      if ! [[ "$p" =~ ^/[A-Za-z0-9._/@+-]+$ ]]; then bin_why="${p:-?} (not found)"; break; fi
+      if [ -z "$R" ]; then trusted_path "$p" || { bin_why="$p is not root's only up to /"; break; }
+      elif [[ "$p" == "$WORKER_HOME"/* ]]; then bin_why="$p is in the worker's home"; break
+      fi
+    done <<<"$bins"
+    [ "$n" = 3 ] || [ -n "$bin_why" ] || bin_why="claude / codex / node could not be resolved"
+    if [ -n "$bin_why" ]; then
+      row config_trust FAIL "a model CLI program is not root-trusted: $bin_why"
+    else
+      row config_trust PASS "root's reviewed Codex config; the run's CODEX_HOME / CLAUDE_CONFIG_DIR hold only it and the sign-in copies; the model CLI programs (claude / codex / node) root-trusted"
+    fi
   fi
 fi
 

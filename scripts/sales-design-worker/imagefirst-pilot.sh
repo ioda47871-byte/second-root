@@ -497,11 +497,27 @@ if [ "$MODE" = autorun ]; then
         [[ "$n" =~ $re ]] && [ -d "$base/$n" ] && [ ! -L "$base/$n" ] && rm -rf -- "${base:?}/$n"
       done
     fi
-    # a run'"'"'s config dir left by an earlier run that could not end (it holds sign-in copies): always removed
+    # a run'"'"'s config dir left by an earlier run that could not end (a SIGKILL skips its copy-back): each sign-in copy that
+    # is newer than its own place goes back first (a refreshed OAuth token must not be lost; the same checks as the
+    # copy-back: regular files, no link, size), then the dir is removed
     cre="^autorun-hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}-[0-9]{8}T[0-9]{6}Z\\.cfg$"
+    back_newer() {
+      local s="$1" d="$HOME/$2" dd t
+      dd="$(dirname -- "$d")"
+      [ -f "$s" ] && [ ! -L "$s" ] && [ "$(stat -c %s -- "$s")" -le 1048576 ] || return 0
+      [ -d "$dd" ] && [ ! -L "$dd" ] && [ ! -L "$d" ] || return 0
+      [ "$s" -nt "$d" ] || return 0
+      if [ -f "$d" ] && cmp -s -- "$s" "$d"; then return 0; fi
+      t="$(mktemp -- "$dd/.sr-copyback.XXXXXX")" || return 0
+      cat -- "$s" >"$t" && chmod 600 -- "$t" && mv -f -T -- "$t" "$d" || rm -f -- "$t"
+    }
     while IFS= read -r -d "" d; do
       n="${d##*/}"
-      if [ "${d%/*}" = "$base" ] && [[ "$n" =~ $cre ]] && [ -d "$d" ] && [ ! -L "$d" ]; then rm -rf -- "${base:?}/$n"; fi
+      if [ "${d%/*}" = "$base" ] && [[ "$n" =~ $cre ]] && [ -d "$d" ] && [ ! -L "$d" ]; then
+        if [ -d "$d/codex" ] && [ ! -L "$d/codex" ]; then back_newer "$d/codex/auth.json" .codex/auth.json; fi
+        if [ -d "$d/claude" ] && [ ! -L "$d/claude" ]; then back_newer "$d/claude/.credentials.json" .claude/.credentials.json; fi
+        rm -rf -- "${base:?}/$n"
+      fi
     done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name "autorun-hoshigama-imagefirst-*.cfg" -print0)
     if [ -e "$p" ] || [ -L "$p" ]; then exit 4; fi
     mkdir -m 700 -- "$p"' _ "$FRESH" 8>&- 9>&- ||

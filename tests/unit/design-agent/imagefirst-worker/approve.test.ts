@@ -318,10 +318,11 @@ describe("Issue #302 approval command: the marker", () => {
     expect(w.approve([ID])).toMatchObject({ status: 0, code: "APPROVE_RECORDED_DEFERRED" });
     expect(readFileSync(w.marker, "utf8")).toBe(`{"approval_id": "${ID}", "expires_at": "${w.expires}"}\n`);
     for (const busyNow of [true, false]) {
-      const far = world(utc(Date.now() + 30 * 3600_000));
+      const farExpiry = utc(Date.now() + 30 * 3600_000);
+      const far = world(farExpiry);
       far.switchOn();
       if (busyNow) far.rcUp();
-      writeFileSync(join(far.home, "stub-expires"), utc(Date.now() + 30 * 3600_000));
+      writeFileSync(join(far.home, "stub-expires"), farExpiry);
       const r = far.approve([ID]);
       expect([r.status, r.code], `${busyNow}\n${r.stdout}`).toEqual([2, "APPROVE_EXPIRY_INVALID"]);
       expect(r.stdout).not.toMatch(/now \+ 24 h/);
