@@ -72,3 +72,5 @@
 3. **デモの品質承認と送信承認**（今のまま。自動送信なし）。
 4. **共有 URL を出すための本番の設定**（`docs/operations/sales-mvp-runbook.md` の B-1〜B-6: migration・bucket・成果物の origin・環境変数・共有の切り替え）。
    これが無いと、相手に送れるデモの URL ができない。最初の案件のためには、どこかの時点で必要。
+   なお、この WSL の jail では Docker が動いていない（2026-11-23 に確認）ため、ローカルの Supabase は使えない。jail の中でできるのは
+   `package-local.ts` の包みまで。デモの保存（事実の登録・取り込み）は、hosted（Staging）の B-5a の承認の後か、Docker が動く別の環境で行う。
