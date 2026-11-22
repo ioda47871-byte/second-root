@@ -150,6 +150,8 @@ else
   if [ -f "$R/idle-wait" ]; then IDLE_WAIT="$(cat "$R/idle-wait")"; IDLE_STEP=1; fi
 fi
 PILOT="$REPO/scripts/sales-design-worker/imagefirst-pilot.sh"
+# the test world only (R is empty in the production copy): a stand-in pilot that ends in a given way (exit 137, SIGKILL)
+if [ -n "$R" ] && [ -f "$R/pilot-stand-in.sh" ]; then PILOT="$R/pilot-stand-in.sh"; fi
 # root's admin clone: this copy itself (the test world: its stand-in under the test root)
 if [ -n "$R" ]; then ADMIN_GIT="$R$PROD_CLONE"; else ADMIN_GIT="$REPO"; fi
 SWITCH="$R/etc/sr-design-worker/imagefirst-autostart.json"
@@ -340,15 +342,15 @@ step() {
   if [ "$INTERRUPTED" = 1 ]; then kill -TERM "$CPID" 2>/dev/null || true; fi
   wait "$CPID"
   STEP_RC=$?
-  # a stop signal interrupts wait (> 128) while the pilot still finishes: wait again until bash has the child's own exit
-  # status (127 = already collected: the last status stands). Never kill -0 first: the child may have just exited, and its
-  # real status must still be collected, not the interrupted wait's (the pilot's last line must match its exit code)
-  while [ "$STEP_RC" -gt 128 ]; do
+  # a stop signal interrupts wait (> 128) while the pilot still finishes: wait while it runs, then once more, which returns
+  # the child's own saved exit status (bash keeps it for every later wait), never the interrupted wait's. The pilot's
+  # last line must match its exit code; a real status above 128 (137, 143) ends the loop at once
+  while kill -0 "$CPID" 2>/dev/null; do
     wait "$CPID"
-    r=$?
-    [ "$r" -ne 127 ] || break
-    STEP_RC=$r
+    STEP_RC=$?
   done
+  wait "$CPID"
+  STEP_RC=$?
   set -e
   CPID=""
   tr -d '\000-\010\013-\037' <"$out" | cut -c1-400

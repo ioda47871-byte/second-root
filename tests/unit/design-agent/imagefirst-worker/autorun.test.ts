@@ -557,6 +557,26 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     expect(readFileSync(w.review(), "utf8")).toMatch(/delivery=delivered_by_resend/);
   });
 
+  it("re-review: a pilot that exits 137 or dies by SIGKILL ends the step at once with that status; Remote Control restored, the review file and result written", () => {
+    for (const [name, end] of [["exit 137", "exit 137"], ["SIGKILL", "kill -KILL $$"]] as const) {
+      const w = world();
+      w.switchOn();
+      w.marker();
+      mkdirSync(join(w.home, "sr-runs"), { mode: 0o700 });
+      writeFileSync(join(w.t, "pilot-stand-in.sh"), `echo "imagefirst-pilot: share: approval=${ID} stand-in=${name.replace(" ", "_")}"\necho "IMAGEFIRST_PILOT PILOT_STOP_INTERNAL phase=after_claim approval=${ID} exit=137"\n${end}\n`);
+      const started = Date.now();
+      const r = w.run();
+      expect(Date.now() - started, name).toBeLessThan(60_000);
+      expect(r, `${name}\n${r.stdout}`).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", pilot: "PILOT_STOP_INTERNAL", rc: "restored" });
+      expect(r.stdout, name).toContain("the pilot ended PILOT_STOP_INTERNAL (exit 137)");
+      expect(w.events(), name).toEqual(["admin claude-stop", "admin claude-start"]);
+      expect(readFileSync(w.review(), "utf8"), name).toBe(
+        `imagefirst-pilot: share: approval=${ID} stand-in=${name.replace(" ", "_")}\nIMAGEFIRST_PILOT PILOT_STOP_INTERNAL phase=after_claim approval=${ID} exit=137\nIMAGEFIRST_AUTORUN_RESULT AUTORUN_PILOT_STOPPED approval=${ID} pilot=PILOT_STOP_INTERNAL exit=1\n`,
+      );
+      expect(w.flag(), name).toBe(false);
+    }
+  });
+
   it("re-review M1: a node_modules / .node_modules / .node_libraries / package.json in the worker's home or ~/imagefirst: refused before the claim", () => {
     const plants: [string, (w: World) => void][] = [
       ["~/node_modules/bufferutil", (w) => { mkdirSync(join(w.home, "node_modules", "bufferutil"), { recursive: true }); writeFileSync(join(w.home, "node_modules", "bufferutil", "index.js"), "module.exports = {};\n"); }],
@@ -692,11 +712,11 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const code = src(AUTORUN).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     expect(code.match(/bash "\$ADMIN" [^\n]*/g)).toEqual(['bash "$ADMIN" claude-start 2>&1 7>&- 8>&- 9>&-)" || rc=$?', 'bash "$ADMIN" claude-stop 2>&1 7>&- 8>&- 9>&-)"']);
     expect(code.match(/bash "\$PILOT" [^\n]*/g)).toEqual(['bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"']);
-    // PR #325 CI: after a stop signal the pilot's own exit status is always collected (wait again until 127), never cut
-    // short by a kill -0 that races the pilot's exit (which left PILOT_NO_RESULT although the pilot had printed its line)
+    // PR #325 CI / re-review: after a stop signal the pilot's own exit status is always collected: wait while it runs, then
+    // once more (bash returns the saved status on every later wait), never a loop keyed on the status itself
     const step = /\nstep\(\) \{\n[\s\S]*?\n\}\n/.exec(src(AUTORUN))![0].split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
-    expect(step).not.toMatch(/kill -0/);
-    expect(step).toMatch(/while \[ "\$STEP_RC" -gt 128 \]; do\n\s*wait "\$CPID"\n\s*r=\$\?\n\s*\[ "\$r" -ne 127 \] \|\| break\n\s*STEP_RC=\$r\n\s*done/);
+    expect(step).toMatch(/\n\s*wait "\$CPID"\n\s*STEP_RC=\$\?\n\s*while kill -0 "\$CPID" 2>\/dev\/null; do\n\s*wait "\$CPID"\n\s*STEP_RC=\$\?\n\s*done\n\s*wait "\$CPID"\n\s*STEP_RC=\$\?\n/);
+    expect(step).not.toMatch(/STEP_RC" -gt 128/);
     expect(code).not.toMatch(/imagefirst-worker\.ts|imagefirst-audit\.ts|image-first-generate|anthropic|openai/i);
     for (const c of [code, src(APPROVE).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")]) for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"]).toContain(m[1]);
     // approve starts no pilot, no admin.sh, never the worker run (only its precheck), never claims
