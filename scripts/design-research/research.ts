@@ -95,7 +95,9 @@ async function main(argv: string[]): Promise<void> {
 
     case "inbox-scan": {
       // read-only: delivered runs the log has not recorded yet (one JSON line each; nothing when all are recorded)
-      for (const r of await unrecordedRuns(INBOX, await listEntries(LOG), await readState(LOG))) process.stdout.write(`${JSON.stringify(r)}\n`);
+      const runs = await unrecordedRuns(INBOX, await listEntries(LOG), await readState(LOG));
+      if (runs === null) refuse("INBOX_UNREADABLE", `${INBOX}/previews is missing or unreadable (nothing can be listed)`);
+      for (const r of runs) process.stdout.write(`${JSON.stringify(r)}\n`);
       return;
     }
 

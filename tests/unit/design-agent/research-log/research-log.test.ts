@@ -327,6 +327,28 @@ describe("inbox-scan (read-only): delivered runs the log has not recorded yet", 
     expect(readdirSync(root, { recursive: true }).map(String).sort()).toEqual(before);
   });
 
+  it("a retry of the same direction also continues the current entry; with two runs only the oldest gets a suggestion", () => {
+    const { inbox } = fakeInbox();
+    const root = freshLog();
+    const env = { SR_RESEARCH_LOG_ROOT: root, SR_REVIEW_INBOX: inbox };
+    // (intake does not use the shop parsed from the id: the fake id's "fakeshop" is recorded under the listed hoshigama)
+    expect(run(["intake", ID, "--shop", "hoshigama", "--direction", "d1", "--iteration", "0"], env).status).toBe(0);
+    for (const id of ["hoshigama-imagefirst-d1-20261122-02", "hoshigama-imagefirst-d1-20261122-03"]) {
+      mkdirSync(join(inbox, "previews", id), { recursive: true });
+      writeFileSync(join(inbox, "previews", id, "INDEX.json"), "{}");
+    }
+    const lines = run(["inbox-scan"], env).stdout.trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines.map((l) => l.bundle_id)).toEqual(["hoshigama-imagefirst-d1-20261122-02", "hoshigama-imagefirst-d1-20261122-03"]);
+    expect(lines[0].suggest).toEqual({ shop: "hoshigama", direction: "d1", iteration: 1, parent: ID });
+    expect(lines[1].suggest).toBeNull();
+  });
+
+  it("a missing inbox is INBOX_UNREADABLE, not an empty list", () => {
+    const r = run(["inbox-scan"], { SR_RESEARCH_LOG_ROOT: freshLog(), SR_REVIEW_INBOX: join(tmp("rl-noinbox-"), "absent") });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("INBOX_UNREADABLE");
+  });
+
   it("ignores names that are not run ids", () => {
     const { inbox } = fakeInbox();
     mkdirSync(join(inbox, "previews", "not-a-run"), { recursive: true });

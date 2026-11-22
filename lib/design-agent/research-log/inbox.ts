@@ -24,24 +24,30 @@ export type InboxRun = {
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
-/** Runs present in the inbox (previews/<id>/INDEX.json) and absent from the log's entries, oldest id first. */
-export async function unrecordedRuns(inbox: string, entries: readonly ResearchEntry[], state: ResearchState): Promise<InboxRun[]> {
-  const ids = (await readdir(join(inbox, "previews")).catch(() => [] as string[])).filter((n) => BUNDLE_ID.test(n)).sort();
+/**
+ * Runs present in the inbox (previews/<id>/INDEX.json) and absent from the log's entries, oldest id first. Only the oldest
+ * carries a suggestion: the next one's parent depends on recording it first (scan again after each intake). Null when the
+ * inbox has no previews directory at all (unreadable or absent), so "nothing to do" and "cannot see" are not confused.
+ */
+export async function unrecordedRuns(inbox: string, entries: readonly ResearchEntry[], state: ResearchState): Promise<InboxRun[] | null> {
+  const names = await readdir(join(inbox, "previews")).catch(() => null);
+  if (names === null) return null;
+  const ids = names.filter((n) => BUNDLE_ID.test(n)).sort();
   const recorded = new Set(entries.map((e) => e.entry_id));
   const out: InboxRun[] = [];
   for (const id of ids) {
     if (recorded.has(id)) continue;
     const m = BUNDLE_ID.exec(id)!;
     const [shop, direction] = [m[1]!, m[2]!];
-    // an improved version of the shop's current entry (another direction of the same shop) continues its line
-    const cur = state.current?.shop === shop && state.current.entry_id ? entries.find((e) => e.entry_id === state.current!.entry_id) : undefined;
-    const parent = cur && cur.direction !== direction ? cur : undefined;
+    // any later run of the shop the research stands on continues the current entry's line (another direction, or a retry
+    // of the same one); a run of another shop starts at 0 and intake refuses it until 次の店へ (SHOP_NOT_CURRENT)
+    const parent = state.current?.shop === shop && state.current.entry_id ? entries.find((e) => e.entry_id === state.current!.entry_id) : undefined;
     out.push({
       bundle_id: id,
       previews: await exists(join(inbox, "previews", id, "INDEX.json")),
       audit: await exists(join(inbox, "audits", id, "audit.json")),
       share: await exists(join(inbox, "runs", `${id}.share.txt`)),
-      suggest: { shop, direction, iteration: parent ? parent.iteration + 1 : 0, parent: parent?.entry_id ?? null },
+      suggest: out.length === 0 ? { shop, direction, iteration: parent ? parent.iteration + 1 : 0, parent: parent?.entry_id ?? null } : null,
     });
   }
   return out;

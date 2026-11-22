@@ -18,12 +18,15 @@ node --import tsx scripts/design-research/research.ts inbox-scan
 `status` の出力（現在の店・方向・段階・次の作業・オーナー待ち・履歴）を読んでから動く。`design-library/research-log/briefs/` に
 今の brief があれば読む。店舗デザインの中身を考えるときは `second-root-design-director` スキルにも従う。
 
-**`inbox-scan` が 1 行でも出したら（届いたのに未記録の run）、オーナーに聞かずに次を続けて行う**（画像の生成ではなく、届いた結果の後処理）:
+**`inbox-scan` が 1 行でも出したら（届いたのに未記録の run）、次を行う**（画像の生成ではなく、届いた結果の後処理）:
 1. `runs/<id>.share.txt`（自動起動の経路のとき）か、オーナーが貼った `share:` の行で、receipt・枚数・配送・監査の状態を確かめる。
-   `images … total=6 verified=true` でない・`audit=status=completed` でない、などはそのまま報告する（記録はしてよい）。
+   **自動で記録してよいのは、share の行に `receipt=status=succeeded`・`images=… total=6 verified=true`・`delivery=state=delivered` がそろうときだけ。**
+   どれかが欠ける・share の行が無い（`share:false` でオーナーも貼っていない）・監査が `completed` でないときは記録せず、状態をそのまま報告して
+   オーナーに聞く（「記録してレビューする／しない」）。
 2. `intake <bundle_id> --shop <suggest.shop> --direction <suggest.direction> --iteration <suggest.iteration>`（`suggest.parent` があれば `--parent`）。
-   拒否されたら（架空店舗でない・照合の不一致など）記録せず、コードをそのまま報告する。
-3. §2 のレビュー画面を作って private artifact で出し、改善元があれば比較の所見を添える。
+   `suggest` は一番古い 1 件にだけ付く。記録したら `inbox-scan` をもう一度実行し、次の 1 件の提案を得る。拒否されたら（架空店舗でない・
+   今の店でない・照合の不一致など）記録せず、コードをそのまま報告する。`INBOX_UNREADABLE` なら inbox が見えていないことを報告する。
+3. §2 のレビュー画面を作って private artifact で出し、改善元があれば比較の所見を添える。監査が助言だけであることも添える。
 4. 「改善して」「成功例として保存」「不採用」を聞く。
 
 ## 1. 言葉と動作
