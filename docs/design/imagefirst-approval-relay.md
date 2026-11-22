@@ -1,135 +1,133 @@
-# IMAGE_FIRST: オーナーの承認を Claude が偽造できない形で root に届ける（設計案、Issue #302）
+# IMAGE_FIRST: オーナーの承認を誰も偽造できない形で root に届ける（設計案、Issue #302）
 
-状態: **設計案（未実装・オーナーの判断待ち）**。実装は OWNER MERGE ONLY の別 PR。この文書は境界を何も変えない。
+状態: **設計案（未実装）**。2026-11-22 のオーナーの方針で C 案（GitHub での本人承認）を採用する方向。実装は OWNER MERGE ONLY の別 PR。
+この文書は境界を何も変えない。
 
-## 0. 目的と前提
+## 0. 目的と守ること
 
-- 目的: オーナーが毎回 WSL の root で `imagefirst-approve.sh <ID>` を打つ操作をなくし、Claude アプリから辿る **1 回の承認操作**だけで
-  生成 → 監査 → 研究ログ保存まで進むようにする。
+- 目的: オーナーが **GitHub アプリで生成を承認するだけ**で、生成 → 監査 → 研究ログ保存まで進む。毎回 WSL は触らない。
+- 要件（オーナー 2026-11-22）:
+  1. Claude 以外の連携も含め、**オーナーの GitHub 権限を使って承認を偽造できない**。
+  2. **通常の開発 PR は Claude が自律的に統合**でき、**画像生成に使う commit だけはオーナーの承認が必須**。
 - 守ること（緩めない）: 1 パケット = 1 承認 ID = 1 回、再試行・延長・再利用なし、期限はパケット §10 だけ、未承認・期限切れ・方向の取り違えは
-  claim の前に止まる、Claude（jail の sr-designgen）は root にならず、root の設定・timer・承認の印に書けない。
-- 前提とする自動化: PR #325（timer・autorun）と #326（設定の信頼境界）。この文書は、その中の「root の承認コマンド」だけを置き換える。
+  claim の前に止まる、Claude（jail の sr-designgen）は root にならず、root の設定・timer・状態に書けない。
+- 前提: PR #325（timer・autorun）と #326（設定の信頼境界）。この文書は、その中の「root の承認コマンド」を置き換える。
 
 ## 1. 承認は 2 つのものを信じている
 
 今の承認コマンド（`fetch` → `checkout --detach origin/develop` → `imagefirst-approve.sh <ID>`）で、オーナーは 2 つを同時に認めている:
 
 1. **実行の承認**: このパケット（ID・プロンプト・枚数・期限）で 1 回生成してよい。
-2. **コードの信頼**: その時点の develop の commit を、root（autorun・`admin.sh` の claude-stop/start）と、jail の外で Codex と Claude の
-   サインインの写しを持って動く worker（`lib/**` の import 全体、`package*.json` と `npm ci` の依存のスクリプト、`tsconfig*`）として動かしてよい。
+2. **コードの信頼**: その commit を、root（autorun・`admin.sh`）と、jail の外で Codex と Claude のサインインの写しを持って動く worker
+   （`lib/**` の import 全体、`package*.json` と `npm ci`、`tsconfig*`）として動かしてよい。
 
-承認コマンドを置き換える仕組みは、**両方**を、Claude には作れない形で root に届けなければならない。2 だけを「特定のパスの保護」で守ろうとすると、
-root と worker が実際に動かすコードは import と依存を辿って `lib/`・`scripts/`・依存の全体に広がり、漏れが出る（独立レビューの Critical 2 件）。
-だから本案は、**オーナーの承認 = ある 1 つの commit C の木全体を認めること**とし、root はその C だけを動かす。これは今の承認コマンド
-（その時点の develop を丸ごと信じる）と同じ水準で、緩めていない。
+特定のパスだけを保護しても、root と worker が実際に動かすコードは import と依存を辿って広がり、漏れが出る（#327 レビュー 1 回目の Critical 2 件）。
+だから本案では **オーナーの承認 = ある 1 つの commit の木全体を認めること**とし、root はその木だけを動かす。
 
-## 2. 今の信頼の穴
+## 2. 誰がオーナーとして振る舞えるか（要件 1 の出発点）
 
-2026-11-22 に確かめた事実: **jail の Claude が使う GitHub の token はオーナー本人のアカウント（`ioda47871-byte`）のもの**である。
+2026-11-22 に確かめた事実: jail の Claude の GitHub の token は**オーナー本人のアカウント（`ioda47871-byte`）**のもの。
+さらに、オーナーのアカウントの権限で動きうるものは Claude だけではない:
 
-GitHub の上で「オーナーがした」ように見えること（PR の承認・マージ・コメント）は、すべて Claude にも作れる。「OWNER MERGE ONLY」は今は
-運用の約束であって、技術的な壁ではない。ほかに:
+- 個人の token（classic / fine-grained）、`gh` の token、git の credential helper
+- オーナーが許可した OAuth App・GitHub App のユーザー token（例: Claude の GitHub App、Claude Code Remote の GitHub 連携と git の proxy、
+  claude.ai の connector、Vercel などのデプロイ連携）
+- オーナーのブラウザ・端末のログイン
 
-- **Claude アプリの会話**は Claude が読んで中継する。会話の中の「承認します」を root に渡す経路は、どれも Claude が作れる。
-- **claude.ai の Artifact の共有データ**も Claude がオーナーとして書ける（`ArtifactData` は利用者として書く）。
-- gh の token のほかにも、オーナーとして動ける資格情報がありうる（git の credential helper、`GH_TOKEN`、`hosts.yml` の別のアカウント、
-  Claude Code Remote の GitHub 連携・git の proxy、claude.ai の connector）。
+GitHub の API では、PR の承認（review）を**ブラウザやアプリで押したのか、token で作ったのかを確実には区別できない**。したがって
+**オーナーの普段のアカウントを「承認者」にする限り、要件 1 は満たせない**（連携を全部棚卸ししても、将来の連携で崩れる）。
 
-## 3. 方式の比較
+## 3. 承認者の身元の比較
 
-| 案 | オーナーの操作 | 偽造できない根拠 | 判定 |
-|---|---|---|---|
-| A. Claude アプリの会話・ボタンだけ | アプリで「承認」 | なし（Claude が中継・同じアカウント） | **不可** |
-| B. TOTP（認証アプリの 6 桁）をアプリに打つ | アプリで 6 桁 | 6 桁はどのパケット・どの commit にも結びつかず、表示も Claude 経由なので、Claude が別のものに使い回せる | 単独では**不可** |
-| C. **GitHub の身元の分離 + オーナーの GitHub 承認（commit C の木全体）を root が確かめる** | GitHub アプリで PR の差分を見て Approve（必要ならマージ） | Claude は別の身元で、オーナーの承認を作れない。承認は PR の head に付き、squash・up-to-date 必須により head の木 = develop の C の木。root は自分の読み取り token で確かめ、C だけを動かす | **推奨**（Claude アプリから 1〜2 タップ） |
-| D. オーナーの署名（FIDO2 のセキュリティキー / Windows Hello の `ssh-keygen -Y sign -n sr-imagefirst-approve`） | 「ID・パケットの SHA-256・期限・commit C」の 1 行に署名し、アプリに貼る | 鍵は WSL の外。署名は C と ID に結びつく。root は root の `allowed_signers` で確かめる。GitHub の身元の分離が無くても成り立つ | 代わりの案（強いが毎回 PC で署名が要る） |
+| 案 | 内容 | 要件 1 |
+|---|---|---|
+| (i) オーナーの普段のアカウントで承認 | 今のまま | **不可**（Claude・すべての連携がオーナーとして承認を作れる） |
+| (ii) Claude だけを別アカウントにする | Claude の token を machine user に | 不十分（Claude 以外の連携は依然オーナーとして承認を作れる） |
+| (iii) **承認だけに使う専用アカウント（承認者）** | オーナーが新しく作り、**GitHub アプリ（スマホ）でのログインだけ**に使う。token・OAuth App・GitHub App の許可・SSH/GPG 鍵を一切持たない。2 段階認証（passkey） | **可**。どの連携もこのアカウントの資格情報を持たない。root は承認者の**数値の user id** だけを信じる |
 
-どちらの案でも、**オーナーは Claude の作るページではなく、GitHub 自身の差分（前回信頼した commit との比較）を見て承認する**
-（Claude のレビューページは説明を誤れるため）。D では C の 40 桁を GitHub の画面で確かめる。
+**推奨は (iii)**。root の確認は「承認者の承認があるか」と「その承認が今動かす木と同じ木に付いているか」だけで、ruleset や admin 権限には頼らない。
+オーナーの普段のアカウント（またはそれを使う連携）が admin として ruleset を外しても、承認者の承認は作れないので root は動かない（妨害はできても偽造はできない）。
 
-## 4. 推奨案 C の段階
+Claude 用の machine user（ii）は、要件 1 には**不要**になる。ただし最小権限として推奨は残る（Claude が admin として branch を消す・ruleset を変える
+などの妨害を防ぐ）。切り替えはオーナーの判断で後からでよい。
 
-### 段階 0: 今の自動化を安全に動かす（承認コマンドは残る）
+## 4. 「画像生成に使う commit だけ承認必須」の構造の比較（要件 2）
 
-1. #324（inbox-scan）を通常の規則でマージ。
-2. オーナーが #325 → #326 の順にマージ（OWNER MERGE ONLY。#326 は #325 のマージの後に base を develop に変え、差分と CI を確かめ直す）。
-3. 一度だけの root の操作（それぞれ安全確認とオーナーの明示承認）: `claude`・`codex` を root の持ち物として入れ直す、
-   `/etc/sr-design-worker/codex-config.toml` の配置、`imagefirst-autorun.md` §2 の確認、timer の有効化。
-4. 新しいパケット（新しい承認 ID）で、承認コマンド 1 行の自動実行を 1 回確かめる。
-5. 直す点（独立レビュー）: autorun は試行の記録の後に develop が動くと止まる（承認 ID が使えなくなる）。Claude が保護のない PR を途中で
-   マージするだけで承認を潰せるので、**root が決めた C に固定し、生きている develop とは比べない**ようにする。
+| 案 | 仕組み | 通常の開発 | 生成に使う commit | 判定 |
+|---|---|---|---|---|
+| (a) develop + CODEOWNERS（前の案） | develop の上のパケットの PR だけ承認者のレビュー必須 | 自律 | develop の途中の commit を辿って特定。承認の PR の差分はパケットだけで、それまでの自律マージのコードは別の比較リンクで見る | 動くが複雑。develop に承認済みの §10 が混ざる |
+| (b) **保護した承認ブランチ `imagefirst/approved`** | 生成は**このブランチの commit からだけ**。develop には承認の要件を一切付けない | **完全に自律**（今のまま） | 承認ブランチへの PR の差分 = **前回承認した commit からの全部の変更**（コードもパケットも）。承認者はそれを GitHub アプリで見て Approve | **推奨** |
+| (c) オーナーの署名つきの tag（D 案の変形） | オーナーが PC で commit に署名 | 自律 | 署名した commit | 強いが毎回 PC の操作が要る（目標に合わない） |
 
-### 段階 1: Claude の GitHub の身元をオーナーから分ける（オーナーの GitHub での操作 + jail の token の差し替え 1 回）
+**推奨は (b)**。承認済みの §10 は承認ブランチにだけ存在し、develop の上のパケットは常に「承認待ち」のままなので、develop の自律マージから実行が生まれることはない。
 
-- Claude 用の別アカウント（machine user）を作り、collaborator（**Write** だけ。Maintain・Admin にしない）にする。jail の `gh` の token を
-  その fine-grained token に差し替える（今まで通り `admin.sh run sr-designgen -- gh auth login --with-token`、標準入力）。
-- **オーナーの資格情報を jail から全部なくす**: §2 の一覧を棚卸しして消す。最後に**確かめのテスト**: Claude として保護した PR を承認・マージ
-  しようとして失敗することを見る（オーナーが立ち会う）。
-- develop の ruleset（オーナーが GitHub の Settings で作る。**bypass する者は無し**。admin も迂回できない設定）:
-  PR 必須・直接 push 禁止・必須 CI・**squash だけ**・**マージ前に最新にすることを必須**・新しい push で古い承認を取り消す・
-  最後に push した人以外の承認が必要・Code owners のレビュー必須。
-- `.github/CODEOWNERS`（OWNER MERGE ONLY の PR）でオーナーの持ち物にするのは、**承認の意味を持つファイルと規則そのもの**だけ:
-  `docs/design/image-first-*-packet.md`、`.github/**`、`CODEOWNERS`。コードは C の木全体の承認で守るので、ここで並べない。
-  Claude の自律マージ（パケット以外）は今まで通り動く。
-- ruleset を作るときに一度だけ、オーナーが手で基準を決める（その時点の develop を最初の「信頼した commit」として root に記録）。
+## 5. 推奨案の流れ（(iii) 承認者 + (b) 承認ブランチ）
 
-### 段階 2: root の検証器（OWNER MERGE ONLY の PR + 一度だけの設置）
+### 毎回の流れ
 
-- 検証器は **root の持ち物の固定の場所**（例 `/usr/local/lib/sr-imagefirst/`）に置き、unit はそれを動かす。admin clone の develop から
-  自分を更新しない（検証器の更新は一度だけの root の操作として、オーナーの承認で行う）。
-- root だけが読める設定 `/etc/sr-design-worker/approval-relay.json`（0600 root）: オーナーの**数値の** user id、リポジトリ、最後に信頼した commit。
-  読み取り専用の fine-grained token（Contents・Pull requests・Metadata の read だけ）は `/etc/sr-design-worker/github-read-token`（0600 root）。
-- 検証（全部満たさなければ印を書かない。API の失敗・形や型の違いは何もしないで終わる。FAIL CLOSED）:
-  1. root の admin clone で `fetch`（今の承認コマンドと同じ。root の git、利用者の設定なし）。
-  2. GitHub API で、最後に信頼した commit T の後に develop へマージされた PR のうち、**その PR 自身の差分がパケットの §10 を「承認済み」に変え、
-     ある承認 ID を書いたもの**を探す。C = その PR の `merge_commit_sha`（develop の先端でなくてよい。後から別の PR がマージされても C を使う）。
-     パケットのファイルを変えるだけの PR（誤字の修正など）は承認として扱わない。
-  3. C のパケットの §10 が承認済みで、ID が未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）、期限が未来で §10 の値そのもの。
-  4. その PR の head に対する**オーナーの数値の id の最後のレビューの状態**が `APPROVED`（レビューの一覧を全部読む。後の `CHANGES_REQUESTED`・
-     取り消し（dismissed）があれば不可）で、そのレビューの `commit_id = head`。**head の木 = C の木**（root の clone で `C^{tree}` を出し、
-     API の head の commit の tree と比べる）。
-  5. 木の祖先関係（root の clone で確かめる）: T が C の祖先、C が develop の祖先。T..C の各 commit に PR がある（直接 push が混ざっていない）。
-  6. `GET /repos/{owner}/{repo}/rules/branches/develop` で、段階 1 の規則が今も有効（外されていれば止める）。この API は bypass する者を
-     見せないので、bypass の追加はオーナーの設定の管理に頼る（残る Low）。
-  7. 通ったら、lock の中で admin clone を `checkout --detach C` し、C を autorun → pilot に渡す（pilot は C で新しく clone する。今の仕組み）。
-     「最後に信頼した commit」を C に進める。以後、生きている develop は見ない。
-- root が使うのは curl（`api.github.com` だけ、proxy の環境変数を無視）と、JSON の解析に root の持ち物の `python3 -I`
-  （標準ライブラリだけ。この WSL には jq が無い）。sr-designgen のコードは何も動かさない（今の規則と同じ）。
-- 承認コマンド `imagefirst-approve.sh` は**手動の代わりとして残す**（検証器を外す・GitHub が使えないとき）。
+1. Claude が新しいパケット（新しい承認 ID）を develop に作る（§10 は承認待ち。今まで通り自律マージでよい）。
+2. Claude が `imagefirst/run-<ID>` を作る: develop の commit D に承認ブランチの先端 T をマージし（T の子孫にする）、その上でパケットの §10 を
+   「承認済み」にする 1 commit を足す。`imagefirst/approved` への PR を開く。
+3. Claude アプリにレビューページ（前回との比較・プロンプト・6 枚の内訳・上限）と **PR の Files changed へのリンク**を出す。
+4. **オーナーが承認者として GitHub アプリで差分を見て Approve**（これが唯一の承認操作）。
+5. Claude が merge commit でマージする（承認は承認者にしか作れず、root が木の一致を確かめるので、マージする者は誰でもよい）。
+6. root の timer が承認ブランチの新しい先端 C を確かめ（§6）、通れば C に固定して claude-stop → 生成 1 回 → 監査 → claude-start（#325 / #326 のまま）。
+7. 次のセッションで Claude が inbox を読み、研究ログ（develop）に記録してレビューページを出す（#324）。
 
-### 段階 3: Claude アプリの流れ
+### 一度だけの準備（オーナー。GitHub の Web で。設計の確定後）
 
-1. Claude が新しいパケットの PR を作り、Claude アプリにレビューページ（前回との比較・プロンプト・6 枚の内訳・上限）と、
-   **GitHub の差分のリンク**（PR の Files changed と、最後に信頼した commit との比較）を出す。
-2. オーナーが GitHub アプリで差分を見て Approve する。**§10 を承認済みにするパケットの PR を Approve すること = その 1 回の実行の承認**である。
-   差分を見るときの比較の基準は、Claude のページの言う commit ではなく、**オーナーが前回承認した PR のマージの commit**（その PR に表示される）。マージは Claude（machine user）がしてよい: 承認はオーナーにしか作れず、
-   squash・up-to-date で木が一致することを root が確かめるため。
-3. timer が検証 → 印 → claude-stop → 生成 1 回 → 監査 → claude-start（#325 / #326 のまま）。
-4. 次のセッションで Claude が inbox を読み、研究ログに記録してレビューページを出す（#324）。
+- 承認者のアカウントを作る（passkey の 2 段階認証。token・連携・鍵を作らない。GitHub アプリにだけログイン）。collaborator（Write）にする。
+- `imagefirst/approved` を、その時点でオーナーが認める commit から作る（root の「最後に信頼した commit T」の初期値になる）。
+- `imagefirst/approved` の ruleset（多層防御。root はこれに頼らない）: PR 必須、承認 1、Code owners のレビュー必須（このブランチの
+  `CODEOWNERS` を `* @<承認者>`）、新しい push で承認を取り消す、最後に push した人以外の承認、force push・削除の禁止、
+  マージ方式は merge commit だけ、bypass する者は無し。
+- develop には何も足さない。
+- root に読み取り専用の fine-grained token（このリポジトリの Contents・Pull requests・Metadata の read だけ）を置く。作るのは普段のアカウントでよい
+  （読み取り専用の token では承認を作れない）。承認者のアカウントには token を作らない。
 
-## 5. 脅威ごとの確認
+## 6. root の検証器
+
+- 検証器は **root の持ち物の固定の場所**（例 `/usr/local/lib/sr-imagefirst/`）に置き、unit はそれを動かす。リポジトリから自分を更新しない
+  （更新は一度だけの root の操作として、オーナーの承認で行う）。
+- root だけが読める設定 `/etc/sr-design-worker/approval-relay.json`（0600 root）: 承認者の**数値の** user id、リポジトリ、ブランチ名。
+  状態 `/var/lib/sr-imagefirst-autostart/approved-tip`（root の 0700）: 最後に信頼した commit T。token は `/etc/sr-design-worker/github-read-token`（0600 root）。
+- 検証（全部満たさなければ何もしない。API の失敗・形や型の違いも何もしない。FAIL CLOSED）:
+  1. root の admin clone で `imagefirst/approved` を fetch（root の git、利用者の設定なし）。先端 C。C = T なら終わり。
+  2. **C の第 1 親 = T**（承認は 1 回に 1 つ。履歴の書き換え・複数の未処理の承認は止めて報告）。H = C の第 2 親。**T は H の祖先**
+     （これにより、承認者が GitHub で見た差分 = T の木から H の木への変更そのもの）。
+  3. GitHub API: `merge_commit_sha = C`・base = `imagefirst/approved`・head の sha = H の PR がある。レビューの一覧を全部読み、
+     **承認者の数値の id の最後の状態が `APPROVED`**、その `commit_id = H`、取り消されていない。
+  4. **C の木 = H の木**（root の clone で確かめる。承認された木と動かす木が同じ）。
+  5. T..C の差分が、**ちょうど 1 つのパケットの §10 を「承認済み」にし、承認 ID を書いている**。その ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）、
+     期限が未来で §10 の値そのもの（24 時間以内）。
+  6. 通ったら T を C に進め（以後同じ承認は二度と通らない）、C を autorun → pilot に渡す（pilot は C を SHA で新しく clone する）。
+     生きている develop も承認ブランチの後の動きも見ない。
+- 止まったときは、理由のコードだけを worker が読める場所に書く（Claude が次のセッションでオーナーに伝える）。承認ブランチが壊れた
+  （第 1 親が T でない等）ときの復旧はオーナーの root の操作（T の付け直し）で、自動では直さない。
+- root が使うのは git・curl（`api.github.com` だけ、proxy の環境変数を無視）と、JSON の解析に root の持ち物の `python3 -I`（この WSL には jq が無い）。
+  sr-designgen のコードは何も動かさない（今の規則と同じ）。
+- 承認コマンド `imagefirst-approve.sh` は**手動の代わりとして残す**。
+
+## 7. 脅威ごとの確認
 
 | 脅威 | 止める仕組み |
 |---|---|
-| Claude が承認を作る | Claude の token はオーナーではない（資格情報の棚卸し + 確かめのテスト）。root は数値の id で確かめる |
-| Claude が root・worker のコードを書き換える（`admin.sh`・`lib/**`・依存・`npm ci` の install スクリプト） | 承認は C の木全体に付き、root は C だけを動かす。承認の後の push は承認を取り消す |
-| squash・マージで木がずれる | squash だけ・up-to-date 必須。root が head の木 = C の木を確かめる |
-| ruleset・CODEOWNERS を外す | machine user は Write だけ。`.github/**` はオーナーの持ち物。root が毎回規則を確かめる。bypass する者は無し |
-| machine user が自分の PR を承認する | Code owners の承認 + 最後に push した人以外の承認 |
-| develop を動かして承認を潰す（妨害） | C は承認した PR のマージの commit。先端でなくてよく、生きている develop と比べない |
-| 比較のリンクの基準をずらして変更を隠す | root が T（最後に信頼した commit）が C の祖先であることを確かめる。オーナーは前回の自分の承認を基準に見る |
-| 誤字の修正などのパケットの PR を承認させて実行させる | §10 を承認済みにする差分を持つ PR だけを承認として扱う |
-| 検証器が自分を更新する | 検証器は root の固定の場所。develop から更新しない |
-| Claude のページでオーナーを誤らせる | オーナーは GitHub 自身の差分を見て承認する |
-| Claude が root の設定・token を読む/書く | `/etc/sr-design-worker` は root の 0700、jail からは見えない（今の境界のまま） |
-| 承認の使い回し・再試行 | `used/<ID>`・`autorun/<ID>` は消さない（今のまま）。再武装は新しいパケットだけ |
-| GitHub の障害・応答の改ざん | 失敗は何もしない。`api.github.com` へ TLS で直接、proxy 無視。形・型が違えば止める |
-| オーナーのアカウントの乗っ取り | 本案の外（オーナーの 2 段階認証）。D を併用すると GitHub が破られても root は署名を要求できる |
+| Claude・連携がオーナーのアカウントで承認を作る | 承認者は別アカウントで、どの連携もその資格情報を持たない。root は承認者の数値の id だけを信じる |
+| admin 権限で ruleset を外す・直接 push する | root は ruleset に頼らない。承認者の承認・木の一致・第 1 親 = T が無ければ動かない（妨害のみ） |
+| 承認の後に head を変える | レビューの `commit_id = H` と C の木 = H の木 |
+| 承認者に見せる差分を偽る（別の履歴の PR・比較の基準のずらし） | T が H の祖先であることを root が確かめる。GitHub 自身の Files changed を見る |
+| Claude のページでオーナーを誤らせる | 承認は GitHub アプリの差分を見て押す |
+| root・worker のコード（`admin.sh`・`lib/**`・依存・`npm ci`）の差し替え | 承認は C の木全体に付き、root は C だけを動かす |
+| develop の自律マージから実行が生まれる | 承認済みの §10 は承認ブランチにしか無い。develop は見ない |
+| develop・承認ブランチを動かして承認を潰す | C に固定し、生きているブランチと比べない |
+| 承認の使い回し・再試行 | T を進める・`used/<ID>`・`autorun/<ID>` は消さない。再武装は新しいパケットだけ |
+| 検証器が自分を更新する | root の固定の場所。リポジトリから更新しない |
+| root の設定・token・状態を読む/書く | `/etc/sr-design-worker`・`/var/lib/sr-imagefirst-autostart` は root だけ（今の境界のまま） |
+| GitHub の障害・応答の改ざん | 失敗は何もしない。TLS で直接、proxy 無視。形・型が違えば止める |
+| 承認者の端末・アカウントの乗っ取り | 本案の外（passkey、端末のロック）。承認者は普段使わないので露出が小さい |
 
-## 6. オーナーに決めてほしいこと
+## 8. オーナーに決めてほしいこと
 
-1. 推奨案 C で進めてよいか（D を併せて用意するか）。
-2. Claude 用の別の GitHub アカウントを作れるか（作れない場合、GitHub App という方法もあるが設置は重い）。
-3. Claude アプリ以外で、毎回 GitHub アプリでの承認（1〜2 タップ）が要ることを受け入れられるか。
-   Claude アプリの中だけで完結し、かつ Claude に偽造できない方法は、今の仕組みの中には無い（§2・§3）。
-4. 段階 0 の一度だけの root の操作をいつ行うか（それぞれ別に確認と承認をもらう）。
+1. 承認者の専用アカウント（(iii)）と承認ブランチ（(b)）の組み合わせで確定してよいか。
+2. Claude 用の machine user への切り替え（最小権限。要件 1 には不要）をいつ行うか。
+3. 承認ブランチの最初の commit（T の初期値）をいつ・どの commit にするか（#325・#326 と設置の後が自然）。
