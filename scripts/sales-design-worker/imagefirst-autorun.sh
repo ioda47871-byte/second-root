@@ -825,6 +825,7 @@ done
 say "idle: the jailed Claude stopped and disabled, no process of $WORKER_USER"
 
 # ---------------------------------------------------------------- 7. the existing pilot once, pinned to root's commit (never re-compared with develop)
+say "the pilot: $PILOT"
 PILOT_ENV=(env)
 if [ -n "$R" ]; then PILOT_ENV+=("SR_IMAGEFIRST_PILOT_TEST_ROOT=$R"); fi
 # The pilot's result: its own result file (root's, in root's 0700 state, written by the pilot as its last act with a
