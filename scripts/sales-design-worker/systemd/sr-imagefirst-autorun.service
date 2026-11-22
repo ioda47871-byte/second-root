@@ -1,0 +1,68 @@
+# Second Root IMAGE_FIRST automatic run (Issue #302). NOT installed or enabled by anything in this repository: the owner
+# installs it from the root-only admin clone, as a separate safety-boundary decision (docs/operations/imagefirst-autorun.md).
+# OFF by default even when installed: without the owner's root-owned switch and one-use run marker (written by
+# imagefirst-approve.sh) it does nothing and leaves Remote Control untouched.
+#
+# Runs as root (no User=), like sr-imagefirst-autostart.service: only root may stop / start the jailed Claude (admin.sh) and
+# use up the owner's one-use marker (its state directory below, 0700). Every command in the worker's clone (git, npm, the
+# worker, the audit) runs as the dedicated worker user sr-designgen through setpriv inside the existing pilot, outside the
+# jail. Never enable it together with sr-imagefirst-autostart.timer (both read the same marker): the script, the pilot's
+# preflight and imagefirst-approve.sh refuse while that one is enabled or active.
+[Unit]
+Description=Second Root IMAGE_FIRST automatic run (one owner-approved pilot per marker)
+After=network-online.target
+Wants=network-online.target
+# No Conflicts= with sr-jail-claude / sr-design-cycle: the script stops Remote Control itself (admin.sh claude-stop), waits
+# until the worker user is idle, and refuses while a design cycle runs.
+
+[Service]
+Type=oneshot
+WorkingDirectory=/
+ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh
+# Remote Control started again if the run itself could not (a SIGKILL after TimeoutStopSec, a crash): only when the
+# script's root-owned flag says it had stopped it; one attempt.
+ExecStopPost=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh --restore
+# claude-stop 150 s + the idle wait 180 s + the clone sync 1800 s (+ 200 s) + the pilot 6600 s (+ 200 s) + claude-start 150 s
+TimeoutStartSec=9600
+# SIGTERM goes to the script only (KillMode=mixed); it passes it on once to the pilot, which passes it on to the worker or the
+# audit and waits for its record (at most 90 s + the steps' kill-after); then the review-ready file and claude-start
+# (150 s). TimeoutStopSec is longer than all of that.
+KillMode=mixed
+TimeoutStopSec=600
+# 10 = nothing due (no marker, used, attempted, expired), 11 = another firing runs, 12 = busy: not failures
+SuccessExitStatus=10 11 12
+# The lock, used/ (never removed: a used approval id never runs again) and autorun/ (one attempt per id, never removed)
+StateDirectory=sr-imagefirst-autostart
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# The worker's home (its clone, ~/.local/state, ~/sr-runs, ~/.codex) and cycle.sh's lock (absent when not installed)
+ReadWritePaths=/home/sr-designgen -/var/lib/sr-design-cycle
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+# AF_UNIX: systemctl talks to systemd. AF_INET(6): git fetch, npm ci, Codex, claude. AF_NETLINK: id / getent lookups.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Resource limits: one Codex run and one audit (node + the CLIs), kept behind interactive work. Check them against the WSL
+# budget (docs/operations/wsl-resource-preflight.md) before installing.
+Nice=10
+CPUWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryHigh=3G
+MemoryMax=4G
+TasksMax=512
+# Not set, on purpose (as sr-imagefirst-autostart.service):
+#   RestrictNamespaces / PrivateUsers: Codex runs inside the bubblewrap jail (lib/design-agent/sandbox.ts), which needs
+#     user namespaces.
+#   PrivateDevices: bubblewrap sets up its own /dev.
+#   PrivateNetwork / IPAddressDeny: git fetch, npm ci, Codex and claude need the network.
+#   MemoryDenyWriteExecute: node (JIT).
+#   CapabilityBoundingSet: setpriv needs CAP_SETUID / CAP_SETGID.

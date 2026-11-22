@@ -15,7 +15,11 @@
 #   disk         at least MIN_FREE_MIB free on the worker's home file system
 #   exclusion    the automatic start's busy() (copied verbatim): sr-jail-claude inactive / failed AND disabled or masked,
 #                sr-design-cycle inactive / failed, no process of the worker user
-#   timers       sr-design-cycle.timer, sr-imagefirst-autostart.timer and .service neither active nor enabled (or not installed)
+#   timers       sr-design-cycle.timer, sr-imagefirst-autostart.timer and .service, sr-imagefirst-autorun.timer and .service
+#                neither active nor enabled (or not installed). Only when this process itself runs inside
+#                sr-imagefirst-autorun.service (its own cgroup, read from the kernel: no argument or variable selects it;
+#                docs/operations/imagefirst-autorun.md) are exactly that service (activating / active: this run) and its timer
+#                accepted; every other unit is checked the same way
 #   clone        as the worker: git fetch origin develop (the automatic start's line), the tree clean, HEAD = origin/develop
 #   no_prior_run as the worker: no claim, receipt, run, delivery job, inbox copy or audit for this approval id
 #   rubric       the clone's audit is rubric v2 (AUDIT_RUBRIC_VERSION if-claude-audit-v2, schema imagefirst_claude_audit_v2)
@@ -197,6 +201,15 @@ unit_off() {
   return 0
 }
 
+# Whether this process runs inside sr-imagefirst-autorun.service: its own cgroup v2 line, read from the kernel (the test
+# world: a file under its root; test hooks are refused in the production copy). Nothing the caller passes selects it.
+AUTORUN_CGROUP="0::/system.slice/sr-imagefirst-autorun.service"
+own_cgroup() {
+  if [ -n "$R" ]; then cat -- "$R/proc/self/cgroup" 2>/dev/null || true; else cat /proc/self/cgroup 2>/dev/null || true; fi
+}
+IN_AUTORUN=0
+if [[ $'\n'"$(own_cgroup)"$'\n' == *$'\n'"$AUTORUN_CGROUP"$'\n'* ]]; then IN_AUTORUN=1; fi
+
 say "approval $APPROVAL; read only: nothing is installed, enabled, started, claimed or generated"
 
 # ---------------------------------------------------------------- resource (the WSL memory check)
@@ -227,7 +240,22 @@ UNITS_OK=1
 for u in sr-design-cycle.timer sr-imagefirst-autostart.timer sr-imagefirst-autostart.service; do
   if ! unit_off "$u"; then UNITS_OK=0; break; fi
 done
-if [ "$UNITS_OK" = 1 ]; then row timers PASS "sr-design-cycle.timer, sr-imagefirst-autostart.timer/.service off"; else row timers FAIL "$UNIT_WHY"; IDLE=0; fi
+if [ "$UNITS_OK" = 1 ] && [ "$IN_AUTORUN" = 1 ]; then
+  # inside the automatic run: its own service must be this run (a oneshot is "activating" while it runs); its timer fired it
+  st="$(systemctl show -p ActiveState --value sr-imagefirst-autorun.service 2>/dev/null)" || st=error
+  if [[ "$st" =~ ^(activating|active)$ ]]; then
+    row timers PASS "sr-design-cycle.timer, sr-imagefirst-autostart.timer/.service off; inside sr-imagefirst-autorun.service ($st)"
+  else
+    row timers FAIL "the cgroup says sr-imagefirst-autorun.service, but the service is ${st:-unknown}"; IDLE=0
+  fi
+elif [ "$UNITS_OK" = 1 ]; then
+  for u in sr-imagefirst-autorun.timer sr-imagefirst-autorun.service; do
+    if ! unit_off "$u"; then UNITS_OK=0; break; fi
+  done
+  if [ "$UNITS_OK" = 1 ]; then row timers PASS "sr-design-cycle.timer, sr-imagefirst-autostart.timer/.service, sr-imagefirst-autorun.timer/.service off"; else row timers FAIL "$UNIT_WHY"; IDLE=0; fi
+else
+  row timers FAIL "$UNIT_WHY"; IDLE=0
+fi
 
 skip_rest() {
   local n

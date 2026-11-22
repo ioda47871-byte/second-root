@@ -39,6 +39,14 @@
 # next step boundary: PILOT_INTERRUPTED, exit 1, phase=after_claim (the approval may be spent: read the receipt). Press
 # Ctrl-C once and wait (a second one within the worker's grace is a hard stop by design).
 #
+# --autorun <approval id> (docs/operations/imagefirst-autorun.md): the same run, started only by imagefirst-autorun.sh inside
+#   sr-imagefirst-autorun.service (refused anywhere else: this process's own cgroup, read from the kernel, must be that
+#   service's; PILOT_AUTORUN_REFUSED). The only differences: before the preflight, root's used/<approval id> must not exist
+#   (PILOT_MARKER_USED); and right before the worker starts, it is created (atomic mkdir in root's 0700 state, never
+#   removed, as the automatic start's step 7), so the automatic run never starts the worker twice for one id. The
+#   preflight sees the same cgroup and accepts exactly that service and its timer in its timers row. Every other step,
+#   check, line and code is the manual run's.
+#
 # Output: the preflight's table, fixed lines, the workers' one JSON lines with local paths replaced by <local>, then the
 # summary in two parts: "share:" lines (codes, counts, yes/no only: what may go to Issue #302) and "local-only:" lines
 # (SHA-256s, raw stderr: keep them on the machine). The last line is machine-readable and shareable:
@@ -129,6 +137,11 @@ trap on_signal INT TERM HUP
 MODE=run
 if [ "$#" -eq 1 ] && [ "$1" = --sync-clone ]; then
   MODE=sync
+elif [ "$#" -eq 2 ] && [ "$1" = --autorun ]; then
+  MODE=autorun
+  [[ "$2" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
+  APPROVAL="$2"
+  [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PILOT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish PILOT_ID_RESERVED 2; }
 else
   [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot.sh <approval id> | --sync-clone"; finish PILOT_USAGE 2; }
   [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
@@ -185,6 +198,13 @@ if [ -z "$R" ]; then
   admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
   [ -z "$admin_dirty" ] || { say "PILOT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish PILOT_USAGE 2; }
   say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+fi
+# --autorun only inside sr-imagefirst-autorun.service: this process's own cgroup v2 line, read from the kernel (the test
+# world: a file under its root). The same line the preflight reads.
+if [ "$MODE" = autorun ]; then
+  if [ -n "$R" ]; then own_cgroup="$(cat -- "$R/proc/self/cgroup" 2>/dev/null || true)"; else own_cgroup="$(cat /proc/self/cgroup 2>/dev/null || true)"; fi
+  [[ $'\n'"$own_cgroup"$'\n' == *$'\n'"0::/system.slice/sr-imagefirst-autorun.service"$'\n'* ]] ||
+    { say "PILOT_AUTORUN_REFUSED: --autorun runs only inside sr-imagefirst-autorun.service (imagefirst-autorun.sh)"; finish PILOT_AUTORUN_REFUSED 2; }
 fi
 
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
@@ -363,6 +383,12 @@ if [ "$MODE" = sync ]; then
   finish PILOT_SYNCED 0
 fi
 
+# ---------------------------------------------------------------- --autorun: root's used/<approval id> not there yet
+if [ "$MODE" = autorun ] && { [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/used/$APPROVAL" ]; }; then
+  say "the automatic run's marker for $APPROVAL was already used: nothing is started"
+  finish PILOT_MARKER_USED 2
+fi
+
 # ---------------------------------------------------------------- 1. the preflight (read only; every row PASS)
 set +e
 bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
@@ -377,6 +403,17 @@ fi
 
 # ---------------------------------------------------------------- 2. the ONE generation: the existing worker, once
 idle_or_stop "before the worker"
+# --autorun: root's marker for this id is used up BEFORE the worker starts (atomic mkdir, never removed; the worker user can
+# neither create nor remove it), as the automatic start's step 7: whatever happens next, the automatic run never starts the
+# worker again for this id (a stop before the worker starts still ends as PILOT_STOP_SIGNAL, the marker then used)
+if [ "$MODE" = autorun ]; then
+  mkdir -p -m 0700 "$STATE/used"
+  if ! mkdir -m 0700 "$STATE/used/$APPROVAL" 2>/dev/null; then
+    say "the automatic run's marker for $APPROVAL was already used: nothing is started"
+    finish PILOT_MARKER_USED 2
+  fi
+  printf 'approval_id=%s\nused_by=imagefirst-autorun\nused_at=%s\n' "$APPROVAL" "$(date +%s)" >"$STATE/used/$APPROVAL/used"
+fi
 PHASE=after_claim
 say "starting the worker once (approval $APPROVAL): one claim, one generation, never retried"
 # a stop that came during the last checks or since PHASE changed: nothing has started yet, so end as a stop before the

@@ -1,5 +1,9 @@
 # IMAGE_FIRST 限定パイロット（ほし窯 d3、1回だけ）— オーナーの手順
 
+> **自動実行について**: 承認コマンド 1 行の後に同じパイロットを自動で 1 回動かす仕組み（`imagefirst-approve.sh` と
+> `sr-imagefirst-autorun.timer`、未設置）は [`imagefirst-autorun.md`](imagefirst-autorun.md)。その timer か service が
+> enable / active の間は、この手順の preflight の `timers` の行が FAIL する（手で動かす前に timer を止める）。
+
 > **d4 について（PR #320）**: この手順書の本文は d3 の 1 回（実施済み・承認 ID は使用済み）を書いたもの。d4 も同じ scripts で動くが、
 > 承認は `docs/design/image-first-hoshigama-d4-packet.md`（冒頭と §10）だけで行い、承認 ID は `hoshigama-imagefirst-d4-<YYYYMMDD>-<NN>`、
 > 計画 ID は `hoshigama-imagefirst-p4-<YYYYMMDD>`。どの承認パケット・ピンを使うかは ID の方向性から worker が選ぶ
@@ -86,7 +90,7 @@ imagefirst-pilot-preflight: admin clone /root/sr-capture-admin at <40桁> (clean
 imagefirst-pilot-preflight: | resource     | PASS | OK: MemTotal ... MiB / MemAvailable ... MiB / ...
 imagefirst-pilot-preflight: | disk         | PASS | ... MiB free (at least 4096)
 imagefirst-pilot-preflight: | exclusion    | PASS | sr-jail-claude stopped and disabled/masked, sr-design-cycle stopped, no sr-designgen process
-imagefirst-pilot-preflight: | timers       | PASS | sr-design-cycle.timer, sr-imagefirst-autostart.timer/.service off
+imagefirst-pilot-preflight: | timers       | PASS | sr-design-cycle.timer, sr-imagefirst-autostart.timer/.service, sr-imagefirst-autorun.timer/.service off
 imagefirst-pilot-preflight: | clone        | PASS | clean, HEAD = origin/develop = <40桁>
 imagefirst-pilot-preflight: | no_prior_run | PASS | no claim, run, receipt, delivery, inbox copy or audit for hoshigama-imagefirst-d3-20261121-01
 imagefirst-pilot-preflight: | rubric       | PASS | the clone's audit is rubric if-claude-audit-v2 (schema imagefirst_claude_audit_v2)
