@@ -1,0 +1,17 @@
+# Second Root IMAGE_FIRST automatic run (Issue #302). NOT installed or enabled by anything in this repository;
+# enabling it is a separate owner decision at the safety boundary (docs/operations/imagefirst-autorun.md).
+# Never enabled together with sr-imagefirst-autostart.timer.
+[Unit]
+Description=Second Root IMAGE_FIRST automatic run (every 10 minutes)
+
+[Timer]
+# Every 10 minutes. Without a due marker a firing reads one or two root-owned files and ends (Remote Control untouched).
+# A start while the previous firing still runs is skipped by systemd, and the script's lock would refuse it too.
+OnCalendar=*-*-* *:00/10:00
+RandomizedDelaySec=90
+AccuracySec=30s
+# No catch-up after the PC was off: the next regular firing decides (the marker's expires_at and the packet's own expiry).
+Persistent=false
+
+[Install]
+WantedBy=timers.target

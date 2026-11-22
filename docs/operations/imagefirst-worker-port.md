@@ -197,6 +197,12 @@ audit にだけ書く。終了コードは変えない。自動起動の script�
 （封入済みの同じ bundle だけ。封入の前に止まっていて bundle・配送の記録・inbox の写しが一つも無いときに限り、同じ検証済みの run から最初の 1 回だけ封入する。自動起動と同じ busy() のあと、jail の外で worker として `--deliver-review` を 1 回。install も enable もしない）。
 詳しくは [`imagefirst-review-handoff.md`](imagefirst-review-handoff.md) §4。**ChatGPT 側へ画像を返すことは未達のまま**（同 §5 の選択肢。何も設定していない）。
 
+### 6.2 自動実行（承認コマンド 1 行 → パイロット 1 回、未設置）
+
+この節の毎時の自動起動は worker だけを動かす。パイロット（preflight・受け渡し・監査・要約）を Remote Control の停止と復帰つきで
+1 回だけ自動で動かす後継は [`imagefirst-autorun.md`](imagefirst-autorun.md)（`imagefirst-approve.sh`・`imagefirst-autorun.sh`・
+`sr-imagefirst-autorun.{service,timer}`）。同じ switch と印を読むので、**この節の timer と一緒に enable しない**（どちらの側も断る）。
+
 ## 7. オーナーの手順（自動起動。別のオーナー承認の後だけ。いまは読むだけ）
 
 **ここに書いた操作は、まだ誰も行っていない。** Claude はクラウドから root で操作しない。すべてオーナーが WSL で、一度だけ行う。

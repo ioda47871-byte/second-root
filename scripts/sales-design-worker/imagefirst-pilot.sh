@@ -39,6 +39,18 @@
 # next step boundary: PILOT_INTERRUPTED, exit 1, phase=after_claim (the approval may be spent: read the receipt). Press
 # Ctrl-C once and wait (a second one within the worker's grace is a hard stop by design).
 #
+# --autorun <approval id> <commit> (docs/operations/imagefirst-autorun.md): the same run, started only by imagefirst-autorun.sh
+#   inside sr-imagefirst-autorun.service (refused anywhere else: this process's own cgroup, read from the kernel, must be that
+#   service's; PILOT_AUTORUN_REFUSED). The differences: root's admin clone must be clean at exactly <commit> (the commit the
+#   automatic run verified against origin); root's used/<approval id> must not exist (PILOT_MARKER_USED); the reused clone
+#   is never used: a fresh clone at a new root-chosen path, from root's origin URL, at exactly <commit>, with no user or
+#   system git config, status --ignored empty, then npm ci; the preflight, the worker run, the re-send and the audit use
+#   it (the steps below); and right before the worker starts,
+#   used/<approval id> is created (atomic mkdir in root's 0700 state, never
+#   removed, as the automatic start's step 7), so the automatic run never starts the worker twice for one id. The
+#   preflight sees the same cgroup and accepts exactly that service and its timer in its timers row. Every other step,
+#   check, line and code is the manual run's.
+#
 # Output: the preflight's table, fixed lines, the workers' one JSON lines with local paths replaced by <local>, then the
 # summary in two parts: "share:" lines (codes, counts, yes/no only: what may go to Issue #302) and "local-only:" lines
 # (SHA-256s, raw stderr: keep them on the machine). The last line is machine-readable and shareable:
@@ -78,6 +90,8 @@ WORKER_TIMEOUT=1800
 WORKER_KILL_AFTER=90
 # the audit dry run: verify and plan only
 DRY_RUN_TIMEOUT=600
+# --autorun: the fresh clone of the whole repository (more than a fetch)
+CLONE_TIMEOUT=600
 # the audit: at most 3 calls of 10 min each, plus the checks and the record
 AUDIT_TIMEOUT=2400
 AUDIT_KILL_AFTER=90
@@ -100,6 +114,13 @@ finish() {
   trap - EXIT INT TERM HUP
   [ "$PHASE" != after_claim ] || summary || true
   [ -z "$WORK" ] || rm -rf "$WORK"
+  # --autorun: the same last line, also as root's result file in root's 0700 state (a temporary file, then a rename), which
+  # the automatic run reads after it has reaped this process (stdout and the exit status through timeout(1) are not a
+  # reliable hand-off: some timeout(1)s exit 143 after passing on a stop, whatever this script returns)
+  if [ "$MODE" = autorun ] && [ -n "${STATE:-}" ] && [ -d "$STATE" ]; then
+    printf 'IMAGEFIRST_PILOT %s phase=%s approval=%s exit=%s\n' "$code" "$PHASE" "$APPROVAL" "$rc" >"$STATE/.autorun-result.$$" 2>/dev/null &&
+      mv -f -T -- "$STATE/.autorun-result.$$" "$STATE/autorun-result" 2>/dev/null || true
+  fi
   printf 'IMAGEFIRST_PILOT %s phase=%s approval=%s exit=%s\n' "$code" "$PHASE" "$APPROVAL" "$rc"
   exit "$rc"
 }
@@ -129,6 +150,13 @@ trap on_signal INT TERM HUP
 MODE=run
 if [ "$#" -eq 1 ] && [ "$1" = --sync-clone ]; then
   MODE=sync
+elif [ "$#" -eq 3 ] && [ "$1" = --autorun ]; then
+  MODE=autorun
+  [[ "$2" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
+  APPROVAL="$2"
+  [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PILOT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish PILOT_ID_RESERVED 2; }
+  [[ "$3" =~ ^[0-9a-f]{40}$ ]] || { say "PILOT_SHA_INVALID: --autorun <approval id> <40-hex commit of the root-verified admin clone>"; finish PILOT_SHA_INVALID 2; }
+  AUTORUN_SHA="$3"
 else
   [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot.sh <approval id> | --sync-clone"; finish PILOT_USAGE 2; }
   [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
@@ -185,6 +213,22 @@ if [ -z "$R" ]; then
   admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
   [ -z "$admin_dirty" ] || { say "PILOT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish PILOT_USAGE 2; }
   say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+fi
+# --autorun only inside sr-imagefirst-autorun.service: this process's own cgroup v2 line, read from the kernel (the test
+# world: a file under its root). The same line the preflight reads.
+if [ "$MODE" = autorun ]; then
+  if [ -n "$R" ]; then own_cgroup="$(cat -- "$R/proc/self/cgroup" 2>/dev/null || true)"; else own_cgroup="$(cat /proc/self/cgroup 2>/dev/null || true)"; fi
+  [[ $'\n'"$own_cgroup"$'\n' == *$'\n'"0::/system.slice/sr-imagefirst-autorun.service"$'\n'* ]] ||
+    { say "PILOT_AUTORUN_REFUSED: --autorun runs only inside sr-imagefirst-autorun.service (imagefirst-autorun.sh)"; finish PILOT_AUTORUN_REFUSED 2; }
+  # the commit is root's: the root-owned admin clone (the test world: its stand-in) must be clean and at exactly that
+  # commit, and its configured origin URL (root's, never the worker clone's .git/config) is the one fetched from
+  if [ -n "$R" ]; then ADMIN_GIT="$R$PROD_CLONE"; else ADMIN_GIT="$REPO"; fi
+  admin_head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || admin_head=""
+  admin_dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+  [ "$admin_head" = "$AUTORUN_SHA" ] && [ -z "$admin_dirty" ] ||
+    { say "PILOT_AUTORUN_SHA_MISMATCH: the admin clone is not clean at $AUTORUN_SHA"; finish PILOT_AUTORUN_SHA_MISMATCH 2; }
+  ORIGIN_URL="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || ORIGIN_URL=""
+  [[ "$ORIGIN_URL" =~ ^[A-Za-z0-9._:/@+-]+$ ]] || { say "PILOT_AUTORUN_ORIGIN_INVALID: the admin clone's origin URL is missing or unusual"; finish PILOT_AUTORUN_ORIGIN_INVALID 2; }
 fi
 
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
@@ -336,8 +380,18 @@ AS_WORKER=(setpriv --reuid="$worker_uid" --regid="$worker_gid" --init-groups --r
 for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
   if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
 done
+# --autorun: never the reused clone (its index, objects, ignored files and the worker's own git config may have been planted
+# while Remote Control ran): a fresh clone at a root-chosen new path, and every git of the worker without the user's or
+# the system's git config (the worker's own git, started by node, gets the same variables: worker/env.ts passes them on)
+if [ "$MODE" = autorun ]; then
+  # ... and core.attributesFile=/dev/null for every git, the worker's own included (git's GIT_CONFIG_COUNT variables)
+  AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0=/dev/null)
+  AS_HOME=("${AS_WORKER[@]}" bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$WORKER_HOME")
+  FRESH="$WORKER_HOME/imagefirst/autorun-$APPROVAL-$(date -u +%Y%m%dT%H%M%SZ)"
+  CLONE="$FRESH"
+fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
-[ -d "$CLONE" ] || { say "PILOT_STOP_NO_CLONE: $CLONE is missing"; finish PILOT_STOP_NO_CLONE 20; }
+[ "$MODE" = autorun ] || [ -d "$CLONE" ] || { say "PILOT_STOP_NO_CLONE: $CLONE is missing"; finish PILOT_STOP_NO_CLONE 20; }
 
 # ---------------------------------------------------------------- --sync-clone: the automatic start's step 5, nothing else
 if [ "$MODE" = sync ]; then
@@ -363,6 +417,75 @@ if [ "$MODE" = sync ]; then
   finish PILOT_SYNCED 0
 fi
 
+# ---------------------------------------------------------------- --autorun: root's used/<approval id> not there yet
+if [ "$MODE" = autorun ] && { [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/used/$APPROVAL" ]; }; then
+  say "the automatic run's marker for $APPROVAL was already used: nothing is started"
+  finish PILOT_MARKER_USED 2
+fi
+
+# ---------------------------------------------------------------- --autorun: a fresh clone at root's commit
+# While Remote Control ran, the jailed Claude (the same user) could plant state in the reused clone (its .git config,
+# hooks, index flags such as skip-worktree, forged objects or alternates, ignored files, node_modules) and in the worker's
+# home (~/.gitconfig and its includes, ~/.config/git/config and attributes). So the automatic run never uses the reused
+# clone: with Remote Control stopped and no process of the worker user left, as the worker, a NEW directory at a path root
+# chose (~/imagefirst/autorun-<id>-<UTC>, created with mkdir: never a link, never one that exists), `git clone --no-local
+# --no-checkout` from root's origin URL (every object received and checked by git, nothing shared), origin/develop must be
+# exactly root's commit, `checkout --detach` it, HEAD = it, and `git status --ignored` prints nothing; then npm ci (no user or
+# global npm config). Every git runs with GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 (in AS_WORKER) and the -c settings
+# below. Old fresh clones: only real directories named autorun-hoshigama-imagefirst-* directly under ~/imagefirst; the
+# newest one is kept (for a look afterwards), the older ones are removed, by the worker, while this run holds the locks
+# with Remote Control stopped (no run can be using them). Nothing else is ever removed. The worker run, the re-send and
+# the audit below all use the fresh clone; the manual pilot keeps ~/imagefirst/second-root.
+if [ "$MODE" = autorun ]; then
+  idle_or_stop "before the fresh clone"
+  GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
+  # Node looks for modules (and package.json "type" / "imports") in every parent directory of the clone and in the global
+  # folders: none of them may exist (lstat: links count), here and again after npm ci. NODE_PATH never reaches the worker
+  # (env -i; worker/env.ts does not pass it on)
+  node_paths_clean() {
+    "${AS_HOME[@]}" bash -c 'for p in "$HOME/node_modules" "$HOME/.node_modules" "$HOME/.node_libraries" "$HOME/imagefirst/node_modules" "$HOME/package.json" "$HOME/imagefirst/package.json"; do
+        if [ -e "$p" ] || [ -L "$p" ]; then exit 5; fi
+      done' 8>&- 9>&-
+  }
+  node_paths_clean || { say "a node_modules / .node_modules / .node_libraries / package.json is in the worker's home or ~/imagefirst (Node would load it): stopped"; finish PILOT_AUTORUN_NODE_PATHS 20; }
+  # old fresh clones, NUL-safe: only real directories directly under ~/imagefirst whose whole name is a fresh clone's
+  # (autorun-<id>-<UTC>); the newest of them is kept, the older ones removed. Any other name is never touched
+  "${AS_HOME[@]}" bash -c 'base="$HOME/imagefirst"; p="$1"
+    re="^autorun-hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}-[0-9]{8}T[0-9]{6}Z$"
+    [ -d "$base" ] && [ ! -L "$base" ] || exit 3
+    case "$p" in "$base"/autorun-hoshigama-imagefirst-d[34]-*) ;; *) exit 3 ;; esac
+    valid=()
+    while IFS= read -r -d "" d; do
+      n="${d##*/}"
+      if [ "${d%/*}" = "$base" ] && [[ "$n" =~ $re ]] && [ -d "$d" ] && [ ! -L "$d" ]; then valid+=("$(stat -c %Y -- "$d") $n"); fi
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name "autorun-hoshigama-imagefirst-*" -print0)
+    if [ "${#valid[@]}" -gt 1 ]; then
+      printf "%s\n" "${valid[@]}" | sort -rn | tail -n +2 | while read -r _ n; do
+        [[ "$n" =~ $re ]] && [ -d "$base/$n" ] && [ ! -L "$base/$n" ] && rm -rf -- "${base:?}/$n"
+      done
+    fi
+    if [ -e "$p" ] || [ -L "$p" ]; then exit 4; fi
+    mkdir -m 700 -- "$p"' _ "$FRESH" 8>&- 9>&- ||
+    { say "the fresh clone's directory could not be made (no ~/imagefirst directory, a link, or it exists)"; finish PILOT_AUTORUN_CLONE 20; }
+  "${AS_HOME[@]}" timeout --kill-after="$KILL_AFTER" "$CLONE_TIMEOUT" "${GH[@]}" clone --quiet --no-local --no-checkout --no-tags --single-branch --branch develop -- "$ORIGIN_URL" "$FRESH" >/dev/null 2>&1 8>&- 9>&- ||
+    { say "git clone from root's origin URL failed"; finish PILOT_AUTORUN_FETCH 20; }
+  base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse refs/remotes/origin/develop 2>/dev/null)" || base=""
+  [ "$base" = "$AUTORUN_SHA" ] || { say "origin/develop (${base:-?}) is not root's verified commit $AUTORUN_SHA: stopped"; finish PILOT_AUTORUN_DEVELOP_MOVED 20; }
+  in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" checkout --quiet --detach "$AUTORUN_SHA" >/dev/null 2>&1 ||
+    { say "git checkout failed"; finish PILOT_AUTORUN_CLONE 20; }
+  head="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse HEAD 2>/dev/null)" || head=""
+  [ "$head" = "$AUTORUN_SHA" ] || { say "HEAD is not $AUTORUN_SHA after the checkout"; finish PILOT_AUTORUN_CLONE 20; }
+  extra="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --ignored --untracked-files=all 2>/dev/null)" ||
+    { say "git status failed"; finish PILOT_AUTORUN_CLONE 20; }
+  [ -z "$extra" ] || { say "the fresh clone is not exactly the commit (changed, untracked or ignored files): stopped"; finish PILOT_AUTORUN_TREE_DIRTY 20; }
+  in_clone env npm_config_userconfig=/dev/null npm_config_globalconfig=/dev/null timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ||
+    { say "npm ci failed"; finish PILOT_AUTORUN_NPM 20; }
+  node_paths_clean || { say "a node_modules / package.json appeared in the worker's home or ~/imagefirst during npm ci: stopped"; finish PILOT_AUTORUN_NODE_PATHS 20; }
+  # where the preflight finds it (root's own file in root's 0700 state; the preflight checks its form)
+  printf '%s\n' "$FRESH" >"$STATE/autorun-clone"
+  say "a fresh clone at root's verified commit $AUTORUN_SHA (no user git config, status --ignored empty, npm ci)"
+fi
+
 # ---------------------------------------------------------------- 1. the preflight (read only; every row PASS)
 set +e
 bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
@@ -377,6 +500,17 @@ fi
 
 # ---------------------------------------------------------------- 2. the ONE generation: the existing worker, once
 idle_or_stop "before the worker"
+# --autorun: root's marker for this id is used up BEFORE the worker starts (atomic mkdir, never removed; the worker user can
+# neither create nor remove it), as the automatic start's step 7: whatever happens next, the automatic run never starts the
+# worker again for this id (a stop before the worker starts still ends as PILOT_STOP_SIGNAL, the marker then used)
+if [ "$MODE" = autorun ]; then
+  mkdir -p -m 0700 "$STATE/used"
+  if ! mkdir -m 0700 "$STATE/used/$APPROVAL" 2>/dev/null; then
+    say "the automatic run's marker for $APPROVAL was already used: nothing is started"
+    finish PILOT_MARKER_USED 2
+  fi
+  printf 'approval_id=%s\nused_by=imagefirst-autorun\nused_at=%s\n' "$APPROVAL" "$(date +%s)" >"$STATE/used/$APPROVAL/used"
+fi
 PHASE=after_claim
 say "starting the worker once (approval $APPROVAL): one claim, one generation, never retried"
 # a stop that came during the last checks or since PHASE changed: nothing has started yet, so end as a stop before the
@@ -428,6 +562,25 @@ review="$(grep -a '^imagefirst-worker: review ' "$WORK/err" | tail -n 1 | tr -d 
 say "hand-off: $(printf '%s' "${review:-<no line>}" | redact)"
 if [[ "$review" == *'"status":"delivered"'* ]] || [[ "$review" == *'"status":"duplicate"'* ]]; then
   DELIVERY=delivered
+elif [ "$MODE" = autorun ]; then
+  # --autorun: the same re-send (the worker's --deliver-review: the SAME sealed bundle, no generation), but from the fresh
+  # clone, as the worker, with the locks kept (the wrapper would use the reused clone)
+  say "the hand-off did not deliver: re-sending the SAME sealed bundle once from the fresh clone (--deliver-review; no generation)"
+  idle_or_stop "before the re-send"
+  set +e
+  "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$DRY_RUN_TIMEOUT" node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/deliver" 2>/dev/null 8>&- 9>&-
+  drc=$?
+  set -e
+  dline="$(tail -n 1 "$WORK/deliver" | tr -d '\000-\037' | cut -c1-2000)"
+  say "re-send: $(printf '%s' "${dline:-<no line>}" | redact)"
+  stop_if_interrupted
+  if [ "$drc" -eq 0 ] && { [[ "$dline" == '{"status":"delivered"'* ]] || [[ "$dline" == '{"status":"duplicate"'* ]]; }; then
+    DELIVERY=delivered_by_resend
+  else
+    DELIVERY=not_delivered
+    say "not delivered: no audit (the bundle stays sealed; re-send it later with imagefirst-deliver-review.sh)"
+    finish PILOT_NOT_DELIVERED 1
+  fi
 else
   say "the hand-off did not deliver: re-sending the SAME sealed bundle once (imagefirst-deliver-review.sh; no generation)"
   release_locks
