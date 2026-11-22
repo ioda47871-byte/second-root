@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { runBounded } from "@/lib/design-agent/bounded-process";
-import { tsEntry } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { IMAGEFIRST_ALLOWLIST, tsEntry } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { ownJailUnit } from "@/lib/design-agent/imagefirst-worker/jail-state";
+import { MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket } from "@/lib/design-agent/phase2f-live/full-page-call";
 
 // Issue #302 P0 (PR #301 review L2): the IMAGE_FIRST worker CLI started as a real process, in a scratch HOME, and the
-// split-UTF-8 fix of runBounded. The CLI never gets an approved packet here: every run refuses (or finds no job) before
-// anything is claimed or invoked. No Codex, no model, no network.
+// split-UTF-8 fix of runBounded. Every run here refuses (or finds no job) before anything is claimed or invoked; when the
+// committed packet is approved and inside its window (a clean origin/develop checkout, e.g. CI on develop), the real run is
+// not started at all and only the write-free precheck runs. No Codex, no model, no network.
 
 const REPO = resolve(__dirname, "../../../..");
 const CLI = join(REPO, "scripts/sales-design-worker/imagefirst-worker.ts");
@@ -47,7 +49,7 @@ function nothingUsed(home: string) {
  * with the CLI's own reader (the spawned CLI runs in this process's cgroup): inside a requester jail unit (the suite run by
  * the jailed Claude or `admin.sh run`) RUN_INSIDE_JAIL_UNIT, where /proc/self/cgroup cannot be read OWN_CGROUP_UNREADABLE.
  */
-async function expectedGate(): Promise<{ status: string; code: string; exit: number }> {
+async function expectedGate(): Promise<{ status: string; code: string | null; exit: number }> {
   const unit = await ownJailUnit();
   if (unit === "unknown") return { status: "refused", code: "OWN_CGROUP_UNREADABLE", exit: 2 };
   if (unit !== null) return { status: "refused", code: "RUN_INSIDE_JAIL_UNIT", exit: 2 };
@@ -57,9 +59,22 @@ async function expectedGate(): Promise<{ status: string; code: string; exit: num
   if (head.status !== 0 || base.status !== 0) return { status: "refused", code: "COMMIT_UNREADABLE", exit: 2 };
   if (head.stdout.trim() !== base.stdout.trim()) return { status: "refused", code: "NOT_ON_ORIGIN_DEVELOP", exit: 2 };
   if (git("status", "--porcelain", "--untracked-files=all").stdout !== "") return { status: "refused", code: "TREE_DIRTY", exit: 2 };
-  // on origin/develop and clean: the committed packet is unapproved (PR #300 is owner-merge-only)
-  return { status: "no_job", code: "PACKET_NOT_APPROVED", exit: 0 };
+  // On origin/develop and clean (CI's push runs on develop): a run by hand reads the d3 row's packet as committed. Since
+  // PR #315 that packet is approved, so the answer depends on its expiry (Issue #302: the test used to assume an
+  // unapproved packet and failed on every develop push). Inside the window the real cycle would claim and invoke: the
+  // run test is skipped then (a test never starts a real run), and the precheck answers would_run without writing.
+  const shown = git("show", `${head.stdout.trim()}:${IMAGEFIRST_ALLOWLIST.packet.path}`);
+  const packet = shown.status === 0 ? readApprovalPacket(Buffer.from(shown.stdout, "utf8"), IMAGEFIRST_ALLOWLIST.packet) : null;
+  if (!packet) return { status: "no_job", code: "PACKET_NOT_APPROVED", exit: 0 };
+  const expires = parseUtcInstant(packet.expires);
+  if (expires === null) return { status: "refused", code: "APPROVAL_EXPIRY_INVALID", exit: 2 };
+  const left = expires - Date.now();
+  if (left < 0) return { status: "refused", code: "APPROVAL_EXPIRED", exit: 2 };
+  if (left > MAX_APPROVAL_WINDOW_MS) return { status: "refused", code: "APPROVAL_EXPIRY_TOO_FAR", exit: 2 };
+  return { status: "would_run", code: null, exit: 0 };
 }
+/** True when the run test must not start the real CLI (inside an approval window it would claim and invoke). */
+const insideApprovalWindow = (g: { status: string }) => g.status === "would_run";
 
 describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing invoked)", () => {
   it("any argument is USAGE, exit 2, before any place is touched", () => {
@@ -82,6 +97,11 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
 
   it("this checkout is not an approved worker clone: the commit gate refuses (e.g. NOT_ON_ORIGIN_DEVELOP), audit 0600, nothing claimed", async () => {
     const want = await expectedGate();
+    if (insideApprovalWindow(want)) {
+      // never start a real run from a test: the precheck test below covers this case without claiming or invoking
+      console.warn("worker-cli: inside the committed packet's approval window; the real run is not started by this test");
+      return;
+    }
     const r = runCli([]);
     expect(r.status).toBe(want.exit);
     expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
@@ -103,8 +123,8 @@ describe("Issue #302 P1: the worker's --precheck as a real process (no lock, no 
   it("answers the same gates with the precheck exit (2 refused / 3 no job) and creates nothing in HOME", async () => {
     const want = await expectedGate();
     const r = runCli(["--precheck"]);
-    expect(r.status).toBe(want.status === "no_job" ? 3 : 2);
-    expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
+    expect(r.status).toBe(want.status === "would_run" ? 0 : want.status === "no_job" ? 3 : 2);
+    expect(r.out).toMatchObject({ status: want.status, code: want.code, invoked: false });
     // nothing at all under the scratch HOME: no state dir, no audit line, no runs dir
     expect(readdirSync(r.home)).toEqual([]);
   });
