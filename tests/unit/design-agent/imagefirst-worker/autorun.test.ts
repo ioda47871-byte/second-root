@@ -1265,7 +1265,10 @@ describe("DEV-303 standing pre-authorization: the owner's one-time policy and Cl
     const s71 = spec.slice(spec.indexOf("### 7.1 "), spec.indexOf("\n### ", spec.indexOf("### 7.1 ") + 5));
     expect(s71).not.toContain("今までどおり 1 回ごとのオーナーの承認が要る");
     expect(s71).toContain("**オーナーが一度だけ設定する包括的な事前許可**（オーナー決定 2026-11-23、DEV-303）");
-    expect(s71).toContain("上限は root が守る");
+    expect(s71).toContain("**root が守るもの**");
+    expect(s71).toContain("**オーナーが固定した worker の commit だけを動かすこと**");
+    expect(s71).toContain("オーナーが固定した commit の worker のコードが守る");
+    expect(s71).toContain("6 枚を超えたら、オーナーが解除するまで事前許可での実行を止める");
     expect(s71).toContain("**実店舗の画像は社内のデザインの参考だけ**: 相手（prospect）に見せない・共有しない・版に入れない。");
     expect(s71).toContain("**本番の公開と営業の送信は、今までどおりオーナーの確認が要る**。自動送信は作らない。");
     const doc = readFileSync(join(REPO, "docs", "operations", "imagefirst-autorun.md"), "utf8");

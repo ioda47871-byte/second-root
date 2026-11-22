@@ -241,4 +241,4 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
   - 架空の店の研究の規則（`checkPhotoRights`・`AI_DEMO_SHOPS`・`AI_DEMO_NOT_FOR_PUBLIC_SITE`）は変えない。
   - 写真の共有は今も無効（`PUBLIC_DEMO_ASSETS_ENABLED = false`）。共有できる版は写真 0 枚の版だけ。写真や AI 画像の共有を始めるには、`docs/MVP_SPEC.md` §7 の変更（Protected Scope）と別の承認が要る。
 - **受け入れるリスク**: 管理者用の token は cookie の無い bearer URL で、漏れると未承認の下書き（AI 画像を含む）が最大 15 分見える（DEV-196 仕様 T19）。対策は短い期限・1 つの版だけ・管理者の頁でだけ発行・log に出さない・`no-referrer`・`no-store`・取り消しと鍵の rotate。
-- **worker と bridge**: WSL に Supabase の鍵を置かない。アップロードは今の bridge の token で、版の受け入れだけの狭い API（prospect・outreach・DNC・送信・品質承認には触れない）。worker・bridge の経路から品質承認・送信承認は書けない。生成物は必ず未承認の `draft`。画像の生成は、オーナーが一度だけ設定する包括的な事前許可（オーナー決定 2026-11-23、DEV-303、MVP_SPEC §7.1）のもとで、root が守る上限の中だけ（1 回ごとの承認は手動の代替として残る）。実店舗の画像は社内の参考だけで、相手に見せず、版に入れない。
+- **worker と bridge**: WSL に Supabase の鍵を置かない。アップロードは今の bridge の token で、版の受け入れだけの狭い API（prospect・outreach・DNC・送信・品質承認には触れない）。worker・bridge の経路から品質承認・送信承認は書けない。生成物は必ず未承認の `draft`。画像の生成は、オーナーが一度だけ設定する包括的な事前許可（オーナー決定 2026-11-23、DEV-303、MVP_SPEC §7.1）のもとで、root が守る回数・期限の中で、オーナーが固定した commit の worker のコードだけ（1 回ごとの承認は手動の代替として残る）。実店舗の画像は社内の参考だけで、相手に見せず、版に入れない。

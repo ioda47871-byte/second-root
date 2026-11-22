@@ -25,8 +25,16 @@ sudo bash $S enable-timer --yes --expect <sha>         # 10 分ごとの timer �
 
 - `standing` の上限: `--per-day` は 1〜4、`--per-week` は 1〜20（`--per-day` 以上）、`--days` は 1〜90。外れると `STANDING_INVALID` で何も書かない。
   書くのは root の `/etc/sr-design-worker/imagefirst-standing.json`（0644）だけ:
-  `{"schema": "sr_imagefirst_standing_v1", "per_day", "per_week", "not_after"（今 + D 日、UTC）, "created_at", "origin_url"（管理用 clone の origin）}`。
+  `{"schema": "sr_imagefirst_standing_v1", "per_day", "per_week", "not_after"（今 + D 日、UTC）, "created_at", "worker_commit"（= --expect）, "origin_url"（管理用 clone の origin）}`。
   setup.log に記録する。値を変えるときは `standing` をもう一度打つ（置き換わる）。期限が過ぎると何も動かない（もう一度 `standing`）。
+- **worker のコードの固定**: `worker_commit` は `--expect` の commit（その時、管理用 clone のきれいな detached HEAD で、origin の develop であると
+  確かめたもの）。事前許可がある間、**依頼の回も 1 回ごとの承認の回も、この commit の worker のコードだけ**が jail の外で動く（develop の最新は
+  動かさない。Claude がマージしたコードが勝手に root の回で動くことはない）。**新しい worker のコードを回に届ける方法は、オーナーが
+  `standing --yes --expect <新しい commit> ...` を打ち直すことだけ**。origin がその commit を持っていなければ（force push などで消えた）
+  `AUTORUN_STANDING_COMMIT_UNAVAILABLE` で何も試さない（試行も使わない）。
+- **凍結の解除**: 実行の後に root が数えた画像が 6 枚を超えると（`AUTORUN_IMAGE_CAP_EXCEEDED`）、root は
+  `/var/lib/sr-imagefirst-autostart/standing.frozen` を書き、事前許可での拾い上げを止める（`AUTORUN_STANDING_FROZEN`）。その回を確かめてから
+  `sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --unfreeze --yes`。
 - **取り消し**（いつでも、`--expect` も管理用 clone も要らない）:
   `sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --revoke --yes`
   （動いている 1 回は最後まで行く。止めるなら `sudo systemctl stop sr-imagefirst-autorun.service`）。timer ごと止めるのは §3。
@@ -37,9 +45,9 @@ sudo bash $S enable-timer --yes --expect <sha>         # 10 分ごとの timer �
 
 Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を置く。root が見るのは外側だけ:
 
-- 依頼 ID: `^[a-z0-9][a-z0-9-]{2,62}$`（ファイル名と同じ）。ファイルは 16 KiB まで、普通のファイル（リンク・FIFO・ディレクトリは不可）。
+- 依頼 ID: `^req-[a-z0-9][a-z0-9-]{2,58}$`（ファイル名と同じ。必ず `req-` で始まり、承認 ID の形 `hoshigama-imagefirst-...` にはならない。承認 ID も `req-` では始まらない）。ファイルは 16 KiB まで、普通のファイル（リンク・FIFO・ディレクトリは不可）。
 - JSON: `{"schema": "sr_imagefirst_request_v1", "id": <ファイル名と同じ>, "shop_id": <^[a-z0-9_-]{2,41}$>, "kind": "real_shop" | "fictional", "created_at": <UTC の ISO、末尾 Z>, ...}`。
-  ほかの欄は worker の仕事（root は読まない）。
+  ほかの欄は worker の仕事（root は読まない）。**依頼はデータだけ**: 依頼の中身でコード・commit・上限・場所は選べない（動くのはオーナーが固定した commit の worker）。
 - root は依頼を **worker として**読む（setpriv、root 自身の作業ファイルへの pipe。root は worker のファイルを開かない）。
 - 形が違う依頼は root の `rejected/<ID>`（理由のコード）に記録し、`~/sr-runs/review-inbox/requests/<ID>.rejected` に
   `IMAGEFIRST_REQUEST_REJECTED id=<ID> reason=<コード>` を worker として書く。二度と読まない（直しても同じ ID は動かない。新しい ID で置く）。
@@ -54,10 +62,15 @@ Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を�
   1 回ごとの承認の試行も同じ数に入る。
 - **1 件 1 回**: 拾った依頼は root の `requests/<ID>.json`（0600）に写して SHA-256 を記録し、`autorun/<ID>` を作ってから動かす。
   何が起きても同じ ID は二度と動かない（再試行なし）。1 回の中身は今までどおり（Codex 1 回・画像 6 枚まで・15 分）。
-- **commit の固定**: 拾った時に、事前許可の `origin_url`（無ければ管理用 clone の設定の URL）の develop を `git ls-remote` で読み、
-  その commit を**その回の最後まで固定**する。Remote Control を止めている間に develop が進んでも、その回は止まらず、固定した commit で動く
-  （以前の `AUTORUN_STOP_DEVELOP_MOVED` で承認を無駄にする問題を直した）。pilot は worker として新しい clone を作り、その commit が develop の
-  履歴にあることを確かめて checkout する。
+- **commit の固定**: 事前許可がある間は、その `worker_commit` だけ（上の 0.1）。root は試行の前に、その commit を root の使い捨ての
+  リポジトリへ fetch して origin が持っていることを確かめる（root は何も動かさない）。pilot は worker として新しい場所に `git init` し、
+  その commit を**id で** fetch して（`refs/remotes/origin/develop` に入れる。worker は HEAD = origin/develop を確かめる）checkout する。
+  develop の最新や祖先は見ない。develop が進んでも、その回は固定した commit で動く（以前の `AUTORUN_STOP_DEVELOP_MOVED` で承認を無駄にする
+  問題は、事前許可のもとでは起きない）。事前許可が無いとき（1 回ごとの承認だけ）は DEV-303 の前と同じ: 管理用 clone がきれいで HEAD = origin の develop、
+  止めた後にもう一度確かめる（動いていれば pilot なし）。
+- **root が守る上限と、worker が守る上限**: root が守るのは、回数（1 日・1 週）、1 件 1 回、固定した commit、時間の上限（timeout）、そして実行の後の
+  画像の枚数（worker として、その回の `parts/` と inbox の bundle を数える。6 枚を超えると凍結）。Codex 1 回・画像 6 枚まで・15 分・再試行なしは、
+  オーナーが固定した commit の worker のコードが守る。
 - **実行コードの保護**: unit が動かすのは `/usr/local/lib/sr-imagefirst/` の写しだけ。autorun は毎回、写しの全部（autorun・pilot・preflight・
   admin.sh と host-check.sh・jail のファイル・メモリの検査など）が root の持ち物で誰も書けず（`/` まで）、`SHA256SUMS` の SHA-256 と同じことを
   確かめる（違えば `AUTORUN_INSTALL_UNTRUSTED` で何もしない）。管理用 clone のスクリプトを root で動かすことはもう無い。
@@ -87,13 +100,13 @@ Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を�
    sr-imagefirst-autorun.timer（10 分ごと + 最大 90 秒の揺らぎ、Persistent=false）
      → sr-imagefirst-autorun.service（root、oneshot）→ imagefirst-autorun.sh
          1. switch・印（無ければ §0 の事前許可と依頼）・使用済み・試行済みを見る。入れた写し（/usr/local/lib/sr-imagefirst）が
-            SHA256SUMS のとおりであること。origin の develop を ls-remote で読み、その commit を固定する（DEV-303: 管理用 clone の
-            HEAD は見ない）。どれかが違えば静かに終わる（Remote Control に触らない）
+            SHA256SUMS のとおりであること。commit を決める: 事前許可がある間はその worker_commit（origin が持っていること）、
+            無いときは admin clone がきれいで HEAD = origin の develop（ls-remote）。どれかが違えば静かに終わる（Remote Control に触らない）
          2. 試行を記録（autorun/<ID>、その commit も。消さない）→ sr-jail-claude が enable だったかを復元フラグに書く
             → admin.sh claude-stop → sr-designgen のプロセスが無くなるまで待つ（最大 180 秒）
-         3. imagefirst-pilot.sh --autorun <ID> <commit> <origin URL>（develop と比べ直さない。進んでいても固定した commit で動く）
+         3. （事前許可が無いときだけ admin clone をもう一度確かめる）→ imagefirst-pilot.sh --autorun <ID> <commit> <origin URL>
               使い回しの clone は使わず、root が決めた新しい場所（~/imagefirst/autorun-<ID>-<UTC>）に root の origin URL から
-              新しく clone し（利用者・システムの git 設定なし）、HEAD = <commit>（develop の履歴にあること）、status --ignored が空、npm ci
+              その commit だけを id で fetch し（利用者・システムの git 設定なし）、HEAD = <commit>、status --ignored が空、npm ci
               → preflight（全部 PASS でなければ何も使わずに終わる）→ used/<ID> を作る → worker 1 回（Codex 1 回）
               → 受け渡し（必要なら再送 1 回）→ 監査の dry-run → 監査 1 回 → 要約
          4. 必ず: review-ready ファイルを書く → claude-start（実行前に enable だったときだけ）→ 復元フラグを消す
@@ -261,11 +274,12 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-
   使い回しの clone（`~/imagefirst/second-root`）の `.git/config`・hooks・index のフラグ（skip-worktree など）・objects や alternates・
   無視されたファイル（`.env*`・cache）・`node_modules`、そして home の git 設定（`~/.gitconfig` とその include、`~/.config/git/config`・`attributes`）を
   書き換えられた。だから実行時は、Remote Control を止めて sr-designgen の process が 0 になってから、
-  1. root が自分の admin clone（きれい・HEAD = admin clone 自身の URL で `ls-remote` した origin の develop）でその commit を決め（止める前と後に 2 回）、
+  1. root がその commit を決める: 事前許可がある間はオーナーが固定した `worker_commit`（root が試行の前に、origin が持っていることを確かめる）。
+     事前許可が無いときだけ、root の admin clone（きれい・HEAD = admin clone 自身の URL で `ls-remote` した origin の develop）で決める（止める前と後に 2 回）、
   2. pilot が sr-designgen として、root が決めた新しい場所 `~/imagefirst/autorun-<ID>-<UTC>` を `mkdir` で作り（symlink・既にある場所は断る）、
-     root の origin URL から `git clone --no-local --no-checkout` し（objects は git が受け取って確かめたものだけ。何も共有しない）、
-     origin/develop = その commit でなければ止め、`checkout --detach` し、HEAD = その commit、`git status --porcelain --ignored` が空でなければ止める
-     （`PILOT_AUTORUN_DEVELOP_MOVED` / `PILOT_AUTORUN_TREE_DIRTY`。claim の前）、
+     `git init` して root の origin URL からその commit **だけを id で** fetch し（`refs/remotes/origin/develop` へ。objects は git が受け取って確かめたものだけ。
+     何も共有しない）、取れなければ止め、`checkout --detach` し、HEAD = その commit、`git status --porcelain --ignored` が空でなければ止める
+     （`PILOT_STANDING_COMMIT_UNAVAILABLE` / `PILOT_AUTORUN_TREE_DIRTY`。claim の前。develop の最新や祖先とは比べない）、
   3. その clone で `npm ci`（利用者・全体の npm の設定は `/dev/null`）、
   4. preflight・worker の実行・再送（`--deliver-review`）・監査はすべてその clone で動く（preflight は root の state ファイル `autorun-clone` で場所を知り、
      形を確かめる）。worker が claim の前にもう一度全部を確かめる。
