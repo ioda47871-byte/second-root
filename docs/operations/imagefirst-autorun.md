@@ -387,8 +387,9 @@ preflight で止まって何も使っていない（`used/<ID>` も claim も無
 6. Claude CLI が `.credentials.json` だけ（`.claude.json` なし）で claude.ai のサインインとして通るかは未確認（§6）。通らない場合の選択肢:
    `.claude.json` のうちサインインに要る項目だけを root が決めた形で作る、または監査だけ手動のパイロットに残す。
 7. `codex-config.toml` をコメントだけにした。Codex がサインインの保存先などを設定で求める版では、その 1 行を足して SHA-256 を更新する（別 PR）。
-2. （DEV-303 で解消）以前は admin clone が origin の develop と違うと断り続け（`AUTORUN_ADMIN_NOT_DEVELOP`）、Remote Control を止める間に
-   develop が進むと承認を無駄にした（`AUTORUN_STOP_DEVELOP_MOVED`）。今は拾った時の develop の commit を固定し、管理用 clone の HEAD は見ない。
+2. （DEV-303 で一部解消）包括的な事前許可の下では、実行はオーナーが `standing` で固定した `worker_commit` だけを使い、develop の先端も
+   管理用 clone の HEAD も見ない（develop が進んでも承認は無駄にならない）。事前許可が無いときの承認コマンドの経路は従来どおりで、
+   管理用 clone が origin の develop と違えば断り（`AUTORUN_ADMIN_NOT_DEVELOP`）、Remote Control を止める間に develop が進むと止まる（`AUTORUN_STOP_DEVELOP_MOVED`）。
 3. unit の hardening（`ProtectSystem=strict` など）の下で `admin.sh claude-stop / claude-start` が実機で動くかは未確認（§2 の確認 1・2）。
 4. `Conflicts=` は古い自動起動の **timer** にだけ付けた（自動実行の service が動くとその timer は止まる）。service には付けない
    （生成の途中の worker を止めてしまうため）。service が動いている・enable のときは、script・preflight・承認コマンドが断る。
