@@ -70,6 +70,10 @@ Claude 用の machine user（ii）は、要件 1 には**不要**になる。た
    「承認済み」にする 1 commit を足す。`imagefirst/approved` への PR を開く。
 3. Claude アプリにレビューページ（前回との比較・プロンプト・6 枚の内訳・上限）と **PR の Files changed へのリンク**を出す。
 4. **オーナーが承認者として GitHub アプリで差分を見て Approve**（これが唯一の承認操作）。
+   正直な限界: 差分には前回の承認からの自律マージの全部（`package-lock.json`・大きなファイルを含む）が入り、スマホでは折りたたまれて
+   全部は読めないことが多い。**コードについての承認は、実質的には今の承認コマンド（その時点の develop を丸ごと信じる）と同じ水準**であり、
+   それ以上の保証はしない。オーナーが実際に確かめるのはパケット（§10・プロンプト・上限）で、Claude の要約は手助けにはなるが信頼の根拠にはしない。
+   差分を小さく保つため、承認ブランチへの取り込みは間を空けすぎない。
 5. Claude が merge commit でマージする（承認は承認者にしか作れず、root が木の一致を確かめるので、マージする者は誰でもよい）。
 6. root の timer が承認ブランチの新しい先端 C を確かめ（§6）、通れば C に固定して claude-stop → 生成 1 回 → 監査 → claude-start（#325 / #326 のまま）。
 7. 次のセッションで Claude が inbox を読み、研究ログ（develop）に記録してレビューページを出す（#324）。
@@ -77,10 +81,13 @@ Claude 用の machine user（ii）は、要件 1 には**不要**になる。た
 ### 一度だけの準備（オーナー。GitHub の Web で。設計の確定後）
 
 - 承認者のアカウントを作る（passkey の 2 段階認証。token・連携・鍵を作らない。GitHub アプリにだけログイン）。collaborator（Write）にする。
+  **回復の経路も分ける**: 回復用のメールは普段の Gmail（connector から読める）ではない別のメールボックス、回復コードは紙などオフラインに保管し、
+  Drive などクラウドに置かない。
 - `imagefirst/approved` を、その時点でオーナーが認める commit から作る（root の「最後に信頼した commit T」の初期値になる）。
-- `imagefirst/approved` の ruleset（多層防御。root はこれに頼らない）: PR 必須、承認 1、Code owners のレビュー必須（このブランチの
-  `CODEOWNERS` を `* @<承認者>`）、新しい push で承認を取り消す、最後に push した人以外の承認、force push・削除の禁止、
-  マージ方式は merge commit だけ、bypass する者は無し。
+- `imagefirst/approved` の ruleset（多層防御。root はこれに頼らない）: PR 必須、承認 1、新しい push で承認を取り消す、
+  最後に push した人以外の承認、force push・削除の禁止、マージ方式は merge commit だけ、merge queue は使わない、bypass する者は無し。
+  （CODEOWNERS は使わない: develop を取り込むたびに develop 側の内容で上書きされ、守りとして残らない。承認者の特定は root が数値の id で行う。）
+- pilot は LFS の filter も submodule の初期化も動かさない（木の一致は gitlink まで含むが、その先は取りに行かない）。
 - develop には何も足さない。
 - root に読み取り専用の fine-grained token（このリポジトリの Contents・Pull requests・Metadata の read だけ）を置く。作るのは普段のアカウントでよい
   （読み取り専用の token では承認を作れない）。承認者のアカウントには token を作らない。
@@ -93,12 +100,23 @@ Claude 用の machine user（ii）は、要件 1 には**不要**になる。た
   状態 `/var/lib/sr-imagefirst-autostart/approved-tip`（root の 0700）: 最後に信頼した commit T。token は `/etc/sr-design-worker/github-read-token`（0600 root）。
 - 検証（全部満たさなければ何もしない。API の失敗・形や型の違いも何もしない。FAIL CLOSED）:
   1. root の admin clone で `imagefirst/approved` を fetch（root の git、利用者の設定なし）。先端 C。C = T なら終わり。
-  2. **C の第 1 親 = T**（承認は 1 回に 1 つ。履歴の書き換え・複数の未処理の承認は止めて報告）。H = C の第 2 親。**T は H の祖先**
-     （これにより、承認者が GitHub で見た差分 = T の木から H の木への変更そのもの）。
+  2. **C の親はちょうど 2 つ、第 1 親 = T**（承認は 1 回に 1 つ。履歴の書き換え・複数の未処理の承認は止めて報告）。H = C の第 2 親。**T は H の祖先**。
   3. GitHub API: `merge_commit_sha = C`・base = `imagefirst/approved`・head の sha = H の PR がある。レビューの一覧を全部読み、
      **承認者の数値の id の最後の状態が `APPROVED`**、その `commit_id = H`、取り消されていない。
+  3a. **承認者が見た差分 = T の木から H の木への変更であることを確かめる**（#327 レビュー 3 回目の High）。GitHub が見せる差分は
+     「その時点の base と H の merge-base から H まで」なので、base を後から変えたり、承認の間だけ承認ブランチを別の commit に向けたりすると、
+     承認者に見せる差分と root が受け入れる差分がずれる。だから:
+     - PR の timeline に `base_ref_changed`・`base_ref_force_pushed`・`head_ref_force_pushed` が 1 つでもあれば拒否（PR は最初から base =
+       `imagefirst/approved` で作る）。
+     - リポジトリの activity API（`GET /repos/{owner}/{repo}/activity?ref=refs/heads/imagefirst/approved`）で、T の後の承認ブランチの更新が
+       **この C へのマージ 1 回だけ**であることを確かめる。T の子孫でない先端・余分な更新を見たら、記録してオーナーに知らせ、オーナーが
+       root で付け直すまで凍結する。
+     - 実装の前に確かめること: activity API と timeline の event が読み取り専用の token で読めること・保持の期間。読めなければ実装しない
+       （この確認を省いた検証器は作らない）。
   4. **C の木 = H の木**（root の clone で確かめる。承認された木と動かす木が同じ）。
-  5. T..C の差分が、**ちょうど 1 つのパケットの §10 を「承認済み」にし、承認 ID を書いている**。その ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）、
+  5. T..C の差分が、**ちょうど 1 つのパケットの §10 を「承認済み」にし、承認 ID を書いている**。そのファイルは、C の中の root が読める
+     対応表（JSON。ID の方向 → パケットのパス。worker の `approval-packets.ts` と一致することをテストで固定）がその ID に割り当てたもの
+     （root と worker が別のパケットを見ることを防ぐ）。その ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）、
      期限が未来で §10 の値そのもの（24 時間以内）。
   6. 通ったら T を C に進め（以後同じ承認は二度と通らない）、C を autorun → pilot に渡す（pilot は C を SHA で新しく clone する）。
      生きている develop も承認ブランチの後の動きも見ない。
@@ -115,7 +133,9 @@ Claude 用の machine user（ii）は、要件 1 には**不要**になる。た
 | Claude・連携がオーナーのアカウントで承認を作る | 承認者は別アカウントで、どの連携もその資格情報を持たない。root は承認者の数値の id だけを信じる |
 | admin 権限で ruleset を外す・直接 push する | root は ruleset に頼らない。承認者の承認・木の一致・第 1 親 = T が無ければ動かない（妨害のみ） |
 | 承認の後に head を変える | レビューの `commit_id = H` と C の木 = H の木 |
-| 承認者に見せる差分を偽る（別の履歴の PR・比較の基準のずらし） | T が H の祖先であることを root が確かめる。GitHub 自身の Files changed を見る |
+| 承認者に見せる差分を偽る（別の履歴の PR・base の後からの変更・承認の間だけ承認ブランチを動かす） | T が H の祖先。PR の timeline に base の変更・force push が無い。activity API で T の後の承認ブランチの更新が C へのマージ 1 回だけ |
+| 承認者のアカウントを回復の経路から乗っ取る | 回復用のメールを普段のものと分け、回復コードはオフライン |
+| root と worker が別のパケットを見る | ID の方向 → パケットのパスの対応表を C から読み、worker の表と一致をテストで固定 |
 | Claude のページでオーナーを誤らせる | 承認は GitHub アプリの差分を見て押す |
 | root・worker のコード（`admin.sh`・`lib/**`・依存・`npm ci`）の差し替え | 承認は C の木全体に付き、root は C だけを動かす |
 | develop の自律マージから実行が生まれる | 承認済みの §10 は承認ブランチにしか無い。develop は見ない |
