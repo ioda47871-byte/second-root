@@ -29,8 +29,9 @@
 | 使用済みの ID | 使用済みは d3 の `…-d3-20261121-01` だけ。d4 の ID はどこでも未使用 |
 
 `EXPECTED_SHA` は、Claude が知らせる **その時点の develop の先端**（40 桁）。上の表の `2ddba2ff…`（パケットのマージ）ではない
-（このシートの PR などで develop は進む）。A・B・C のどこかで develop が動いたら、ブロックが `STOP_DEVELOP_MOVED` で止まる。そのときは D で戻し、
-Claude に新しい値を聞く。
+（このシートの PR などで develop は進む）。develop が動いたら、A・B では `STOP_DEVELOP_MOVED`（または `STOP_ADMIN_CLONE_MOVED`）で止まり、
+C では中の preflight の `clone` の行が FAIL になって `PILOT_PREFLIGHT_FAILED … phase=before_claim exit=20` で止まる（何も使わない）。
+どちらも D で戻し、Claude に新しい値を聞く。
 
 ## A. 管理用 clone を固定する（root。Remote Control はまだ動いていてよい）
 
@@ -72,7 +73,7 @@ echo "B_OK worker clone and admin clone at $EXPECTED_SHA" )
   `CODEX_NOT_SIGNED_IN` になって承認 ID を使い切り、期限切れの claude.ai のサインインは監査の marker の後に失敗する。**し直さずに C へ進むなら、
   その危険を受け入れることになる。** 手順（B の後・C の前に、jail の中で。中身は表示しない）:
   1. `.env` が無いことを確かめる（Codex は引数より先に `.env` を読むため）:
-     `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- test ! -e /home/sr-designgen/.codex/.env && echo NO_CODEX_DOTENV`
+     `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- test ! -e /home/sr-designgen/.codex/.env -a ! -L /home/sr-designgen/.codex/.env && echo NO_CODEX_DOTENV`
      — `NO_CODEX_DOTENV` が出なければ止めて D。
   2. Codex: `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- codex login --device-auth`
      （表示される URL とコードをブラウザで入力する。文書にある経路は `admin.sh shell` の中での同じコマンドで、こちらは端末なしの同じ jail。
