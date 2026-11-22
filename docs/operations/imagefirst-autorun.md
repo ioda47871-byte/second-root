@@ -1,11 +1,77 @@
-# IMAGE_FIRST の自動実行（承認コマンド 1 行 → 生成 1 回、Issue #302）
+# IMAGE_FIRST の自動実行（包括的な事前許可 → 依頼ごとに生成 1 回。Issue #302・DEV-303）
 
-> **状態: コードと手順だけ。WSL には install も enable もしていない。** 下の §2 の設置（`imagefirst-autorun-setup.sh` の check → apply → enable-timer）は、オーナーが承認したうえで WSL の root が行う
-> **安全境界の操作**である（systemd の unit と timer を入れ、Remote Control を自動で止めて戻すことを許す）。Claude は行わない。
-> 入れた後も、オーナーの switch と承認コマンドが書く使い切りの印（どちらも root 所有）が無ければ何もせず、Remote Control にも触らない。
-> この文書と仕組みは、承認パケット（§10）の承認を置き換えない。生成 1 回ごとに、今まで通りパケットの承認とマージが要る。
+> **状態: コードと手順だけ。WSL には install も enable もしていない。** 下の §0 の設置（`imagefirst-autorun-setup.sh` の
+> check → apply → standing → enable-timer）は、オーナーが WSL の root で行う**安全境界の操作**である（systemd の unit と timer を
+> 入れ、root が動かすスクリプトを `/usr/local/lib/sr-imagefirst/` に置き、Remote Control を自動で止めて戻すことを許し、
+> 画像生成の包括的な事前許可を書く）。Claude は行わない。入れた後も、オーナーの switch と、事前許可（または 1 回ごとの承認の印）が
+> 無ければ何もせず、Remote Control にも触らない。
 
-## 1. 流れ（オーナーの操作はマージと root の 1 行だけ）
+## 0. 包括的な事前許可（DEV-303、オーナー決定 2026-11-23。MVP_SPEC §7.1）
+
+画像生成は、オーナーが**一度だけ**設定する包括的な事前許可のもとで動く。以後は 1 回ごとの WSL の操作もオーナーの承認も要らない。
+守るもの（緩めない）: root の分離、認証情報の保護（#326 の実行ごとの設定の写し）、生成の上限、無限の再試行の防止、実行コードの保護。
+
+### 0.1 オーナーが一度だけすること（WSL の root で、上から順に。どれも別々の承認）
+
+```bash
+# 管理用の clone を develop のその commit に合わせる（<sha> は origin の develop の 40 桁）
+sudo git -C /root/sr-capture-admin fetch -q origin && sudo git -C /root/sr-capture-admin checkout -q --detach <sha>
+S=/root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh
+sudo bash $S check --expect <sha>                      # 読むだけ。SETUP_STEP が 5 行（cli・codex_config・scripts・units・hardening_check）
+sudo bash $S apply --yes --expect <sha>                # 入れる（timer は入れない）。scripts で root のスクリプトを /usr/local/lib/sr-imagefirst/ へ
+sudo bash $S standing --yes --expect <sha> --per-day 2 --per-week 8 --days 30   # 事前許可（値は例）
+sudo bash $S enable-timer --yes --expect <sha>         # 10 分ごとの timer を入れる
+```
+
+- `standing` の上限: `--per-day` は 1〜4、`--per-week` は 1〜20（`--per-day` 以上）、`--days` は 1〜90。外れると `STANDING_INVALID` で何も書かない。
+  書くのは root の `/etc/sr-design-worker/imagefirst-standing.json`（0644）だけ:
+  `{"schema": "sr_imagefirst_standing_v1", "per_day", "per_week", "not_after"（今 + D 日、UTC）, "created_at", "origin_url"（管理用 clone の origin）}`。
+  setup.log に記録する。値を変えるときは `standing` をもう一度打つ（置き換わる）。期限が過ぎると何も動かない（もう一度 `standing`）。
+- **取り消し**（いつでも、`--expect` も管理用 clone も要らない）:
+  `sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --revoke --yes`
+  （動いている 1 回は最後まで行く。止めるなら `sudo systemctl stop sr-imagefirst-autorun.service`）。timer ごと止めるのは §3。
+- develop が新しくなっても、root が動かすスクリプトは**入れた写しのまま**。新しい root のスクリプトを使うには check → apply をもう一度（オーナーの操作）。
+  worker（node のコード）は毎回、その時の develop の commit の新しい clone で動く（下の 0.3）。
+
+### 0.2 依頼のファイル（Claude が置く。worker 側と共有する形）
+
+Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を置く。root が見るのは外側だけ:
+
+- 依頼 ID: `^[a-z0-9][a-z0-9-]{2,62}$`（ファイル名と同じ）。ファイルは 16 KiB まで、普通のファイル（リンク・FIFO・ディレクトリは不可）。
+- JSON: `{"schema": "sr_imagefirst_request_v1", "id": <ファイル名と同じ>, "shop_id": <^[a-z0-9_-]{2,41}$>, "kind": "real_shop" | "fictional", "created_at": <UTC の ISO、末尾 Z>, ...}`。
+  ほかの欄は worker の仕事（root は読まない）。
+- root は依頼を **worker として**読む（setpriv、root 自身の作業ファイルへの pipe。root は worker のファイルを開かない）。
+- 形が違う依頼は root の `rejected/<ID>`（理由のコード）に記録し、`~/sr-runs/review-inbox/requests/<ID>.rejected` に
+  `IMAGEFIRST_REQUEST_REJECTED id=<ID> reason=<コード>` を worker として書く。二度と読まない（直しても同じ ID は動かない。新しい ID で置く）。
+  理由のコード: `REQ_NOT_REGULAR`・`REQ_UNREADABLE`・`REQ_TOO_LARGE`・`REQ_NOT_JSON`・`REQ_SCHEMA`・`REQ_ID_MISMATCH`・`REQ_SHOP_ID`・`REQ_KIND`・`REQ_CREATED_AT`。
+- 一度に 1 件。上限の中で、まだ見ていない正しい依頼のうち**いちばん古いもの**（created_at、同じなら ID の順）を拾う。
+- 結果は今までどおり `~/sr-runs/review-inbox/runs/<ID>.share.txt`（共有してよい行だけ）と、受け渡しの inbox・監査。
+
+### 0.3 root が守ること
+
+- **上限**: root の記録 `autorun/<ID>/attempt`（消さない）の時刻から、直近 24 時間と直近 7 日の試行を数える（失敗した試行も数える。
+  時刻の読めない記録は「今」として数える）。`per_day` / `per_week` に届いていれば何も読まずに終わる（`AUTORUN_IDLE_QUOTA`）。
+  1 回ごとの承認の試行も同じ数に入る。
+- **1 件 1 回**: 拾った依頼は root の `requests/<ID>.json`（0600）に写して SHA-256 を記録し、`autorun/<ID>` を作ってから動かす。
+  何が起きても同じ ID は二度と動かない（再試行なし）。1 回の中身は今までどおり（Codex 1 回・画像 6 枚まで・15 分）。
+- **commit の固定**: 拾った時に、事前許可の `origin_url`（無ければ管理用 clone の設定の URL）の develop を `git ls-remote` で読み、
+  その commit を**その回の最後まで固定**する。Remote Control を止めている間に develop が進んでも、その回は止まらず、固定した commit で動く
+  （以前の `AUTORUN_STOP_DEVELOP_MOVED` で承認を無駄にする問題を直した）。pilot は worker として新しい clone を作り、その commit が develop の
+  履歴にあることを確かめて checkout する。
+- **実行コードの保護**: unit が動かすのは `/usr/local/lib/sr-imagefirst/` の写しだけ。autorun は毎回、写しの全部（autorun・pilot・preflight・
+  admin.sh と host-check.sh・jail のファイル・メモリの検査など）が root の持ち物で誰も書けず（`/` まで）、`SHA256SUMS` の SHA-256 と同じことを
+  確かめる（違えば `AUTORUN_INSTALL_UNTRUSTED` で何もしない）。管理用 clone のスクリプトを root で動かすことはもう無い。
+- **worker への受け渡し**: pilot は root の `requests/<ID>.json` の SHA-256 を確かめ、worker として、その回の clone の隣の
+  `<clone>.request/<ID>.json`（0600）へ写す。worker は `imagefirst-worker.ts --request <ID> --request-sha256 <hex>` で 1 回だけ動く
+  （環境変数 `SR_IMAGEFIRST_REQUEST_FILE` がその写しを指す。承認 ID の grant は渡さない）。
+- **実店舗の画像は社内のデザインの参考だけ**（相手に見せない・共有しない・版に入れない）。本番の公開と営業の送信は今までどおりオーナーの確認が要る。自動送信は無い。
+
+### 0.4 1 回ごとの承認（手動の代替。下の §1）
+
+事前許可が無くても、今までの承認コマンド（`imagefirst-approve.sh <承認 ID>`、入れた写しでも管理用 clone のものでもよい）は動く。
+印があれば、それが事前許可の依頼より先に動く。印の回には上限を当てない（数には入る）。
+
+## 1. 1 回ごとの承認の流れ（手動の代替。オーナーの操作はマージと root の 1 行だけ）
 
 1. Claude がパケットの PR を作り、オーナーが Claude アプリで中身を確かめて承認し、PR をマージする（今まで通り）。
 2. オーナーが WSL の root で **1 行だけ** 打つ（`<ID>` は承認 ID、例 `hoshigama-imagefirst-d4-20261122-01`）:
@@ -20,13 +86,14 @@
    ```
    sr-imagefirst-autorun.timer（10 分ごと + 最大 90 秒の揺らぎ、Persistent=false）
      → sr-imagefirst-autorun.service（root、oneshot）→ imagefirst-autorun.sh
-         1. switch・印・使用済み・試行済みを見る。root の admin clone がきれいで HEAD = origin の develop（admin clone 自身の
-            URL への ls-remote）であること。どれかが違えば静かに終わる（Remote Control に触らない）
+         1. switch・印（無ければ §0 の事前許可と依頼）・使用済み・試行済みを見る。入れた写し（/usr/local/lib/sr-imagefirst）が
+            SHA256SUMS のとおりであること。origin の develop を ls-remote で読み、その commit を固定する（DEV-303: 管理用 clone の
+            HEAD は見ない）。どれかが違えば静かに終わる（Remote Control に触らない）
          2. 試行を記録（autorun/<ID>、その commit も。消さない）→ sr-jail-claude が enable だったかを復元フラグに書く
             → admin.sh claude-stop → sr-designgen のプロセスが無くなるまで待つ（最大 180 秒）
-         3. 1 の確認をもう一度（同じ commit でなければ pilot なし）→ imagefirst-pilot.sh --autorun <ID> <commit>
+         3. imagefirst-pilot.sh --autorun <ID> <commit> <origin URL>（develop と比べ直さない。進んでいても固定した commit で動く）
               使い回しの clone は使わず、root が決めた新しい場所（~/imagefirst/autorun-<ID>-<UTC>）に root の origin URL から
-              新しく clone し（利用者・システムの git 設定なし）、HEAD = origin/develop = <commit>、status --ignored が空、npm ci
+              新しく clone し（利用者・システムの git 設定なし）、HEAD = <commit>（develop の履歴にあること）、status --ignored が空、npm ci
               → preflight（全部 PASS でなければ何も使わずに終わる）→ used/<ID> を作る → worker 1 回（Codex 1 回）
               → 受け渡し（必要なら再送 1 回）→ 監査の dry-run → 監査 1 回 → 要約
          4. 必ず: review-ready ファイルを書く → claude-start（実行前に enable だったときだけ）→ 復元フラグを消す
@@ -306,8 +373,8 @@ preflight で止まって何も使っていない（`used/<ID>` も claim も無
 6. Claude CLI が `.credentials.json` だけ（`.claude.json` なし）で claude.ai のサインインとして通るかは未確認（§6）。通らない場合の選択肢:
    `.claude.json` のうちサインインに要る項目だけを root が決めた形で作る、または監査だけ手動のパイロットに残す。
 7. `codex-config.toml` をコメントだけにした。Codex がサインインの保存先などを設定で求める版では、その 1 行を足して SHA-256 を更新する（別 PR）。
-2. admin clone が origin の develop と違うと（承認の後に develop へ別のマージがあると）、自動実行は Remote Control に触らずに断り続ける
-   （`AUTORUN_ADMIN_NOT_DEVELOP`）。そのときは admin clone を更新する 1 行を打つ。承認から実行までの 10 分ほどの間のマージは避ける。
+2. （DEV-303 で解消）以前は admin clone が origin の develop と違うと断り続け（`AUTORUN_ADMIN_NOT_DEVELOP`）、Remote Control を止める間に
+   develop が進むと承認を無駄にした（`AUTORUN_STOP_DEVELOP_MOVED`）。今は拾った時の develop の commit を固定し、管理用 clone の HEAD は見ない。
 3. unit の hardening（`ProtectSystem=strict` など）の下で `admin.sh claude-stop / claude-start` が実機で動くかは未確認（§2 の確認 1・2）。
 4. `Conflicts=` は古い自動起動の **timer** にだけ付けた（自動実行の service が動くとその timer は止まる）。service には付けない
    （生成の途中の worker を止めてしまうため）。service が動いている・enable のときは、script・preflight・承認コマンドが断る。
