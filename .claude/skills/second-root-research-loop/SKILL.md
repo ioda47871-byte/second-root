@@ -12,17 +12,29 @@ description: Second Root のデザイン研究ループ。オーナーが Claude
 
 ```
 node --import tsx scripts/design-research/research.ts status
+node --import tsx scripts/design-research/research.ts inbox-scan
 ```
 
-出力（現在の店・方向・段階・次の作業・オーナー待ち・履歴）を読んでから動く。`design-library/research-log/briefs/` に
+`status` の出力（現在の店・方向・段階・次の作業・オーナー待ち・履歴）を読んでから動く。`design-library/research-log/briefs/` に
 今の brief があれば読む。店舗デザインの中身を考えるときは `second-root-design-director` スキルにも従う。
+
+**`inbox-scan` が 1 行でも出したら（届いたのに未記録の run）、次を行う**（画像の生成ではなく、届いた結果の後処理）:
+1. `runs/<id>.share.txt`（自動起動の経路のとき）か、オーナーが貼った `share:` の行で、receipt・枚数・配送・監査の状態を確かめる。
+   **自動で記録してよいのは、share の行に `receipt=status=succeeded`・`images=… total=6 verified=true`・`delivery=state=delivered` がそろうときだけ。**
+   どれかが欠ける・share の行が無い（`share:false` でオーナーも貼っていない）・監査が `completed` でないときは記録せず、状態をそのまま報告して
+   オーナーに聞く（「記録してレビューする／しない」）。
+2. `intake <bundle_id> --shop <suggest.shop> --direction <suggest.direction> --iteration <suggest.iteration>`（`suggest.parent` があれば `--parent`）。
+   `suggest` は一番古い 1 件にだけ付く。記録したら `inbox-scan` をもう一度実行し、次の 1 件の提案を得る。拒否されたら（架空店舗でない・
+   今の店でない・照合の不一致など）記録せず、コードをそのまま報告する。`INBOX_UNREADABLE` なら inbox が見えていないことを報告する。
+3. §2 のレビュー画面を作って private artifact で出し、改善元があれば比較の所見を添える。監査が助言だけであることも添える。
+4. 「改善して」「成功例として保存」「不採用」を聞く。
 
 ## 1. 言葉と動作
 
 | オーナーの言葉 | Claude がすること |
 |---|---|
 | 「続きから」「研究の状況」・新しいセッション | `status` を読み、今の段階と次の1手を短く伝える。オーナー待ちがあればそれを先に出す |
-| 新しい run が届いた（inbox に未記録の bundle） | `intake <bundle id> --shop … --direction … --iteration …`（改善版なら `--parent`）→ §2 のレビュー画面を出す |
+| 新しい run が届いた（`inbox-scan` が出す未記録の bundle） | §0 の 1〜4 を自動で行う（`intake` → §2 のレビュー画面 → 判断を聞く） |
 | 「改善して」（＋理由） | `decide <entry> --decision revise --words "<原文>" --reason … --keep … --improve … --brief briefs/<shop>-<next>.md` → brief を書く／直す → 指示文と承認パケットの準備（§3） |
 | 「成功例として保存」 | `decide <entry> --decision adopt --words "<原文>" --reason …`。CP-* 研究事例への登録は別作業（オーナーに聞く） |
 | 「不採用」 | `decide <entry> --decision reject --words "<原文>" --reason …`。失敗の理由は次の方向案で避ける |
