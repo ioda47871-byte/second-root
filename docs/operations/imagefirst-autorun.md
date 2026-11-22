@@ -61,10 +61,10 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-
 
 | 段階 | すること（apply のとき） |
 |---|---|
-| `cli` | `claude`・`codex` を root 所有で `/usr/local` に入れる（`/usr/bin/npm install -g --prefix /usr/local @anthropic-ai/claude-code@2.1.295 @openai/codex@0.159.0`、`env -i`・`HOME=/root`・固定の PATH・umask 022・利用者と全体の npm 設定は `/dev/null`）。その前に、いまの `/usr/local/bin/claude`・`codex`（sr-designgen の home を指す root の symlink）の**指す先を setup.log に記録してから、その 2 つの symlink だけ**を消す。そこが home を指す symlink 以外（ふつうのファイル・別の場所への symlink）なら BLOCKED で何も触らない。入れた後、それぞれの実体（`readlink -f`）が root のもので `/` まで他人が書けないこと、package.json の版が固定の版と同じことを確かめる（CLI は実行しない） |
+| `cli` | `claude`・`codex` を root 所有で `/usr/local` に入れる。**root でベンダーのコードを動かさない**: 使う 4 つの tarball（`@anthropic-ai/claude-code@2.1.295`、そのネイティブ版 `@anthropic-ai/claude-code-linux-x64@2.1.295`、`@openai/codex@0.159.0`、そのネイティブ版 `@openai/codex@0.159.0-linux-x64`）は、registry の URL と sha512（npm の `dist.integrity`）を script に固定してある。(1) 4 つを `curl -q`（https だけ、`env -i`）で root だけの場所に落とし、**何かを変える前に** sha512 を照合し、中身が `package/` の下のふつうのファイルとディレクトリだけであることを確かめる。(2) いまの `/usr/local/bin/claude`・`codex`（sr-designgen の home を指す root の symlink）の**指す先を setup.log に記録してから、その 2 つの symlink だけ**を消す（そこが home を指す symlink 以外なら BLOCKED で何も触らない）。(3) 2 つの本体を**照合済みの手元の tarball から** `/usr/bin/npm install -g --prefix /usr/local --ignore-scripts --omit=optional` で入れ（`env -i`・`HOME=/root`・固定の PATH・umask 022。proxy・CA・npm の環境変数は渡さない。利用者と全体の npm 設定は `/dev/null`）、入ったファイルを tarball のものとすべて比べる。(4) claude-code の唯一の lifecycle script（postinstall の `node install.cjs`。ネイティブの `claude` を `bin/claude.exe` の placeholder の上に写すだけ）は動かさず、script 自身が照合済みのネイティブ `claude` を `bin/claude.exe` に root 0755 で置く。codex には lifecycle script が無く、ネイティブ版を npm が optional dependency を置く場所（`@openai/codex/node_modules/@openai/codex-linux-x64`。`bin/codex.js` がそこを探す）に置く。DONE の条件: それぞれの実体（`readlink -f`）が root のもので `/` まで他人が書けない、package.json の版が固定の版、ネイティブの 2 つが 1 MiB を超える ELF で SHA-256 が固定値と同じ（CLI は実行しない） |
 | `codex_config` | リポジトリの `codex-config.toml` を `/etc/sr-design-worker/`（root 0755）に root 0644 で置き、SHA-256 が pilot と preflight の `CODEX_CONFIG_SHA256` と同じことを確かめる |
 | `units` | 古い `sr-imagefirst-autostart.timer` を disable（あれば）→ 自動実行の unit 2 つを 0644 で置く → `daemon-reload` → switch `/etc/sr-design-worker/imagefirst-autostart.json` を**無いときだけ** `{"enabled": true}` で作る（あれば中身を変えない） |
-| `hardening_check` | 下の付録の確認 1（unit と同じ hardening の下で `admin.sh status`。Remote Control は止まらない）。表が出なければ `SETUP_HARDENING_FAILED` でそこで止まり、timer は off のまま、rollback の行を出す |
+| `hardening_check` | 下の付録の確認 1 を、unit の `[Service]` の性質を**すべて**（lifecycle の `Type`・`ExecStart`・`ExecStopPost`・`TimeoutStartSec`・`TimeoutStopSec`・`KillMode`・`SuccessExitStatus` を除く。`ProtectKernelLogs`・`LockPersonality`・`RestrictRealtime`・`UMask`・`StateDirectory`・`ReadWritePaths=/home/sr-designgen -/var/lib/sr-design-cycle`・資源の上限を含む）付けて行う（`admin.sh status`。Remote Control は止まらない。テストが script と unit の一致を両方向で固定）。表が出なければ `SETUP_HARDENING_FAILED` でそこで止まり、timer は off のまま、rollback の行を出す |
 
 **(b) 入れる（別の承認）**: (a) が `CHECK_OK` で、Claude と中身を確かめた後。
 
@@ -72,12 +72,13 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-
 sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh apply --yes --expect <SHA>
 ```
 
+ダウンロードは約 280 MB（ほとんどがネイティブ版 2 つ）。`/var/lib/sr-imagefirst-autostart/` の下の一時 dir に展開し（約 700 MB）、終わったら消す。
 最後の行が `IMAGEFIRST_SETUP APPLY_OK exit=0`（4 段階すべて DONE）なら終わり。もう一度打っても、DONE の段階は何もしない。
 **apply は timer を enable しない。** 何をしたか（古い symlink の指す先を含む）は root だけが読める
 `/var/lib/sr-imagefirst-autostart/setup.log`（0600、dir は 0700）に残る。`SETUP_HARDENING_FAILED` など途中で止まったら、その出力を Claude に見せる
 （hardening の調整は別の承認）。
 
-**(c) timer を入れる（別の承認）**: 4 段階すべてが DONE でなければ `TIMER_NOT_READY` で断る。
+**(c) timer を入れる（別の承認）**: 4 段階すべてが DONE でなければ断る（TODO が残れば `TIMER_NOT_READY` exit 4、BLOCKED があれば `SETUP_BLOCKED` exit 3）。
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh enable-timer --yes --expect <SHA>
@@ -106,11 +107,17 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
 sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh rollback --yes --expect <SHA>
 ```
 
-timer を disable → unit 2 つを消す → `daemon-reload` → npm の 2 つを `npm uninstall -g --prefix /usr/local` → setup.log に記録した古い symlink を
-そのまま戻す（指す先がまだあり、場所が空いているときだけ）→ `/etc/sr-design-worker/codex-config.toml` を消す。
-`used/`・`autorun/`・worker の claim・入口の ledger・switch は**消さない**。自動実行が動いている間（service が active）は断る。
+**setup.log が「apply が変えた」と記録したもの（最後の完了した rollback より後）だけ**を戻す: `units` を変えていれば timer を disable → unit 2 つを消す →
+`daemon-reload`。`cli` を変えていれば npm の 2 つを `npm uninstall -g --prefix /usr/local`（置いたネイティブ版ごと消える）→ 記録した古い symlink を
+そのまま戻す（指す先がまだあり、場所が空いているときだけ）。`codex_config` を置いていれば `/etc/sr-design-worker/codex-config.toml` を消す。
+確認 1 の合格の記録（`/var/lib/sr-imagefirst-autostart/setup-hardening.ok`）も消す。apply の前からあったもの（手で置いた config や unit）は消さない。
+古い `sr-imagefirst-autostart.timer` は **disable のまま**（戻さない）。`used/`・`autorun/`・worker の claim・入口の ledger・switch は**消さない**。
+自動実行が動いている間（service が active）は断る。
 
-終了コード（script の先頭にも書いてある）: 0 成功、2 断った（使い方・`--yes` なし・`--expect` なし・admin clone）、3 BLOCKED、4 timer の前提が未完、
+**rollback の後の注意**: 戻した `/usr/local/bin/claude`・`codex` は、今と同じく sr-designgen の home（jail の Claude が書ける場所）を指す root の symlink である。
+**root（`sudo`）で `claude`・`codex` を打たない**（root が利用者の書けるプログラムを動かすことになる）。
+
+終了コード（script の先頭にも書いてある）: 0 成功、2 断った（使い方・`--yes` なし・`--expect` なし・admin clone・test 用の写しを root で）、3 BLOCKED（`CHECK_BLOCKED` / `SETUP_BLOCKED`）、4 timer の前提が未完、
 11 別の設置が実行中、20 origin を読めない、30〜33 apply の段階の失敗（cli / codex_config / units / hardening）、34 timer の enable の失敗、
 35 rollback の一部ができなかった、40 / 41 signal / 内部。
 
@@ -311,8 +318,9 @@ npx vitest run tests/unit/design-agent/imagefirst-worker/autorun.test.ts tests/u
 npx vitest run tests/unit/design-agent/imagefirst-worker/setup.test.ts
 ```
 
-`setup.test.ts` は設置の script を、test の root の中の偽の `/usr`・`/etc`・`/var/lib`・`/root`・`/home` の上で動かす（npm は版つきの
-package.json を書く代役、systemctl・systemd-run は呼ばれ方を記録する代役）。check が何も書かないこと、apply の拒否・冪等・timer を enable しないこと、
+`setup.test.ts` は設置の script を、test の root の中の偽の `/usr`・`/etc`・`/var/lib`・`/root`・`/home` の上で動かす（registry は npm の形の
+偽の tarball 4 つと test だけの固定値、curl はそれを写す代役、npm は手元の tarball を npm と同じ形に入れる代役、systemctl・systemd-run は呼ばれ方を
+記録する代役）。sha512・中身・ネイティブ版の照合、`--ignore-scripts`、proxy などの環境変数が npm・curl に渡らないこと、hardening が unit と両方向で一致することも確かめる。check が何も書かないこと、apply の拒否・冪等・timer を enable しないこと、
 hardening の失敗で止まること、rollback が symlink を戻し `used/`・`autorun/` に触らないこと、固定の SHA-256 が一致することを確かめる。
 
 pilot の偽 WSL（`tests/unit/design-agent/imagefirst-worker/pilot-world.ts`）の上で、本物の自動実行・承認コマンド・pilot・preflight・再送を動かす。

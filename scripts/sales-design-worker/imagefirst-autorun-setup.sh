@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Second Root IMAGE_FIRST automatic run: the owner's ONE-TIME setup, bundled (Issue #302, docs/operations/imagefirst-autorun.md
 # §2). It replaces the manual root commands of §2 (kept there as an appendix) with one reviewed script and three separate
-# owner approvals: check (read-only) -> apply -> enable-timer. rollback undoes apply.
+# owner approvals: check (read-only) -> apply -> enable-timer. rollback undoes what apply recorded.
 #
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh check --expect <sha>
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh apply --yes --expect <sha>
@@ -15,29 +15,42 @@
 # rollback does not ask for develop (it must work after develop moved on).
 #
 # Steps (check prints one line for each: SETUP_STEP <name> <DONE|TODO|BLOCKED> <reason>):
-#   cli             claude and codex root-owned under /usr/local: @anthropic-ai/claude-code@2.1.295 and @openai/codex@0.159.0
-#                   installed with /usr/bin/npm install -g --prefix /usr/local (env -i, HOME=/root, a fixed PATH, umask 022,
-#                   --userconfig /dev/null --globalconfig /dev/null). Today /usr/local/bin/{claude,codex} are root's symlinks
-#                   into the worker's home: apply records (setup.log) and removes ONLY such symlinks (a symlink whose target is
-#                   inside /home/sr-designgen); anything else there is BLOCKED and nothing is touched. Afterwards each
-#                   /usr/local/bin/<cli> must resolve (readlink -f) into its package, to a file root's and writable by nobody
-#                   else up to /, and the package's package.json must carry the pinned name and version (read as JSON; the
-#                   CLIs are never executed). node (as the worker's PATH /usr/local/bin:/usr/bin:/bin finds it) and
-#                   /usr/bin/npm must be root-trusted too. The worker's own PATH (~/.npm-global/bin first) is not changed.
+#   cli             claude and codex root-owned under /usr/local, from FOUR registry tarballs pinned by their sha512 integrity
+#                   (the npm registry's dist.integrity): @anthropic-ai/claude-code@2.1.295, its native
+#                   @anthropic-ai/claude-code-linux-x64@2.1.295, @openai/codex@0.159.0 and its native
+#                   @openai/codex@0.159.0-linux-x64. apply downloads them (curl -q, https only, env -i) into a root-only
+#                   directory, verifies every sha512 BEFORE anything changes, checks their members (only plain files and
+#                   directories under package/), then installs the two wrapper packages FROM THOSE LOCAL FILES with
+#                   /usr/bin/npm install -g --prefix /usr/local --ignore-scripts --omit=optional (env -i: HOME=/root, a fixed
+#                   PATH, LANG; no proxy, CA or npm-config variable; --userconfig/--globalconfig /dev/null; umask 022) and
+#                   compares every installed file with the verified tarball's. No vendor code runs as root: claude-code's only
+#                   lifecycle script (postinstall: node install.cjs, which copies the native binary over the bin/claude.exe
+#                   placeholder) is skipped, and this script does that itself (install -m 0755 of the verified native
+#                   `claude`); codex has no lifecycle script, and its native package is placed where npm would put the
+#                   optional dependency (@openai/codex/node_modules/@openai/codex-linux-x64), where bin/codex.js looks.
+#                   Today /usr/local/bin/{claude,codex} are root's symlinks into the worker's home: apply records (setup.log)
+#                   and removes ONLY such symlinks (after the downloads are verified); anything else there is BLOCKED and
+#                   nothing is touched. DONE: each /usr/local/bin/<cli> resolves (readlink -f) to its package's entry, root's
+#                   and writable by nobody else up to /; package.json carries the pinned name and version (read as JSON);
+#                   the native binaries are ELF files of more than 1 MiB with the pinned SHA-256 (never executed). node (as the
+#                   worker's PATH /usr/local/bin:/usr/bin:/bin finds it) and /usr/bin/npm root-trusted; the machine x86_64.
+#                   The worker's own PATH (~/.npm-global/bin first) is not changed.
 #   codex_config    the repository's codex-config.toml installed root 0644 to /etc/sr-design-worker/ (dir root 0755); its
 #                   SHA-256 must be the pinned CODEX_CONFIG_SHA256 of imagefirst-pilot-preflight.sh and imagefirst-pilot.sh
 #                   (read from those two files, which must agree; setup.test.ts pins all three to the repository's file)
 #   units           the old hourly sr-imagefirst-autostart.timer disabled (if present); sr-imagefirst-autorun.{service,timer}
 #                   installed 0644 (byte-identical to the repository's); daemon-reload; the owner's switch
 #                   /etc/sr-design-worker/imagefirst-autostart.json written as {"enabled": true} ONLY if absent
-#   hardening_check the doc's check 1: systemd-run with the unit's hardening running admin.sh status must print its status
-#                   table (else SETUP_HARDENING_FAILED: nothing further, the timer stays off, the rollback line is printed).
-#                   A pass is recorded (root's state, bound to the installed service file's and admin.sh's SHA-256).
+#   hardening_check the doc's check 1 with the unit's FULL hardening (every [Service] property of sr-imagefirst-autorun.service
+#                   but the lifecycle ones, setup.test.ts pins both directions): systemd-run running admin.sh status must
+#                   print its status table (else SETUP_HARDENING_FAILED: nothing further, the timer stays off, the rollback
+#                   line is printed). A pass is recorded (root's state, bound to the service file's and admin.sh's SHA-256).
 # apply NEVER enables the timer. enable-timer is a separate owner approval and needs all four steps DONE.
-# rollback: the timer disabled, the two unit files removed, daemon-reload, the two npm packages uninstalled, the two old
-# symlinks restored exactly as setup.log recorded them (only if their targets still exist and the place is free), root's
-# codex-config.toml and the recorded hardening pass removed. It NEVER removes used/, autorun/, the worker's claims, the
-# entry's ledgers or the owner's switch.
+# rollback undoes ONLY what setup.log says apply changed (since the last complete rollback): the timer disabled and the two
+# unit files removed (units), daemon-reload, the two npm packages uninstalled and the two old symlinks restored exactly as
+# recorded, only if their targets still exist and the place is free (cli), root's codex-config.toml (codex_config), the
+# recorded hardening pass. The old sr-imagefirst-autostart.timer stays disabled. It NEVER removes used/, autorun/, the
+# worker's claims, the entry's ledgers or the owner's switch.
 #
 # Every action of apply / enable-timer / rollback is appended to root's /var/lib/sr-imagefirst-autostart/setup.log (0600;
 # the state dir 0700), including what the old symlinks pointed to. check writes nothing anywhere. Sign-in files stay in the
@@ -46,27 +59,26 @@
 # Output: fixed lines; the last line is machine-readable:
 #   IMAGEFIRST_SETUP <CODE> exit=<n>
 # Exit: 0  CHECK_OK (nothing BLOCKED) / APPLY_OK / TIMER_ENABLED / ROLLBACK_DONE
-#       2  refused: usage, no --yes, --expect missing or not 40 hex, not root / a test hook in the production copy, the admin
-#          clone untrusted, dirty, not detached, not at --expect, or --expect not origin's develop
-#       3  CHECK_BLOCKED / SETUP_BLOCKED: a step is BLOCKED (nothing changed by the mode that found it)
+#       2  refused: usage, no --yes, --expect missing or not 40 hex, not root / a test hook in the production copy / root in
+#          a test copy, the admin clone untrusted, dirty, not detached, not at --expect, or --expect not origin's develop
+#       3  CHECK_BLOCKED / SETUP_BLOCKED: a step is BLOCKED (nothing changed by the mode that found it); rollback during a run
 #       4  TIMER_NOT_READY: enable-timer with a step not DONE
 #       11 SETUP_LOCKED: another setup run holds the lock
 #       20 SETUP_ORIGIN_UNREACHABLE: origin's develop could not be read
-#       30 SETUP_CLI_FAILED, 31 SETUP_CODEX_CONFIG_FAILED, 32 SETUP_UNITS_FAILED, 33 SETUP_HARDENING_FAILED,
-#       34 TIMER_ENABLE_FAILED, 35 ROLLBACK_INCOMPLETE
+#       30 SETUP_CLI_FAILED (a download, a sha512, a member, npm, a compared file, a native binary), 31 SETUP_CODEX_CONFIG_FAILED,
+#       32 SETUP_UNITS_FAILED, 33 SETUP_HARDENING_FAILED, 34 TIMER_ENABLE_FAILED, 35 ROLLBACK_INCOMPLETE
 #       40 / 41 signal / internal error
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
 {
 set -euo pipefail
 
-# Restart with an allowlisted environment (marked by an argument, not a variable).
+# Restart with an allowlisted environment (marked by an argument, not a variable). No proxy, CA or npm variable passes.
 if [ "${1:-}" = "--sr-clean-env" ]; then
   shift
 else
   keep=()
-  for name in PATH LANG TZ HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy \
-    NODE_EXTRA_CA_CERTS SSL_CERT_FILE SR_IMAGEFIRST_SETUP_TEST_ROOT; do
+  for name in PATH LANG TZ SR_IMAGEFIRST_SETUP_TEST_ROOT; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
   exec /usr/bin/env -i "${keep[@]}" /bin/bash "${BASH_SOURCE[0]}" --sr-clean-env "$@"
@@ -76,26 +88,77 @@ SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
 umask 077
 cd /
 
-# ---------------------------------------------------------------- pinned versions, limits
+# ---------------------------------------------------------------- pinned versions and tarballs, limits
 CLI_NAMES=(claude codex)
 declare -A CLI_PKG=([claude]=@anthropic-ai/claude-code [codex]=@openai/codex)
 declare -A CLI_VER=([claude]=2.1.295 [codex]=0.159.0)
+# the npm registry's dist.tarball and dist.integrity of every tarball used (npm view <spec> dist.tarball dist.integrity)
+TGZS=(claude claude_native codex codex_native)
+declare -A TGZ_URL=(
+  [claude]=https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-2.1.295.tgz
+  [claude_native]=https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-2.1.295.tgz
+  [codex]=https://registry.npmjs.org/@openai/codex/-/codex-0.159.0.tgz
+  [codex_native]=https://registry.npmjs.org/@openai/codex/-/codex-0.159.0-linux-x64.tgz
+)
+declare -A TGZ_SRI=(
+  [claude]=sha512-PTdE5NdqwwyCmtbX/0WAuosyip8DkwC6M5mAJv+b9KGuxMFnkTJbc2b3EY6FYdo5ZTWkm6MN8reA9YWWMrLR+g==
+  [claude_native]=sha512-nC9RZ6ZArEavyAiFdEtGK6/XPhjfE79tP2tCh+PjmRUxSO/6W3IuXv/rmo8c6u2UzHyvgKodRj1z6UcBGlbnyA==
+  [codex]=sha512-nQWxAkzn+Rhr8TgtIhVhSlqvCytrMoqe+P8xoo4xxhCIBnzOfRs6SEmkMJfTPjkU3BYlsplwDOY2dbSp4+514g==
+  [codex_native]=sha512-7ks+EeQjX33wfJXbggseyF0CJRFVgzDHA6BzC7mJjFsJKmdAuOFWMFeMeZe8vL/G6xEpL29wOdwR85sK49F0iA==
+)
+# the native binaries inside the two native tarballs (package/claude; package/vendor/x86_64-unknown-linux-musl/bin/codex)
+declare -A BIN_SHA256=(
+  [claude]=4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358
+  [codex]=d2752c52353401f7f6efbfcea68796f4f7a3d3e4769f5d1da53fa49d4856b72f
+)
+CODEX_NATIVE_PKG=@openai/codex-linux-x64
+CODEX_NATIVE_ID="@openai/codex 0.159.0-linux-x64"
+CODEX_TRIPLE=x86_64-unknown-linux-musl
+MIN_NATIVE_BYTES=1048576
 KILL_AFTER=30
 LS_REMOTE_TIMEOUT=180
+FETCH_TIMEOUT=1800
 NPM_TIMEOUT=900
 SYSTEMCTL_TIMEOUT=150
 HARDENING_TIMEOUT=300
-# the doc's check 1: the unit's hardening (setup.test.ts pins every property against sr-imagefirst-autorun.service)
-HARDENING=(-p ProtectSystem=strict -p ProtectHome=read-only -p ReadWritePaths=/home/sr-designgen -p PrivateTmp=yes
-  -p NoNewPrivileges=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes
-  -p RestrictSUIDSGID=yes -p "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK")
+# The doc's check 1: EVERY [Service] property of sr-imagefirst-autorun.service except the lifecycle ones (Type, ExecStart,
+# ExecStopPost, TimeoutStartSec, TimeoutStopSec, KillMode, SuccessExitStatus: they describe the real run, and ExecStopPost
+# would start Remote Control). One property per line; setup.test.ts pins script = unit in both directions.
+HARDENING=(
+  -p "WorkingDirectory=/"
+  -p "StateDirectory=sr-imagefirst-autostart"
+  -p "StateDirectoryMode=0700"
+  -p "UMask=0077"
+  -p "NoNewPrivileges=yes"
+  -p "ProtectSystem=strict"
+  -p "ProtectHome=read-only"
+  -p "ReadWritePaths=/home/sr-designgen -/var/lib/sr-design-cycle"
+  -p "PrivateTmp=yes"
+  -p "ProtectKernelTunables=yes"
+  -p "ProtectKernelModules=yes"
+  -p "ProtectKernelLogs=yes"
+  -p "ProtectControlGroups=yes"
+  -p "RestrictSUIDSGID=yes"
+  -p "LockPersonality=yes"
+  -p "RestrictRealtime=yes"
+  -p "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK"
+  -p "Nice=10"
+  -p "CPUWeight=20"
+  -p "IOSchedulingClass=best-effort"
+  -p "IOSchedulingPriority=7"
+  -p "MemoryHigh=3G"
+  -p "MemoryMax=4G"
+  -p "TasksMax=512"
+)
 
 FINISHED=0
+WORK=""
 say() { printf 'imagefirst-autorun-setup: %s\n' "$*"; }
 finish() {
   local code="$1" rc="$2"
   FINISHED=1
   trap - EXIT INT TERM HUP
+  [ -z "$WORK" ] || rm -rf -- "$WORK"
   printf 'IMAGEFIRST_SETUP %s exit=%s\n' "$code" "$rc"
   exit "$rc"
 }
@@ -142,17 +205,29 @@ if [ "$REPO" = "$PROD_CLONE" ]; then
   FILE_ROOT=root
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   NPM_PATH=/usr/local/bin:/usr/bin:/bin
+  CURL_PATH=/usr/bin:/bin
   INSTALL_OWNER=(-o root -g root)
   ADMIN_GIT="$REPO"
 else
   # Any other copy runs only the unit tests' fake WSL (tests/unit/design-agent/imagefirst-worker/setup.test.ts):
-  # every path under the test root, npm / systemctl / systemd-run as the test's stubs, "root" is this user.
+  # every path under the test root, npm / curl / systemctl / systemd-run as the test's stubs, "root" is this user.
+  # Never as root: a test copy must not change a real system.
+  [ "$(id -u)" != 0 ] || { say "SETUP_TEST_COPY_AS_ROOT: a copy outside $PROD_CLONE never runs as root"; finish SETUP_USAGE 2; }
   [ -n "$TEST_ROOT" ] && [ -d "$TEST_ROOT" ] || { say "run from the root-only clone: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-autorun-setup.sh $MODE ..."; finish SETUP_USAGE 2; }
   R="$TEST_ROOT"
   FILE_ROOT="$(id -un)"
   NPM_PATH="$PATH"
+  CURL_PATH="$PATH"
   INSTALL_OWNER=()
   ADMIN_GIT="$R$PROD_CLONE"
+  # the test world's own tarballs carry their own pins (the production copy can never read this file: R is empty there)
+  if [ -f "$R/test-pins" ]; then
+    while IFS= read -r l; do
+      if [[ "$l" =~ ^SRI_(claude|claude_native|codex|codex_native)=(sha512-[A-Za-z0-9+/=]+)$ ]]; then TGZ_SRI[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
+      elif [[ "$l" =~ ^BIN_(claude|codex)=([0-9a-f]{64})$ ]]; then BIN_SHA256[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
+      fi
+    done <"$R/test-pins"
+  fi
 fi
 WORKER_HOME="$R/home/sr-designgen"
 PREFIX="$R/usr/local"
@@ -171,6 +246,12 @@ UNITS=(sr-imagefirst-autorun.service sr-imagefirst-autorun.timer)
 TIMER=sr-imagefirst-autorun.timer
 LEGACY_TIMER=sr-imagefirst-autostart.timer
 ADMIN_SH="$REPO/scripts/sales-design-capture/admin.sh"
+PKG_DIR_claude="$PREFIX/lib/node_modules/${CLI_PKG[claude]}"
+PKG_DIR_codex="$PREFIX/lib/node_modules/${CLI_PKG[codex]}"
+CLAUDE_ENTRY="$PKG_DIR_claude/bin/claude.exe"
+CODEX_ENTRY="$PKG_DIR_codex/bin/codex.js"
+CODEX_NATIVE_DIR="$PKG_DIR_codex/node_modules/$CODEX_NATIVE_PKG"
+CODEX_NATIVE_BIN="$CODEX_NATIVE_DIR/vendor/$CODEX_TRIPLE/bin/codex"
 ROLLBACK_HINT="to undo: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-autorun-setup.sh rollback --yes --expect $EXPECT"
 
 # The file and every directory above it owned by root and writable by nobody else (as cycle.sh / admin.sh).
@@ -208,6 +289,13 @@ utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 log() { printf '%s %s %s\n' "$(utc)" "$MODE" "$*" >>"$LOG"; }
 sc() { timeout --kill-after="$KILL_AFTER" "$SYSTEMCTL_TIMEOUT" systemctl "$@"; }
 unit_state() { sc show -p "$1" --value "$2" 2>/dev/null || echo error; }
+# A native binary as placed: root's regular file, an ELF of more than 1 MiB, the pinned SHA-256. Never executed.
+native_ok() {
+  root_file "$1" || return 1
+  [ "$(head -c 4 -- "$1" | od -An -tx1 | tr -d ' \n')" = 7f454c46 ] || return 1
+  [ "$(stat -c %s -- "$1")" -gt "$MIN_NATIVE_BYTES" ] || return 1
+  [ "$(sha_of "$1")" = "$2" ]
+}
 
 # A unit that must not start on its own: not active, and not enabled (or not installed at all). Read only.
 # (Verbatim from the pilot's preflight.)
@@ -280,8 +368,23 @@ except Exception:
 n, v = (d.get("name"), d.get("version")) if isinstance(d, dict) else (None, None)
 print(n + " " + v if isinstance(n, str) and isinstance(v, str) else "INVALID")' "$1" 2>/dev/null || echo INVALID
 }
+# The package's entry and its native binary as apply leaves them (empty: DONE; else why not).
+cli_installed_why() {
+  local name="$1" pkgdir entry id
+  pkgdir="$PREFIX/lib/node_modules/${CLI_PKG[$name]}"
+  root_file "$pkgdir/package.json" && id="$(pkg_id "$pkgdir/package.json")" || id=INVALID
+  [ "$id" = "${CLI_PKG[$name]} ${CLI_VER[$name]}" ] || { echo "installed ${id#* } is not the pinned ${CLI_VER[$name]}"; return; }
+  if [ "$name" = claude ]; then
+    native_ok "$CLAUDE_ENTRY" "${BIN_SHA256[claude]}" || { echo "bin/claude.exe is not the pinned native binary (an ELF over 1 MiB with the pinned SHA-256)"; return; }
+  else
+    root_file "$CODEX_NATIVE_DIR/package.json" && id="$(pkg_id "$CODEX_NATIVE_DIR/package.json")" || id=INVALID
+    [ "$id" = "$CODEX_NATIVE_ID" ] || { echo "the native package $CODEX_NATIVE_PKG is not $CODEX_NATIVE_ID"; return; }
+    native_ok "$CODEX_NATIVE_BIN" "${BIN_SHA256[codex]}" || { echo "the native codex is not the pinned binary (an ELF over 1 MiB with the pinned SHA-256)"; return; }
+  fi
+}
 check_cli() {
-  local name pkg ver slot pkgdir real t id state=DONE why="" todo="" node=""
+  local name pkg slot pkgdir entry real t why_not state=DONE why="" todo="" node="" d n
+  [ "$(uname -m)" = x86_64 ] || { STEP[cli]=BLOCKED; WHY[cli]="the pinned native packages are linux-x64; this machine is $(uname -m)"; return; }
   for d in "$R/usr/bin" "$PREFIX" "$PREFIX/bin"; do
     root_path "$d" || { STEP[cli]=BLOCKED; WHY[cli]="$d is missing or not root's only up to /"; return; }
   done
@@ -289,8 +392,9 @@ check_cli() {
   for n in "$PREFIX/bin/node" "$R/usr/bin/node" "$R/bin/node"; do if [ -e "$n" ]; then node="$n"; break; fi; done
   [ -n "$node" ] && root_path "$node" || { STEP[cli]=BLOCKED; WHY[cli]="node (as the worker's PATH finds it) is missing or not root's only up to /"; return; }
   for name in "${CLI_NAMES[@]}"; do
-    pkg="${CLI_PKG[$name]}"; ver="${CLI_VER[$name]}"
+    pkg="${CLI_PKG[$name]}"
     slot="$PREFIX/bin/$name"; pkgdir="$PREFIX/lib/node_modules/$pkg"
+    if [ "$name" = claude ]; then entry="$CLAUDE_ENTRY"; else entry="$CODEX_ENTRY"; fi
     if [ -e "$pkgdir" ] || [ -L "$pkgdir" ]; then
       root_path "$pkgdir" && [ ! -L "$pkgdir" ] || { STEP[cli]=BLOCKED; WHY[cli]="$pkgdir exists and is not root's only"; return; }
     fi
@@ -301,10 +405,10 @@ check_cli() {
       todo+="$name: /usr/local/bin/$name -> $t (the worker's home) to be replaced; "
     else
       real="$(readlink -f -- "$slot" 2>/dev/null)" || real=""
-      if [[ "$real" == "$pkgdir"/* ]] && [ -f "$real" ] && root_path "$real"; then
-        root_file "$pkgdir/package.json" && id="$(pkg_id "$pkgdir/package.json")" || id=INVALID
-        if [ "$id" = "$pkg $ver" ]; then why+="$name $ver root-owned; "
-        else todo+="$name: installed ${id#* } is not the pinned $ver; "
+      if [ "$real" = "$entry" ] && [ -f "$real" ] && root_path "$real"; then
+        why_not="$(cli_installed_why "$name")"
+        if [ -z "$why_not" ]; then why+="$name ${CLI_VER[$name]} root-owned with the pinned native binary; "
+        else todo+="$name: $why_not; "
         fi
       else
         STEP[cli]=BLOCKED; WHY[cli]="/usr/local/bin/$name is neither absent, a symlink into /home/sr-designgen, nor the npm package's root-owned entry (${real:-unresolvable}): nothing is touched"
@@ -372,14 +476,14 @@ run_checks() {
   say "timer $TIMER: ${en:-not installed} (only enable-timer enables it)"
 }
 
-say "pinned: ${CLI_PKG[claude]}@${CLI_VER[claude]} ${CLI_PKG[codex]}@${CLI_VER[codex]}; codex-config.toml SHA-256 $PINNED_SHA"
+say "pinned: ${CLI_PKG[claude]}@${CLI_VER[claude]} ${CLI_PKG[codex]}@${CLI_VER[codex]} (tarballs by sha512, natives by SHA-256); codex-config.toml SHA-256 $PINNED_SHA"
 run_checks
 if [ "$MODE" = check ]; then
   say "$TODO step(s) TODO, $BLOCKED BLOCKED (nothing was changed)"
   if [ "$BLOCKED" -gt 0 ]; then finish CHECK_BLOCKED 3; fi
   finish CHECK_OK 0
 fi
-if [ "$MODE" != rollback ] && [ "$BLOCKED" -gt 0 ]; then say "a step is BLOCKED: nothing changed"; finish SETUP_BLOCKED 3; fi
+if [ "$MODE" != rollback ] && [ "$BLOCKED" -gt 0 ]; then say "SETUP_BLOCKED: a step is BLOCKED: nothing changed"; finish SETUP_BLOCKED 3; fi
 
 # ---------------------------------------------------------------- the changing modes: root's state dir, the lock, the log
 if absent "$STATE"; then install -d "${INSTALL_OWNER[@]}" -m 0700 "$STATE"; fi
@@ -389,14 +493,11 @@ exec 9>"$STATE/setup.lock"
 flock -n 9 || { say "another setup run holds the lock"; finish SETUP_LOCKED 11; }
 touch -- "$LOG" && chmod 0600 -- "$LOG"
 log "start expect=$EXPECT steps: cli=${STEP[cli]} codex_config=${STEP[codex_config]} units=${STEP[units]} hardening_check=${STEP[hardening_check]}"
-NPM_ENV=(HOME="$NPM_HOME" PATH="$NPM_PATH" LANG=C.UTF-8)
-for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
-  if [ -n "${!name+x}" ]; then NPM_ENV+=("$name=${!name}"); fi
-done
+# npm's whole environment: nothing else (no proxy, CA, npm-config or NODE variable), no user / global npm config
 npm_g() {
   ( umask 022
-    env -i "${NPM_ENV[@]}" timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" "$NPM" "$1" -g --prefix "$PREFIX" --userconfig /dev/null --globalconfig /dev/null \
-      --no-audit --no-fund --loglevel=error "${@:2}" 9>&- )
+    env -i HOME="$NPM_HOME" PATH="$NPM_PATH" LANG=C.UTF-8 timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" \
+      "$NPM" "$1" -g --prefix "$PREFIX" --userconfig /dev/null --globalconfig /dev/null --no-audit --no-fund --loglevel=error "${@:2}" 9>&- )
 }
 
 # ---------------------------------------------------------------- enable-timer
@@ -410,39 +511,47 @@ if [ "$MODE" = enable-timer ]; then
   finish TIMER_ENABLED 0
 fi
 
-# ---------------------------------------------------------------- rollback
+# ---------------------------------------------------------------- rollback (only what setup.log says apply changed)
 if [ "$MODE" = rollback ]; then
   ok=1
   st="$(unit_state ActiveState sr-imagefirst-autorun.service)"
   [[ "$st" =~ ^(inactive|failed)$ ]] || { say "sr-imagefirst-autorun.service is ${st:-unknown}: stop the run first (sudo systemctl stop sr-imagefirst-autorun.service)"; log "refused: the service is $st"; finish SETUP_BLOCKED 3; }
-  if [ "$(unit_state LoadState "$TIMER")" != not-found ]; then
-    log "systemctl disable --now $TIMER"
-    sc disable --now "$TIMER" >/dev/null 2>&1 || { say "systemctl disable --now $TIMER failed: nothing else removed"; log "disable failed"; finish ROLLBACK_INCOMPLETE 35; }
-  fi
-  for u in "${UNITS[@]}"; do
-    if ! absent "$UNIT_DIR/$u"; then log "rm $UNIT_DIR/$u"; rm -f -- "$UNIT_DIR/$u"; fi
-  done
-  log "systemctl daemon-reload"
-  sc daemon-reload >/dev/null 2>&1 || { say "daemon-reload failed"; log "daemon-reload failed"; ok=0; }
-  pkgs=()
-  for name in "${CLI_NAMES[@]}"; do if [ -d "$PREFIX/lib/node_modules/${CLI_PKG[$name]}" ]; then pkgs+=("${CLI_PKG[$name]}"); fi; done
-  if [ "${#pkgs[@]}" -gt 0 ]; then
-    log "npm uninstall -g --prefix /usr/local ${pkgs[*]}"
-    npm_g uninstall "${pkgs[@]}" >/dev/null 2>&1 || { say "npm uninstall failed"; log "npm uninstall failed"; ok=0; }
-  fi
-  for name in "${CLI_NAMES[@]}"; do
-    target="$(sed -n "s|^[0-9TZ:-]* apply OLD_LINK $name -> \\(.*\\)\$|\\1|p" "$LOG" | tail -n 1)"
-    [ -n "$target" ] || continue
-    slot="$PREFIX/bin/$name"
-    if ! legacy_target "$target"; then say "the recorded old link for $name is not inside /home/sr-designgen: not restored"; log "not restored $name: bad record"; ok=0
-    elif [ ! -e "$target" ]; then say "the old target of $name ($target) no longer exists: not restored"; log "not restored $name: $target gone"
-    elif ! absent "$slot"; then say "/usr/local/bin/$name is not free: not restored (look at it)"; log "not restored $name: slot taken"; ok=0
-    else ln -s -- "$target" "$slot"; log "restored $slot -> $target"; say "restored /usr/local/bin/$name -> $target"
+  # apply's records since the last complete rollback
+  RECORDS="$(awk '/^[0-9TZ:-]+ rollback done ok=1$/ { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$LOG")"
+  applied() { grep -qE "^[0-9TZ:-]+ apply APPLIED $1\$" <<<"$RECORDS"; }
+  if ! applied cli && ! applied codex_config && ! applied units && ! applied hardening_check; then say "setup.log records no change by apply: nothing to undo"; fi
+  if applied units; then
+    if [ "$(unit_state LoadState "$TIMER")" != not-found ]; then
+      log "systemctl disable --now $TIMER"
+      sc disable --now "$TIMER" >/dev/null 2>&1 || { say "systemctl disable --now $TIMER failed: nothing else removed"; log "disable failed"; finish ROLLBACK_INCOMPLETE 35; }
     fi
-  done
-  for f in "$CODEX_CONFIG" "$HARDENING_OK"; do
-    if ! absent "$f"; then log "rm $f"; rm -f -- "$f"; fi
-  done
+    for u in "${UNITS[@]}"; do
+      if ! absent "$UNIT_DIR/$u"; then log "rm $UNIT_DIR/$u"; rm -f -- "$UNIT_DIR/$u"; fi
+    done
+    log "systemctl daemon-reload"
+    sc daemon-reload >/dev/null 2>&1 || { say "daemon-reload failed"; log "daemon-reload failed"; ok=0; }
+    say "the old $LEGACY_TIMER stays disabled (it is never enabled again by this script)"
+  fi
+  if applied cli; then
+    pkgs=()
+    for name in "${CLI_NAMES[@]}"; do if [ -d "$PREFIX/lib/node_modules/${CLI_PKG[$name]}" ]; then pkgs+=("${CLI_PKG[$name]}"); fi; done
+    if [ "${#pkgs[@]}" -gt 0 ]; then
+      log "npm uninstall -g --prefix /usr/local ${pkgs[*]}"
+      npm_g uninstall "${pkgs[@]}" >/dev/null 2>&1 || { say "npm uninstall failed"; log "npm uninstall failed"; ok=0; }
+    fi
+    for name in "${CLI_NAMES[@]}"; do
+      target="$(sed -n "s|^[0-9TZ:-]* apply OLD_LINK $name -> \\(.*\\)\$|\\1|p" <<<"$RECORDS" | tail -n 1)"
+      [ -n "$target" ] || continue
+      slot="$PREFIX/bin/$name"
+      if ! legacy_target "$target"; then say "the recorded old link for $name is not inside /home/sr-designgen: not restored"; log "not restored $name: bad record"; ok=0
+      elif [ ! -e "$target" ]; then say "the old target of $name ($target) no longer exists: not restored"; log "not restored $name: $target gone"
+      elif ! absent "$slot"; then say "/usr/local/bin/$name is not free: not restored (look at it)"; log "not restored $name: slot taken"; ok=0
+      else ln -s -- "$target" "$slot"; log "restored $slot -> $target"; say "restored /usr/local/bin/$name -> $target (into the worker's home: root must not run claude / codex)"
+      fi
+    done
+  fi
+  if applied codex_config && ! absent "$CODEX_CONFIG"; then log "rm $CODEX_CONFIG"; rm -f -- "$CODEX_CONFIG"; fi
+  if applied hardening_check && ! absent "$HARDENING_OK"; then log "rm $HARDENING_OK"; rm -f -- "$HARDENING_OK"; fi
   say "used/, autorun/, the worker's claims, the ledgers and the switch are kept"
   log "done ok=$ok"
   [ "$ok" = 1 ] || finish ROLLBACK_INCOMPLETE 35
@@ -452,32 +561,89 @@ fi
 # ---------------------------------------------------------------- apply (never enables the timer)
 if [ "$TODO" = 0 ]; then say "every step is already DONE: nothing to do"; log "nothing to do"; finish APPLY_OK 0; fi
 
+cli_fail() { say "SETUP_CLI_FAILED: $1; $ROLLBACK_HINT"; log "cli failed: $1"; finish SETUP_CLI_FAILED 30; }
+sri_of() {
+  python3 -I -c 'import base64, hashlib, sys
+h = hashlib.sha512()
+with open(sys.argv[1], "rb") as f:
+    for c in iter(lambda: f.read(1 << 20), b""):
+        h.update(c)
+print("sha512-" + base64.b64encode(h.digest()).decode())' "$1"
+}
+# only plain files and directories, every name under package/ without ".."
+members_ok() {
+  local types names
+  types="$(tar -tzvf "$1" | cut -c1 | sort -u | tr -d '\n')" || return 1
+  [[ "$types" =~ ^[-d]+$ ]] || return 1
+  names="$(tar -tzf "$1")" || return 1
+  ! grep -qvE '^package/([A-Za-z0-9._@+-]+/)*[A-Za-z0-9._@+-]*$' <<<"$names" || return 1
+  ! grep -qE '(^|/)\.\.(/|$)' <<<"$names"
+}
+extract() { ( umask 022; mkdir -p -- "$2" && tar -xzf "$1" -C "$2" --no-same-owner --no-same-permissions ); }
+
 if [ "${STEP[cli]}" = TODO ]; then
+  # 1. the four tarballs, downloaded and verified before anything changes
+  WORK="$(mktemp -d "$STATE/setup-download.XXXXXX")"
+  for t in "${TGZS[@]}"; do
+    f="$WORK/$t.tgz"
+    log "fetch ${TGZ_URL[$t]}"
+    env -i HOME="$NPM_HOME" PATH="$CURL_PATH" LANG=C.UTF-8 timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" \
+      curl -q -fsSL --proto =https --proto-redir =https -o "$f" "${TGZ_URL[$t]}" 9>&- || cli_fail "the download of ${TGZ_URL[$t]} failed (nothing changed)"
+    got="$(sri_of "$f")" || got=""
+    [ "$got" = "${TGZ_SRI[$t]}" ] || cli_fail "${TGZ_URL[$t]} is not the pinned tarball (sha512 ${got:-unreadable}; nothing changed)"
+    members_ok "$f" || cli_fail "${TGZ_URL[$t]} holds a member that is not a plain file or directory under package/ (nothing changed)"
+    extract "$f" "$WORK/$t" || cli_fail "$t could not be unpacked (nothing changed)"
+    log "verified $t ${TGZ_SRI[$t]}"
+  done
+  native_ok_tmp() { [ -f "$1" ] && [ ! -L "$1" ] && [ "$(stat -c %s -- "$1")" -gt "$MIN_NATIVE_BYTES" ] && [ "$(sha_of "$1")" = "$2" ]; }
+  native_ok_tmp "$WORK/claude_native/package/claude" "${BIN_SHA256[claude]}" || cli_fail "the native claude in the verified tarball is not the pinned binary (nothing changed)"
+  native_ok_tmp "$WORK/codex_native/package/vendor/$CODEX_TRIPLE/bin/codex" "${BIN_SHA256[codex]}" || cli_fail "the native codex in the verified tarball is not the pinned binary (nothing changed)"
+  [ "$(pkg_id "$WORK/codex_native/package/package.json")" = "$CODEX_NATIVE_ID" ] || cli_fail "the native codex package is not $CODEX_NATIVE_ID (nothing changed)"
+  log "APPLIED cli"
+  # 2. only the two symlinks into the worker's home, recorded first
   for name in "${CLI_NAMES[@]}"; do
     old_var="CLI_OLD_$name"
     old="${!old_var}"
     [ -n "$old" ] || continue
     slot="$PREFIX/bin/$name"
-    # the very link check saw, and nothing else
-    [ -L "$slot" ] && [ "$(readlink -- "$slot")" = "$old" ] || { say "/usr/local/bin/$name changed since the check: nothing removed"; log "cli: $slot changed"; finish SETUP_CLI_FAILED 30; }
+    [ -L "$slot" ] && [ "$(readlink -- "$slot")" = "$old" ] || cli_fail "/usr/local/bin/$name changed since the check: nothing removed"
     log "OLD_LINK $name -> $old"
     rm -f -- "$slot"
     log "removed $slot"
     say "recorded and removed /usr/local/bin/$name -> $old"
   done
-  specs=()
-  for name in "${CLI_NAMES[@]}"; do specs+=("${CLI_PKG[$name]}@${CLI_VER[$name]}"); done
-  log "npm install -g --prefix /usr/local ${specs[*]}"
-  say "npm install -g --prefix /usr/local ${specs[*]} (as root, HOME=/root, no user / global npm config)"
-  if ! npm_g install "${specs[@]}" >/dev/null 2>&1; then
-    say "SETUP_CLI_FAILED: npm install failed; $ROLLBACK_HINT"; log "npm install failed"; finish SETUP_CLI_FAILED 30
-  fi
+  # 3. the two wrapper packages from the verified local tarballs: no lifecycle script, no optional dependency fetched
+  log "npm install -g --prefix /usr/local --ignore-scripts --omit=optional $WORK/claude.tgz $WORK/codex.tgz"
+  say "npm install -g --prefix /usr/local --ignore-scripts --omit=optional (the verified local tarballs; as root, HOME=/root, no npm config)"
+  npm_g install --ignore-scripts --omit=optional "$WORK/claude.tgz" "$WORK/codex.tgz" >/dev/null 2>&1 || cli_fail "npm install failed"
+  # 4. every installed file of the two packages is the verified tarball's
+  for name in "${CLI_NAMES[@]}"; do
+    pkgdir="$PREFIX/lib/node_modules/${CLI_PKG[$name]}"
+    while IFS= read -r m; do
+      rel="${m#package/}"
+      [ -n "$rel" ] && [ -f "$WORK/$name/$m" ] || continue
+      cmp -s -- "$WORK/$name/$m" "$pkgdir/$rel" || cli_fail "$pkgdir/$rel is not the verified tarball's"
+    done < <(tar -tzf "$WORK/$name.tgz")
+  done
+  log "installed files compared with the verified tarballs"
+  # 5. what claude-code's skipped postinstall did (install.cjs): the native binary over the bin/claude.exe placeholder
+  ( umask 022; install "${INSTALL_OWNER[@]}" -m 0755 -- "$WORK/claude_native/package/claude" "$CLAUDE_ENTRY" ) || cli_fail "the native claude could not be placed"
+  log "placed the native claude at $CLAUDE_ENTRY sha256=${BIN_SHA256[claude]}"
+  # 6. codex's native package where npm puts the optional dependency (bin/codex.js resolves $CODEX_NATIVE_PKG from there)
+  ( umask 022
+    install -d "${INSTALL_OWNER[@]}" -m 0755 "$PKG_DIR_codex/node_modules" "$PKG_DIR_codex/node_modules/@openai"
+    rm -rf -- "$CODEX_NATIVE_DIR"
+    cp -R -- "$WORK/codex_native/package" "$CODEX_NATIVE_DIR" ) || cli_fail "the native codex package could not be placed"
+  log "placed the native codex package at $CODEX_NATIVE_DIR sha256=${BIN_SHA256[codex]}"
+  rm -rf -- "$WORK"
+  WORK=""
   check_cli
-  [ "${STEP[cli]}" = DONE ] || { say "SETUP_CLI_FAILED: after npm install: ${WHY[cli]}; $ROLLBACK_HINT"; log "cli not DONE: ${WHY[cli]}"; finish SETUP_CLI_FAILED 30; }
+  [ "${STEP[cli]}" = DONE ] || cli_fail "after the install: ${WHY[cli]}"
   log "cli DONE: ${WHY[cli]}"
 fi
 
 if [ "${STEP[codex_config]}" = TODO ]; then
+  log "APPLIED codex_config"
   if absent "$ETC"; then install -d "${INSTALL_OWNER[@]}" -m 0755 "$ETC"; log "install -d -m 0755 $ETC"; fi
   install "${INSTALL_OWNER[@]}" -m 0644 -- "$SRC_CONFIG" "$CODEX_CONFIG"
   log "install -m 0644 $CODEX_CONFIG"
@@ -487,6 +653,7 @@ if [ "${STEP[codex_config]}" = TODO ]; then
 fi
 
 if [ "${STEP[units]}" = TODO ]; then
+  log "APPLIED units"
   if ! unit_off "$LEGACY_TIMER"; then
     log "systemctl disable --now $LEGACY_TIMER"
     sc disable --now "$LEGACY_TIMER" >/dev/null 2>&1 || { say "SETUP_UNITS_FAILED: could not disable $LEGACY_TIMER"; log "legacy disable failed"; finish SETUP_UNITS_FAILED 32; }
@@ -526,6 +693,7 @@ if [ "${STEP[hardening_check]}" = TODO ]; then
     log "hardening failed exit=$hrc"
     finish SETUP_HARDENING_FAILED 33
   fi
+  log "APPLIED hardening_check"
   hardening_key >"$HARDENING_OK"
   chmod 0600 -- "$HARDENING_OK"
   log "hardening_check DONE"
