@@ -68,11 +68,15 @@ max_images=<上限の枚数、例 6>
 codex_runs=1
 expires=<§10 の期限、UTC の ISO 8601、秒まで>
 commit=<C の 40 桁>
+previous=<前回オーナーが承認した commit T の 40 桁>
 packet_sha256=<C の中のパケットのファイルの SHA-256>
 ```
 
 店・方向・枚数・回数は、オーナーが署名の前に判断できるように文に入れる（#327 レビュー 5 回目の Medium）。root はどれも C のパケット・実行の表と
-一致することを確かめる。プロンプトそのものは長すぎて文に入れないが、`packet_sha256` で C の中のパケット（プロンプトの固定値を含む）に結びつく。
+一致することを確かめる。`previous` は root が記録している T と一致しなければならず、ページはこの T と C から
+「前回からの比較」のリンクを作る（`#` 以降の値は Claude が書くので、一致は root が保証する）。これらの値が示すのは
+「C の中の宣言（パケット・実行の表）が文と一致する」ことで、コードがそれを守ることではない（コードの信頼は今と同じ水準）。
+そのため root は実行の後にも、生成された画像の数が `max_images` 以下であることを確かめ、超えていれば記録して知らせる。プロンプトそのものは長すぎて文に入れないが、`packet_sha256` で C の中のパケット（プロンプトの固定値を含む）に結びつく。
 
 WebAuthn の challenge = この文の SHA-256（32 バイト）。WebAuthn の署名は `authenticatorData || SHA-256(clientDataJSON)` に対する ES256（DER）で、
 clientDataJSON に challenge・origin・type が入るので、署名はこの文と署名ページの origin に結びつく。challenge は乱数ではないが、
@@ -90,8 +94,8 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
 - ページは URL の `#` 以降（サーバーに送られない）から値を読む。値は **ASCII だけ・項目ごとの厳密な正規表現・長さの上限**、期限は
   往復の変換で同じ文字列に戻ること（25:00 のような繰り上がりを拒否）。表示は `textContent` だけ（HTML として解釈しない）。
   **4.1 の文をそのまま**表示し、期限の JST は補助の 1 行として添える。
-- ページは `commit` から GitHub の tree と前回からの比較のリンクを**自分で組み立てる**（SHA で指す内容は誰にも書き換えられない。
-  Claude のページのリンクに頼らない）。
+- ページは `commit` と `previous` から GitHub の tree と前回からの比較のリンクを**自分で組み立てる**（SHA で指す内容は誰にも書き換えられない。
+  Claude のページのリンクに頼らない。`previous` の正しさは root が確かめる）。
 - `navigator.credentials.get` は `userVerification: "required"`、`allowCredentials` は登録した 1 つだけ。
 - **リンクは Safari 本体で開く**（Claude アプリなどのアプリ内ブラウザは JS を差し込めるので使わない）。その domain で動く Safari の拡張は許可しない。
 - 署名の結果（authenticatorData・clientDataJSON・signature・credential id）を 1 つの文字列にまとめ、コピーのボタンを出す。
@@ -100,7 +104,8 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
 ### 4.3 一度だけの準備（オーナー）
 
 1. 署名ページと登録ページを 4.5 の置き場所に置く（レビュー済みのファイルをそのまま。**両方の** SHA-256 を root に固定し、root が照合する。
-   attestation は none なので、すり替えた登録ページはソフトウェアの鍵を作って偽の公開鍵を見せられる）。
+   attestation は none なので、すり替えた登録ページはソフトウェアの鍵を作って偽の公開鍵を見せられる。この SHA-256 の照合も
+   **検出の補助**で、本当の守りは 4.5 の置き場所の隔離）。
 2. パスキーを登録する: **iPhone の Safari 本体**で登録ページを開き、表示された公開鍵（PEM）を **オーナーが WSL の root で直接**登録する
    （Claude を経由しない。経由すると Claude が鍵をすり替えられる）。root は公開鍵の指紋を表示し、オーナーはページの表示と一致を確かめる。
 3. 承認ブランチ `imagefirst/approved` を作る（force push・削除の禁止だけ。承認の要件は付けない。root はこれに頼らない）。
@@ -146,7 +151,8 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
   1. 署名ページを取得（`curl` は proxy の環境変数を無視、https だけ、大きさの上限）し、SHA-256 が固定値と一致。違えば凍結して知らせる。
   2. `~/sr-runs/approvals/` の署名のファイルは **root では開かない**。worker として（`setpriv`、autorun の inbox のファイルと同じ方法で）
      読んだバイトを pipe で受け取り、8 KiB で打ち切る（親のディレクトリのすり替え・FIFO・リンクを root が辿らない）。解析は root の持ち物の
-     `python3 -I` の標準ライブラリで、**重複したキーを拒否**、base64url は `validate=True` で厳密に（不正な文字・余分な padding を拒否）、
+     `python3 -I` の標準ライブラリで、**重複したキーを拒否**、base64url は padding の無い値だけを受け付け（長さを 4 で割った余りが 1 なら拒否）、足りない `=` をちょうど足して
+     `validate=True` で復号する（1 つの入力に 1 つの復号だけ）、
      すべての例外（RecursionError を含む）で FAIL CLOSED。
   3. clientDataJSON（**受け取った生のバイト**で検証する）: `type = "webauthn.get"`、`origin` = 固定値の完全一致、`crossOrigin` は無いか false、
      `topOrigin` があれば拒否、`challenge` = 4.1 の文の SHA-256（base64url）。
@@ -154,7 +160,7 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
      credential id は署名されないので信頼の根拠にしない（公開鍵の検証が根拠）。
   5. 署名: root の持ち物の `openssl dgst -sha256 -verify <公開鍵> -signature <DER> <authenticatorData || SHA-256(clientDataJSON)>` が成功。
   6. 文の値: root の admin clone で `imagefirst/approved` を fetch し、`commit` = C が承認ブランチの先端から辿れる。C のパケットの §10 が承認済みで、
-     ID・店・方向・枚数の上限・回数・期限が文と一致、期限が未来で 24 時間以内、`packet_sha256` が C の中のファイルと一致。ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）。
+     ID・店・方向・枚数の上限・回数・期限が文と一致、`previous` = 記録している T、期限が未来で 24 時間以内、`packet_sha256` が C の中のファイルと一致。ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）。
      パケットのパスは、C の中の対応表（JSON。worker の `approval-packets.ts` と一致をテストで固定）が ID の方向に割り当てたもので、
      検証器が自分の中に持つ形（`docs/design/image-first-<店>-<方向>-packet.md`）に合うこと。
   7. 通ったら C に固定し、印を書いて autorun → pilot に渡す（pilot は C を SHA で新しく clone する）。以後、生きているブランチは見ない。

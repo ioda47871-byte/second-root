@@ -40,3 +40,21 @@ All fixed in fadf34b0. Implementation is a separate OWNER MERGE ONLY PR after th
 
 - L: map path must match the verifier's own fixed pattern; freeze reason in root-only state with a worker-readable
   copy, cleared only by the owner's root command; expired activity records fail closed. All fixed in the next commit.
+
+## Owner update 2026-11-23 — GitHub ToS B.3: no second human-used free account → passkey (WebAuthn) signature (P) + approval branch
+
+## Round 5 — 2ccfc06a — FAIL (H1 / M5 / L6)
+
+- H: the signing page's origin is the real root of trust; root's SHA-256 check cannot see per-client content or a
+  swap during signing → host isolation conditions (passkey-only login, no GitHub/Google sign-in, separate recovery,
+  no API tokens, manual upload, no Functions, one exact pages.dev origin); hash check described as detection only.
+- M: human fields in the statement (shop, direction, max_images, codex_runs); registration page pinned and used in
+  Safari; Safari itself (no in-app browser / extensions); synced passkey accepted or NFC key; root reads the relay
+  file via the worker (setpriv pipe), all exceptions fail closed. L: strict base64url, duplicate keys / topOrigin
+  rejected, raw bytes, credential id not trusted, strict ASCII page input, userVerification required, revoke/rotate.
+
+## Round 6 — f1ce52dc — PASS (L4)
+
+- L: exact base64url padding; `previous=<T>` in the statement checked by root (compare link trustworthy); fields prove
+  declarations not code, root counts produced images after the run; registration pin is detection only. All fixed
+  in the next commit.
