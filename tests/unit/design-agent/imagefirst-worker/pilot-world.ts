@@ -25,7 +25,7 @@ export const exe = (path: string, body: string) => {
 };
 
 /** The stub worker CLI (imagefirst-worker.ts in the clone): --precheck, the run, --deliver-review; files in the real shapes. */
-export const STUB_WORKER = `import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+export const STUB_WORKER = `import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 const home = process.env.HOME ?? "";
@@ -37,7 +37,12 @@ const flag = (n: string) => existsSync(join(home, n));
 const text = (n: string) => readFileSync(join(home, n), "utf8").trim();
 const say = (o: object) => console.log(JSON.stringify(o));
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "worker", argv, grant, cwd: process.cwd(), env: Object.keys(process.env).sort(), execArgv: process.execArgv }) + "\\n");
+// what a model CLI started by this worker would see as its config dir (CODEX_HOME; else ~/.codex)
+const codexHome = process.env.CODEX_HOME ?? join(home, ".codex");
+const seen = (d: string) => { try { return (readdirSync(d, { recursive: true }) as string[]).map(String).sort(); } catch { return null; } };
+appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "worker", argv, grant, cwd: process.cwd(), env: Object.keys(process.env).sort(), execArgv: process.execArgv, codexHome: process.env.CODEX_HOME ?? null, codexFiles: seen(codexHome) }) + "\\n");
+// a sign-in refreshed by the CLI during the run (the automatic run copies it back afterwards)
+if (argv.length === 0 && flag("stub-refresh") && process.env.CODEX_HOME) writeFileSync(join(process.env.CODEX_HOME, "auth.json"), "refreshed-codex\\n");
 const BUNDLE = "4".repeat(64);
 const delivered = (id: string) => {
   mkdirSync(join(state, "deliveries"), { recursive: true, mode: 0o700 });
@@ -100,13 +105,17 @@ process.exit(0);
 `;
 
 /** The stub audit CLI (imagefirst-audit.ts in the clone): --check-auth-only, <id> --dry-run, <id>; audit.json in the real shape. */
-export const STUB_AUDIT = `import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+export const STUB_AUDIT = `import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 const home = process.env.HOME ?? "";
 const argv = process.argv.slice(2);
 const flag = (n: string) => existsSync(join(home, n));
 const say = (o: object) => console.log(JSON.stringify(o));
-appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "audit", argv, env: Object.keys(process.env).sort() }) + "\\n");
+// what the Claude CLI started by this audit would see as its config dir (CLAUDE_CONFIG_DIR; else ~/.claude)
+const claudeDir = process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude");
+const seen = (d: string) => { try { return (readdirSync(d, { recursive: true }) as string[]).map(String).sort(); } catch { return null; } };
+appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "audit", argv, env: Object.keys(process.env).sort(), claudeDir: process.env.CLAUDE_CONFIG_DIR ?? null, claudeFiles: seen(claudeDir), codexHome: process.env.CODEX_HOME ?? null }) + "\\n");
+if (argv.length === 1 && argv[0] !== "--check-auth-only" && flag("stub-refresh") && process.env.CLAUDE_CONFIG_DIR) writeFileSync(join(process.env.CLAUDE_CONFIG_DIR, ".credentials.json"), "refreshed-claude\\n");
 if (argv[0] === "--check-auth-only") {
   if (flag("stub-auth-fail")) { say({ status: "refused", code: "CLAUDE_API_KEY_AUTH", approval_id: "--check-auth-only" }); process.exit(2); }
   say({ status: "auth_ok", code: null });
@@ -136,7 +145,7 @@ export async function loadPngs() {
   PNG.sp = await sharp({ create: { width: 6, height: 9, channels: 3, background: "#f0e8d8" } }).png().toBuffer();
 }
 
-export type Start = { cli: "worker" | "audit"; argv: string[]; grant?: string; cwd?: string; env: string[]; execArgv?: string[] };
+export type Start = { cli: "worker" | "audit"; argv: string[]; grant?: string; cwd?: string; env: string[]; execArgv?: string[]; codexHome?: string | null; codexFiles?: string[] | null; claudeDir?: string | null; claudeFiles?: string[] | null };
 
 export function wsl() {
   const t = tmp("sr-ifp-");

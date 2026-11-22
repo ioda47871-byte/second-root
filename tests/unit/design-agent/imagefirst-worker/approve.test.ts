@@ -311,19 +311,34 @@ describe("Issue #302 approval command: the marker", () => {
     }
   });
 
-  it("review M1d: Remote Control up: the marker carries the packet's own expiry; over 24 h ahead: now + 24 h with a note; under 20 min: refused", () => {
+  it("review M1d / owner item 3: the marker carries only the packet's own expiry; over 24 h ahead or unreadable: refused (no now + 24 h); under 20 min: refused", () => {
     const w = world();
     w.switchOn();
     w.rcUp();
     expect(w.approve([ID])).toMatchObject({ status: 0, code: "APPROVE_RECORDED_DEFERRED" });
     expect(readFileSync(w.marker, "utf8")).toBe(`{"approval_id": "${ID}", "expires_at": "${w.expires}"}\n`);
-    const far = world(utc(Date.now() + 30 * 3600_000));
-    far.switchOn();
-    far.rcUp();
-    const r = far.approve([ID]);
-    expect(r).toMatchObject({ status: 0, code: "APPROVE_RECORDED_DEFERRED" });
-    expect(r.stdout).toMatch(/more than 24 h ahead\): the marker gets now \+ 24 h/);
-    expect(Date.parse((JSON.parse(readFileSync(far.marker, "utf8")) as { expires_at: string }).expires_at)).toBeLessThanOrEqual(Date.now() + 86_400_000);
+    for (const busyNow of [true, false]) {
+      const far = world(utc(Date.now() + 30 * 3600_000));
+      far.switchOn();
+      if (busyNow) far.rcUp();
+      writeFileSync(join(far.home, "stub-expires"), utc(Date.now() + 30 * 3600_000));
+      const r = far.approve([ID]);
+      expect([r.status, r.code], `${busyNow}\n${r.stdout}`).toEqual([2, "APPROVE_EXPIRY_INVALID"]);
+      expect(r.stdout).not.toMatch(/now \+ 24 h/);
+      expect(existsSync(far.marker)).toBe(false);
+    }
+    // the packet's 期限 not a plain UTC time (unreadable): refused in both paths, no marker
+    for (const busyNow of [true, false]) {
+      const u = world();
+      u.switchOn();
+      if (busyNow) u.rcUp();
+      const head = u.push({ [APPROVAL_PACKET_PATH]: filledPacket({ d3: `\`${ID}\``, expires: "明日の正午" }) }, "unreadable expiry (test)");
+      git(u.admin, "fetch", "-q", "origin");
+      git(u.admin, "checkout", "-q", "--detach", head);
+      expect(u.approve([ID]), String(busyNow)).toMatchObject({ status: 2, code: "APPROVE_PACKET_EXPIRY_UNREADABLE" });
+      expect(existsSync(u.marker)).toBe(false);
+      expect(u.starts()).toEqual([]);
+    }
     const soon = world(utc(Date.now() + 10 * 60_000));
     soon.switchOn();
     soon.rcUp();
