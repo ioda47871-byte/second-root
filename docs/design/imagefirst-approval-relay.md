@@ -62,10 +62,17 @@ UTF-8、改行は LF、最後に改行。値は固定の書式だけ:
 ```
 sr-imagefirst-approve/v1
 id=<承認 ID>
-expires=<§10 の期限、UTC の ISO 8601>
+shop=<店の ID（架空の店だけ）>
+direction=<方向、例 d4>
+max_images=<上限の枚数、例 6>
+codex_runs=1
+expires=<§10 の期限、UTC の ISO 8601、秒まで>
 commit=<C の 40 桁>
 packet_sha256=<C の中のパケットのファイルの SHA-256>
 ```
+
+店・方向・枚数・回数は、オーナーが署名の前に判断できるように文に入れる（#327 レビュー 5 回目の Medium）。root はどれも C のパケット・実行の表と
+一致することを確かめる。プロンプトそのものは長すぎて文に入れないが、`packet_sha256` で C の中のパケット（プロンプトの固定値を含む）に結びつく。
 
 WebAuthn の challenge = この文の SHA-256（32 バイト）。WebAuthn の署名は `authenticatorData || SHA-256(clientDataJSON)` に対する ES256（DER）で、
 clientDataJSON に challenge・origin・type が入るので、署名はこの文と署名ページの origin に結びつく。challenge は乱数ではないが、
@@ -80,16 +87,22 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
   ソースはこのリポジトリに置き、レビューする。
 - **置き場所は、Claude とオーナーの GitHub の連携が書けない場所**にする（4.5 で比較）。root は毎回そのページを取得し、
   レビュー済みの SHA-256 と一致しなければ凍結する（すり替えの検出）。
-- ページは URL の `#` 以降（サーバーに送られない）から値を読み、書式を検査し、ID・期限（JST でも表示）・commit（全桁）・パケットの SHA-256 を大きく表示する。
+- ページは URL の `#` 以降（サーバーに送られない）から値を読む。値は **ASCII だけ・項目ごとの厳密な正規表現・長さの上限**、期限は
+  往復の変換で同じ文字列に戻ること（25:00 のような繰り上がりを拒否）。表示は `textContent` だけ（HTML として解釈しない）。
+  **4.1 の文をそのまま**表示し、期限の JST は補助の 1 行として添える。
+- ページは `commit` から GitHub の tree と前回からの比較のリンクを**自分で組み立てる**（SHA で指す内容は誰にも書き換えられない。
+  Claude のページのリンクに頼らない）。
+- `navigator.credentials.get` は `userVerification: "required"`、`allowCredentials` は登録した 1 つだけ。
+- **リンクは Safari 本体で開く**（Claude アプリなどのアプリ内ブラウザは JS を差し込めるので使わない）。その domain で動く Safari の拡張は許可しない。
 - 署名の結果（authenticatorData・clientDataJSON・signature・credential id）を 1 つの文字列にまとめ、コピーのボタンを出す。
 - WebAuthn は origin に結びつく。偽のドメインのページは本物の RP ID の署名を作れず、root も origin を確かめるので、Claude が偽のリンクを送っても通らない。
 
 ### 4.3 一度だけの準備（オーナー）
 
-1. 署名ページを 4.5 の置き場所に置く（レビュー済みのファイルをそのまま。SHA-256 を root に固定）。
-2. パスキーを登録する: 登録のページを開き（iPhone、または PC のブラウザで iPhone を使う）、表示された公開鍵（PEM）と指紋を、
-   **オーナーが WSL の root で直接**登録する（Claude を経由しない。経由すると Claude が鍵をすり替えられる）。
-   root は公開鍵の指紋を表示し、オーナーはページの表示と一致を確かめる。
+1. 署名ページと登録ページを 4.5 の置き場所に置く（レビュー済みのファイルをそのまま。**両方の** SHA-256 を root に固定し、root が照合する。
+   attestation は none なので、すり替えた登録ページはソフトウェアの鍵を作って偽の公開鍵を見せられる）。
+2. パスキーを登録する: **iPhone の Safari 本体**で登録ページを開き、表示された公開鍵（PEM）を **オーナーが WSL の root で直接**登録する
+   （Claude を経由しない。経由すると Claude が鍵をすり替えられる）。root は公開鍵の指紋を表示し、オーナーはページの表示と一致を確かめる。
 3. 承認ブランチ `imagefirst/approved` を作る（force push・削除の禁止だけ。承認の要件は付けない。root はこれに頼らない）。
 
 ### 4.4 毎回の流れ
@@ -110,10 +123,19 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
 |---|---|---|
 | オーナーの GitHub Pages（`<user>.github.io`） | 書ける（Claude の今の token、連携の token）。root の SHA-256 の照合で後から気づけても、承認の間だけ差し替えて戻す攻撃が残る | 推奨しない |
 | claude.ai の Artifact | Claude が書く。さらに WebAuthn は別 origin の iframe では既定で使えない | **不可** |
-| **GitHub と連携していない静的ホスティング（例: Cloudflare Pages の手動アップロード）。オーナーだけがログインできる** | 書けない（資格情報を Claude も連携も持たない） | **推奨**。オーナーのアカウントが 1 つ増えるが、GitHub の規約とは無関係 |
+| **GitHub と連携していない静的ホスティング（例: Cloudflare Pages の手動アップロード）。オーナーだけがログインできる** | 書けない（資格情報を Claude も連携も持たない） | **推奨**（条件は下）。オーナーのアカウントが 1 つ増えるが、GitHub の規約とは無関係 |
 | ページを置かない（案 S） | — | 代わりの案 |
 
-置き場所を決めるのはオーナー。どこでも、root はページの SHA-256 を毎回照合し、違えば凍結する。
+**署名ページの origin が、この方式の本当の信頼の根**である（#327 レビュー 5 回目の High）。origin・その DNS・デプロイを操れる者は、
+オーナーに無害な文を見せながら別の commit に署名させられる。root の SHA-256 の照合は、利用者の種類や IP で中身を変える配信や、
+署名の間だけの差し替えを見抜けないので、**検出の補助にすぎない**。だから置き場所のアカウントを次の条件で隔てる:
+
+- ログインはパスキーだけ。「GitHub でログイン」「Google でログイン」を使わない（連携の資格情報から入られないように）。
+- 回復用のメールは、connector から読めるメール（普段の Gmail）ではないもの。回復コードはオフライン。
+- API token を作らない（jail・連携・CI のどこにも置かない）。GitHub のリポジトリと連携させない（手動アップロードだけ）。
+- 動的な処理（Pages Functions・`_worker.js`・変換の規則）を使わない。静的なファイルだけ。
+- origin は `<project>.pages.dev` のような固定の 1 つ（独自ドメインなら、その DNS をどの連携も触れないこと）。root と WebAuthn は
+  origin を完全一致で確かめる（preview の subdomain は通らない）。
 
 ### 4.6 root の検証器
 
@@ -122,13 +144,17 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
   署名ページの URL と SHA-256。状態 `/var/lib/sr-imagefirst-autostart/`（root の 0700）。
 - 検証（全部満たさなければ何もしない。FAIL CLOSED）:
   1. 署名ページを取得（`curl` は proxy の環境変数を無視、https だけ、大きさの上限）し、SHA-256 が固定値と一致。違えば凍結して知らせる。
-  2. `~/sr-runs/approvals/` の署名のファイルを**信頼しない入力として**読む（通常のファイル・リンクでない・8 KiB 以下、root の持ち物の
-     `python3 -I` の標準ライブラリで厳密に解析）。
-  3. clientDataJSON: `type = "webauthn.get"`、`origin` = 固定値、`crossOrigin` が true でない、`challenge` = 4.1 の文の SHA-256（base64url）。
-  4. authenticatorData: rpIdHash = SHA-256(RP ID)、UP と UV のビットが立っている、AT は立っていない。credential id が固定値。
+  2. `~/sr-runs/approvals/` の署名のファイルは **root では開かない**。worker として（`setpriv`、autorun の inbox のファイルと同じ方法で）
+     読んだバイトを pipe で受け取り、8 KiB で打ち切る（親のディレクトリのすり替え・FIFO・リンクを root が辿らない）。解析は root の持ち物の
+     `python3 -I` の標準ライブラリで、**重複したキーを拒否**、base64url は `validate=True` で厳密に（不正な文字・余分な padding を拒否）、
+     すべての例外（RecursionError を含む）で FAIL CLOSED。
+  3. clientDataJSON（**受け取った生のバイト**で検証する）: `type = "webauthn.get"`、`origin` = 固定値の完全一致、`crossOrigin` は無いか false、
+     `topOrigin` があれば拒否、`challenge` = 4.1 の文の SHA-256（base64url）。
+  4. authenticatorData: rpIdHash = SHA-256(RP ID)、UP と UV のビットが立っている、AT は立っていない（BE・BS は記録だけ）。
+     credential id は署名されないので信頼の根拠にしない（公開鍵の検証が根拠）。
   5. 署名: root の持ち物の `openssl dgst -sha256 -verify <公開鍵> -signature <DER> <authenticatorData || SHA-256(clientDataJSON)>` が成功。
   6. 文の値: root の admin clone で `imagefirst/approved` を fetch し、`commit` = C が承認ブランチの先端から辿れる。C のパケットの §10 が承認済みで、
-     ID と期限が文と一致、期限が未来で 24 時間以内、`packet_sha256` が C の中のファイルと一致。ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）。
+     ID・店・方向・枚数の上限・回数・期限が文と一致、期限が未来で 24 時間以内、`packet_sha256` が C の中のファイルと一致。ID は未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）。
      パケットのパスは、C の中の対応表（JSON。worker の `approval-packets.ts` と一致をテストで固定）が ID の方向に割り当てたもので、
      検証器が自分の中に持つ形（`docs/design/image-first-<店>-<方向>-packet.md`）に合うこと。
   7. 通ったら C に固定し、印を書いて autorun → pilot に渡す（pilot は C を SHA で新しく clone する）。以後、生きているブランチは見ない。
@@ -141,6 +167,14 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
   （テストで本物の形の値を使う）。
 - 承認コマンド `imagefirst-approve.sh` は**手動の代わりとして残す**。
 
+### 4.7 パスキーの同期・紛失・交換
+
+- iCloud キーチェーンのパスキーは、同じ Apple ID の Mac・iPad にも同期される。そこで Claude in Chrome や computer use などが動くと、
+  その端末でも署名の操作を始められる（ただし Face ID・Touch ID・端末のパスコードの入力が要る。パスコードも UV を満たす）。
+  **これを受け入れる**か、より強くするなら **端末に縛られた鍵（iPhone で NFC のセキュリティキー）**を使う。どちらにするかはオーナーが決める。
+- 紛失・交換: オーナーが WSL の root で公開鍵を外す（すぐ全部の署名が通らなくなる）→ 新しいパスキーを 4.3 の手順で登録。
+  手順は検証器の setup に `revoke-key` / `register-key` として入れる。
+
 ## 5. 脅威ごとの確認
 
 | 脅威 | 止める仕組み |
@@ -148,13 +182,16 @@ clientDataJSON に challenge・origin・type が入るので、署名はこの�
 | Claude・連携がオーナーの GitHub 権限で承認を作る | GitHub は信頼の経路に無い。承認はパスキーの署名だけ |
 | Claude が署名を作る・変える | 秘密鍵は iPhone の外に出ない。署名は文（ID・期限・commit・パケット）と origin に結びつく |
 | 偽のページ・偽のリンク | WebAuthn は origin に結びつく。root が origin と RP ID を確かめる |
-| 署名ページのすり替え（見せる内容と署名する内容のずれ） | 置き場所を Claude・連携が書けない所にする。root が毎回ページの SHA-256 を照合し、違えば凍結 |
-| 公開鍵のすり替え | 登録はオーナーが WSL の root で直接。指紋をページと照合 |
+| 署名ページのすり替え（見せる内容と署名する内容のずれ） | **置き場所のアカウントの隔離（4.5 の条件）が本当の守り**。root の SHA-256 の照合は検出の補助だけ |
+| アプリ内ブラウザ・拡張がページを操る | Safari 本体で開く。その domain の拡張を許可しない |
+| オーナーが中身を判断できない | 文に店・方向・枚数・回数を入れ、root が C と照合。ページが commit から GitHub のリンクを自分で作る |
+| 公開鍵のすり替え | 登録ページも SHA-256 を固定。Safari 本体で登録し、オーナーが WSL の root で直接登録。指紋を照合 |
+| 同期された端末での署名 | 生体・パスコードが要る。受け入れるか、端末に縛られた鍵を使う（4.7） |
+| 署名のファイルで root を攻める | root は開かず worker として読んだバイトを受け取る。大きさの上限・重複キーの拒否・厳密な base64url・すべての例外で止まる |
 | 署名の使い回し（replay） | 文に一度だけの ID。`used/<ID>`・`autorun/<ID>` は消さない |
 | root・worker のコードの差し替え | 署名は C の木全体に付き、root は C だけを動かす |
 | develop の自律マージから実行が生まれる | 承認済みの §10 は承認ブランチにしか無く、署名も C に付く |
 | ブランチを動かして承認を潰す | C に固定し、生きているブランチと比べない |
-| 署名のファイルで root を攻める | 大きさの上限・リンク拒否・標準ライブラリの厳密な解析・一時ファイルは root の 0700 |
 | 検証器が自分を更新する | root の固定の場所。リポジトリから更新しない |
 | iCloud のアカウントの乗っ取り | 本案の外（Apple ID の 2 段階認証、端末のロック） |
 
@@ -171,5 +208,6 @@ Claude の machine account への切り替え（規約に適合）は、要件 1
 ## 7. オーナーに決めてほしいこと
 
 1. 案 P（パスキーの署名）+ 承認ブランチで確定してよいか。
-2. 署名ページの置き場所（推奨: GitHub と連携していない静的ホスティング。または案 S）。
-3. 段階 0 の root の操作をいつ行うか（それぞれ別に確認と承認をもらう）。
+2. 署名ページの置き場所（推奨: GitHub と連携していない静的ホスティングを 4.5 の条件で。または案 S）。
+3. 同期されるパスキーを受け入れるか、端末に縛られた鍵（NFC のセキュリティキー）にするか（4.7）。
+4. 段階 0 の root の操作をいつ行うか（それぞれ別に確認と承認をもらう）。
