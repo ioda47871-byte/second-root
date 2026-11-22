@@ -80,14 +80,18 @@ GitHub の上で「オーナーがした」ように見えること（PR の承�
 - root だけが読める設定 `/etc/sr-design-worker/approval-relay.json`（0600 root）: オーナーの**数値の** user id、リポジトリ、最後に信頼した commit。
   読み取り専用の fine-grained token（Contents・Pull requests・Metadata の read だけ）は `/etc/sr-design-worker/github-read-token`（0600 root）。
 - 検証（全部満たさなければ印を書かない。API の失敗・形や型の違いは何もしないで終わる。FAIL CLOSED）:
-  1. root の admin clone で `fetch`（今の承認コマンドと同じ。root の git、利用者の設定なし）。develop の C を得る。
-  2. C のパケットの §10 が承認済みで、ID が未使用（`used/<ID>`・`autorun/<ID>` が無い）、期限が未来で §10 の値そのもの。
-  3. GitHub API: `merge_commit_sha = C` の PR がある（squash）。その PR の head に対してオーナーの数値の id の `APPROVED` のレビューがあり、
-     `commit_id = head`、取り消されていない。**head の木 = C の木**（root の clone で `C^{tree}` を出し、API の head の commit の tree と比べる）。
-     この PR がパケットのファイルを変えている。
-  4. `GET /repos/{owner}/{repo}/rules/branches/develop` で、段階 1 の規則が今も有効（外されていれば止める）。最後に信頼した commit から C までの
-     develop の commit に、PR の無いもの（直接 push）が混ざっていないこと。
-  5. 通ったら、lock の中で admin clone を `checkout --detach C` し、C を autorun → pilot に渡す（pilot は C で新しく clone する。今の仕組み）。
+  1. root の admin clone で `fetch`（今の承認コマンドと同じ。root の git、利用者の設定なし）。
+  2. GitHub API で、最後に信頼した commit T の後に develop へマージされた PR のうち、**その PR 自身の差分がパケットの §10 を「承認済み」に変え、
+     ある承認 ID を書いたもの**を探す。C = その PR の `merge_commit_sha`（develop の先端でなくてよい。後から別の PR がマージされても C を使う）。
+     パケットのファイルを変えるだけの PR（誤字の修正など）は承認として扱わない。
+  3. C のパケットの §10 が承認済みで、ID が未使用（`used/<ID>` と `autorun/<ID>/attempt` が無い）、期限が未来で §10 の値そのもの。
+  4. その PR の head に対する**オーナーの数値の id の最後のレビューの状態**が `APPROVED`（レビューの一覧を全部読む。後の `CHANGES_REQUESTED`・
+     取り消し（dismissed）があれば不可）で、そのレビューの `commit_id = head`。**head の木 = C の木**（root の clone で `C^{tree}` を出し、
+     API の head の commit の tree と比べる）。
+  5. 木の祖先関係（root の clone で確かめる）: T が C の祖先、C が develop の祖先。T..C の各 commit に PR がある（直接 push が混ざっていない）。
+  6. `GET /repos/{owner}/{repo}/rules/branches/develop` で、段階 1 の規則が今も有効（外されていれば止める）。この API は bypass する者を
+     見せないので、bypass の追加はオーナーの設定の管理に頼る（残る Low）。
+  7. 通ったら、lock の中で admin clone を `checkout --detach C` し、C を autorun → pilot に渡す（pilot は C で新しく clone する。今の仕組み）。
      「最後に信頼した commit」を C に進める。以後、生きている develop は見ない。
 - root が使うのは curl（`api.github.com` だけ、proxy の環境変数を無視）と、JSON の解析に root の持ち物の `python3 -I`
   （標準ライブラリだけ。この WSL には jq が無い）。sr-designgen のコードは何も動かさない（今の規則と同じ）。
@@ -97,7 +101,8 @@ GitHub の上で「オーナーがした」ように見えること（PR の承�
 
 1. Claude が新しいパケットの PR を作り、Claude アプリにレビューページ（前回との比較・プロンプト・6 枚の内訳・上限）と、
    **GitHub の差分のリンク**（PR の Files changed と、最後に信頼した commit との比較）を出す。
-2. オーナーが GitHub アプリで差分を見て Approve する。マージは Claude（machine user）がしてよい: 承認はオーナーにしか作れず、
+2. オーナーが GitHub アプリで差分を見て Approve する。**§10 を承認済みにするパケットの PR を Approve すること = その 1 回の実行の承認**である。
+   差分を見るときの比較の基準は、Claude のページの言う commit ではなく、**オーナーが前回承認した PR のマージの commit**（その PR に表示される）。マージは Claude（machine user）がしてよい: 承認はオーナーにしか作れず、
    squash・up-to-date で木が一致することを root が確かめるため。
 3. timer が検証 → 印 → claude-stop → 生成 1 回 → 監査 → claude-start（#325 / #326 のまま）。
 4. 次のセッションで Claude が inbox を読み、研究ログに記録してレビューページを出す（#324）。
@@ -111,7 +116,9 @@ GitHub の上で「オーナーがした」ように見えること（PR の承�
 | squash・マージで木がずれる | squash だけ・up-to-date 必須。root が head の木 = C の木を確かめる |
 | ruleset・CODEOWNERS を外す | machine user は Write だけ。`.github/**` はオーナーの持ち物。root が毎回規則を確かめる。bypass する者は無し |
 | machine user が自分の PR を承認する | Code owners の承認 + 最後に push した人以外の承認 |
-| develop を動かして承認を潰す（妨害） | C に固定し、生きている develop と比べない |
+| develop を動かして承認を潰す（妨害） | C は承認した PR のマージの commit。先端でなくてよく、生きている develop と比べない |
+| 比較のリンクの基準をずらして変更を隠す | root が T（最後に信頼した commit）が C の祖先であることを確かめる。オーナーは前回の自分の承認を基準に見る |
+| 誤字の修正などのパケットの PR を承認させて実行させる | §10 を承認済みにする差分を持つ PR だけを承認として扱う |
 | 検証器が自分を更新する | 検証器は root の固定の場所。develop から更新しない |
 | Claude のページでオーナーを誤らせる | オーナーは GitHub 自身の差分を見て承認する |
 | Claude が root の設定・token を読む/書く | `/etc/sr-design-worker` は root の 0700、jail からは見えない（今の境界のまま） |
