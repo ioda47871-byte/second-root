@@ -300,6 +300,42 @@ describe("status is read-only (it is allowed without a prompt)", () => {
   });
 });
 
+describe("inbox-scan (read-only): delivered runs the log has not recorded yet", () => {
+  const run = (args: string[], env: Record<string, string>) =>
+    spawnSync(process.execPath, ["--import", "tsx", join(REPO, "scripts/design-research/research.ts"), ...args], { encoding: "utf8", env: { ...process.env, ...env } });
+
+  it("lists an unrecorded run with the suggested intake (an improved version continues the current entry), and changes nothing", () => {
+    const { inbox } = fakeInbox();
+    const root = freshLog();
+    const env = { SR_RESEARCH_LOG_ROOT: root, SR_REVIEW_INBOX: inbox };
+    // nothing recorded yet: the fake run is listed as a first version
+    const first = run(["inbox-scan"], env);
+    expect(first.status, first.stderr).toBe(0);
+    expect(JSON.parse(first.stdout.trim())).toEqual({ bundle_id: ID, previews: true, audit: true, share: false, suggest: { shop: "fakeshop", direction: "d1", iteration: 0, parent: null } });
+    // once recorded it is not listed again
+    expect(run(["intake", ID, "--shop", "hoshigama", "--direction", "d1", "--iteration", "0"], env).status).toBe(0);
+    expect(run(["inbox-scan"], env).stdout).toBe("");
+    // an improved version (another direction, same shop as the current entry) is suggested with its parent
+    const d2 = "hoshigama-imagefirst-d4-20261122-01";
+    mkdirSync(join(inbox, "previews", d2), { recursive: true });
+    writeFileSync(join(inbox, "previews", d2, "INDEX.json"), "{}");
+    mkdirSync(join(inbox, "runs"), { recursive: true });
+    writeFileSync(join(inbox, "runs", `${d2}.share.txt`), "share: approval=x\n");
+    const before = readdirSync(root, { recursive: true }).map(String).sort();
+    const next = run(["inbox-scan"], env);
+    expect(JSON.parse(next.stdout.trim())).toEqual({ bundle_id: d2, previews: true, audit: false, share: true, suggest: { shop: "hoshigama", direction: "d4", iteration: 1, parent: ID } });
+    expect(readdirSync(root, { recursive: true }).map(String).sort()).toEqual(before);
+  });
+
+  it("ignores names that are not run ids", () => {
+    const { inbox } = fakeInbox();
+    mkdirSync(join(inbox, "previews", "not-a-run"), { recursive: true });
+    mkdirSync(join(inbox, "previews", "../x"), { recursive: true });
+    const r = run(["inbox-scan"], { SR_RESEARCH_LOG_ROOT: freshLog(), SR_REVIEW_INBOX: inbox });
+    expect(r.stdout.trim().split("\n").map((l) => JSON.parse(l).bundle_id)).toEqual([ID]);
+  });
+});
+
 describe("the committed log (design-library/research-log)", () => {
   const LOG = join(REPO, "design-library/research-log");
   it("parses, holds no pictures, and every decision belongs to an entry", async () => {
