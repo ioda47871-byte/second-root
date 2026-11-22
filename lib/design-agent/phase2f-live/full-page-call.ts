@@ -37,6 +37,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { CodexAbortedError, CodexError } from "../codex";
 import { REQUIRED_GENERATION, REQUIRED_RIGHTS, REQUIRED_STORAGE, OUTPUT_KIND, RECORD_SCHEMA, ROUTE, VIEWPORTS } from "../image-first/record";
 import type { PromptInputs, PromptPlan } from "../image-first/prompt";
+import { isRequestId } from "../image-first/request-prompt";
 import { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec } from "./approval-packets";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, sha256, writeOnce, type CommitState } from "./steps";
@@ -228,6 +229,78 @@ export async function runFullPageCall(i: FullPageCallInput, d: FullPageCallDeps)
   const key = plan.direction_key;
   if (!spec.keys.includes(key) || !packet.directions.includes(key) || packet.approvalIds[key] !== i.approvalId || packet.expires !== i.approvalExpires || packet.planId !== i.planId) return refuse("PACKET_APPROVAL_MISMATCH");
 
+  return executeFullPageRun({ plan, inputs: i.inputs, approvalId: i.approvalId, planId: i.planId, expected: i.expected, outDir: i.outDir, ...(i.signal === undefined ? {} : { signal: i.signal }) }, d, checked.timeoutMs);
+}
+
+export type RequestCallInput = {
+  plan: RunnablePlan;
+  inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
+  /** The request id (= approval id and plan id in the ledger: one request, one use, ever). */
+  requestId: string;
+  /** SHA-256 of the request bytes root validated (recorded where a pinned run records its packet's). */
+  requestSha256: string;
+  expected: { promptSha256: string; promptChars: number; commit: string; planSha256: string };
+  outDir: string;
+  repoRoot: string;
+  signal?: AbortSignal;
+};
+
+/**
+ * DEV-303 (owner direction 2026-11-23, first-client-pipeline.md §2 A/B): ONE IMAGE_FIRST batch for a request root
+ * accepted under the owner's standing permission (root enforces the quota, one attempt per id, the timeout, no retry).
+ * There is no per-run packet: the request (bound by its SHA-256) is the approval, and its id is the ledger's approval id
+ * and plan id, so it is used at most once, ever. Before it is used: the run directory outside the repository, the id's
+ * form (never an approval id's), the plan the caller rebuilt from the request and the facts = the pinned plan, and the
+ * shared checks (steps.ts checkBeforeApproval: prompt pin, output place, commit pin, sandbox preflight, ledger). Then
+ * exactly the same run as a pinned direction's (executeFullPageRun).
+ */
+export async function runRequestFullPageCall(i: RequestCallInput, d: Omit<FullPageCallDeps, "packetAt">): Promise<FullPageCallResult> {
+  const refuse = (code: string): FullPageCallResult => ({ status: "stopped", code, stage: "precheck", aborted: false });
+  const plan = i.plan;
+  if (!isAbsolute(i.outDir)) return refuse("OUT_DIR_INVALID");
+  const repo = await realpath(i.repoRoot).catch(() => null);
+  const parent = await realpath(dirname(i.outDir)).catch(() => null);
+  if (!repo) return refuse("REPO_UNRESOLVABLE");
+  if (within(i.outDir, i.repoRoot) || within(i.outDir, repo) || (parent !== null && within(parent, repo))) return refuse("RUN_DIR_IN_REPO");
+  if (!isRequestId(i.requestId)) return refuse("REQUEST_ID_INVALID");
+  if (!/^[a-f0-9]{64}$/.test(i.requestSha256) || plan.direction_key !== "request" || plan.direction_set_sha256 !== i.requestSha256) return refuse("PLAN_PIN_MISMATCH");
+  if (plan.plan_sha256 !== i.expected.planSha256) return refuse("PLAN_PIN_MISMATCH");
+  if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
+  if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
+  const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
+  if (parts.length !== plan.batch.images || parts.length !== 6) return refuse("PLAN_PIN_MISMATCH");
+  // the owner's standing permission (root's quota and one-use marker) stands in for the per-run flag
+  const checked = await checkBeforeApproval(
+    { humanApprovalConfirmed: true, prompt: plan.batch.prompt, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit }, outDir: i.outDir, approvalId: i.requestId, planId: i.requestId, route: FULL_PAGE_ROUTE, retryOf: null, ...(i.signal === undefined ? {} : { signal: i.signal }) },
+    FULL_PAGE_KIND,
+    d,
+  );
+  if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
+  return executeFullPageRun({ plan, inputs: i.inputs, approvalId: i.requestId, planId: i.requestId, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit, packetSha256: i.requestSha256 }, outDir: i.outDir, ...(i.signal === undefined ? {} : { signal: i.signal }) }, d, checked.timeoutMs);
+}
+
+/** What the run after the checks needs of a plan (a pinned direction's PromptPlan, or DEV-303 a request's plan). */
+export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string };
+type ExecuteInput = {
+  plan: RunnablePlan;
+  inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
+  approvalId: string;
+  planId: string;
+  /** packetSha256: the approval packet's (a pinned direction) or the request bytes' (DEV-303). */
+  expected: { promptSha256: string; promptChars: number; commit: string; packetSha256: string };
+  outDir: string;
+  signal?: AbortSignal;
+};
+
+/**
+ * The approval is used from here on: reserve it in the ledger, write the private run directory, call the batch ONCE and
+ * record how it ended. Only after every check before the approval held (the caller's).
+ */
+async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "ledger" | "batch" | "now">, timeoutMs: number): Promise<FullPageCallResult> {
+  const now = d.now ?? Date.now;
+  const plan = i.plan;
+  const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
+  const checked = { timeoutMs };
   // ---- the approval is used from here on ------------------------------------------------------
   const runId = `if-${randomBytes(8).toString("hex")}`;
   let receipt: Receipt;

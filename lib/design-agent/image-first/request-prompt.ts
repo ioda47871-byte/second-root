@@ -1,0 +1,332 @@
+/**
+ * DEV-303 (owner direction 2026-11-23, docs/operations/first-client-pipeline.md §2 B): IMAGE_FIRST "request mode" — the
+ * request file root hands the worker (`sr_imagefirst_request_v1`) and the deterministic PC 1440 + SP 390 prompts built
+ * from it and an owner-verified facts pack. Pure: bytes in, values out (no file, no process, no network, no write).
+ *
+ * The request (authored by Claude per shop, validated by root only as an envelope, strictly here):
+ *   { schema, id, shop_id, kind: real_shop | fictional, created_at (UTC),
+ *     direction: { name, concept, palette, typography, layout_pc, layout_sp, avoid }   plain text, no URL, no HTML, no fact
+ *     facts_ref: { root: second-root-shops | local-shops, shop_id },  facts_sha256,  max_images: 6,  codex_runs: 1 }
+ * Nothing else is accepted (strict). The request bytes are bound by the SHA-256 root passes (`--request-sha256`).
+ *
+ * The prompts: the same split as the pinned fictional prompts (prompt.ts splitSections / boxesFor: PC 2 + SP 4 = 6
+ * pictures in ONE Codex batch). Every text a picture may carry is an exact facts-pack value (the direction never supplies
+ * text); navigation and small headings use only the facts schema's own labels (prompt.ts NAV_LABELS, checked against
+ * copy-record LABELS_BY_KEY). Identity Lock: no photo or photo-like picture, no product, dish, interior, building or
+ * person drawn (a picture is a design reference only, never a fact source); no price, award, history, person, review,
+ * menu detail, reservation or limited offer is made up. The pinned d1 / d3 / d4 prompts (prompt.ts) are not touched.
+ */
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { LABELS_BY_KEY } from "../quality-pipeline/copy-record";
+import { FactsPack } from "../quality-pipeline/facts-pack";
+import { boxesFor, NAV_LABELS, PRINCIPLES, PromptStop, splitSections, type PlannedPart, type PlannedViewport } from "./prompt";
+import { MAX_PARTS_PER_VIEWPORT, VIEWPORT_WIDTHS, type ImageFirstViewport } from "./record";
+
+export const REQUEST_SCHEMA = "sr_imagefirst_request_v1";
+export const REQUEST_PLAN_SCHEMA = "image_first_request_plan_v0";
+export const REQUEST_PROMPT_VERSION = "if-req-v0";
+/** The request id (= the request file's name without .json; root's envelope rule). */
+export const REQUEST_ID_RE = /^[a-z0-9][a-z0-9-]{2,62}$/;
+export const REQUEST_SHOP_ID_RE = /^[a-z0-9_-]{2,41}$/;
+/** Root's envelope cap; the worker refuses anything larger before parsing. */
+export const REQUEST_MAX_BYTES = 16 * 1024;
+/** The facts pack a request may name (it is read outside git; the cap is far above a real pack, a few KiB). */
+export const FACTS_MAX_BYTES = 256 * 1024;
+/** One request = one Codex run of exactly this many pictures (PC 2 + SP 4). */
+export const REQUEST_IMAGES = { pc: 2, sp: 4, total: 6 } as const;
+export const FACTS_ROOTS = ["second-root-shops", "local-shops"] as const;
+export type FactsRoot = (typeof FACTS_ROOTS)[number];
+
+/**
+ * Ids a request may never use: the fixed IMAGE_FIRST approval ids and the review PoC's dummy all contain "imagefirst"
+ * (run-directions.ts), so a request id can never name, claim or deliver as one of them.
+ */
+export const isReservedRequestId = (id: string) => /imagefirst/.test(id);
+export const isRequestId = (id: string) => REQUEST_ID_RE.test(id) && !isReservedRequestId(id);
+
+/**
+ * Plain direction text: one line, no control character, no markup or prompt fence, no link, no e-mail, and none of the
+ * plain signs of a fact (a run of 3+ digits: a phone number, a year, a price; a currency sign). A tripwire, not a fact
+ * checker: buildRequestPlan also refuses a direction that quotes any facts-pack value.
+ */
+const UNSAFE_DIRECTION = /[\u0000-\u001f\u007f\u2028\u2029]|[<>`{}]|https?:|ftp:|:\/\/|www\.|@|\.(?:com|jp|net|org|io|co|info|biz|app|dev|shop)\b|[0-9０-９]{3,}|[円¥￥$€]/i;
+const DirText = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .refine((s) => s.trim().length > 0 && s === s.trim() && !UNSAFE_DIRECTION.test(s), "direction_text_unsafe");
+
+export const RequestDirection = z.strictObject({
+  name: DirText(40),
+  concept: DirText(600),
+  palette: DirText(200),
+  typography: DirText(200),
+  layout_pc: DirText(800),
+  layout_sp: DirText(800),
+  avoid: DirText(400),
+});
+export type RequestDirection = z.infer<typeof RequestDirection>;
+
+const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+export const ImagefirstRequest = z
+  .strictObject({
+    schema: z.literal(REQUEST_SCHEMA),
+    id: z.string().regex(REQUEST_ID_RE),
+    shop_id: z.string().regex(REQUEST_SHOP_ID_RE),
+    kind: z.enum(["real_shop", "fictional"]),
+    created_at: z.string().regex(UTC).refine((s) => Number.isFinite(Date.parse(s)), "created_at_invalid"),
+    direction: RequestDirection,
+    facts_ref: z.strictObject({ root: z.enum(FACTS_ROOTS), shop_id: z.string().regex(REQUEST_SHOP_ID_RE) }),
+    facts_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    max_images: z.literal(REQUEST_IMAGES.total),
+    codex_runs: z.literal(1),
+  })
+  .refine((r) => r.facts_ref.shop_id === r.shop_id, "facts_ref_shop_mismatch");
+export type ImagefirstRequest = z.infer<typeof ImagefirstRequest>;
+
+const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+
+/**
+ * The request as root handed it: at most REQUEST_MAX_BYTES, its SHA-256 = the one root passed, strict JSON of the shape
+ * above, its id = the id root passed (and not a reserved one). Throws PromptStop with a fixed code.
+ */
+export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: string): { request: ImagefirstRequest; sha256: string } {
+  if (!isRequestId(expectedId)) throw new PromptStop(REQUEST_ID_RE.test(expectedId) ? "REQUEST_ID_RESERVED" : "REQUEST_ID_INVALID");
+  if (!/^[0-9a-f]{64}$/.test(expectedSha256)) throw new PromptStop("REQUEST_SHA_INVALID");
+  if (bytes.length > REQUEST_MAX_BYTES) throw new PromptStop("REQUEST_TOO_LARGE");
+  const got = sha256(bytes);
+  if (got !== expectedSha256) throw new PromptStop("REQUEST_SHA_MISMATCH");
+  let json: unknown;
+  try {
+    json = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new PromptStop("REQUEST_INVALID");
+  }
+  const r = ImagefirstRequest.safeParse(json);
+  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? "REQUEST_DIRECTION_UNSAFE" : "REQUEST_INVALID");
+  if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
+  return { request: r.data, sha256: got };
+}
+
+/** The facts pack bytes a request names: within the cap, its SHA-256 = the request's facts_sha256, a valid pack. */
+export function parseRequestFacts(bytes: Buffer, request: ImagefirstRequest): FactsPack {
+  if (bytes.length > FACTS_MAX_BYTES) throw new PromptStop("FACTS_TOO_LARGE");
+  if (sha256(bytes) !== request.facts_sha256) throw new PromptStop("FACTS_SHA_MISMATCH");
+  let json: unknown;
+  try {
+    json = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new PromptStop("FACTS_INVALID");
+  }
+  const f = FactsPack.safeParse(json);
+  if (!f.success) throw new PromptStop("FACTS_INVALID");
+  return f.data;
+}
+
+/** What each request-mode section is for (generic; the shop's look comes from the direction, its words from the facts). */
+const ROLE: Readonly<Record<string, string>> = {
+  hero: "最初の画面。店名を主役にし、方向性の考えをいちばん強く見せる",
+  intro: "店の紹介文を、ゆとりをもって読ませる",
+  words: "店の言葉を、1つずつ間を取って見せる",
+  menu: "品目・サービスの名前を一覧として見せる（値段・説明・写真は付けない）",
+  info: "来店の情報を、小さな見出しと値の組で読みやすくまとめる。ページの終点",
+  visit: "所在地と道順を、小さな見出しと値の組で見せる",
+  hours: "営業時間・定休日・電話を、小さな見出しと値の組で見せる。ページの終点",
+};
+const INFO_KEYS = ["hours", "closed_days", "address", "access", "phone"] as const;
+/** Sections whose values carry the facts schema's own label as a small heading. */
+const LABELLED = new Set(["info", "visit", "hours"]);
+/** SP navigation: three items at most (the owner's d4 revise rule), in NAV_LABELS' order. */
+const SP_NAV_KEYS = ["hours", "address", "phone"];
+const MAX_STATEMENTS = 3;
+const MAX_SERVICES = 8;
+
+export type RequestSection = { id: string; keys: string[] };
+
+const numbered = (facts: FactsPack, prefix: string, max: number) =>
+  facts.facts
+    .filter((f) => new RegExp(`^${prefix}_\\d{1,3}$`).test(f.key))
+    .sort((a, b) => Number(a.key.slice(prefix.length + 1)) - Number(b.key.slice(prefix.length + 1)))
+    .slice(0, max)
+    .map((f) => f.key);
+
+/**
+ * The page's sections, declared from the facts present (never guessed): hero (name), intro (description), words
+ * (statement_*), menu (service_*), info (hours, closed_days, address, access, phone). With fewer than 4 sections the
+ * info block is split into visit (address, access) and hours (hours, closed_days, phone). Still fewer than 4 (the SP
+ * split needs 4): REQUEST_FACTS_TOO_FEW.
+ */
+export function requestSections(facts: FactsPack): RequestSection[] {
+  const has = (k: string) => facts.facts.some((f) => f.key === k);
+  if (!has("name") || !has("description")) throw new PromptStop("FACT_MISSING");
+  if (new Set(facts.facts.map((f) => f.key)).size !== facts.facts.length) throw new PromptStop("FACTS_DUPLICATE_KEY");
+  const out: RequestSection[] = [
+    { id: "hero", keys: ["name"] },
+    { id: "intro", keys: ["description"] },
+  ];
+  const words = numbered(facts, "statement", MAX_STATEMENTS);
+  if (words.length) out.push({ id: "words", keys: words });
+  const menu = numbered(facts, "service", MAX_SERVICES);
+  if (menu.length) out.push({ id: "menu", keys: menu });
+  const info = INFO_KEYS.filter(has);
+  if (info.length === 0) throw new PromptStop("REQUEST_FACTS_TOO_FEW");
+  const visit = ["address", "access"].filter(has);
+  const hours = ["hours", "closed_days", "phone"].filter(has);
+  if (out.length + 1 < 4 && visit.length && hours.length) out.push({ id: "visit", keys: visit }, { id: "hours", keys: hours });
+  else out.push({ id: "info", keys: [...info] });
+  if (out.length < 4) throw new PromptStop("REQUEST_FACTS_TOO_FEW");
+  return out;
+}
+
+export type RequestPlan = {
+  schema: typeof REQUEST_PLAN_SCHEMA;
+  prompt_version: typeof REQUEST_PROMPT_VERSION;
+  request_id: string;
+  kind: ImagefirstRequest["kind"];
+  direction_key: "request";
+  direction_id: string;
+  /** SHA-256 of direction.json (the request's direction object, canonical JSON). */
+  direction_sha256: string;
+  /** The request bytes' SHA-256 (the place a pinned plan keeps its direction set's). */
+  direction_set_sha256: string;
+  request_sha256: string;
+  facts_sha256: string;
+  shop: { shop_id: string; display_name: string; category_code: string };
+  viewports: Record<ImageFirstViewport, PlannedViewport>;
+  batch: { prompt: string; sha256: string; chars: number; images: number };
+  plan_sha256: string;
+};
+
+export type RequestInputs = { request: ImagefirstRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
+
+/** direction.json for a request: the direction object as canonical JSON (written into the private run directory). */
+export const requestDirectionBytes = (request: ImagefirstRequest) => Buffer.from(`${JSON.stringify(request.direction, null, 2)}\n`, "utf8");
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+const canonical = (v: unknown): string => JSON.stringify(v, (_k, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
+
+function labelOf(key: string): string {
+  const label = NAV_LABELS.find(([k]) => k === key)?.[1];
+  if (!label || !LABELS_BY_KEY[key]?.includes(label)) throw new PromptStop("NAV_LABEL_INVALID");
+  return label;
+}
+
+function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; viewport: ImageFirstViewport; groups: string[][]; k: number; boxes: { id: string; box: { y: number; h: number } }[] }): string {
+  const { inputs, viewport, groups, k } = o;
+  const { request, facts } = inputs;
+  const d = request.direction;
+  const value = (key: string) => {
+    const f = facts.facts.find((x) => x.key === key);
+    if (!f) throw new PromptStop("FACT_MISSING");
+    return f.value;
+  };
+  const byId = new Map(o.sections.map((s) => [s.id, s]));
+  const name = value("name");
+  const n = groups.length;
+  const pc = viewport === "desktop_1440";
+  const first = k === 1;
+  const last = k === n;
+  const texts = [...new Set([...o.boxes.flatMap((b) => byId.get(b.id)!.keys), ...(last ? ["name"] : [])])].map(value);
+  const present = new Set(facts.facts.map((f) => f.key));
+  const nav = NAV_LABELS.filter(([key]) => present.has(key) && (pc || SP_NAV_KEYS.includes(key))).map(([key]) => labelOf(key));
+  const category = facts.facts.find((f) => f.key === "category")?.value;
+  const lines: string[] = [];
+  lines.push("これは Web サイトのデザインカンプ（完成イメージ）の画像1枚です。写真でも、ポスターでも、パソコンやスマートフォンの写った見本画像でもありません。ブラウザの枠・スクロールバー・端末の縁・机・手は描かず、ページの画面そのものだけを、平らな画像として正面から描いてください。");
+  lines.push("");
+  lines.push(
+    request.kind === "fictional"
+      ? `店: ${name}（比較研究用の架空の店。実在の店舗ではない）`
+      : `店: ${name}（実在の店。この画像は社内のデザインの参考だけに使い、店の事実の根拠にも、店や第三者に見せる素材にもならない）`,
+  );
+  if (category) lines.push(`業種の分類: ${category}（参考。画像には書かない）`);
+  lines.push(pc ? `表示: PC 版（幅 ${VIEWPORT_WIDTHS[viewport]}px のデスクトップの画面）。` : `表示: スマートフォン版（幅 ${VIEWPORT_WIDTHS[viewport]}px の縦長の画面）。PC 版を縮めたものではなく、この幅のための別の設計。`);
+  lines.push(`この画像の役割: この表示の全ページを上から ${n} 枚の画像に分けたうちの ${k} 枚目。縦長の枠（縦:横 = 3:2）に、ページの横幅いっぱいの一続きの部分を描く。`);
+  lines.push("");
+  lines.push("この画像に入る区画（上から順に。割合は枠の高さに対する位置）:");
+  for (const b of o.boxes) lines.push(`- 区画「${b.id}」（上から ${pct(b.box.y)}〜${pct(b.box.y + b.box.h)}）: ${ROLE[b.id]}。`);
+  lines.push("");
+  lines.push(first ? "上端: ページの最初。いちばん上にヘッダー（店名と短いナビゲーション）を置く。" : `上端: 1つ前の画像は区画「${groups[k - 2]!.at(-1)!}」で終わっている。この画像は区画の境から始める。`);
+  lines.push(last ? "下端: ページの最後。いちばん下に小さなフッター（店名だけ）を置く。" : `下端: 次の画像は区画「${groups[k]![0]!}」から始まる。この画像は区画の境で終える。`);
+  lines.push("継ぎ目: 区画を途中で切らない。上下の画像と並べたとき1つのページとしてつながるよう、軸や線の左右の位置・余白の幅・文字の大きさの体系をそろえる。");
+  lines.push("");
+  lines.push(`方向性の名前（画像には書かない）: ${d.name}`);
+  lines.push(`デザインの考え: ${d.concept}`);
+  lines.push(`色: ${d.palette}`);
+  lines.push(`文字の組み方: ${d.typography}`);
+  lines.push(pc ? `PC 版の組み方: ${d.layout_pc}` : `スマートフォン版の組み方: ${d.layout_sp}`);
+  lines.push(`避けること: ${d.avoid}`);
+  lines.push("写真や写真風の絵は使わず、線画・図形・色の面・文字だけで組む。商品・料理・店内・建物・人物の姿は描かない（描いたものが店の実物と取り違えられないように）。");
+  lines.push("");
+  lines.push("デザインの原則（特定の既存サイトや作品を真似しない）:");
+  for (const p of PRINCIPLES) lines.push(`- ${p.text}`);
+  lines.push("");
+  lines.push("画像に書いてよい文字（次の文字列だけを、一字一句そのまま。言い換え・要約・翻訳・分割をしない）:");
+  for (const t of texts) lines.push(`- 「${t}」`);
+  if (first) lines.push(`ナビゲーションの項目に使ってよい語: ${nav.map((x) => `「${x}」`).join(" ")}`);
+  for (const b of o.boxes) if (LABELLED.has(b.id)) lines.push(`区画「${b.id}」の値の上に小さな見出しとして使ってよい語: ${byId.get(b.id)!.keys.map((key) => `「${labelOf(key)}」`).join(" ")}`);
+  lines.push("それ以外の文字・英字・見出し・キャッチコピー・ロゴは描かない。数字だけの目盛りや時刻のラベルを単独で書かない（数字が現れるのは上の文字列の中だけ）。文字の代わりに読めない模様の文字を描かない。");
+  lines.push("画像の文字は店の事実の根拠にならない。価格・受賞・歴史や創業の年・人物（店主・職人など）・評判・お客様の声・メニューの説明・予約・限定の表示を作らない。人の顔や手を描かない。");
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The request's plan: per viewport the declared sections and one prompt per picture, the ONE batch prompt the Codex run
+ * reads, and the plan SHA (the same canonical form as prompt.ts buildPromptPlan). Pure. Refuses a direction that quotes a
+ * facts-pack value (REQUEST_DIRECTION_HAS_FACT) and a request whose facts pack is another shop's (FACTS_SHOP_MISMATCH is
+ * the caller's check: real_shop needs the pack's shop_id = the request's; fictional is checked against the repository).
+ */
+export function buildRequestPlan(inputs: RequestInputs): RequestPlan {
+  const { request, facts } = inputs;
+  // the direction carries no fact: no facts-pack value (but the category code, a generic word) appears in its text
+  const dirText = Object.values(request.direction).join("\n").normalize("NFKC").toLowerCase();
+  for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && dirText.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_DIRECTION_HAS_FACT");
+  const sections = requestSections(facts);
+  const ids = sections.map((s) => s.id);
+  const viewports = {} as Record<ImageFirstViewport, PlannedViewport>;
+  for (const viewport of ["desktop_1440", "mobile_390"] as const) {
+    const groups = splitSections(ids, viewport);
+    if (groups.length > MAX_PARTS_PER_VIEWPORT || groups.some((g) => g.length === 0)) throw new PromptStop("SPLIT_INVALID");
+    const tag = viewport === "desktop_1440" ? "pc" : "sp";
+    const parts = groups.map((g, i): PlannedPart => {
+      const boxes = boxesFor(g, ids[0]!);
+      const prompt = partPrompt({ inputs, sections, viewport, groups, k: i + 1, boxes });
+      return { index: i + 1, name: `${tag}-${i + 1}`, file: `parts/${tag}-${i + 1}.png`, prompt_file: `prompts/${tag}-${i + 1}.txt`, frame: "portrait_2x3", sections: boxes, prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
+    });
+    viewports[viewport] = { target_css_width: VIEWPORT_WIDTHS[viewport], mode: "section_sequence", section_order: [...ids], parts, seams: parts.slice(1).map((_, i) => ({ after_part: i + 1, kind: "section_break" as const })) };
+  }
+  const all = [...viewports.desktop_1440.parts.map((p) => ({ vp: "PC 1440", p })), ...viewports.mobile_390.parts.map((p) => ({ vp: "SP 390", p }))];
+  if (all.length !== REQUEST_IMAGES.total || viewports.desktop_1440.parts.length !== REQUEST_IMAGES.pc || viewports.mobile_390.parts.length !== REQUEST_IMAGES.sp) throw new PromptStop("SPLIT_INVALID");
+  const about = request.kind === "fictional" ? "The shop is fictional." : "This is an internal design reference only: never depict products, dishes, interiors, buildings or people.";
+  const batchPrompt = `Make the ${all.length} section images of ONE website design comp (a flat website screen design, not a photo, not a poster, not a device mockup) with the image generation tool. ${about}
+
+Rules for this run:
+- Call the image generation tool exactly ${all.length} times, once per image below, in the order given (Image 1 first, Image ${all.length} last). Never more than ${all.length} calls in all.
+- For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
+- Each image is a portrait frame (taller than wide).
+- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
+- Do not run shell commands, do not read or write files, do not browse.
+- When you have finished, reply with one line only: DONE followed by the number of images saved.
+
+${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
+`;
+  const value = (key: string) => facts.facts.find((f) => f.key === key)?.value ?? "";
+  const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: all.length };
+  const body = {
+    schema: REQUEST_PLAN_SCHEMA,
+    prompt_version: REQUEST_PROMPT_VERSION,
+    request_id: request.id,
+    kind: request.kind,
+    direction_key: "request",
+    direction_id: `request-${request.id}`.slice(0, 41),
+    direction_sha256: sha256(requestDirectionBytes(request)),
+    direction_set_sha256: inputs.requestSha256,
+    request_sha256: inputs.requestSha256,
+    facts_sha256: sha256(inputs.factsBytes),
+    shop: { shop_id: facts.shop_id, display_name: value("name"), category_code: value("category") || "unknown" },
+    viewports,
+    batch,
+  } as const;
+  const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, viewports: Object.fromEntries(Object.entries(viewports).map(([k, v]) => [k, { ...v, parts: v.parts.map((p) => ({ ...p, prompt: undefined })) }])) };
+  return { ...body, plan_sha256: sha256(canonical(stripped)) };
+}
