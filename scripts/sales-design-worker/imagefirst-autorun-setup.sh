@@ -18,12 +18,15 @@
 #   cli             claude and codex root-owned under /usr/local, from FOUR registry tarballs pinned by their sha512 integrity
 #                   (the npm registry's dist.integrity): @anthropic-ai/claude-code@2.1.295, its native
 #                   @anthropic-ai/claude-code-linux-x64@2.1.295, @openai/codex@0.159.0 and its native
-#                   @openai/codex@0.159.0-linux-x64. apply downloads them (curl -q, https only, env -i) into a root-only
-#                   directory, verifies every sha512 BEFORE anything changes, checks their members (only plain files and
-#                   directories under package/), then installs the two wrapper packages FROM THOSE LOCAL FILES with
+#                   @openai/codex@0.159.0-linux-x64. apply checks the free space of the state dir's filesystem (1024 MiB,
+#                   else BLOCKED), downloads them (curl -q, https only, env -i, each capped at its pinned size + 4 KiB) into
+#                   a root-only directory, verifies every sha512 BEFORE anything changes, checks their members (only plain
+#                   files and directories under package/, no setuid / setgid / sticky bit), then installs the two wrapper
+#                   packages FROM THOSE LOCAL FILES with
 #                   /usr/bin/npm install -g --prefix /usr/local --ignore-scripts --omit=optional (env -i: HOME=/root, a fixed
 #                   PATH, LANG; no proxy, CA or npm-config variable; --userconfig/--globalconfig /dev/null; umask 022) and
-#                   compares every installed file with the verified tarball's. No vendor code runs as root: claude-code's only
+#                   checks the installed package dirs hold exactly the verified tarballs' files (same bytes, nothing extra);
+#                   after placing the natives, chmod -R u-s,g-s,-t on both packages. No vendor code runs as root: claude-code's only
 #                   lifecycle script (postinstall: node install.cjs, which copies the native binary over the bin/claude.exe
 #                   placeholder) is skipped, and this script does that itself (install -m 0755 of the verified native
 #                   `claude`); codex has no lifecycle script, and its native package is placed where npm would put the
@@ -114,6 +117,11 @@ declare -A BIN_SHA256=(
 CODEX_NATIVE_PKG=@openai/codex-linux-x64
 CODEX_NATIVE_ID="@openai/codex 0.159.0-linux-x64"
 CODEX_TRIPLE=x86_64-unknown-linux-musl
+# the tarballs' sizes in bytes (curl --max-filesize: the size + 4 KiB)
+declare -A TGZ_SIZE=([claude]=28892 [claude_native]=114433914 [codex]=4902 [codex_native]=162481799)
+SIZE_MARGIN=4096
+# free space the download and its unpacking need in the state dir's filesystem (~280 MB + ~700 MB)
+NEED_FREE_MIB=1024
 MIN_NATIVE_BYTES=1048576
 KILL_AFTER=30
 LS_REMOTE_TIMEOUT=180
@@ -225,6 +233,7 @@ else
     while IFS= read -r l; do
       if [[ "$l" =~ ^SRI_(claude|claude_native|codex|codex_native)=(sha512-[A-Za-z0-9+/=]+)$ ]]; then TGZ_SRI[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
       elif [[ "$l" =~ ^BIN_(claude|codex)=([0-9a-f]{64})$ ]]; then BIN_SHA256[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
+      elif [[ "$l" =~ ^SIZE_(claude|claude_native|codex|codex_native)=([0-9]+)$ ]]; then TGZ_SIZE[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
       fi
     done <"$R/test-pins"
   fi
@@ -544,6 +553,7 @@ if [ "$MODE" = rollback ]; then
       [ -n "$target" ] || continue
       slot="$PREFIX/bin/$name"
       if ! legacy_target "$target"; then say "the recorded old link for $name is not inside /home/sr-designgen: not restored"; log "not restored $name: bad record"; ok=0
+      elif [ -L "$slot" ] && [ "$(readlink -- "$slot")" = "$target" ]; then say "/usr/local/bin/$name already points to $target (restored earlier)"; log "already restored $slot -> $target"
       elif [ ! -e "$target" ]; then say "the old target of $name ($target) no longer exists: not restored"; log "not restored $name: $target gone"
       elif ! absent "$slot"; then say "/usr/local/bin/$name is not free: not restored (look at it)"; log "not restored $name: slot taken"; ok=0
       else ln -s -- "$target" "$slot"; log "restored $slot -> $target"; say "restored /usr/local/bin/$name -> $target (into the worker's home: root must not run claude / codex)"
@@ -570,11 +580,13 @@ with open(sys.argv[1], "rb") as f:
         h.update(c)
 print("sha512-" + base64.b64encode(h.digest()).decode())' "$1"
 }
-# only plain files and directories, every name under package/ without ".."
+# only plain files and directories without setuid / setgid / sticky bits, every name under package/ without ".."
 members_ok() {
-  local types names
+  local types modes names
   types="$(tar -tzvf "$1" | cut -c1 | sort -u | tr -d '\n')" || return 1
   [[ "$types" =~ ^[-d]+$ ]] || return 1
+  modes="$(tar -tzvf "$1" | cut -c2-10)" || return 1
+  ! grep -q '[sStT]' <<<"$modes" || return 1
   names="$(tar -tzf "$1")" || return 1
   ! grep -qvE '^package/([A-Za-z0-9._@+-]+/)*[A-Za-z0-9._@+-]*$' <<<"$names" || return 1
   ! grep -qE '(^|/)\.\.(/|$)' <<<"$names"
@@ -582,16 +594,25 @@ members_ok() {
 extract() { ( umask 022; mkdir -p -- "$2" && tar -xzf "$1" -C "$2" --no-same-owner --no-same-permissions ); }
 
 if [ "${STEP[cli]}" = TODO ]; then
-  # 1. the four tarballs, downloaded and verified before anything changes
+  # 0. room for the downloads and their unpacking in the state dir's filesystem
+  free_mib="$(df -Pm -- "$STATE" 2>/dev/null | awk 'NR == 2 { print $4 }')" || free_mib=""
+  if ! [[ "$free_mib" =~ ^[0-9]+$ ]] || [ "$free_mib" -lt "$NEED_FREE_MIB" ]; then
+    say "SETUP_BLOCKED: ${free_mib:-unknown} MiB free in $STATE's filesystem; the download and its unpacking need $NEED_FREE_MIB MiB (nothing changed)"
+    log "refused: ${free_mib:-unknown} MiB free, $NEED_FREE_MIB needed"
+    finish SETUP_BLOCKED 3
+  fi
+  # 1. the four tarballs, downloaded (each capped at its pinned size) and verified before anything changes
   WORK="$(mktemp -d "$STATE/setup-download.XXXXXX")"
   for t in "${TGZS[@]}"; do
     f="$WORK/$t.tgz"
     log "fetch ${TGZ_URL[$t]}"
     env -i HOME="$NPM_HOME" PATH="$CURL_PATH" LANG=C.UTF-8 timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" \
-      curl -q -fsSL --proto =https --proto-redir =https -o "$f" "${TGZ_URL[$t]}" 9>&- || cli_fail "the download of ${TGZ_URL[$t]} failed (nothing changed)"
+      curl -q -fsSL --proto =https --proto-redir =https --max-filesize "$((TGZ_SIZE[$t] + SIZE_MARGIN))" -o "$f" "${TGZ_URL[$t]}" 9>&- ||
+      cli_fail "the download of ${TGZ_URL[$t]} failed or was larger than the pinned ${TGZ_SIZE[$t]} bytes (nothing changed)"
+    [ "$(stat -c %s -- "$f")" -le "$((TGZ_SIZE[$t] + SIZE_MARGIN))" ] || cli_fail "${TGZ_URL[$t]} is larger than the pinned ${TGZ_SIZE[$t]} bytes (nothing changed)"
     got="$(sri_of "$f")" || got=""
     [ "$got" = "${TGZ_SRI[$t]}" ] || cli_fail "${TGZ_URL[$t]} is not the pinned tarball (sha512 ${got:-unreadable}; nothing changed)"
-    members_ok "$f" || cli_fail "${TGZ_URL[$t]} holds a member that is not a plain file or directory under package/ (nothing changed)"
+    members_ok "$f" || cli_fail "${TGZ_URL[$t]} holds a member that is not a plain file or directory under package/ or has a setuid / setgid / sticky bit (nothing changed)"
     extract "$f" "$WORK/$t" || cli_fail "$t could not be unpacked (nothing changed)"
     log "verified $t ${TGZ_SRI[$t]}"
   done
@@ -624,8 +645,14 @@ if [ "${STEP[cli]}" = TODO ]; then
       [ -n "$rel" ] && [ -f "$WORK/$name/$m" ] || continue
       cmp -s -- "$WORK/$name/$m" "$pkgdir/$rel" || cli_fail "$pkgdir/$rel is not the verified tarball's"
     done < <(tar -tzf "$WORK/$name.tgz")
+    # and nothing else: every entry of the installed package dir (before the natives are placed) is a regular file or a
+    # directory of its tarball
+    extra="$(cd -- "$pkgdir" && find . -mindepth 1 \( -type d -o -type f \) -printf '%P\n' | LC_ALL=C sort | comm -23 - <(tar -tzf "$WORK/$name.tgz" | sed 's|^package/||; s|/$||' |
+      awk -F/ 'NF { p = ""; for (i = 1; i <= NF; i++) { p = (i == 1 ? $i : p "/" $i); print p } }' | LC_ALL=C sort -u))" || extra="unreadable"
+    other="$(cd -- "$pkgdir" && find . -mindepth 1 ! -type d ! -type f -printf '%P\n')" || other="unreadable"
+    [ -z "$extra" ] && [ -z "$other" ] || cli_fail "$pkgdir holds entries that are not in the verified tarball: $(printf '%s ' $extra $other | cut -c1-300)"
   done
-  log "installed files compared with the verified tarballs"
+  log "installed files compared with the verified tarballs (nothing more, nothing less)"
   # 5. what claude-code's skipped postinstall did (install.cjs): the native binary over the bin/claude.exe placeholder
   ( umask 022; install "${INSTALL_OWNER[@]}" -m 0755 -- "$WORK/claude_native/package/claude" "$CLAUDE_ENTRY" ) || cli_fail "the native claude could not be placed"
   log "placed the native claude at $CLAUDE_ENTRY sha256=${BIN_SHA256[claude]}"
@@ -635,6 +662,9 @@ if [ "${STEP[cli]}" = TODO ]; then
     rm -rf -- "$CODEX_NATIVE_DIR"
     cp -R -- "$WORK/codex_native/package" "$CODEX_NATIVE_DIR" ) || cli_fail "the native codex package could not be placed"
   log "placed the native codex package at $CODEX_NATIVE_DIR sha256=${BIN_SHA256[codex]}"
+  # a second guard behind the member check: no setuid / setgid / sticky bit anywhere in the two packages
+  chmod -R u-s,g-s,-t -- "$PKG_DIR_claude" "$PKG_DIR_codex" || cli_fail "the special mode bits could not be cleared"
+  log "chmod -R u-s,g-s,-t $PKG_DIR_claude $PKG_DIR_codex"
   rm -rf -- "$WORK"
   WORK=""
   check_cli

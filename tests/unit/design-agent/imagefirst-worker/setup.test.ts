@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -63,6 +63,7 @@ for a in "\${args[@]}"; do
     if [ -e "$prefix/bin/$b" ] || [ -L "$prefix/bin/$b" ]; then case "$(readlink -f "$prefix/bin/$b")" in "$d"/*) ;; *) echo "EEXIST $prefix/bin/$b" >&2; exit 1 ;; esac; fi
     rm -rf "$d"; mkdir -p "$d"; tar -xzf "$a" -C "$d" --strip-components=1; chmod 755 "$d/$rel"; ln -sfn "../lib/node_modules/$name/$rel" "$prefix/bin/$b"
     if [ -f '${sc}/npm-tamper' ]; then echo tampered >> "$d/package.json"; fi
+    if [ -f '${sc}/npm-extra' ]; then echo extra > "$d/extra.js"; fi
   else
     case "$a" in @anthropic-ai/claude-code) b=claude ;; @openai/codex) b=codex ;; *) exit 2 ;; esac
     rm -rf "$prefix/lib/node_modules/$a"; rm -f "$prefix/bin/$b"
@@ -75,10 +76,15 @@ done`,
   exe(
     join(bin, "curl"),
     `echo "curl $* env=$(env | cut -d= -f1 | LC_ALL=C sort | tr '\\n' ,)" >> '${sc}/curl.log'
-out=""; url=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; --proto|--proto-redir) shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac; done
-[ -f '${registry}'/"\${url##*/}" ] || exit 22
-cp '${registry}'/"\${url##*/}" "$out"`,
+out=""; url=""; max=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; --max-filesize) max="$2"; shift 2 ;; --proto|--proto-redir) shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac; done
+f='${registry}'/"\${url##*/}"
+[ -f "$f" ] || exit 22
+# as curl: a file over --max-filesize is refused (exit 63)
+if [ -n "$max" ] && [ "$(stat -c %s "$f")" -gt "$max" ]; then exit 63; fi
+cp "$f" "$out"`,
   );
+  // df's stand-in: the real df, or (df-small) a filesystem with 10 MiB free
+  exe(join(bin, "df"), `if [ -f '${sc}/df-small' ]; then printf 'Filesystem 1048576-blocks Used Available Capacity Mounted on\\n/dev/x 100 90 10 90%% /\\n'; exit 0; fi\nexec /usr/bin/df "$@"`);
   const elf = (fill: number) => Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(1_200_000, fill)]);
   const natives = { claude: elf(1), codex: elf(2) };
   const trees: Record<Tgz, Record<string, Buffer>> = {
@@ -94,7 +100,7 @@ cp '${registry}'/"\${url##*/}" "$out"`,
   const pins: Record<string, string> = { BIN_claude: sha(natives.claude), BIN_codex: sha(natives.codex) };
   const writePins = () => writeFileSync(join(R, "test-pins"), Object.entries(pins).map(([k, v]) => `${k}=${v}\n`).join(""), { mode: 0o644 });
   /** (Re)build one tarball from its tree (extra: a step in its package dir before packing) and pin its sha512. */
-  const pack = (t: Tgz, extra?: (dir: string) => void) => {
+  const pack = (t: Tgz, extra?: (dir: string) => void, tarArgs: string[] = []) => {
     const dir = join(base, "build", t);
     rmSync(dir, { recursive: true, force: true });
     for (const [rel, body] of Object.entries(trees[t])) {
@@ -103,9 +109,10 @@ cp '${registry}'/"\${url##*/}" "$out"`,
     }
     extra?.(join(dir, "package"));
     const out = join(registry, fileOf(t));
-    const r = spawnSync("tar", ["-czf", out, "-C", dir, "package"], { encoding: "utf8" });
+    const r = spawnSync("tar", ["-czf", out, ...tarArgs, "-C", dir, "package"], { encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
     pins[`SRI_${t}`] = `sha512-${createHash("sha512").update(readFileSync(out)).digest("base64")}`;
+    pins[`SIZE_${t}`] = String(statSync(out).size);
     writePins();
   };
   for (const t of TGZS) pack(t);
@@ -119,7 +126,7 @@ case "$1" in
     if [ -f '${R}/etc/systemd/system/'"$u" ]; then echo disabled; else echo not-found; fi; exit 1 ;;
   enable) [ -f '${sc}/enable-fail' ] && exit 1; echo enabled > '${sc}'/enabled-"$u" ;;
   disable) echo disabled > '${sc}'/enabled-"$u"; echo inactive > '${sc}'/ActiveState-"$u" ;;
-  daemon-reload) ;;
+  daemon-reload) if [ -f '${sc}/reload-fail' ]; then exit 1; fi ;;
   list-timers) echo "Sun 2026-11-22 10:10:00 UTC 4min left - - $u sr-imagefirst-autorun.service" ;;
   *) exit 1 ;;
 esac`,
@@ -337,6 +344,70 @@ describe("Issue #302 one-time setup: the pinned tarballs (no vendor code runs as
   });
 });
 
+describe("Issue #302 one-time setup: size, space, extra files, special mode bits (PR #328 round 2)", () => {
+  it("too little free space in the state dir's filesystem: SETUP_BLOCKED before any download", () => {
+    const w = world();
+    writeFileSync(join(w.sc, "df-small"), "");
+    const r = apply(w);
+    expect(r).toMatchObject({ status: 3, code: "SETUP_BLOCKED" });
+    expect(r.stdout).toContain("10 MiB free");
+    expect(r.stdout).toContain("need 1024 MiB");
+    expect(w.lines("curl.log")).toEqual([]);
+    cliUntouched(w);
+  });
+
+  it("a tarball larger than its pinned size: curl stops it (--max-filesize), nothing changed", () => {
+    const w = world();
+    // an incompressible 64 KiB inside, so the tarball is far over 100 + 4096 bytes
+    w.pack("codex_native", (dir) => writeFileSync(join(dir, "padding.bin"), randomBytes(65536)));
+    w.pins.SIZE_codex_native = "100";
+    w.writePins();
+    const r = apply(w);
+    expect(r).toMatchObject({ status: 30, code: "SETUP_CLI_FAILED" });
+    expect(r.stdout).toContain("larger than the pinned 100 bytes");
+    expect(w.lines("curl.log").pop()).toContain("--max-filesize 4196 ");
+    cliUntouched(w);
+  });
+
+  it("an installed package dir with a file that is not in its tarball: refused", () => {
+    const w = world();
+    writeFileSync(join(w.sc, "npm-extra"), "");
+    const r = apply(w);
+    expect(r).toMatchObject({ status: 30, code: "SETUP_CLI_FAILED" });
+    expect(r.stdout).toContain("holds entries that are not in the verified tarball: extra.js");
+  });
+
+  it("a member with a setuid, setgid or sticky bit is refused; after placing, the bits are cleared as a second guard", () => {
+    const w = world();
+    // the archive's member modes (tar --mode: this test user may not set a setuid bit on a real file)
+    for (const mode of ["u+s", "g+s", "+t"]) {
+      w.pack("codex", undefined, [`--mode=${mode}`]);
+      const r = apply(w);
+      expect(r, mode).toMatchObject({ status: 30, code: "SETUP_CLI_FAILED" });
+      expect(r.stdout, mode).toContain("setuid / setgid / sticky bit");
+      cliUntouched(w);
+    }
+    w.pack("codex");
+    expect(apply(w)).toMatchObject({ status: 0, code: "APPLY_OK" });
+    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toContain(` apply chmod -R u-s,g-s,-t ${w.nm(PKG.claude)} ${w.nm(PKG.codex)}\n`);
+    for (const f of [w.nm(PKG.claude, "bin", "claude.exe"), w.nm(PKG.codex, "bin", "codex.js")]) expect(statSync(f).mode & 0o7000, f).toBe(0);
+  });
+
+  it("a rollback that fails after restoring the links can be run again and completes", () => {
+    const w = world();
+    expect(apply(w)).toMatchObject({ status: 0, code: "APPLY_OK" });
+    writeFileSync(join(w.sc, "reload-fail"), "");
+    const first = w.run(["rollback", "--yes", "--expect", w.head]);
+    expect(first).toMatchObject({ status: 35, code: "ROLLBACK_INCOMPLETE" });
+    for (const name of ["claude", "codex"] as const) expect(readlinkSync(join(w.R, "usr", "local", "bin", name))).toBe(w.oldTargets[name]);
+    rmSync(join(w.sc, "reload-fail"));
+    const second = w.run(["rollback", "--yes", "--expect", w.head]);
+    expect(second, second.stdout).toMatchObject({ status: 0, code: "ROLLBACK_DONE" });
+    expect(second.stdout).toContain("already points to");
+    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toMatch(/ rollback done ok=1\n$/);
+  });
+});
+
 describe("Issue #302 one-time setup: apply", () => {
   it("installs the pinned CLIs root-owned, the config, the units and the switch; runs check 1; never enables the timer; idempotent", () => {
     const w = world();
@@ -350,7 +421,7 @@ describe("Issue #302 one-time setup: apply", () => {
     const curl = w.lines("curl.log");
     expect(curl).toHaveLength(4);
     for (const [i, t] of TGZS.entries()) {
-      expect(curl[i]).toMatch(new RegExp(`^curl -q -fsSL --proto =https --proto-redir =https -o \\S+/setup-download\\.\\w+/${t}\\.tgz ${TGZ_URL[t].replace(/[.]/g, "\\.")}`));
+      expect(curl[i]).toMatch(new RegExp(`^curl -q -fsSL --proto =https --proto-redir =https --max-filesize ${Number(w.pins[`SIZE_${t}`]) + 4096} -o \\S+/setup-download\\.\\w+/${t}\\.tgz ${TGZ_URL[t].replace(/[.]/g, "\\.")}`));
       expect(curl[i]).toMatch(CLEAN_ENV);
     }
     // npm: once, from the two verified local tarballs, scripts ignored, optional dependencies not fetched, no npm config,

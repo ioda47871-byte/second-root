@@ -73,6 +73,9 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-
 ```
 
 ダウンロードは約 280 MB（ほとんどがネイティブ版 2 つ）。`/var/lib/sr-imagefirst-autostart/` の下の一時 dir に展開し（約 700 MB）、終わったら消す。
+その filesystem の空きが 1024 MiB 未満なら `SETUP_BLOCKED`（何も落とさない）。各 tarball は固定した大きさ + 4 KiB を超えると curl が止める
+（`--max-filesize`）。setuid・setgid・sticky の付いた中身は断り、置いた後も 2 つの package に `chmod -R u-s,g-s,-t` をかける。入った package の dir に
+tarball に無いファイルがあれば断る。rollback は途中で止まっても打ち直せる（もう戻っている symlink は済みとして扱う）。
 最後の行が `IMAGEFIRST_SETUP APPLY_OK exit=0`（4 段階すべて DONE）なら終わり。もう一度打っても、DONE の段階は何もしない。
 **apply は timer を enable しない。** 何をしたか（古い symlink の指す先を含む）は root だけが読める
 `/var/lib/sr-imagefirst-autostart/setup.log`（0600、dir は 0700）に残る。`SETUP_HARDENING_FAILED` など途中で止まったら、その出力を Claude に見せる
