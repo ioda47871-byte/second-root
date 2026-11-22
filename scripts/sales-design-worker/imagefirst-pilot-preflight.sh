@@ -6,6 +6,9 @@
 # directory of root's that it removes. It starts no generation and no model call.
 #
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <approval id>
+#   (inside the automatic run only) imagefirst-pilot-preflight.sh --request <request id>: a standing request (DEV-303); the
+#   approval row then checks the run's private copy of root's request instead of a packet (the worker checks its SHA-256
+#   and its content itself when it starts)
 #
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin). Root never runs git, node or a parser on files
 # the worker user controls: every command in the worker's clone runs as the worker user, with the automatic start's
@@ -119,17 +122,26 @@ row() {
   [ "$2" = PASS ] || FAILS=$((FAILS + 1))
 }
 
-# ---------------------------------------------------------------- the approval id
-[ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id>"; finish USAGE 2; }
-[[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish USAGE 2; }
-APPROVAL="$1"
-[[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
+# ---------------------------------------------------------------- the approval id (or a standing request's id)
+REQUEST=0
+if [ "$#" -eq 2 ] && [ "$1" = --request ]; then
+  [[ "$2" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]] || { say "PREFLIGHT_ID_INVALID: a request id is ^[a-z0-9][a-z0-9-]{2,62}\$"; finish USAGE 2; }
+  REQUEST=1
+  APPROVAL="$2"
+else
+  [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id> | --request <request id>"; finish USAGE 2; }
+  [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish USAGE 2; }
+  APPROVAL="$1"
+  [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
+fi
 
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the owner's installed copy (imagefirst-autorun-setup.sh apply: root's, writable by nobody else) is a production copy too
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_PILOT_TEST_ROOT:-}"
-if [ "$REPO" = "$PROD_CLONE" ]; then
+if [ "$REPO" = "$PROD_CLONE" ] || [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   [ -z "$TEST_ROOT" ] || { say "PREFLIGHT_TEST_HOOK_REFUSED: test hooks are refused in $PROD_CLONE"; finish USAGE 2; }
   [ "$(id -u)" = 0 ] || { say "run as root: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <approval id>"; finish USAGE 2; }
@@ -173,9 +185,11 @@ if [ -z "$R" ]; then
   for f in "$SELF" "$REPO/scripts/ops/wsl-resource-preflight.sh"; do
     trusted_path "$f" || { say "PREFLIGHT_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish USAGE 2; }
   done
-  admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
-  [ -z "$admin_dirty" ] || { say "PREFLIGHT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish USAGE 2; }
-  say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+  if [ "$REPO" = "$PROD_CLONE" ]; then
+    admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+    [ -z "$admin_dirty" ] || { say "PREFLIGHT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish USAGE 2; }
+    say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+  fi
 fi
 
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
@@ -219,6 +233,7 @@ own_cgroup() {
 }
 IN_AUTORUN=0
 if [[ $'\n'"$(own_cgroup)"$'\n' == *$'\n'"$AUTORUN_CGROUP"$'\n'* ]]; then IN_AUTORUN=1; fi
+[ "$REQUEST" = 0 ] || [ "$IN_AUTORUN" = 1 ] || { say "PREFLIGHT_REQUEST_REFUSED: --request is checked only inside sr-imagefirst-autorun.service"; finish USAGE 2; }
 # Inside the automatic run every worker row looks at the pilot's fresh clone (named in root's own state file, written by the
 # pilot; its form checked here: ~/imagefirst/autorun-<this id>-<UTC>), never at the reused one
 if [ "$IN_AUTORUN" = 1 ]; then
@@ -299,16 +314,16 @@ if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(CODEX_HOME="$CFG/codex" CLAUDE_CONFIG
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
 if [ "$IN_AUTORUN" = 1 ]; then
-  # inside the automatic run: root's admin clone (clean) names the commit; the pilot's fresh clone (just made from root's
-  # origin URL) must be clean with HEAD = origin/develop = exactly that commit; every git without user / system config and
-  # with attributes / hooks / fsmonitor / credential helpers off. No fetch here (the clone is minutes old)
-  if [ -n "$R" ]; then ADMIN_GIT="$R/root/sr-capture-admin"; else ADMIN_GIT="$REPO"; fi
+  # inside the automatic run: the commit root pinned (root's own state file, written by the pilot); the pilot's fresh clone
+  # (just made from root's origin URL) must be clean with HEAD = exactly that commit, and that commit origin/develop or in
+  # its history (develop may have moved on since the pick-up); every git without user / system config and with attributes
+  # / hooks / fsmonitor / credential helpers off. No fetch here (the clone is minutes old)
   GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
-  admin_head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || admin_head=""
-  admin_dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
-  origin_url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || origin_url=""
-  if ! [[ "$admin_head" =~ ^[0-9a-f]{40}$ ]] || [ -n "$admin_dirty" ] || ! [[ "$origin_url" =~ ^[A-Za-z0-9._:/@+-]+$ ]]; then
-    row clone FAIL "root's admin clone is not clean at a readable commit, or its origin URL is unusual"
+  pin_file="$R/var/lib/sr-imagefirst-autostart/autorun-commit"
+  admin_head=""
+  if [ -f "$pin_file" ] && [ ! -L "$pin_file" ]; then admin_head="$(head -c 100 -- "$pin_file" | tr -d '\n')"; fi
+  if ! [[ "$admin_head" =~ ^[0-9a-f]{40}$ ]]; then
+    row clone FAIL "root's pinned commit (the automatic run's state) is missing or unreadable"
   elif ! in_clone true; then
     row clone FAIL "the automatic run's fresh clone is missing (or not named as expected)"
   elif ! dirty="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --untracked-files=all 2>/dev/null)" || [ -n "$dirty" ]; then
@@ -318,6 +333,9 @@ if [ "$IN_AUTORUN" = 1 ]; then
     base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse origin/develop 2>/dev/null)" || base=""
     if [ "$head" = "$admin_head" ] && [ "$base" = "$admin_head" ]; then
       row clone PASS "clean, HEAD = origin/develop = root's verified $head"
+      CLONE_OK=1
+    elif [ "$head" = "$admin_head" ] && [[ "$base" =~ ^[0-9a-f]{40}$ ]] && in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" merge-base --is-ancestor "$admin_head" "$base" >/dev/null 2>&1; then
+      row clone PASS "clean, HEAD = root's pinned $head (origin/develop has moved on to $base since the pick-up)"
       CLONE_OK=1
     else
       row clone FAIL "HEAD ${head:-?} / origin/develop ${base:-?} are not root's verified $admin_head"
@@ -367,7 +385,16 @@ else
 fi
 
 # ---------------------------------------------------------------- the worker's own precheck (the packet at HEAD, the window, the pins, unused)
-if [ "$CLONE_OK" = 1 ]; then
+if [ "$REQUEST" = 1 ]; then
+  # a standing request (DEV-303): no packet and no expiry of its own (the owner's standing policy is root's, checked by the
+  # automatic run). The run's private copy of root's request must be there, a regular file of at most 16 KiB, as the
+  # worker; the worker checks its SHA-256 (root's) and its content when it starts
+  if in_clone bash -c 'f="$1.request/$2.json"; [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] && [ "$(stat -c %s -- "$f")" -le 16384 ]' _ "$CLONE" "$APPROVAL"; then
+    row approval PASS "standing request $APPROVAL: the run's private copy of root's request is in place (the worker checks its SHA-256)"
+  else
+    row approval FAIL "standing request $APPROVAL: the run's private copy of root's request is missing"
+  fi
+elif [ "$CLONE_OK" = 1 ]; then
   set +e
   "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
     node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-

@@ -4,7 +4,11 @@
 # (imagefirst-autorun.sh), and nothing else: it never starts the worker or the pilot, never stops Remote Control, never
 # claims, never creates root's used/<id> or attempt/<id>.
 #
-#   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-approve.sh <approval id>
+#   sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-approve.sh <approval id>
+#   (or the admin clone's copy: sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-approve.sh <approval id>)
+#
+# DEV-303: the per-run approval is now the MANUAL FALLBACK. With the owner's standing pre-authorization
+# (imagefirst-autorun-setup.sh standing) no per-run command is needed; this one still works without a standing policy.
 #
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin), by a person. In this order (anything
 # unexpected refuses; no marker is written):
@@ -107,8 +111,11 @@ APPROVAL="$1"
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the owner's installed copy (imagefirst-autorun-setup.sh apply: root's, writable by nobody else) is a production copy too;
+# either way the packet is read from root's admin clone
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_APPROVE_TEST_ROOT:-}"
-if [ "$REPO" = "$PROD_CLONE" ]; then
+if [ "$REPO" = "$PROD_CLONE" ] || [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   [ -z "$TEST_ROOT" ] || { say "APPROVE_TEST_HOOK_REFUSED: test hooks are refused in $PROD_CLONE"; finish APPROVE_USAGE 2; }
   [ "$(id -u)" = 0 ] || { say "run as root: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-approve.sh <approval id>"; finish APPROVE_USAGE 2; }
@@ -117,7 +124,7 @@ if [ "$REPO" = "$PROD_CLONE" ]; then
   FILE_ROOT=root
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   WORKER_PATH=/usr/local/bin:/usr/bin:/bin
-  ADMIN_GIT="$REPO"
+  ADMIN_GIT="$PROD_CLONE"
 else
   # Any other copy runs only the unit tests' fake WSL (tests/unit/design-agent/imagefirst-worker/approve.test.ts).
   [ -n "$TEST_ROOT" ] && [ -d "$TEST_ROOT" ] || { say "run from the root-only clone: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-approve.sh <approval id>"; finish APPROVE_USAGE 2; }

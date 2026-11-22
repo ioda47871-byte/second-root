@@ -1,7 +1,8 @@
 # Second Root IMAGE_FIRST automatic run (Issue #302). NOT installed or enabled by anything in this repository: the owner
-# installs it from the root-only admin clone, as a separate safety-boundary decision (docs/operations/imagefirst-autorun.md).
-# OFF by default even when installed: without the owner's root-owned switch and one-use run marker (written by
-# imagefirst-approve.sh) it does nothing and leaves Remote Control untouched.
+# installs it with imagefirst-autorun-setup.sh apply, as a separate safety-boundary decision (docs/operations/imagefirst-autorun.md).
+# OFF by default even when installed: without the owner's root-owned switch and either a one-use run marker (written by
+# imagefirst-approve.sh) or the owner's standing pre-authorization (imagefirst-autorun-setup.sh standing) with a request
+# within its limits, it does nothing and leaves Remote Control untouched.
 #
 # Runs as root (no User=), like sr-imagefirst-autostart.service: only root may stop / start the jailed Claude (admin.sh) and
 # use up the owner's one-use marker (its state directory below, 0700). Every command in the worker's clone (git, npm, the
@@ -22,14 +23,15 @@ Conflicts=sr-imagefirst-autostart.timer
 [Service]
 Type=oneshot
 WorkingDirectory=/
-ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh
+# The owner's INSTALLED copy (imagefirst-autorun-setup.sh apply: root's files, SHA-256 recorded), never the admin clone
+ExecStart=/usr/bin/bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun.sh
 # Remote Control started again if the run itself could not (a SIGKILL after TimeoutStopSec, a crash, or workers still left
 # at the end): only when the script's root-owned flag says it had stopped it and that it was enabled before; one attempt.
 # "+": without this unit's sandboxing (admin.sh claude-start must work even if the hardening below gets in its way); it
 # still runs in this unit's cgroup, which --restore requires.
-ExecStopPost=+/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh --restore
-# 2 x ls-remote 210 s + claude-stop 150 s + the idle wait 180 s + the pilot 9000 s (+ 200 s) + claude-start 150 s
-TimeoutStartSec=10800
+ExecStopPost=+/usr/bin/bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun.sh --restore
+# ls-remote 210 s + the request reads (at most 1 + 40 x 2 x 15 s) + claude-stop 150 s + the idle wait 180 s + the pilot 9000 s (+ 200 s) + claude-start 150 s
+TimeoutStartSec=12000
 # SIGTERM goes to the script only (KillMode=mixed); it passes it on once to the pilot, which passes it on to the worker or the
 # audit and waits for its record (at most 90 s + the steps' kill-after); then the review-ready file and claude-start
 # (150 s). TimeoutStopSec is longer than all of that.
