@@ -4,7 +4,7 @@
 # unattended: Remote Control stopped, the EXISTING pilot once (preflight, one worker run, delivery, audit dry run, one audit,
 # summary), Remote Control ALWAYS started again, and a review-ready file of the pilot's shareable lines for Claude. It has no
 # runner, approval parser, retry or agent of its own: it starts admin.sh claude-stop / claude-start and imagefirst-pilot.sh
-# (--sync-clone, then --autorun <id>), and nothing else.
+# (--autorun <id> <root-verified commit>), and nothing else.
 #
 #   run by sr-imagefirst-autorun.service only (its timer, every 10 minutes); refused anywhere else
 #   ExecStopPost: imagefirst-autorun.sh --restore (Remote Control started again if a run could not do it itself)
@@ -26,16 +26,22 @@
 #   4. the old hourly automatic start's units neither active nor enabled (both reading one marker is refused, exit 2);
 #      the design cycle's timer off and its service stopped, and no automatic start poll, pilot or cycle holding its lock
 #      (else busy, exit 12)
-#   5. the production copy: the scripts it runs root's and writable by nobody else up to /, the admin clone clean
+#   5. the production copy: the scripts it runs root's and writable by nobody else up to /; root's admin clone clean and
+#      its HEAD exactly origin's develop (git ls-remote of the admin clone's own configured URL; root's own clone only):
+#      that commit is the one the run is pinned to (else refused, Remote Control untouched)
 #   6. the intent recorded: attempt/<id> (atomic mkdir in root's 0700 state, never removed: ONE attempt per id, whatever
-#      happens next) and the restore flag; then admin.sh claude-stop, then (bounded) until the automatic start's busy()
-#      says idle: the jailed Claude stopped and disabled, the design cycle stopped, no process of the worker user
-#   7. imagefirst-pilot.sh --sync-clone (the worker's clone fast-forwarded onto origin/develop, as the worker), then
-#      imagefirst-pilot.sh --autorun <id>: the manual pilot's every check, step and code, plus root's used/<id> created right
+#      happens next); whether the jailed Claude is enabled; the restore flag (with that answer) and STOPPED_RC together;
+#      then admin.sh claude-stop, then (bounded) until the automatic start's busy() says idle: the jailed Claude stopped
+#      and disabled, the design cycle stopped, no process of the worker user
+#   7. step 5's check again (the same commit, else no pilot), then imagefirst-pilot.sh --autorun <id> <commit>: the
+#      worker's clone pinned to that commit (a fixed git config with root's origin URL, hooks / fsmonitor / credential
+#      helpers off, npm ci always), then the manual pilot's every check, step and code, plus root's used/<id> created right
 #      before the worker starts (the worker never starts twice for one id; its own claim and the entry's ledger as before)
 #   8. always (an EXIT trap: success, failure, a stop signal): the review-ready file (only while no worker process runs),
-#      then admin.sh claude-start, then the restore flag removed. A SIGKILL or a power loss skips the trap: the unit's
-#      ExecStopPost (--restore) starts Remote Control when the flag is still there; WSL stopping skips both.
+#      then admin.sh claude-start if the jailed Claude was enabled before (else it is left stopped), then the restore flag
+#      removed. If the worker user is still busy at that point, claude-start is left to the unit's ExecStopPost (after
+#      systemd has ended what is left in this unit). A SIGKILL or a power loss skips the trap: the unit's ExecStopPost
+#      (--restore) starts Remote Control when the flag is still there and says it was enabled; WSL stopping skips both.
 # A stop signal during step 7 is passed on to the pilot, which passes it on to the worker or audit and waits for its record;
 # then step 8. Nothing is ever retried: a second firing for the same id stops in step 3.
 #
@@ -44,10 +50,11 @@
 # one result line of this script. Never a local-only line, a path, a SHA-256, an image, a prompt or a secret.
 #
 # Output (the journal): fixed lines, the pilot's output; the last line is machine-readable:
-#   IMAGEFIRST_AUTORUN <CODE> approval=<id|none> pilot=<PILOT CODE|none> remote_control=<untouched|restored|not_restored> exit=<n>
+#   IMAGEFIRST_AUTORUN <CODE> approval=<id|none> pilot=<PILOT CODE|none> remote_control=<untouched|restored|left_stopped|deferred|not_restored> exit=<n>
 # Exit: 0 off / the pilot done (PILOT_DONE) and Remote Control restored, 10 nothing due, 11 locked, 12 busy (Remote Control
 #       untouched), 2 refused (switch / marker unsafe or invalid, not the service, the old automatic start enabled, usage,
-#       untrusted admin clone), 1 attempted and the pilot did not end PILOT_DONE (or the clone sync / idle wait failed),
+#       untrusted / dirty admin clone or not at origin's develop), 20 origin not reachable (before anything), 1 attempted
+#       and the pilot did not end PILOT_DONE (or the idle wait failed, or develop moved meanwhile),
 #       3 Remote Control could not be started again (it overrides 0 / 1), 40 / 41 a signal / internal error before step 6.
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
@@ -77,10 +84,11 @@ ADMIN_TIMEOUT=120
 # after claude-stop: until no process of the worker user is left
 IDLE_WAIT=180
 IDLE_STEP=3
-# the pilot's --sync-clone: fetch 210 s + git 5 x 90 s + npm ci 930 s
-SYNC_TIMEOUT=1800
-# the pilot: preflight (~15 min worst) + worker 1890 s + re-send + dry run 630 s + audit 2490 s
-PILOT_TIMEOUT=6600
+# root's ls-remote of origin's develop (twice: before the attempt and after the idle wait)
+ADMIN_FETCH_TIMEOUT=180
+# the pilot: the clone pinned (fetch 210 s + git 6 x 90 s + npm ci, always, 930 s) + preflight (~15 min worst) + worker
+# 1890 s + re-send + dry run 630 s + audit 2490 s
+PILOT_TIMEOUT=8400
 # a stopped pilot passes the stop on and waits for the worker (90 s) or the audit (90 s) to end
 PILOT_KILL_AFTER=200
 MAX_WINDOW=86400
@@ -95,6 +103,8 @@ INTERRUPTED=0
 CPID=""
 WORK=""
 STOPPED_RC=0
+FLAG_WRITTEN=0
+ADMIN_SHA=""
 
 say() { printf 'imagefirst-autorun: %s\n' "$*"; }
 
@@ -140,6 +150,8 @@ else
   if [ -f "$R/idle-wait" ]; then IDLE_WAIT="$(cat "$R/idle-wait")"; IDLE_STEP=1; fi
 fi
 PILOT="$REPO/scripts/sales-design-worker/imagefirst-pilot.sh"
+# root's admin clone: this copy itself (the test world: its stand-in under the test root)
+if [ -n "$R" ]; then ADMIN_GIT="$R$PROD_CLONE"; else ADMIN_GIT="$REPO"; fi
 SWITCH="$R/etc/sr-design-worker/imagefirst-autostart.json"
 MARKER="$R/etc/sr-design-worker/imagefirst-run.json"
 STATE="$R/var/lib/sr-imagefirst-autostart"
@@ -214,9 +226,17 @@ in_autorun_unit() {
 }
 
 # Remote Control started again (admin.sh claude-start, the existing command). Only when this script stopped it (the root
-# flag says so); the flag goes once claude-start says CLAUDE_STARTED. Never fails the caller.
+# flag says so) AND the jailed Claude was enabled before that (the flag's was_enabled=yes, written by this script before
+# claude-stop): an owner who had stopped Remote Control finds it still stopped. The flag goes once claude-start says
+# CLAUDE_STARTED (or when nothing is to be started). Never fails the caller.
 restore_rc() {
   [ -e "$RESTORE_FLAG" ] || return 0
+  if ! grep -qx 'was_enabled=yes' -- "$RESTORE_FLAG" 2>/dev/null; then
+    rm -f -- "$RESTORE_FLAG"
+    RC_STATE=left_stopped
+    say "Remote Control was not enabled before this run: left stopped (as the owner had it)"
+    return 0
+  fi
   local out rc=0
   out="$(timeout --kill-after="$KILL_AFTER" "$ADMIN_TIMEOUT" bash "$ADMIN" claude-start 2>&1 7>&- 8>&- 9>&-)" || rc=$?
   printf '%s\n' "$out" | tr -d '\000-\010\013-\037' | tail -n 5 | cut -c1-300 | sed 's/^/imagefirst-autorun: claude-start: /'
@@ -272,7 +292,15 @@ finish() {
       } >"$WORK/review" 2>/dev/null || true
       write_review "$WORK/review" || true
     fi
-    restore_rc || true
+    if busy; then
+      # something of the worker user (or the jail) is still there, e.g. a worker the pilot's timeout left behind: it is in
+      # this unit's cgroup, and systemd ends it when this script exits (KillMode=mixed). Remote Control is then started by
+      # the unit's ExecStopPost (--restore), from the flag left in place
+      RC_STATE=deferred
+      say "not idle at the end ($BUSY_WHY): Remote Control is left to the unit's ExecStopPost (--restore); the flag stays"
+    else
+      restore_rc || true
+    fi
     if [ "$RC_STATE" = not_restored ]; then code=AUTORUN_RC_NOT_RESTORED; rc=3; fi
   fi
   [ -z "$WORK" ] || rm -rf "$WORK"
@@ -290,7 +318,11 @@ on_signal() {
   # before Remote Control is stopped: end here (nothing touched). After it: never end inside the handler (claude-stop or a
   # pilot may still be running): pass the stop on to a running pilot and end at the next step boundary, where the EXIT path
   # writes the review-ready file and starts Remote Control again
-  if [ "$STOPPED_RC" != 1 ]; then finish AUTORUN_STOP_SIGNAL 40; fi
+  if [ "$STOPPED_RC" != 1 ]; then
+    # the flag may have been written in the instant before STOPPED_RC=1: claude-stop has not run, nothing to restore
+    if [ "$FLAG_WRITTEN" = 1 ]; then rm -f -- "$RESTORE_FLAG"; fi
+    finish AUTORUN_STOP_SIGNAL 40
+  fi
   INTERRUPTED=1
   [ -z "$CPID" ] || kill -TERM "$CPID" 2>/dev/null || true
   return 0
@@ -327,6 +359,7 @@ if [ "$MODE" = restore ]; then
   # one attempt only (the next firing's ExecStopPost must not retry it every 10 minutes)
   rm -f -- "$RESTORE_FLAG"
   if [ "$RC_STATE" = restored ]; then finish AUTORUN_RESTORED 0; fi
+  if [ "$RC_STATE" = left_stopped ]; then finish AUTORUN_RESTORE_LEFT_STOPPED 0; fi
   finish AUTORUN_RC_NOT_RESTORED 3
 fi
 
@@ -426,19 +459,63 @@ if [ -z "$R" ]; then
   for f in "$SELF" "$PILOT" "$REPO/scripts/sales-design-worker/imagefirst-pilot-preflight.sh" "$REPO/scripts/sales-design-worker/imagefirst-deliver-review.sh" "$ADMIN"; do
     trusted_path "$f" || { say "AUTORUN_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish AUTORUN_ADMIN_CLONE_UNTRUSTED 2; }
   done
-  admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
-  [ -z "$admin_dirty" ] || { say "AUTORUN_ADMIN_CLONE_DIRTY: $REPO has changes"; finish AUTORUN_ADMIN_CLONE_DIRTY 2; }
 fi
+# root's admin clone: clean, and its HEAD exactly origin's develop (asked with ls-remote from the admin clone's own
+# configured URL: nothing is written, so it also works under the unit's read-only /root). Sets ADMIN_NOW. Returns
+# 1 unreadable, 2 dirty, 3 origin not reachable, 4 HEAD is not origin's develop (ADMIN_REMOTE says what is).
+ADMIN_NOW=""
+ADMIN_REMOTE=""
+admin_commit() {
+  local head dirty url remote
+  head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || return 1
+  [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 1
+  dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || return 1
+  [ -z "$dirty" ] || return 2
+  url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || return 1
+  [[ "$url" =~ ^[A-Za-z0-9._:/@+-]+$ ]] || return 1
+  remote="$(timeout --kill-after="$KILL_AFTER" "$ADMIN_FETCH_TIMEOUT" git -C "$ADMIN_GIT" -c protocol.ext.allow=never ls-remote "$url" refs/heads/develop 2>/dev/null 7>&- 8>&- 9>&-)" || return 3
+  ADMIN_REMOTE="${remote%%[[:space:]]*}"
+  [[ "$ADMIN_REMOTE" =~ ^[0-9a-f]{40}$ ]] || return 3
+  [ "$head" = "$ADMIN_REMOTE" ] || return 4
+  ADMIN_NOW="$head"
+}
+arc=0
+admin_commit || arc=$?
+case "$arc" in
+  0) ADMIN_SHA="$ADMIN_NOW" ;;
+  2) say "AUTORUN_ADMIN_CLONE_DIRTY: $PROD_CLONE has changes"; finish AUTORUN_ADMIN_CLONE_DIRTY 2 ;;
+  3) say "origin's develop could not be read from the admin clone's URL: nothing done (Remote Control untouched)"; finish AUTORUN_STOP_ADMIN_FETCH 20 ;;
+  4) say "AUTORUN_ADMIN_NOT_DEVELOP: the admin clone is not at origin's develop $ADMIN_REMOTE (Remote Control untouched). Run: sudo git -C $PROD_CLONE fetch -q origin && sudo git -C $PROD_CLONE checkout -q --detach origin/develop"
+    finish AUTORUN_ADMIN_NOT_DEVELOP 2 ;;
+  *) say "AUTORUN_ADMIN_CLONE_UNREADABLE: $PROD_CLONE"; finish AUTORUN_ADMIN_CLONE_UNREADABLE 2 ;;
+esac
 
 # ---------------------------------------------------------------- 6. the intent, then Remote Control stopped
 mkdir -p -m 0700 "$STATE/autorun"
 if ! mkdir -m 0700 "$STATE/autorun/$APPROVAL" 2>/dev/null; then finish AUTORUN_IDLE_ATTEMPTED 10; fi
-printf 'approval_id=%s\nattempted_at=%s\n' "$APPROVAL" "$(now)" >"$STATE/autorun/$APPROVAL/attempt"
-: >"$RESTORE_FLAG"
+printf 'approval_id=%s\nattempted_at=%s\ncommit=%s\n' "$APPROVAL" "$(now)" "$ADMIN_SHA" >"$STATE/autorun/$APPROVAL/attempt"
+# whether the jailed Claude was enabled before: only then is it started again afterwards
+was="$(systemctl is-enabled sr-jail-claude.service 2>/dev/null)" || true
+if [ "$was" = enabled ]; then was_enabled=yes; else was_enabled=no; fi
+# the restore flag and STOPPED_RC together, right before claude-stop (a stop signal in between removes the flag again)
+FLAG_WRITTEN=1
+printf 'was_enabled=%s\napproval_id=%s\n' "$was_enabled" "$APPROVAL" >"$RESTORE_FLAG"
 STOPPED_RC=1
-PHASE=after_stop
 RC_STATE=stopping
-say "approval $APPROVAL is due: one attempt (recorded); stopping Remote Control (admin.sh claude-stop)"
+if [ -n "$R" ] && [ -f "$R/hold-before-stop" ]; then
+  # the test world only: hold in the signal window between the flag and claude-stop
+  : >"$R/holding-before-stop"
+  while [ -f "$R/hold-before-stop" ]; do sleep 0.1; done
+fi
+if [ "$INTERRUPTED" = 1 ]; then
+  # a stop that came after the flag and before claude-stop: nothing was stopped, so nothing is to be restored
+  rm -f -- "$RESTORE_FLAG"
+  STOPPED_RC=0
+  RC_STATE=untouched
+  finish AUTORUN_STOP_SIGNAL 40
+fi
+PHASE=after_stop
+say "approval $APPROVAL is due (admin clone $ADMIN_SHA): one attempt (recorded); stopping Remote Control (admin.sh claude-stop; was enabled: $was_enabled)"
 set +e
 out="$(timeout --kill-after="$KILL_AFTER" "$ADMIN_TIMEOUT" bash "$ADMIN" claude-stop 2>&1 7>&- 8>&- 9>&-)"
 src=$?
@@ -455,17 +532,16 @@ while busy; do
 done
 say "idle: the jailed Claude stopped and disabled, no process of $WORKER_USER"
 
-# ---------------------------------------------------------------- 7. the existing pilot: the clone synced, then once for this id
+# ---------------------------------------------------------------- 7. root's commit again, then the existing pilot once, pinned to it
+arc=0
+admin_commit || arc=$?
+if [ "$arc" -ne 0 ] || [ "$ADMIN_NOW" != "$ADMIN_SHA" ]; then
+  say "the admin clone or origin's develop changed since the check (was $ADMIN_SHA): no pilot (nothing used)"
+  finish AUTORUN_STOP_DEVELOP_MOVED 1
+fi
 PILOT_ENV=(env)
 if [ -n "$R" ]; then PILOT_ENV+=("SR_IMAGEFIRST_PILOT_TEST_ROOT=$R"); fi
-step "$WORK/sync" "$SYNC_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --sync-clone
-sline="$(tail -n 1 "$WORK/sync" | tr -d '\000-\037')"
-if [ "$INTERRUPTED" = 1 ]; then finish AUTORUN_INTERRUPTED 1; fi
-if [ "$STEP_RC" -ne 0 ] || [[ "$sline" != "IMAGEFIRST_PILOT PILOT_SYNCED phase=before_claim approval=none exit=0" ]]; then
-  say "the worker's clone was not synced: no pilot (nothing used)"
-  finish AUTORUN_STOP_SYNC 1
-fi
-step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun "$APPROVAL"
+step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"
 pline="$(grep -a '^IMAGEFIRST_PILOT ' "$WORK/pilot" | tail -n 1 | tr -d '\000-\037')" || pline=""
 if [[ "$pline" =~ ^IMAGEFIRST_PILOT\ ([A-Z_]+)\ phase=(before_claim|after_claim)\ approval=$APPROVAL\ exit=([0-9]+)$ ]] && [ "${BASH_REMATCH[3]}" = "$STEP_RC" ]; then
   PILOT_CODE="${BASH_REMATCH[1]}"

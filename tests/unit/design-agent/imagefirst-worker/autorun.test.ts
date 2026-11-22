@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, st
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { exe, ID, loadPngs, PILOT, PREFLIGHT, SCRIPTS, wsl } from "./pilot-world";
-import { cleanupTemps, REPO, tmp } from "./support";
+import { cleanupTemps, commitFiles, git, REPO, tmp } from "./support";
 
 // Issue #302: the automatic run (scripts/sales-design-worker/imagefirst-autorun.sh), the real file, against the pilot's fake
 // WSL (./pilot-world.ts) under SR_IMAGEFIRST_AUTORUN_TEST_ROOT: the REAL pilot, preflight and re-send wrapper, the stub worker
@@ -21,16 +21,37 @@ const UNIT_DIR = join(SCRIPTS, "systemd");
 const D4 = "hoshigama-imagefirst-d4-20261121-01";
 const utc = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
-/** The pilot's fake WSL, plus the owner's files, the service's cgroup, Remote Control up, and the admin.sh stand-in. */
+/** Root's admin clone's stand-in (a clone of the test origin, at origin's develop) and an npm stub; returns its path. */
+const adminClone = (w: ReturnType<typeof wsl>) => {
+  const admin = join(w.t, "root", "sr-capture-admin");
+  mkdirSync(join(w.t, "root"), { recursive: true });
+  git(w.t, "clone", "-q", "--branch", "develop", w.origin, admin);
+  exe(join(w.bin, "npm"), `echo "npm $* userconfig=\${npm_config_userconfig:-} globalconfig=\${npm_config_globalconfig:-}" >> '${w.sc}/npm.log'`);
+  return admin;
+};
+const insideService = (w: ReturnType<typeof wsl>) => {
+  mkdirSync(join(w.t, "proc", "self"), { recursive: true });
+  writeFileSync(join(w.t, "proc", "self", "cgroup"), "0::/system.slice/sr-imagefirst-autorun.service\n");
+};
+/** Push a commit to the test origin (develop moves on). */
+const pushOrigin = (w: ReturnType<typeof wsl>, name: string) => {
+  const c = tmp("sr-ifr-push-");
+  git(c, "clone", "-q", "--branch", "develop", w.origin, ".");
+  commitFiles(c, { [`docs/${name}.md`]: Buffer.from(name) }, name);
+  git(c, "push", "-q", "origin", "HEAD:refs/heads/develop");
+  return git(c, "rev-parse", "HEAD");
+};
+
+/** The pilot's fake WSL, plus the owner's files, root's admin clone, the service's cgroup, Remote Control up, admin.sh's stand-in. */
 function world() {
   const w = wsl();
   const etc = join(w.t, "etc", "sr-design-worker");
   mkdirSync(etc, { recursive: true });
+  const admin = adminClone(w);
   const state = join(w.t, "var", "lib", "sr-imagefirst-autostart");
   const events = join(w.t, "events.log");
   // inside sr-imagefirst-autorun.service (a oneshot is "activating" while it runs)
-  mkdirSync(join(w.t, "proc", "self"), { recursive: true });
-  writeFileSync(join(w.t, "proc", "self", "cgroup"), "0::/system.slice/sr-imagefirst-autorun.service\n");
+  insideService(w);
   writeFileSync(join(w.sc, "sr-imagefirst-autorun.service"), "activating");
   writeFileSync(join(w.sc, "enabled-sr-imagefirst-autorun.timer"), "enabled");
   // Remote Control up: the jailed Claude active and enabled, processes of the worker user
@@ -40,12 +61,14 @@ function world() {
     writeFileSync(join(w.sc, "pgrep"), "");
   };
   rcUp();
-  // admin.sh: claude-stop stops the jail (unless rc-stuck: a process of the worker user stays), claude-start starts it
+  // admin.sh: claude-stop stops the jail (unless rc-stuck: a process of the worker user stays; move-develop: a helper
+  // clone pushes to origin meanwhile), claude-start starts it
   exe(
     join(w.t, "admin.sh"),
     `echo "admin $1" >> '${events}'
 case "$1" in
-  claude-stop) echo inactive > '${w.sc}/sr-jail-claude.service'; echo disabled > '${w.sc}/enabled-sr-jail-claude.service'; [ -f '${w.sc}/rc-stuck' ] || rm -f '${w.sc}/pgrep'; echo CLAUDE_STOPPED ;;
+  claude-stop) if [ -d '${w.sc}/move-develop' ]; then git -C '${w.sc}/move-develop' push -q origin HEAD:refs/heads/develop; fi
+    echo inactive > '${w.sc}/sr-jail-claude.service'; echo disabled > '${w.sc}/enabled-sr-jail-claude.service'; [ -f '${w.sc}/rc-stuck' ] || rm -f '${w.sc}/pgrep'; echo CLAUDE_STOPPED ;;
   claude-start) if [ -f '${w.sc}/claude-start-fail' ]; then echo "HOST_UNSAFE: fix the lines above first"; exit 3; fi
     echo active > '${w.sc}/sr-jail-claude.service'; echo enabled > '${w.sc}/enabled-sr-jail-claude.service'; touch '${w.sc}/pgrep'; echo "CLAUDE_STARTED (jailed)" ;;
   *) exit 2 ;;
@@ -81,6 +104,7 @@ exec "$@"`,
   return {
     ...w,
     etc,
+    admin,
     state,
     env,
     run,
@@ -164,9 +188,34 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
     const w = world();
     w.switchOn();
     w.marker();
+    // review M1: what the jailed Claude could have planted in the worker clone while Remote Control ran: a hook, an
+    // fsmonitor, another origin URL, attributes, a trusted-looking npm hash. None of it may run or be used.
+    const planted = join(w.sc, "planted-ran");
+    exe(join(w.sc, "evil"), `touch '${planted}'`);
+    mkdirSync(join(w.sc, "hooks"));
+    for (const h of ["post-checkout", "reference-transaction", "pre-auto-gc"]) exe(join(w.sc, "hooks", h), `touch '${planted}'`);
+    git(w.clone, "config", "core.hooksPath", join(w.sc, "hooks"));
+    git(w.clone, "config", "core.fsmonitor", join(w.sc, "evil"));
+    git(w.clone, "config", "remote.origin.url", join(w.t, "elsewhere.git"));
+    writeFileSync(join(w.clone, ".git", "info", "attributes"), "* filter=evil\n");
+    git(w.clone, "config", "filter.evil.smudge", join(w.sc, "evil"));
+    git(w.clone, "config", "filter.evil.clean", join(w.sc, "evil"));
+    const sha = git(w.admin, "rev-parse", "HEAD");
     const r = w.run();
     expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: ID, pilot: "PILOT_DONE", rc: "restored" });
+    expect(existsSync(planted), "a planted hook / fsmonitor / filter ran").toBe(false);
+    expect(r.stdout).toContain(`pinned to root's verified commit ${sha}`);
+    expect(r.stdout).toMatch(new RegExp(`\\| clone +\\| PASS \\| clean, HEAD = origin/develop = root's verified ${sha}`));
+    const config = readFileSync(join(w.clone, ".git", "config"), "utf8");
+    expect(config).toContain(`\turl = ${w.origin}\n`);
+    expect(config).toContain("\thooksPath = /dev/null\n");
+    expect(config).not.toMatch(/evil|elsewhere/);
+    expect(existsSync(join(w.clone, ".git", "info", "attributes"))).toBe(false);
+    expect(git(w.clone, "rev-parse", "HEAD")).toBe(sha);
+    // npm ci always (the hash file and node_modules are never trusted), with no user / global npm config
+    expect(readFileSync(join(w.sc, "npm.log"), "utf8").trim().split("\n")).toEqual(["npm ci --no-audit --no-fund --loglevel=error userconfig=/dev/null globalconfig=/dev/null"]);
     expect(w.events()).toEqual(["admin claude-stop", `worker used=${ID},`, "admin claude-start"]);
+    expect(readFileSync(join(w.state, "autorun", ID, "attempt"), "utf8")).toContain(`commit=${sha}\n`);
     expect(w.spent().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", ""], ["audit", ID]]);
     expect(w.starts().filter((s) => s.cli === "worker" && s.argv[0] !== "--check-codex-auth-only").map((s) => s.grant)).toEqual([ID, ID]);
     expect(w.used()).toEqual([ID]);
@@ -246,20 +295,94 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
     expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_MARKER_USED" });
   });
 
-  it("the worker user never goes idle after claude-stop: no pilot, claude-start, the attempt recorded", () => {
+  it("review L1: the worker user still busy at the end: no pilot, no in-script claude-start; the flag is left for ExecStopPost (--restore)", () => {
     const w = world();
     w.switchOn();
     w.marker();
     writeFileSync(join(w.sc, "rc-stuck"), "");
     writeFileSync(join(w.t, "idle-wait"), "2");
     const r = w.run();
-    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_STOP_NOT_IDLE", pilot: "none", rc: "restored" });
-    expect(w.events()).toEqual(["admin claude-stop", "admin claude-start"]);
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_STOP_NOT_IDLE", pilot: "none", rc: "deferred" });
+    expect(w.events()).toEqual(["admin claude-stop"]);
+    expect(w.flag()).toBe(true);
     expect(w.starts()).toEqual([]);
     expect(w.used()).toEqual([]);
     expect(w.attempted()).toEqual([ID]);
     // a worker process was left, so the review-ready file is not written (root runs nothing as the worker then)
     expect(existsSync(w.review())).toBe(false);
+    // the unit's ExecStopPost (after systemd ended what was left in the unit): claude-start once, the flag removed
+    expect(w.run(["--restore"])).toMatchObject({ status: 0, code: "AUTORUN_RESTORED", rc: "restored" });
+    expect(w.events()).toEqual(["admin claude-stop", "admin claude-start"]);
+    expect(w.flag()).toBe(false);
+  });
+
+  it("review L4: Remote Control was disabled before the run: it is left stopped afterwards (no claude-start)", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    writeFileSync(join(w.sc, "sr-jail-claude.service"), "inactive");
+    writeFileSync(join(w.sc, "enabled-sr-jail-claude.service"), "disabled");
+    rmSync(join(w.sc, "pgrep"));
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", pilot: "PILOT_DONE", rc: "left_stopped" });
+    expect(w.events()).toEqual(["admin claude-stop", `worker used=${ID},`]);
+    expect(w.flag()).toBe(false);
+    expect(readFileSync(join(w.sc, "sr-jail-claude.service"), "utf8").trim()).toBe("inactive");
+    // --restore with a flag that says "was not enabled": nothing started either
+    writeFileSync(join(w.state, "autorun.restore-pending"), `was_enabled=no\napproval_id=${ID}\n`);
+    expect(w.run(["--restore"])).toMatchObject({ status: 0, code: "AUTORUN_RESTORE_LEFT_STOPPED", rc: "left_stopped" });
+    expect(w.events()).toHaveLength(2);
+    expect(w.flag()).toBe(false);
+  });
+
+  it("review L2: a stop signal between the restore flag and claude-stop: no claude-stop, no flag left, exit 40", async () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    writeFileSync(join(w.t, "hold-before-stop"), "");
+    const p = w.runAsync();
+    for (let i = 0; i < 3000 && !existsSync(join(w.t, "holding-before-stop")); i++) await new Promise((res) => setTimeout(res, 20));
+    expect(existsSync(join(w.t, "holding-before-stop"))).toBe(true);
+    expect(w.flag()).toBe(true);
+    p.child.kill("SIGTERM");
+    await new Promise((res) => setTimeout(res, 300));
+    rmSync(join(w.t, "hold-before-stop"));
+    const r = await p.done;
+    expect(r, r.stdout).toMatchObject({ status: 40, code: "AUTORUN_STOP_SIGNAL", rc: "untouched" });
+    expect(w.events()).toEqual([]);
+    expect(w.flag()).toBe(false);
+    // the attempt was recorded before the window: no second attempt for this id
+    expect(w.attempted()).toEqual([ID]);
+    expect(w.run(["--restore"])).toMatchObject({ code: "AUTORUN_RESTORE_NOTHING" });
+    expect(w.events()).toEqual([]);
+  });
+
+  it("review M1: root's admin clone not at origin's develop (refused, Remote Control untouched), or develop moving during the stop (no pilot)", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    pushOrigin(w, "merged-after-approval");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 2, code: "AUTORUN_ADMIN_NOT_DEVELOP", rc: "untouched" });
+    expect(r.stdout).toContain("checkout -q --detach origin/develop");
+    untouched(w);
+    writeFileSync(join(w.admin, "stray.txt"), "x");
+    git(w.admin, "fetch", "-q", "origin");
+    git(w.admin, "checkout", "-q", "--detach", "origin/develop");
+    expect(w.run()).toMatchObject({ status: 2, code: "AUTORUN_ADMIN_CLONE_DIRTY", rc: "untouched" });
+    untouched(w);
+    // develop moves while Remote Control is being stopped: no pilot, nothing used, Remote Control back
+    const v = world();
+    v.switchOn();
+    v.marker();
+    const helper = join(v.sc, "move-develop");
+    git(v.t, "clone", "-q", "--branch", "develop", v.origin, helper);
+    commitFiles(helper, { "docs/moved.md": Buffer.from("x") }, "moved");
+    const m = v.run();
+    expect(m, m.stdout).toMatchObject({ status: 1, code: "AUTORUN_STOP_DEVELOP_MOVED", pilot: "none", rc: "restored" });
+    expect(v.events()).toEqual(["admin claude-stop", "admin claude-start"]);
+    expect(v.starts()).toEqual([]);
+    expect(v.used()).toEqual([]);
   });
 
   it("claude-start fails: exit 3, the flag stays; the unit's ExecStopPost (--restore) starts it once; --restore without the flag does nothing", () => {
@@ -331,15 +454,39 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
 describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight's timers row", () => {
   it("pilot --autorun outside the service: refused before anything; inside it with used/<id> present: refused before the preflight", () => {
     const w = wsl();
-    const r = w.pilot(["--autorun", ID]);
+    const admin = adminClone(w);
+    const sha = git(admin, "rev-parse", "HEAD");
+    const r = w.pilot(["--autorun", ID, sha]);
     expect([r.status, r.code, r.phase]).toEqual([2, "PILOT_AUTORUN_REFUSED", "before_claim"]);
     expect(w.starts()).toEqual([]);
-    for (const bad of [["--autorun"], ["--autorun", "../x"], ["--autorun", "hoshigama-imagefirst-d3-00000000-01"], ["--autorun", ID, ID]]) expect(w.pilot(bad).status, bad.join(" ")).toBe(2);
-    mkdirSync(join(w.t, "proc", "self"), { recursive: true });
-    writeFileSync(join(w.t, "proc", "self", "cgroup"), "0::/system.slice/sr-imagefirst-autorun.service\n");
+    for (const bad of [["--autorun", ID], ["--autorun", "../x", sha], ["--autorun", "hoshigama-imagefirst-d3-00000000-01", sha], ["--autorun", ID, ID], ["--autorun", ID, sha.toUpperCase()], ["--autorun", ID, sha, sha]]) expect(w.pilot(bad).status, bad.join(" ")).toBe(2);
+    insideService(w);
+    // review M1: another commit than root's admin clone's, or an admin clone with changes: refused before anything
+    expect(w.pilot(["--autorun", ID, "0".repeat(40)])).toMatchObject({ status: 2, code: "PILOT_AUTORUN_SHA_MISMATCH" });
+    writeFileSync(join(admin, "stray.txt"), "x");
+    expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 2, code: "PILOT_AUTORUN_SHA_MISMATCH" });
+    rmSync(join(admin, "stray.txt"));
     mkdirSync(join(w.t, "var", "lib", "sr-imagefirst-autostart", "used", ID), { recursive: true });
-    expect(w.pilot(["--autorun", ID])).toMatchObject({ status: 2, code: "PILOT_MARKER_USED", phase: "before_claim" });
+    expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 2, code: "PILOT_MARKER_USED", phase: "before_claim" });
     expect(w.starts()).toEqual([]);
+  });
+
+  it("review M1: pilot --autorun with origin's develop not at root's commit, or a dirty worker clone: stopped before the preflight, nothing spent", () => {
+    const w = wsl();
+    const admin = adminClone(w);
+    insideService(w);
+    writeFileSync(join(w.sc, "sr-imagefirst-autorun.service"), "activating");
+    const sha = git(admin, "rev-parse", "HEAD");
+    pushOrigin(w, "moved");
+    expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 20, code: "PILOT_AUTORUN_DEVELOP_MOVED", phase: "before_claim" });
+    expect(w.starts()).toEqual([]);
+    const v = wsl();
+    const vadmin = adminClone(v);
+    insideService(v);
+    writeFileSync(join(v.clone, "stray.txt"), "x");
+    expect(v.pilot(["--autorun", ID, git(vadmin, "rev-parse", "HEAD")])).toMatchObject({ status: 20, code: "PILOT_AUTORUN_TREE_DIRTY" });
+    expect(existsSync(join(v.clone, "stray.txt"))).toBe(true);
+    expect(v.starts()).toEqual([]);
   });
 
   it("the manual preflight refuses while the automatic run's timer or service is on; inside the service it accepts exactly that service", () => {
@@ -352,14 +499,19 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     }
     // inside the service: its own unit must be running (a stale cgroup claim with the service inactive fails)
     const v = wsl();
-    mkdirSync(join(v.t, "proc", "self"), { recursive: true });
-    writeFileSync(join(v.t, "proc", "self", "cgroup"), "0::/system.slice/sr-imagefirst-autorun.service\n");
+    const vadmin = adminClone(v);
+    insideService(v);
     writeFileSync(join(v.sc, "enabled-sr-imagefirst-autorun.timer"), "enabled");
     expect(v.preflight([ID]).rows.timers?.ok).toBe(false);
     writeFileSync(join(v.sc, "sr-imagefirst-autorun.service"), "activating");
     const ok = v.preflight([ID]);
     expect(ok.status, ok.stdout).toBe(0);
     expect(ok.rows.timers?.why).toMatch(/inside sr-imagefirst-autorun\.service \(activating\)/);
+    expect(ok.rows.clone?.why).toBe(`clean, HEAD = origin/develop = root's verified ${git(vadmin, "rev-parse", "HEAD")}`);
+    // review M1: inside the service the clone row compares with root's commit, not only with the clone's own origin/develop
+    commitFiles(vadmin, { "docs/admin-only.md": Buffer.from("x") }, "a commit only in the admin clone");
+    expect(v.preflight([ID]).rows.clone?.ok).toBe(false);
+    git(vadmin, "reset", "-q", "--hard", "HEAD~1");
     // the old automatic start is refused there too
     writeFileSync(join(v.sc, "enabled-sr-imagefirst-autostart.timer"), "enabled");
     expect(v.preflight([ID]).rows.timers?.ok).toBe(false);
@@ -398,7 +550,7 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
   it("the automatic run starts only admin.sh claude-stop / claude-start and the pilot; never the worker, a model CLI or a unit change", () => {
     const code = src(AUTORUN).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     expect(code.match(/bash "\$ADMIN" [^\n]*/g)).toEqual(['bash "$ADMIN" claude-start 2>&1 7>&- 8>&- 9>&-)" || rc=$?', 'bash "$ADMIN" claude-stop 2>&1 7>&- 8>&- 9>&-)"']);
-    expect(code.match(/bash "\$PILOT" [^\n]*/g)).toEqual(['bash "$PILOT" --sync-clone', 'bash "$PILOT" --autorun "$APPROVAL"']);
+    expect(code.match(/bash "\$PILOT" [^\n]*/g)).toEqual(['bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"']);
     expect(code).not.toMatch(/imagefirst-worker\.ts|imagefirst-audit\.ts|image-first-generate|anthropic|openai/i);
     for (const c of [code, src(APPROVE).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")]) for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"]).toContain(m[1]);
     // approve starts no pilot, no admin.sh, never the worker run (only its precheck), never claims
@@ -412,7 +564,10 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const timer = src(join(UNIT_DIR, "sr-imagefirst-autorun.timer"));
     for (const unit of [service, timer]) expect(unit.split("\n")[0]).toMatch(/NOT installed or enabled/);
     expect(service).toMatch(/^ExecStart=\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh$/m);
-    expect(service).toMatch(/^ExecStopPost=\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh --restore$/m);
+    // review M2: ExecStopPost without the unit's sandboxing ("+"), still in the unit's cgroup
+    expect(service).toMatch(/^ExecStopPost=\+\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh --restore$/m);
+    // review L3: never together with the old automatic start
+    expect(service).toMatch(/^Conflicts=sr-imagefirst-autostart\.service sr-imagefirst-autostart\.timer$/m);
     expect(service).not.toMatch(/^User=/m);
     expect(service).toMatch(/^Type=oneshot$/m);
     expect(service).toMatch(/^KillMode=mixed$/m);
@@ -421,7 +576,7 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const start = Number(/^TimeoutStartSec=(\d+)$/m.exec(service)![1]);
     const stop = Number(/^TimeoutStopSec=(\d+)$/m.exec(service)![1]);
     const admin = num("ADMIN_TIMEOUT") + num("KILL_AFTER");
-    expect(start).toBeGreaterThan(2 * admin + num("IDLE_WAIT") + num("SYNC_TIMEOUT") + num("PILOT_TIMEOUT") + 2 * num("PILOT_KILL_AFTER"));
+    expect(start).toBeGreaterThan(2 * admin + 2 * (num("ADMIN_FETCH_TIMEOUT") + num("KILL_AFTER")) + num("IDLE_WAIT") + num("PILOT_TIMEOUT") + num("PILOT_KILL_AFTER"));
     expect(stop).toBeGreaterThan(num("PILOT_KILL_AFTER") + admin);
     expect(timer).toMatch(/^OnCalendar=\*-\*-\* \*:00\/10:00$/m);
     expect(timer).toMatch(/^RandomizedDelaySec=\d+$/m);

@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, sym
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ID, loadPngs, SCRIPTS, wsl } from "./pilot-world";
-import { cleanupTemps, commitFiles, git, tmp } from "./support";
+import { APPROVAL_PACKET_PATH, D4_PACKET } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { cleanupTemps, commitFiles, filledD4Packet, filledPacket, git, tmp } from "./support";
 
 // Issue #302: the owner's approval command (scripts/sales-design-worker/imagefirst-approve.sh), the real file, against the
 // pilot's fake WSL (./pilot-world.ts) under SR_IMAGEFIRST_APPROVE_TEST_ROOT: the owner's switch and marker in a temporary
@@ -27,17 +28,31 @@ process.stdout.write(readFileSync(join(home, "precheck-out"), "utf8"));
 process.exit(Number(readFileSync(join(home, "precheck-exit"), "utf8")));
 `;
 
-function world() {
+/** The approved packets on develop: d3 (the p3 packet) for ID and d4 for D4, with this expiry (in memory fixtures only). */
+const packets = (expires: string, d3 = ID, d4 = D4) => ({
+  [APPROVAL_PACKET_PATH]: filledPacket({ d3: `\`${d3}\``, expires: `\`${expires}\`` }),
+  [D4_PACKET.path]: filledD4Packet({ d4: `\`${d4}\``, expires: `\`${expires}\`` }),
+});
+
+function world(packetExpires?: string) {
   const w = wsl();
   const etc = join(w.t, "etc", "sr-design-worker");
   mkdirSync(etc, { recursive: true });
   const state = join(w.t, "var", "lib", "sr-imagefirst-autostart");
+  // the worker would run now with 2 h of the approval left (the stub's precheck reports this expiry, as the packet says)
+  const expires = utc(Date.now() + 2 * 3600_000);
+  writeFileSync(join(w.home, "stub-expires"), expires);
+  const pushIn = (files: Record<string, Buffer>, msg: string) => {
+    const c = tmp("sr-ifa-push-");
+    git(c, "clone", "-q", "--branch", "develop", w.origin, ".");
+    commitFiles(c, files, msg);
+    git(c, "push", "-q", "origin", "HEAD:refs/heads/develop");
+    return git(c, "rev-parse", "HEAD");
+  };
+  pushIn(packets(packetExpires ?? expires), "the owner merged the approved packets (test)");
   const admin = join(w.t, "root", "sr-capture-admin");
   mkdirSync(join(w.t, "root"));
   git(w.t, "clone", "-q", "--branch", "develop", w.origin, admin);
-  // the worker would run now with 2 h of the approval left (the stub's precheck reports this expiry)
-  const expires = utc(Date.now() + 2 * 3600_000);
-  writeFileSync(join(w.home, "stub-expires"), expires);
   const env = { ...w.env, SR_IMAGEFIRST_APPROVE_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv;
   const marker = join(etc, "imagefirst-run.json");
   const approve = (args: string[]) => {
@@ -50,13 +65,7 @@ function world() {
     return { status: r.status, code: m![1]!, approval: m![2]!, stdout: r.stdout };
   };
   /** Push a commit to origin (the owner merged something on develop). */
-  const push = (files: Record<string, Buffer>, msg: string) => {
-    const c = tmp("sr-ifa-push-");
-    git(c, "clone", "-q", "--branch", "develop", w.origin, ".");
-    commitFiles(c, files, msg);
-    git(c, "push", "-q", "origin", "HEAD:refs/heads/develop");
-    return git(c, "rev-parse", "HEAD");
-  };
+  const push = pushIn;
   return {
     ...w,
     etc,
@@ -207,19 +216,17 @@ describe("Issue #302 approval command: refusals (no marker is written)", () => {
 
   it("the precheck's line not exactly would_run for this id with a sane expiry: refused, no marker", () => {
     const ok = (o: object) => JSON.stringify({ status: "would_run", code: null, invoked: false, ...o });
-    const soon = utc(Date.now() + 10 * 60_000);
-    const cases: [string, string, number, string][] = [
-      ["another approval id", `${ok({ approval_id: OTHER, expires_at: utc(Date.now() + 3600_000) })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
-      ["no expiry", `${ok({ approval_id: ID })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
-      ["an extra key", `${JSON.stringify({ status: "would_run", code: null, invoked: false, approval_id: ID, expires_at: utc(Date.now() + 3600_000), x: 1 })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
-      ["two lines", `{}\n${ok({ approval_id: ID, expires_at: utc(Date.now() + 3600_000) })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
-      ["would_run with exit 2", `${ok({ approval_id: ID, expires_at: utc(Date.now() + 3600_000) })}\n`, 2, "APPROVE_NOT_RUNNABLE"],
-      ["the expiry more than 24 h ahead", `${ok({ approval_id: ID, expires_at: "2099-01-01T00:00:00Z" })}\n`, 0, "APPROVE_EXPIRY_INVALID"],
-      ["the expiry past", `${ok({ approval_id: ID, expires_at: utc(Date.now() - 60_000) })}\n`, 0, "APPROVE_EXPIRY_INVALID"],
-      ["an impossible date", `${ok({ approval_id: ID, expires_at: "2026-02-30T00:00:00Z" })}\n`, 0, "APPROVE_EXPIRY_INVALID"],
-      ["under 20 min left", `${ok({ approval_id: ID, expires_at: soon })}\n`, 0, "APPROVE_TOO_LATE"],
-    ];
     const w = world();
+    const cases: [string, string, number, string][] = [
+      ["another approval id", `${ok({ approval_id: OTHER, expires_at: w.expires })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
+      ["no expiry", `${ok({ approval_id: ID })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
+      ["an extra key", `${JSON.stringify({ status: "would_run", code: null, invoked: false, approval_id: ID, expires_at: w.expires, x: 1 })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
+      ["two lines", `{}\n${ok({ approval_id: ID, expires_at: w.expires })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
+      ["would_run with exit 2", `${ok({ approval_id: ID, expires_at: w.expires })}\n`, 2, "APPROVE_NOT_RUNNABLE"],
+      // review M1d: the worker's expiry must be the packet's, as root read it from its own admin clone
+      ["an expiry other than the packet's", `${ok({ approval_id: ID, expires_at: utc(Date.now() + 3600_000) })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
+      ["the expiry more than 24 h ahead", `${ok({ approval_id: ID, expires_at: "2099-01-01T00:00:00Z" })}\n`, 0, "APPROVE_PRECHECK_UNEXPECTED"],
+    ];
     w.switchOn();
     const head = w.push({ "scripts/sales-design-worker/imagefirst-worker.ts": Buffer.from(ECHO_WORKER) }, "a worker that echoes its precheck line (test)");
     git(w.admin, "fetch", "-q", "origin");
@@ -257,11 +264,10 @@ describe("Issue #302 approval command: the marker", () => {
     expect(w.starts().filter((s) => s.grant === D4).map((s) => s.argv.join(" "))).toEqual(["--precheck"]);
   });
 
-  it("Remote Control up (the usual case): nothing runs as the worker; the marker gets the 24 h window, checked at run time", () => {
+  it("Remote Control up (the usual case): nothing runs as the worker; the marker gets the packet's expiry, checked at run time", () => {
     const w = world();
     w.switchOn();
     w.rcUp();
-    const before = Date.now();
     const r = w.approve([ID]);
     expect(r, r.stdout).toMatchObject({ status: 0, code: "APPROVE_RECORDED_DEFERRED", approval: ID });
     expect(r.stdout).toMatch(/nothing runs as the worker now/);
@@ -270,12 +276,59 @@ describe("Issue #302 approval command: the marker", () => {
     const m = JSON.parse(readFileSync(w.marker, "utf8")) as { approval_id: string; expires_at: string };
     expect(Object.keys(m)).toEqual(["approval_id", "expires_at"]);
     expect(m.approval_id).toBe(ID);
-    const t = Date.parse(m.expires_at);
-    expect(t).toBeGreaterThanOrEqual(Math.floor(before / 1000) * 1000 + 86_400_000 - 1000);
-    expect(t).toBeLessThanOrEqual(Date.now() + 86_400_000);
+    // the packet's own expiry, read by root from its admin clone (review M1d)
+    expect(m.expires_at).toBe(w.expires);
     expect(statSync(w.marker).mode & 0o777).toBe(0o644);
     // the worker's clone was not touched
     expect(existsSync(join(w.sc, "systemctl-other.log"))).toBe(false);
+  });
+
+  it("review M1d: the packet in root's admin clone: no row for this id, not approved, or expired: refused (both paths)", () => {
+    for (const busyNow of [false, true]) {
+      const w = world();
+      w.switchOn();
+      if (busyNow) w.rcUp();
+      // the packet names another id (the owner typed an id that is not the approved one)
+      expect(w.approve([OTHER]), `busy=${busyNow}`).toMatchObject({ status: 2, code: "APPROVE_PACKET_NO_ID" });
+      expect(w.approve(["hoshigama-imagefirst-d4-20261121-02"]), `busy=${busyNow}`).toMatchObject({ status: 2, code: "APPROVE_PACKET_NO_ID" });
+      // the d3 id is only looked up in the d3 packet (the d4 packet naming it does not count)
+      const head = w.push(packets(w.expires, OTHER, ID), "the d4 packet names the d3 id (test)");
+      git(w.admin, "fetch", "-q", "origin");
+      git(w.admin, "checkout", "-q", "--detach", head);
+      expect(w.approve([ID]), `busy=${busyNow}`).toMatchObject({ status: 2, code: "APPROVE_PACKET_NO_ID" });
+      // the status not 承認済み
+      const unapproved = w.push({ [APPROVAL_PACKET_PATH]: filledPacket({ d3: `\`${ID}\``, status: "未承認", expires: `\`${w.expires}\`` }) }, "unapproved (test)");
+      git(w.admin, "fetch", "-q", "origin");
+      git(w.admin, "checkout", "-q", "--detach", unapproved);
+      expect(w.approve([ID]), `busy=${busyNow}`).toMatchObject({ status: 2, code: "APPROVE_PACKET_NO_ID" });
+      // expired
+      const past = w.push(packets(utc(Date.now() - 60_000)), "expired (test)");
+      git(w.admin, "fetch", "-q", "origin");
+      git(w.admin, "checkout", "-q", "--detach", past);
+      expect(w.approve([ID]), `busy=${busyNow}`).toMatchObject({ status: 2, code: "APPROVE_PACKET_EXPIRED" });
+      expect(existsSync(w.marker)).toBe(false);
+      expect(w.starts()).toEqual([]);
+    }
+  });
+
+  it("review M1d: Remote Control up: the marker carries the packet's own expiry; over 24 h ahead: now + 24 h with a note; under 20 min: refused", () => {
+    const w = world();
+    w.switchOn();
+    w.rcUp();
+    expect(w.approve([ID])).toMatchObject({ status: 0, code: "APPROVE_RECORDED_DEFERRED" });
+    expect(readFileSync(w.marker, "utf8")).toBe(`{"approval_id": "${ID}", "expires_at": "${w.expires}"}\n`);
+    const far = world(utc(Date.now() + 30 * 3600_000));
+    far.switchOn();
+    far.rcUp();
+    const r = far.approve([ID]);
+    expect(r).toMatchObject({ status: 0, code: "APPROVE_RECORDED_DEFERRED" });
+    expect(r.stdout).toMatch(/more than 24 h ahead\): the marker gets now \+ 24 h/);
+    expect(Date.parse((JSON.parse(readFileSync(far.marker, "utf8")) as { expires_at: string }).expires_at)).toBeLessThanOrEqual(Date.now() + 86_400_000);
+    const soon = world(utc(Date.now() + 10 * 60_000));
+    soon.switchOn();
+    soon.rcUp();
+    expect(soon.approve([ID])).toMatchObject({ status: 2, code: "APPROVE_TOO_LATE" });
+    expect(existsSync(soon.marker)).toBe(false);
   });
 
   it("refuses any copy outside the root-only clone without the test world", () => {

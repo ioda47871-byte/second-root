@@ -39,10 +39,13 @@
 # next step boundary: PILOT_INTERRUPTED, exit 1, phase=after_claim (the approval may be spent: read the receipt). Press
 # Ctrl-C once and wait (a second one within the worker's grace is a hard stop by design).
 #
-# --autorun <approval id> (docs/operations/imagefirst-autorun.md): the same run, started only by imagefirst-autorun.sh inside
-#   sr-imagefirst-autorun.service (refused anywhere else: this process's own cgroup, read from the kernel, must be that
-#   service's; PILOT_AUTORUN_REFUSED). The only differences: before the preflight, root's used/<approval id> must not exist
-#   (PILOT_MARKER_USED); and right before the worker starts, it is created (atomic mkdir in root's 0700 state, never
+# --autorun <approval id> <commit> (docs/operations/imagefirst-autorun.md): the same run, started only by imagefirst-autorun.sh
+#   inside sr-imagefirst-autorun.service (refused anywhere else: this process's own cgroup, read from the kernel, must be that
+#   service's; PILOT_AUTORUN_REFUSED). The differences: root's admin clone must be clean at exactly <commit> (the commit the
+#   automatic run verified against origin); root's used/<approval id> must not exist (PILOT_MARKER_USED); the worker's clone
+#   is pinned to <commit> before the preflight (a fixed .git/config with root's origin URL, hooks / fsmonitor / credential
+#   helpers off on every git command, origin/develop = HEAD = <commit>, npm ci always); and right before the worker starts,
+#   used/<approval id> is created (atomic mkdir in root's 0700 state, never
 #   removed, as the automatic start's step 7), so the automatic run never starts the worker twice for one id. The
 #   preflight sees the same cgroup and accepts exactly that service and its timer in its timers row. Every other step,
 #   check, line and code is the manual run's.
@@ -137,11 +140,13 @@ trap on_signal INT TERM HUP
 MODE=run
 if [ "$#" -eq 1 ] && [ "$1" = --sync-clone ]; then
   MODE=sync
-elif [ "$#" -eq 2 ] && [ "$1" = --autorun ]; then
+elif [ "$#" -eq 3 ] && [ "$1" = --autorun ]; then
   MODE=autorun
   [[ "$2" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
   APPROVAL="$2"
   [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PILOT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish PILOT_ID_RESERVED 2; }
+  [[ "$3" =~ ^[0-9a-f]{40}$ ]] || { say "PILOT_SHA_INVALID: --autorun <approval id> <40-hex commit of the root-verified admin clone>"; finish PILOT_SHA_INVALID 2; }
+  AUTORUN_SHA="$3"
 else
   [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot.sh <approval id> | --sync-clone"; finish PILOT_USAGE 2; }
   [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PILOT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish PILOT_ID_INVALID 2; }
@@ -205,6 +210,15 @@ if [ "$MODE" = autorun ]; then
   if [ -n "$R" ]; then own_cgroup="$(cat -- "$R/proc/self/cgroup" 2>/dev/null || true)"; else own_cgroup="$(cat /proc/self/cgroup 2>/dev/null || true)"; fi
   [[ $'\n'"$own_cgroup"$'\n' == *$'\n'"0::/system.slice/sr-imagefirst-autorun.service"$'\n'* ]] ||
     { say "PILOT_AUTORUN_REFUSED: --autorun runs only inside sr-imagefirst-autorun.service (imagefirst-autorun.sh)"; finish PILOT_AUTORUN_REFUSED 2; }
+  # the commit is root's: the root-owned admin clone (the test world: its stand-in) must be clean and at exactly that
+  # commit, and its configured origin URL (root's, never the worker clone's .git/config) is the one fetched from
+  if [ -n "$R" ]; then ADMIN_GIT="$R$PROD_CLONE"; else ADMIN_GIT="$REPO"; fi
+  admin_head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || admin_head=""
+  admin_dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+  [ "$admin_head" = "$AUTORUN_SHA" ] && [ -z "$admin_dirty" ] ||
+    { say "PILOT_AUTORUN_SHA_MISMATCH: the admin clone is not clean at $AUTORUN_SHA"; finish PILOT_AUTORUN_SHA_MISMATCH 2; }
+  ORIGIN_URL="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || ORIGIN_URL=""
+  [[ "$ORIGIN_URL" =~ ^[A-Za-z0-9._:/@+-]+$ ]] || { say "PILOT_AUTORUN_ORIGIN_INVALID: the admin clone's origin URL is missing or unusual"; finish PILOT_AUTORUN_ORIGIN_INVALID 2; }
 fi
 
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
@@ -387,6 +401,42 @@ fi
 if [ "$MODE" = autorun ] && { [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/used/$APPROVAL" ]; }; then
   say "the automatic run's marker for $APPROVAL was already used: nothing is started"
   finish PILOT_MARKER_USED 2
+fi
+
+# ---------------------------------------------------------------- --autorun: the worker's clone pinned to root's commit
+# While Remote Control ran, the jailed Claude (the same user) could write the worker clone's .git (config: origin URL,
+# hooks, fsmonitor, filters, credential helpers; info/attributes), its node_modules and the npm hash file. Here, with Remote
+# Control stopped and no process of the worker user left, as the worker: the clone's .git/config is replaced by a fixed
+# one (root's origin URL, hooks and fsmonitor off), every git command also carries those settings on its command line,
+# the fetch names root's URL, origin/develop must be exactly root's commit, and npm ci always runs (node_modules and the
+# hash file are never trusted) with no user or global npm config. Never --force, never clean: a dirty tree stops here.
+if [ "$MODE" = autorun ]; then
+  idle_or_stop "before the clone is pinned"
+  GH=(git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
+  CONFIG_TEXT="$(printf '[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n\thooksPath = /dev/null\n\tfsmonitor = false\n[remote "origin"]\n\turl = %s\n\tfetch = +refs/heads/develop:refs/remotes/origin/develop\n' "$ORIGIN_URL")"
+  in_clone bash -c 'g=.git; [ -d "$g" ] && [ ! -L "$g" ] || exit 1
+    rm -f -- "$g/config.worktree" "$g/info/attributes" || exit 1
+    t="$(mktemp -- "$g/.sr-config.XXXXXX")" || exit 1
+    printf "%s\n" "$1" >>"$t" && mv -f -T -- "$t" "$g/config"' _ "$CONFIG_TEXT" ||
+    { say "the worker clone's git config could not be replaced (no .git directory?)"; finish PILOT_AUTORUN_CLONE 20; }
+  in_clone timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" "${GH[@]}" fetch --quiet --no-tags "$ORIGIN_URL" "+refs/heads/develop:refs/remotes/origin/develop" >/dev/null 2>&1 ||
+    { say "git fetch from root's origin URL failed"; finish PILOT_AUTORUN_FETCH 20; }
+  dirty="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --untracked-files=all 2>/dev/null)" ||
+    { say "git status failed"; finish PILOT_AUTORUN_CLONE 20; }
+  [ -z "$dirty" ] || { say "the worker's clone has changes: stopped (nothing is cleaned automatically)"; finish PILOT_AUTORUN_TREE_DIRTY 20; }
+  base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse origin/develop 2>/dev/null)" || base=""
+  [ "$base" = "$AUTORUN_SHA" ] || { say "origin/develop (${base:-?}) is not root's verified commit $AUTORUN_SHA: stopped"; finish PILOT_AUTORUN_DEVELOP_MOVED 20; }
+  in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" merge-base --is-ancestor HEAD "$AUTORUN_SHA" >/dev/null 2>&1 ||
+    { say "HEAD is not an ancestor of $AUTORUN_SHA: stopped"; finish PILOT_AUTORUN_NOT_FAST_FORWARD 20; }
+  in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" checkout --quiet --detach "$AUTORUN_SHA" >/dev/null 2>&1 ||
+    { say "git checkout failed"; finish PILOT_AUTORUN_CLONE 20; }
+  head="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse HEAD 2>/dev/null)" || head=""
+  [ "$head" = "$AUTORUN_SHA" ] || { say "HEAD is not $AUTORUN_SHA after the checkout"; finish PILOT_AUTORUN_CLONE 20; }
+  in_clone env npm_config_userconfig=/dev/null npm_config_globalconfig=/dev/null bash -c 'h="$(sha256sum package-lock.json | cut -d" " -f1)" || exit 1
+  timeout --kill-after="$2" "$3" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 || exit 1
+  mkdir -p "$(dirname "$HOME/$1")" && printf "%s\n" "$h" >"$HOME/$1"' _ "$NPM_HASH_FILE" "$KILL_AFTER" "$NPM_TIMEOUT" ||
+    { say "npm ci failed"; finish PILOT_AUTORUN_NPM 20; }
+  say "the worker's clone is pinned to root's verified commit $AUTORUN_SHA (fresh git config, npm ci)"
 fi
 
 # ---------------------------------------------------------------- 1. the preflight (read only; every row PASS)

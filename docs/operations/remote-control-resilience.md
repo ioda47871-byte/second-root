@@ -408,8 +408,8 @@ tmux の役割は pty とオーナーの覗き窓であり、通信は Remote Co
 - パイロットの前提は `claude-stop`（disable）なので、終わったあとはオーナーが `claude-start` を打つまで戻らない
 - pilot の最後で戻す変更は、排他を緩めずに、別の承認で行う
 - 今は、パイロットのあとに `claude-start` を1回打つ手順のまま
-- 提案（コードのみ、未設置）: [`imagefirst-autorun.md`](imagefirst-autorun.md) の自動実行は、自分で `claude-stop` した場合に限り、
-  EXIT trap と unit の `ExecStopPost` で必ず `claude-start` する。排他（`busy()`）は緩めない
+- 提案（コードのみ、未設置）: [`imagefirst-autorun.md`](imagefirst-autorun.md) の自動実行は、自分で `claude-stop` し、しかもその前に
+  sr-jail-claude が enable だった場合に限り、EXIT trap（または unit の `ExecStopPost`）で `claude-start` する。排他（`busy()`）は緩めない
 
 ### (iv) start-limit は緩めない
 

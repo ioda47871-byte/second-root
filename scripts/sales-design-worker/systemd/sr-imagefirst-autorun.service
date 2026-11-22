@@ -12,6 +12,9 @@
 Description=Second Root IMAGE_FIRST automatic run (one owner-approved pilot per marker)
 After=network-online.target
 Wants=network-online.target
+# Never together with the old hourly automatic start (it reads the same marker): starting this unit stops that service and
+# its timer if they run (the script, the preflight and imagefirst-approve.sh also refuse while either is enabled / active).
+Conflicts=sr-imagefirst-autostart.service sr-imagefirst-autostart.timer
 # No Conflicts= with sr-jail-claude / sr-design-cycle: the script stops Remote Control itself (admin.sh claude-stop), waits
 # until the worker user is idle, and refuses while a design cycle runs.
 
@@ -19,11 +22,13 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/
 ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh
-# Remote Control started again if the run itself could not (a SIGKILL after TimeoutStopSec, a crash): only when the
-# script's root-owned flag says it had stopped it; one attempt.
-ExecStopPost=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh --restore
-# claude-stop 150 s + the idle wait 180 s + the clone sync 1800 s (+ 200 s) + the pilot 6600 s (+ 200 s) + claude-start 150 s
-TimeoutStartSec=9600
+# Remote Control started again if the run itself could not (a SIGKILL after TimeoutStopSec, a crash, or workers still left
+# at the end): only when the script's root-owned flag says it had stopped it and that it was enabled before; one attempt.
+# "+": without this unit's sandboxing (admin.sh claude-start must work even if the hardening below gets in its way); it
+# still runs in this unit's cgroup, which --restore requires.
+ExecStopPost=+/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh --restore
+# 2 x ls-remote 210 s + claude-stop 150 s + the idle wait 180 s + the pilot 8400 s (+ 200 s) + claude-start 150 s
+TimeoutStartSec=10200
 # SIGTERM goes to the script only (KillMode=mixed); it passes it on once to the pilot, which passes it on to the worker or the
 # audit and waits for its record (at most 90 s + the steps' kill-after); then the review-ready file and claude-start
 # (150 s). TimeoutStopSec is longer than all of that.

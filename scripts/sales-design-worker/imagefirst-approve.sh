@@ -10,7 +10,10 @@
 # unexpected refuses; no marker is written):
 #   1. the id: hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN, not the dummy PoC's reserved date 00000000
 #   2. the production copy: this script root's and writable by nobody else up to /; the admin clone clean, and after a
-#      fetch of origin develop its HEAD is origin/develop (else the exact checkout line is printed; it never updates itself)
+#      fetch of origin develop its HEAD is origin/develop (else the exact checkout line is printed; it never updates itself);
+#      then, in that root-owned clone at that commit, the id's own packet has §10 状態 承認済み and exactly this id in its
+#      "<d> の承認 ID" row (plain line patterns, no parser); its 期限 row, when readable, is the packet's expiry (past:
+#      refused; the marker carries it when within 24 h, and the worker's precheck must report the same)
 #   3. the owner's switch /etc/sr-design-worker/imagefirst-autostart.json exists and says {"enabled": true} (else the
 #      lines to turn it on are printed): a marker without the switch would do nothing, so it is not written
 #   4. the old hourly automatic start's units neither active nor enabled (it reads the same marker and would run the
@@ -24,7 +27,8 @@
 #      20 min left is accepted; the marker then carries that expiry.
 #      While Remote Control (or anything of the worker user) runs, which is the usual case, NOTHING runs as the worker
 #      (the same rule as every other root script: no worker-controlled code outside the jail while the jail's processes
-#      live): the marker is recorded with a 24 h window and every check is made at run time, with Remote Control stopped:
+#      live): the marker gets the packet's own expiry (else now + 24 h, with a note) and every check is made at run time,
+#      with Remote Control stopped and the worker's clone pinned to root's verified commit:
 #      the pilot's preflight (the worker's precheck for this id, the 20 min rule, no prior run), then the worker's own
 #      checks and claim. The marker names only the id the owner typed; it grants nothing the packet does not.
 #   7. the marker written atomically (a temporary file in the same directory, 0644 root's, renamed over the old one) as
@@ -253,6 +257,39 @@ if [ "$admin_head" != "$admin_base" ]; then
 fi
 say "admin clone $PROD_CLONE at $admin_head (clean, = origin/develop)"
 
+# ---------------------------------------------------------------- 2b. the packet for this id, read from root's own admin clone
+# Root reads only its own clone (clean, = origin/develop, just verified), at that commit, and checks plain lines with bash
+# patterns (no parser): the id's own packet (d3: the p3 packet, d4: the d4 packet) has §10 with 状態 承認済み and this exact
+# id in its "<d> の承認 ID" row; its 期限 row, when it is a plain UTC time, is the packet's own expiry. The worker's
+# readApprovalPacket stays the real check (at run time, and in the precheck below when the worker user is idle).
+case "$APPROVAL" in
+  hoshigama-imagefirst-d3-*) PACKET_PATH=docs/design/image-first-hoshigama-p3-packet.md; KEY=d3 ;;
+  *) PACKET_PATH=docs/design/image-first-hoshigama-d4-packet.md; KEY=d4 ;;
+esac
+packet="$(git -C "$ADMIN_GIT" show "$admin_head:$PACKET_PATH" 2>/dev/null)" || packet=""
+section="${packet#*$'\n'"## 10. 承認欄"}"
+[ -n "$packet" ] && [ "$section" != "$packet" ] || { say "APPROVE_PACKET_MISSING: $PACKET_PATH (with its §10) is not in the admin clone at $admin_head"; finish APPROVE_PACKET_MISSING 2; }
+re_id='^\| '"$KEY"' の承認 ID[^|]*\| +`?([a-z0-9-]+)`? +\|$'
+re_status='^\| 状態[^|]*\| +`?承認済み`? +\|$'
+re_expires='^\| 期限[^|]*\| +`?([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)`? +\|$'
+id_ok=0
+status_ok=0
+PACKET_EXPIRES=""
+while IFS= read -r line; do
+  [[ "$line" =~ $re_id ]] && [ "${BASH_REMATCH[1]}" = "$APPROVAL" ] && id_ok=1
+  [[ "$line" =~ $re_status ]] && status_ok=1
+  [[ "$line" =~ $re_expires ]] && PACKET_EXPIRES="${BASH_REMATCH[1]}"
+done <<<"$section"
+[ "$id_ok" = 1 ] && [ "$status_ok" = 1 ] ||
+  { say "APPROVE_PACKET_NO_ID: $PACKET_PATH §10 at $admin_head is not 承認済み for exactly $APPROVAL (merge the approved packet first)"; finish APPROVE_PACKET_NO_ID 2; }
+if [ -n "$PACKET_EXPIRES" ]; then
+  pexp_s="$(date -u -d "$PACKET_EXPIRES" +%s 2>/dev/null)" || pexp_s=""
+  if ! [[ "$pexp_s" =~ ^[0-9]+$ ]]; then PACKET_EXPIRES=""
+  elif [ "$pexp_s" -lt "$(now)" ]; then say "APPROVE_PACKET_EXPIRED: the packet's expiry $PACKET_EXPIRES has passed"; finish APPROVE_PACKET_EXPIRED 2
+  fi
+fi
+say "packet $PACKET_PATH at $admin_head: 承認済み for $APPROVAL, expiry ${PACKET_EXPIRES:-unreadable}"
+
 # ---------------------------------------------------------------- 3. the owner's switch must be on
 if [ ! -e "$SWITCH" ] && [ ! -L "$SWITCH" ]; then
   say "APPROVE_SWITCH_OFF: the switch is absent, so the automatic run would do nothing. Turn it on (once), then this command again:"
@@ -308,7 +345,12 @@ CODE=APPROVE_RECORDED_DEFERRED
 EXPIRES=""
 if busy; then
   say "the worker user is busy ($BUSY_WHY): nothing runs as the worker now; every check is made at run time, with Remote Control stopped"
-  EXPIRES="$(date -u -d "@$(( $(now) + MAX_WINDOW ))" +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$PACKET_EXPIRES" ] && [ $((pexp_s - $(now))) -le "$MAX_WINDOW" ]; then
+    EXPIRES="$PACKET_EXPIRES"
+  else
+    EXPIRES="$(date -u -d "@$(( $(now) + MAX_WINDOW ))" +%Y-%m-%dT%H:%M:%SZ)"
+    say "note: the packet's expiry is ${PACKET_EXPIRES:-unreadable}${PACKET_EXPIRES:+ (more than 24 h ahead)}: the marker gets now + 24 h; the worker keeps the packet's own expiry"
+  fi
 else
   # the automatic start's and the pilot's locks: no poll, pilot or cycle uses the worker's clone meanwhile
   exec 9>"$STATE/autostart.lock"
@@ -363,6 +405,11 @@ else
     finish APPROVE_PRECHECK_UNEXPECTED 2
   fi
   EXPIRES="${BASH_REMATCH[2]}"
+  # the worker's answer must agree with the packet root read from its own clone
+  if [ -n "$PACKET_EXPIRES" ] && [ "$EXPIRES" != "$PACKET_EXPIRES" ]; then
+    say "APPROVE_PRECHECK_UNEXPECTED: the worker reports the expiry $EXPIRES, the packet at $admin_head says $PACKET_EXPIRES: no marker"
+    finish APPROVE_PRECHECK_UNEXPECTED 2
+  fi
   CODE=APPROVE_RECORDED
 fi
 

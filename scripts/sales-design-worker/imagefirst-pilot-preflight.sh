@@ -272,7 +272,34 @@ for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE
 done
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
-if [ ! -d "$CLONE" ]; then
+if [ "$IN_AUTORUN" = 1 ]; then
+  # inside the automatic run: root's admin clone (clean) names the commit and the origin URL; the worker clone's own
+  # .git/config is not used for either, every git command carries hooks / fsmonitor / credential helpers off, and
+  # HEAD = origin/develop must be exactly root's commit (the pilot pinned it just before)
+  if [ -n "$R" ]; then ADMIN_GIT="$R/root/sr-capture-admin"; else ADMIN_GIT="$REPO"; fi
+  GH=(git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
+  admin_head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || admin_head=""
+  admin_dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+  origin_url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || origin_url=""
+  if ! [[ "$admin_head" =~ ^[0-9a-f]{40}$ ]] || [ -n "$admin_dirty" ] || ! [[ "$origin_url" =~ ^[A-Za-z0-9._:/@+-]+$ ]]; then
+    row clone FAIL "root's admin clone is not clean at a readable commit, or its origin URL is unusual"
+  elif [ ! -d "$CLONE" ]; then
+    row clone FAIL "$CLONE is missing"
+  elif ! in_clone timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" "${GH[@]}" fetch --quiet --no-tags "$origin_url" "+refs/heads/develop:refs/remotes/origin/develop" >/dev/null 2>&1; then
+    row clone FAIL "git fetch from root's origin URL failed (as $WORKER_USER)"
+  elif ! dirty="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --untracked-files=all 2>/dev/null)" || [ -n "$dirty" ]; then
+    row clone FAIL "the clone has changes, or git status failed"
+  else
+    head="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse HEAD 2>/dev/null)" || head=""
+    base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse origin/develop 2>/dev/null)" || base=""
+    if [ "$head" = "$admin_head" ] && [ "$base" = "$admin_head" ]; then
+      row clone PASS "clean, HEAD = origin/develop = root's verified $head"
+      CLONE_OK=1
+    else
+      row clone FAIL "HEAD ${head:-?} / origin/develop ${base:-?} are not root's verified $admin_head"
+    fi
+  fi
+elif [ ! -d "$CLONE" ]; then
   row clone FAIL "$CLONE is missing"
 elif ! in_clone timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" git fetch --quiet --no-tags origin "+refs/heads/develop:refs/remotes/origin/develop" >/dev/null 2>&1; then
   row clone FAIL "git fetch failed (as $WORKER_USER)"
