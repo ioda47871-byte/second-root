@@ -635,31 +635,34 @@ describe("rc-diagnose.sh: each cause", () => {
     expect(res.codes).not.toContain("RC_MULTIPLE_SERVERS");
   });
 
-  it("no value of any parsed option is ever printed (a canary in each)", () => {
-    for (const extra of [
-      [`--spawn=${CANARY}`],
-      ["--spawn", CANARY],
-      ["--name", CANARY],
-      [`--name=${CANARY}`],
-      ["--session-id", CANARY],
-      [`--session-id=${CANARY}`],
-      ["--continue", CANARY],
-      ["--no-create-session-in-dir", CANARY],
-      ["--capacity", CANARY],
-      [CANARY],
-    ]) {
-      const w = healthy();
-      w.procs![2]!.argv = [...RC_ARGV, ...extra];
-      const res = run(w);
-      expectSafe(res);
-      if (extra[0]!.startsWith("--spawn")) expect(res.out).toContain("rc-diagnose: RC_ARGV_SPAWN=other\n");
-    }
-    for (const argv of [["claude", `--remote-control=${CANARY}`], ["claude", `--rc=${CANARY}`], ["claude", "--remote-control", CANARY]]) {
+  // One test per canary (13 script runs in one test went over the 5 s test timeout on a busy CI runner).
+  it.each([
+    [`--spawn=${CANARY}`],
+    ["--spawn", CANARY],
+    ["--name", CANARY],
+    [`--name=${CANARY}`],
+    ["--session-id", CANARY],
+    [`--session-id=${CANARY}`],
+    ["--continue", CANARY],
+    ["--no-create-session-in-dir", CANARY],
+    ["--capacity", CANARY],
+    [CANARY],
+  ])("no value of any parsed option is ever printed (a canary in each): remote-control argument set %#", (...extra: string[]) => {
+    const w = healthy();
+    w.procs![2]!.argv = [...RC_ARGV, ...extra];
+    const res = run(w);
+    expectSafe(res);
+    if (extra[0]!.startsWith("--spawn")) expect(res.out).toContain("rc-diagnose: RC_ARGV_SPAWN=other\n");
+  });
+
+  it.each([[["claude", `--remote-control=${CANARY}`]], [["claude", `--rc=${CANARY}`]], [["claude", "--remote-control", CANARY]]])(
+    "no value of any parsed option is ever printed (a canary in each): %j",
+    (argv: string[]) => {
       const w = healthy();
       w.procs![2] = { comm: "claude", argv, start: NOW - 3 * H, cwd: `/home/${CANARY}` };
       expectSafe(run(w));
-    }
-  });
+    },
+  );
 
   it("usage: any argument is refused with exit 2; a copy outside the admin clone needs the test root", () => {
     const res = run(healthy(), ["--fix"]);
