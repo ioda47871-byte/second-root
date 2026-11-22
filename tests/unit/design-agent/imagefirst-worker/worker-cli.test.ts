@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { runBounded } from "@/lib/design-agent/bounded-process";
-import { tsEntry } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { IMAGEFIRST_ALLOWLIST, PRECHECK_MIN_LEFT_MS, tsEntry } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { ownJailUnit } from "@/lib/design-agent/imagefirst-worker/jail-state";
+import { MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket } from "@/lib/design-agent/phase2f-live/full-page-call";
 
 // Issue #302 P0 (PR #301 review L2): the IMAGE_FIRST worker CLI started as a real process, in a scratch HOME, and the
-// split-UTF-8 fix of runBounded. The CLI never gets an approved packet here: every run refuses (or finds no job) before
-// anything is claimed or invoked. No Codex, no model, no network.
+// split-UTF-8 fix of runBounded. Every run here refuses (or finds no job) before anything is claimed or invoked; when the
+// committed packet is approved and inside its window (a clean origin/develop checkout, e.g. CI on develop), the real run is
+// not started at all and only the write-free precheck runs. No Codex, no model, no network.
 
 const REPO = resolve(__dirname, "../../../..");
 const CLI = join(REPO, "scripts/sales-design-worker/imagefirst-worker.ts");
@@ -47,18 +49,42 @@ function nothingUsed(home: string) {
  * with the CLI's own reader (the spawned CLI runs in this process's cgroup): inside a requester jail unit (the suite run by
  * the jailed Claude or `admin.sh run`) RUN_INSIDE_JAIL_UNIT, where /proc/self/cgroup cannot be read OWN_CGROUP_UNREADABLE.
  */
-async function expectedGate(): Promise<{ status: string; code: string; exit: number }> {
+type CliOut = { status: string; code: string | null; invoked: false; approval_id?: string; expires_at?: string };
+/** The exact expected output of the run (or "skip": never start it) and of --precheck, with their exit codes. */
+type Gate = { run: { exit: number; out: CliOut } | "skip"; precheck: { exit: number; out: CliOut } | "skip"; why: string };
+const both = (exit: number, out: CliOut, precheckExit = exit): Gate => ({ run: { exit, out }, precheck: { exit: precheckExit, out }, why: out.code ?? out.status });
+/** Within this distance of a gate boundary the test and the worker could read the clock on different sides: skip. */
+const BOUNDARY_MARGIN_MS = 60_000;
+
+async function expectedGate(): Promise<Gate> {
+  const refused = (code: string, approvalId?: string): CliOut => ({ status: "refused", code, invoked: false, ...(approvalId ? { approval_id: approvalId } : {}) });
   const unit = await ownJailUnit();
-  if (unit === "unknown") return { status: "refused", code: "OWN_CGROUP_UNREADABLE", exit: 2 };
-  if (unit !== null) return { status: "refused", code: "RUN_INSIDE_JAIL_UNIT", exit: 2 };
+  if (unit === "unknown") return both(2, refused("OWN_CGROUP_UNREADABLE"));
+  if (unit !== null) return both(2, refused("RUN_INSIDE_JAIL_UNIT"));
   const git = (...a: string[]) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" });
   const head = git("rev-parse", "HEAD");
   const base = git("rev-parse", "origin/develop");
-  if (head.status !== 0 || base.status !== 0) return { status: "refused", code: "COMMIT_UNREADABLE", exit: 2 };
-  if (head.stdout.trim() !== base.stdout.trim()) return { status: "refused", code: "NOT_ON_ORIGIN_DEVELOP", exit: 2 };
-  if (git("status", "--porcelain", "--untracked-files=all").stdout !== "") return { status: "refused", code: "TREE_DIRTY", exit: 2 };
-  // on origin/develop and clean: the committed packet is unapproved (PR #300 is owner-merge-only)
-  return { status: "no_job", code: "PACKET_NOT_APPROVED", exit: 0 };
+  if (head.status !== 0 || base.status !== 0) return both(2, refused("COMMIT_UNREADABLE"));
+  if (head.stdout.trim() !== base.stdout.trim()) return both(2, refused("NOT_ON_ORIGIN_DEVELOP"));
+  if (git("status", "--porcelain", "--untracked-files=all").stdout !== "") return both(2, refused("TREE_DIRTY"));
+  // On origin/develop and clean (CI's push runs on develop): a run by hand reads the d3 row's packet as committed. Since
+  // PR #315 that packet is approved, so the answer depends on its expiry (Issue #302: the test used to assume an
+  // unapproved packet and failed on every develop push). Refusals after the id check carry approval_id (cycle.ts refuse).
+  // Inside the window the real cycle would claim and invoke: the run is never started by this test.
+  const shown = git("show", `${head.stdout.trim()}:${IMAGEFIRST_ALLOWLIST.packet.path}`);
+  const packet = shown.status === 0 ? readApprovalPacket(Buffer.from(shown.stdout, "utf8"), IMAGEFIRST_ALLOWLIST.packet) : null;
+  if (!packet) return both(0, { status: "no_job", code: "PACKET_NOT_APPROVED", invoked: false }, 3);
+  const id = packet.approvalIds.d3 ?? "";
+  const expires = parseUtcInstant(packet.expires);
+  if (expires === null) return both(2, refused("APPROVAL_EXPIRY_INVALID", id));
+  const left = expires - Date.now();
+  const near = [0, PRECHECK_MIN_LEFT_MS, MAX_APPROVAL_WINDOW_MS].some((edge) => Math.abs(left - edge) < BOUNDARY_MARGIN_MS);
+  if (near) return { run: "skip", precheck: "skip", why: "within a minute of a gate boundary" };
+  if (left < 0) return both(2, refused("APPROVAL_EXPIRED", id));
+  if (left > MAX_APPROVAL_WINDOW_MS) return both(2, refused("APPROVAL_EXPIRY_TOO_FAR", id));
+  // inside the window: the run would claim and invoke (skipped); the precheck answers without writing
+  if (left < PRECHECK_MIN_LEFT_MS) return { run: "skip", precheck: { exit: 2, out: refused("APPROVAL_EXPIRES_SOON", id) }, why: "inside the window" };
+  return { run: "skip", precheck: { exit: 0, out: { status: "would_run", code: null, invoked: false, approval_id: id, expires_at: packet.expires } }, why: "inside the window" };
 }
 
 describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing invoked)", () => {
@@ -81,11 +107,17 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
   });
 
   it("this checkout is not an approved worker clone: the commit gate refuses (e.g. NOT_ON_ORIGIN_DEVELOP), audit 0600, nothing claimed", async () => {
-    const want = await expectedGate();
+    const gate = await expectedGate();
+    if (gate.run === "skip") {
+      // never start a real run from a test (inside an approval window it would claim and invoke)
+      console.warn(`worker-cli: the real run is not started by this test (${gate.why})`);
+      return;
+    }
+    const want = gate.run;
     const r = runCli([]);
     expect(r.status).toBe(want.exit);
-    expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
-    if (want.code === "RUN_INSIDE_JAIL_UNIT" || want.code === "OWN_CGROUP_UNREADABLE") {
+    expect(r.out).toEqual(want.out);
+    if (want.out.code === "RUN_INSIDE_JAIL_UNIT" || want.out.code === "OWN_CGROUP_UNREADABLE") {
       // refused by the jail guard, before the state dir, the lock and the audit line
       expect(readdirSync(r.home)).toEqual([]);
       return;
@@ -101,10 +133,14 @@ describe("Issue #302 P0: the IMAGE_FIRST worker CLI as a real process (nothing i
 
 describe("Issue #302 P1: the worker's --precheck as a real process (no lock, no audit, no write)", () => {
   it("answers the same gates with the precheck exit (2 refused / 3 no job) and creates nothing in HOME", async () => {
-    const want = await expectedGate();
+    const gate = await expectedGate();
+    if (gate.precheck === "skip") {
+      console.warn(`worker-cli: precheck not compared (${gate.why})`);
+      return;
+    }
     const r = runCli(["--precheck"]);
-    expect(r.status).toBe(want.status === "no_job" ? 3 : 2);
-    expect(r.out).toEqual({ status: want.status, code: want.code, invoked: false });
+    expect(r.status).toBe(gate.precheck.exit);
+    expect(r.out).toEqual(gate.precheck.out);
     // nothing at all under the scratch HOME: no state dir, no audit line, no runs dir
     expect(readdirSync(r.home)).toEqual([]);
   });
