@@ -52,6 +52,19 @@
 - `comp-lane.ts` で PC/SP を検査し、`comp-copy.ts` で文章を監査し、`package-local.ts` → `import-local.ts`。
 - 管理画面で品質承認（オーナー）→ 営業文の下書き → 送信承認（オーナー）→ 手で送る。
 
+## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
+
+1. 候補を選ぶ（営業エージェントの run で登録済みの候補。新しく作らない）。
+2. `~/second-root-shops/<shop_id>/facts-pack.json` を書き、**オーナーに値を 1 つずつ確認してもらう**（workflow §2）。
+3. `second-root-design-director` スキルで店に固有の方向性を決め、依頼 `~/sr-runs/requests/<依頼 ID>.json`（`kind: real_shop`、方向性、facts の参照と SHA-256、
+   `max_images: 6`、`codex_runs: 1`）を置く。依頼 ID は二度と使えない。あとは root の timer が上限の中で動かす（A）。
+4. 届いたら（`research.ts inbox-scan` と同じ流れで受け取り）、PC と SP の画像を**参考として**見て、写真なしの頁 `comp/` を書く（workflow §3。
+   画像そのものを頁に入れない。画像に描かれた商品・店内・人を事実として書かない。文字は facts pack の値だけ）。
+5. `comp-lane.ts` で PC1440 / SP390 を描画し、全頁を最後まで見る。`comp-copy.ts --audit` が `owner_review` に届くまで直す。
+6. `package-local.ts` → 事実の登録（workflow §5）→ `import-local.ts --facts-from-store`（ローカル）。hosted は runbook B-5a の後だけ。
+7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
+8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
+
 ## 3. オーナーの判断・承認が要るもの
 
 1. **A の設置**（一度だけ）: #326 → #328 → A の PR のマージ、`check` → `apply` → `standing`（上限の値）→ `enable-timer`。
