@@ -34,8 +34,8 @@
 #      then admin.sh claude-stop, then (bounded) until the automatic start's busy() says idle: the jailed Claude stopped
 #      and disabled, the design cycle stopped, no process of the worker user
 #   7. step 5's check again (the same commit, else no pilot), then imagefirst-pilot.sh --autorun <id> <commit>: the
-#      worker's clone pinned to that commit (a fixed git config with root's origin URL, hooks / fsmonitor / credential
-#      helpers off, npm ci always), then the manual pilot's every check, step and code, plus root's used/<id> created right
+#      a fresh clone of root's origin URL at that commit in a new root-chosen directory (the reused clone is never used; no
+#      user / system git config; npm ci), then the manual pilot's every check, step and code, plus root's used/<id> created right
 #      before the worker starts (the worker never starts twice for one id; its own claim and the entry's ledger as before)
 #   8. always (an EXIT trap: success, failure, a stop signal): the review-ready file (only while no worker process runs),
 #      then admin.sh claude-start if the jailed Claude was enabled before (else it is left stopped), then the restore flag
@@ -86,9 +86,9 @@ IDLE_WAIT=180
 IDLE_STEP=3
 # root's ls-remote of origin's develop (twice: before the attempt and after the idle wait)
 ADMIN_FETCH_TIMEOUT=180
-# the pilot: the clone pinned (fetch 210 s + git 6 x 90 s + npm ci, always, 930 s) + preflight (~15 min worst) + worker
-# 1890 s + re-send + dry run 630 s + audit 2490 s
-PILOT_TIMEOUT=8400
+# the pilot: the fresh clone (clone 630 s + git 4 x 90 s + npm ci, always, 930 s) + preflight (~15 min worst) + worker
+# 1890 s + re-send 630 s + dry run 630 s + audit 2490 s
+PILOT_TIMEOUT=9000
 # a stopped pilot passes the stop on and waits for the worker (90 s) or the audit (90 s) to end
 PILOT_KILL_AFTER=200
 MAX_WINDOW=86400

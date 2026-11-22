@@ -9,6 +9,9 @@ const ALLOWED = new Set([
   "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
   "CODEX_HOME", "PLAYWRIGHT_BROWSERS_PATH", "PLAYWRIGHT_CHROMIUM_EXECUTABLE",
   "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE",
+  // DEV-302 (the IMAGE_FIRST automatic run): set to /dev/null and 1 by root, so a child git reads no user / system config.
+  // Passing them on can only narrow what git loads.
+  "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
 ]);
 
 export function childEnvironment(base: Record<string, string | undefined>, extra: Record<string, string> = {}): NodeJS.ProcessEnv {

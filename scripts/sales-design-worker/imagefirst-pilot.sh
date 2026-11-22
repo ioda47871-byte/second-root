@@ -42,9 +42,10 @@
 # --autorun <approval id> <commit> (docs/operations/imagefirst-autorun.md): the same run, started only by imagefirst-autorun.sh
 #   inside sr-imagefirst-autorun.service (refused anywhere else: this process's own cgroup, read from the kernel, must be that
 #   service's; PILOT_AUTORUN_REFUSED). The differences: root's admin clone must be clean at exactly <commit> (the commit the
-#   automatic run verified against origin); root's used/<approval id> must not exist (PILOT_MARKER_USED); the worker's clone
-#   is pinned to <commit> before the preflight (a fixed .git/config with root's origin URL, hooks / fsmonitor / credential
-#   helpers off on every git command, origin/develop = HEAD = <commit>, npm ci always); and right before the worker starts,
+#   automatic run verified against origin); root's used/<approval id> must not exist (PILOT_MARKER_USED); the reused clone
+#   is never used: a fresh clone at a new root-chosen path, from root's origin URL, at exactly <commit>, with no user or
+#   system git config, status --ignored empty, then npm ci; the preflight, the worker run, the re-send and the audit use
+#   it (the steps below); and right before the worker starts,
 #   used/<approval id> is created (atomic mkdir in root's 0700 state, never
 #   removed, as the automatic start's step 7), so the automatic run never starts the worker twice for one id. The
 #   preflight sees the same cgroup and accepts exactly that service and its timer in its timers row. Every other step,
@@ -89,6 +90,8 @@ WORKER_TIMEOUT=1800
 WORKER_KILL_AFTER=90
 # the audit dry run: verify and plan only
 DRY_RUN_TIMEOUT=600
+# --autorun: the fresh clone of the whole repository (more than a fetch)
+CLONE_TIMEOUT=600
 # the audit: at most 3 calls of 10 min each, plus the checks and the record
 AUDIT_TIMEOUT=2400
 AUDIT_KILL_AFTER=90
@@ -370,8 +373,17 @@ AS_WORKER=(setpriv --reuid="$worker_uid" --regid="$worker_gid" --init-groups --r
 for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
   if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
 done
+# --autorun: never the reused clone (its index, objects, ignored files and the worker's own git config may have been planted
+# while Remote Control ran): a fresh clone at a root-chosen new path, and every git of the worker without the user's or
+# the system's git config (the worker's own git, started by node, gets the same variables: worker/env.ts passes them on)
+if [ "$MODE" = autorun ]; then
+  AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1)
+  AS_HOME=("${AS_WORKER[@]}" bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$WORKER_HOME")
+  FRESH="$WORKER_HOME/imagefirst/autorun-$APPROVAL-$(date -u +%Y%m%dT%H%M%SZ)"
+  CLONE="$FRESH"
+fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
-[ -d "$CLONE" ] || { say "PILOT_STOP_NO_CLONE: $CLONE is missing"; finish PILOT_STOP_NO_CLONE 20; }
+[ "$MODE" = autorun ] || [ -d "$CLONE" ] || { say "PILOT_STOP_NO_CLONE: $CLONE is missing"; finish PILOT_STOP_NO_CLONE 20; }
 
 # ---------------------------------------------------------------- --sync-clone: the automatic start's step 5, nothing else
 if [ "$MODE" = sync ]; then
@@ -403,40 +415,46 @@ if [ "$MODE" = autorun ] && { [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/use
   finish PILOT_MARKER_USED 2
 fi
 
-# ---------------------------------------------------------------- --autorun: the worker's clone pinned to root's commit
-# While Remote Control ran, the jailed Claude (the same user) could write the worker clone's .git (config: origin URL,
-# hooks, fsmonitor, filters, credential helpers; info/attributes), its node_modules and the npm hash file. Here, with Remote
-# Control stopped and no process of the worker user left, as the worker: the clone's .git/config is replaced by a fixed
-# one (root's origin URL, hooks and fsmonitor off), every git command also carries those settings on its command line,
-# the fetch names root's URL, origin/develop must be exactly root's commit, and npm ci always runs (node_modules and the
-# hash file are never trusted) with no user or global npm config. Never --force, never clean: a dirty tree stops here.
+# ---------------------------------------------------------------- --autorun: a fresh clone at root's commit
+# While Remote Control ran, the jailed Claude (the same user) could plant state in the reused clone (its .git config,
+# hooks, index flags such as skip-worktree, forged objects or alternates, ignored files, node_modules) and in the worker's
+# home (~/.gitconfig and its includes, ~/.config/git/config and attributes). So the automatic run never uses the reused
+# clone: with Remote Control stopped and no process of the worker user left, as the worker, a NEW directory at a path root
+# chose (~/imagefirst/autorun-<id>-<UTC>, created with mkdir: never a link, never one that exists), `git clone --no-local
+# --no-checkout` from root's origin URL (every object received and checked by git, nothing shared), origin/develop must be
+# exactly root's commit, `checkout --detach` it, HEAD = it, and `git status --ignored` prints nothing; then npm ci (no user or
+# global npm config). Every git runs with GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 (in AS_WORKER) and the -c settings
+# below. Old fresh clones: only real directories named autorun-hoshigama-imagefirst-* directly under ~/imagefirst; the
+# newest one is kept (for a look afterwards), the older ones are removed, by the worker, while this run holds the locks
+# with Remote Control stopped (no run can be using them). Nothing else is ever removed. The worker run, the re-send and
+# the audit below all use the fresh clone; the manual pilot keeps ~/imagefirst/second-root.
 if [ "$MODE" = autorun ]; then
-  idle_or_stop "before the clone is pinned"
-  GH=(git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
-  CONFIG_TEXT="$(printf '[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n\thooksPath = /dev/null\n\tfsmonitor = false\n[remote "origin"]\n\turl = %s\n\tfetch = +refs/heads/develop:refs/remotes/origin/develop\n' "$ORIGIN_URL")"
-  in_clone bash -c 'g=.git; [ -d "$g" ] && [ ! -L "$g" ] || exit 1
-    rm -f -- "$g/config.worktree" "$g/info/attributes" || exit 1
-    t="$(mktemp -- "$g/.sr-config.XXXXXX")" || exit 1
-    printf "%s\n" "$1" >>"$t" && mv -f -T -- "$t" "$g/config"' _ "$CONFIG_TEXT" ||
-    { say "the worker clone's git config could not be replaced (no .git directory?)"; finish PILOT_AUTORUN_CLONE 20; }
-  in_clone timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" "${GH[@]}" fetch --quiet --no-tags "$ORIGIN_URL" "+refs/heads/develop:refs/remotes/origin/develop" >/dev/null 2>&1 ||
-    { say "git fetch from root's origin URL failed"; finish PILOT_AUTORUN_FETCH 20; }
-  dirty="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --untracked-files=all 2>/dev/null)" ||
-    { say "git status failed"; finish PILOT_AUTORUN_CLONE 20; }
-  [ -z "$dirty" ] || { say "the worker's clone has changes: stopped (nothing is cleaned automatically)"; finish PILOT_AUTORUN_TREE_DIRTY 20; }
-  base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse origin/develop 2>/dev/null)" || base=""
+  idle_or_stop "before the fresh clone"
+  GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
+  "${AS_HOME[@]}" bash -c 'base="$HOME/imagefirst"; p="$1"
+    [ -d "$base" ] && [ ! -L "$base" ] || exit 3
+    case "$p" in "$base"/autorun-hoshigama-imagefirst-d[34]-*) ;; *) exit 3 ;; esac
+    find "$base" -mindepth 1 -maxdepth 1 -type d -name "autorun-hoshigama-imagefirst-d[34]-*" -printf "%T@ %p\n" | sort -rn | tail -n +2 | cut -d" " -f2- |
+      while IFS= read -r d; do rm -rf -- "$d"; done
+    if [ -e "$p" ] || [ -L "$p" ]; then exit 4; fi
+    mkdir -m 700 -- "$p"' _ "$FRESH" 8>&- 9>&- ||
+    { say "the fresh clone's directory could not be made (no ~/imagefirst directory, a link, or it exists)"; finish PILOT_AUTORUN_CLONE 20; }
+  "${AS_HOME[@]}" timeout --kill-after="$KILL_AFTER" "$CLONE_TIMEOUT" "${GH[@]}" clone --quiet --no-local --no-checkout --no-tags --single-branch --branch develop -- "$ORIGIN_URL" "$FRESH" >/dev/null 2>&1 8>&- 9>&- ||
+    { say "git clone from root's origin URL failed"; finish PILOT_AUTORUN_FETCH 20; }
+  base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse refs/remotes/origin/develop 2>/dev/null)" || base=""
   [ "$base" = "$AUTORUN_SHA" ] || { say "origin/develop (${base:-?}) is not root's verified commit $AUTORUN_SHA: stopped"; finish PILOT_AUTORUN_DEVELOP_MOVED 20; }
-  in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" merge-base --is-ancestor HEAD "$AUTORUN_SHA" >/dev/null 2>&1 ||
-    { say "HEAD is not an ancestor of $AUTORUN_SHA: stopped"; finish PILOT_AUTORUN_NOT_FAST_FORWARD 20; }
   in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" checkout --quiet --detach "$AUTORUN_SHA" >/dev/null 2>&1 ||
     { say "git checkout failed"; finish PILOT_AUTORUN_CLONE 20; }
   head="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse HEAD 2>/dev/null)" || head=""
   [ "$head" = "$AUTORUN_SHA" ] || { say "HEAD is not $AUTORUN_SHA after the checkout"; finish PILOT_AUTORUN_CLONE 20; }
-  in_clone env npm_config_userconfig=/dev/null npm_config_globalconfig=/dev/null bash -c 'h="$(sha256sum package-lock.json | cut -d" " -f1)" || exit 1
-  timeout --kill-after="$2" "$3" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 || exit 1
-  mkdir -p "$(dirname "$HOME/$1")" && printf "%s\n" "$h" >"$HOME/$1"' _ "$NPM_HASH_FILE" "$KILL_AFTER" "$NPM_TIMEOUT" ||
+  extra="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --ignored --untracked-files=all 2>/dev/null)" ||
+    { say "git status failed"; finish PILOT_AUTORUN_CLONE 20; }
+  [ -z "$extra" ] || { say "the fresh clone is not exactly the commit (changed, untracked or ignored files): stopped"; finish PILOT_AUTORUN_TREE_DIRTY 20; }
+  in_clone env npm_config_userconfig=/dev/null npm_config_globalconfig=/dev/null timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ||
     { say "npm ci failed"; finish PILOT_AUTORUN_NPM 20; }
-  say "the worker's clone is pinned to root's verified commit $AUTORUN_SHA (fresh git config, npm ci)"
+  # where the preflight finds it (root's own file in root's 0700 state; the preflight checks its form)
+  printf '%s\n' "$FRESH" >"$STATE/autorun-clone"
+  say "a fresh clone at root's verified commit $AUTORUN_SHA (no user git config, status --ignored empty, npm ci)"
 fi
 
 # ---------------------------------------------------------------- 1. the preflight (read only; every row PASS)
@@ -515,6 +533,25 @@ review="$(grep -a '^imagefirst-worker: review ' "$WORK/err" | tail -n 1 | tr -d 
 say "hand-off: $(printf '%s' "${review:-<no line>}" | redact)"
 if [[ "$review" == *'"status":"delivered"'* ]] || [[ "$review" == *'"status":"duplicate"'* ]]; then
   DELIVERY=delivered
+elif [ "$MODE" = autorun ]; then
+  # --autorun: the same re-send (the worker's --deliver-review: the SAME sealed bundle, no generation), but from the fresh
+  # clone, as the worker, with the locks kept (the wrapper would use the reused clone)
+  say "the hand-off did not deliver: re-sending the SAME sealed bundle once from the fresh clone (--deliver-review; no generation)"
+  idle_or_stop "before the re-send"
+  set +e
+  "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$DRY_RUN_TIMEOUT" node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/deliver" 2>/dev/null 8>&- 9>&-
+  drc=$?
+  set -e
+  dline="$(tail -n 1 "$WORK/deliver" | tr -d '\000-\037' | cut -c1-2000)"
+  say "re-send: $(printf '%s' "${dline:-<no line>}" | redact)"
+  stop_if_interrupted
+  if [ "$drc" -eq 0 ] && { [[ "$dline" == '{"status":"delivered"'* ]] || [[ "$dline" == '{"status":"duplicate"'* ]]; }; then
+    DELIVERY=delivered_by_resend
+  else
+    DELIVERY=not_delivered
+    say "not delivered: no audit (the bundle stays sealed; re-send it later with imagefirst-deliver-review.sh)"
+    finish PILOT_NOT_DELIVERED 1
+  fi
 else
   say "the hand-off did not deliver: re-sending the SAME sealed bundle once (imagefirst-deliver-review.sh; no generation)"
   release_locks

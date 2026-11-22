@@ -12,9 +12,10 @@
 Description=Second Root IMAGE_FIRST automatic run (one owner-approved pilot per marker)
 After=network-online.target
 Wants=network-online.target
-# Never together with the old hourly automatic start (it reads the same marker): starting this unit stops that service and
-# its timer if they run (the script, the preflight and imagefirst-approve.sh also refuse while either is enabled / active).
-Conflicts=sr-imagefirst-autostart.service sr-imagefirst-autostart.timer
+# Never together with the old hourly automatic start (it reads the same marker): starting this unit stops its timer. Not its
+# service: that could stop a running worker in the middle of a generation; the script, the preflight and
+# imagefirst-approve.sh refuse while that service (or the timer) is enabled or active.
+Conflicts=sr-imagefirst-autostart.timer
 # No Conflicts= with sr-jail-claude / sr-design-cycle: the script stops Remote Control itself (admin.sh claude-stop), waits
 # until the worker user is idle, and refuses while a design cycle runs.
 
@@ -27,8 +28,8 @@ ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/image
 # "+": without this unit's sandboxing (admin.sh claude-start must work even if the hardening below gets in its way); it
 # still runs in this unit's cgroup, which --restore requires.
 ExecStopPost=+/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun.sh --restore
-# 2 x ls-remote 210 s + claude-stop 150 s + the idle wait 180 s + the pilot 8400 s (+ 200 s) + claude-start 150 s
-TimeoutStartSec=10200
+# 2 x ls-remote 210 s + claude-stop 150 s + the idle wait 180 s + the pilot 9000 s (+ 200 s) + claude-start 150 s
+TimeoutStartSec=10800
 # SIGTERM goes to the script only (KillMode=mixed); it passes it on once to the pilot, which passes it on to the worker or the
 # audit and waits for its record (at most 90 s + the steps' kill-after); then the review-ready file and claude-start
 # (150 s). TimeoutStopSec is longer than all of that.

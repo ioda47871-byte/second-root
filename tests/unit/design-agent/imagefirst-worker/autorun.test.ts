@@ -1,5 +1,5 @@
 import { spawn as spawnChild, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { exe, ID, loadPngs, PILOT, PREFLIGHT, SCRIPTS, wsl } from "./pilot-world";
@@ -26,7 +26,12 @@ const adminClone = (w: ReturnType<typeof wsl>) => {
   const admin = join(w.t, "root", "sr-capture-admin");
   mkdirSync(join(w.t, "root"), { recursive: true });
   git(w.t, "clone", "-q", "--branch", "develop", w.origin, admin);
-  exe(join(w.bin, "npm"), `echo "npm $* userconfig=\${npm_config_userconfig:-} globalconfig=\${npm_config_globalconfig:-}" >> '${w.sc}/npm.log'`);
+  // npm ci's stand-in: records how it was run and, as npm ci would, gives the clone its tsx loader
+  exe(
+    join(w.bin, "npm"),
+    `echo "npm $* userconfig=\${npm_config_userconfig:-} globalconfig=\${npm_config_globalconfig:-} cwd=$PWD" >> '${w.sc}/npm.log'
+mkdir -p node_modules && ln -sfn '${join(REPO, "node_modules", "tsx")}' node_modules/tsx`,
+  );
   return admin;
 };
 const insideService = (w: ReturnType<typeof wsl>) => {
@@ -188,10 +193,16 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
     const w = world();
     w.switchOn();
     w.marker();
-    // review M1: what the jailed Claude could have planted in the worker clone while Remote Control ran: a hook, an
-    // fsmonitor, another origin URL, attributes, a trusted-looking npm hash. None of it may run or be used.
+    // review M1 / H1: what the jailed Claude could have planted while Remote Control ran, in the reused clone (a hook, an
+    // fsmonitor, another origin URL, attributes + a filter, a skip-worktree tracked file with other content, an
+    // alternates file, a forged loose object, an ignored .env) and in the worker's home (~/.gitconfig with an include,
+    // ~/.config/git/config and attributes with a smudge filter). None of it may run, or reach the run's clone.
     const planted = join(w.sc, "planted-ran");
-    exe(join(w.sc, "evil"), `touch '${planted}'`);
+    const workerFile = "scripts/sales-design-worker/imagefirst-worker.ts";
+    const head0 = git(w.clone, "rev-parse", "HEAD");
+    git(w.clone, "update-index", "--skip-worktree", workerFile);
+    writeFileSync(join(w.clone, workerFile), `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(planted)}, "worker");\n`);
+    exe(join(w.sc, "evil"), `touch '${planted}'; cat`);
     mkdirSync(join(w.sc, "hooks"));
     for (const h of ["post-checkout", "reference-transaction", "pre-auto-gc"]) exe(join(w.sc, "hooks", h), `touch '${planted}'`);
     git(w.clone, "config", "core.hooksPath", join(w.sc, "hooks"));
@@ -200,20 +211,42 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
     writeFileSync(join(w.clone, ".git", "info", "attributes"), "* filter=evil\n");
     git(w.clone, "config", "filter.evil.smudge", join(w.sc, "evil"));
     git(w.clone, "config", "filter.evil.clean", join(w.sc, "evil"));
+    mkdirSync(join(w.sc, "alt-objects"));
+    writeFileSync(join(w.clone, ".git", "objects", "info", "alternates"), `${join(w.sc, "alt-objects")}\n`);
+    mkdirSync(join(w.clone, ".git", "objects", "ff"), { recursive: true });
+    writeFileSync(join(w.clone, ".git", "objects", "ff", "f".repeat(38)), "forged");
+    writeFileSync(join(w.clone, ".env"), "SECRET=planted\n");
+    writeFileSync(join(w.clone, ".gitignore"), "node_modules\n.env\n");
+    writeFileSync(join(w.home, ".gitconfig"), `[include]\n\tpath = ${join(w.home, "inc.gitconfig")}\n`);
+    writeFileSync(join(w.home, "inc.gitconfig"), `[filter "evil"]\n\tsmudge = ${join(w.sc, "evil")}\n\tclean = ${join(w.sc, "evil")}\n\trequired = true\n[core]\n\thooksPath = ${join(w.sc, "hooks")}\n\tfsmonitor = ${join(w.sc, "evil")}\n`);
+    mkdirSync(join(w.home, ".config", "git"), { recursive: true });
+    writeFileSync(join(w.home, ".config", "git", "attributes"), "* filter=evil\n");
+    writeFileSync(join(w.home, ".config", "git", "config"), `[filter "evil"]\n\tsmudge = ${join(w.sc, "evil")}\n\trequired = true\n`);
     const sha = git(w.admin, "rev-parse", "HEAD");
     const r = w.run();
     expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: ID, pilot: "PILOT_DONE", rc: "restored" });
-    expect(existsSync(planted), "a planted hook / fsmonitor / filter ran").toBe(false);
-    expect(r.stdout).toContain(`pinned to root's verified commit ${sha}`);
+    expect(existsSync(planted), "a planted hook / fsmonitor / filter / worker file ran").toBe(false);
+    expect(r.stdout).toContain(`a fresh clone at root's verified commit ${sha}`);
     expect(r.stdout).toMatch(new RegExp(`\\| clone +\\| PASS \\| clean, HEAD = origin/develop = root's verified ${sha}`));
-    const config = readFileSync(join(w.clone, ".git", "config"), "utf8");
-    expect(config).toContain(`\turl = ${w.origin}\n`);
-    expect(config).toContain("\thooksPath = /dev/null\n");
-    expect(config).not.toMatch(/evil|elsewhere/);
-    expect(existsSync(join(w.clone, ".git", "info", "attributes"))).toBe(false);
-    expect(git(w.clone, "rev-parse", "HEAD")).toBe(sha);
-    // npm ci always (the hash file and node_modules are never trusted), with no user / global npm config
-    expect(readFileSync(join(w.sc, "npm.log"), "utf8").trim().split("\n")).toEqual(["npm ci --no-audit --no-fund --loglevel=error userconfig=/dev/null globalconfig=/dev/null"]);
+    // the run's clone: new, under the root-chosen prefix, at exactly root's commit, with git's own fresh config
+    const fresh = readdirSync(join(w.home, "imagefirst")).filter((n) => n.startsWith(`autorun-${ID}-`));
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]).toMatch(new RegExp(`^autorun-${ID}-\\d{8}T\\d{6}Z$`));
+    const fc = join(w.home, "imagefirst", fresh[0]!);
+    expect(readFileSync(join(w.state, "autorun-clone"), "utf8")).toBe(`${fc}\n`);
+    const fgit = (...a: string[]) => spawnSync("git", ["-C", fc, ...a], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: w.t, GIT_CONFIG_NOSYSTEM: "1" } as unknown as NodeJS.ProcessEnv }).stdout.trim();
+    expect(fgit("rev-parse", "HEAD")).toBe(sha);
+    expect(readFileSync(join(fc, ".git", "config"), "utf8")).not.toMatch(/evil|elsewhere|hooks/);
+    expect(existsSync(join(fc, ".git", "objects", "info", "alternates"))).toBe(false);
+    expect(existsSync(join(fc, ".git", "objects", "ff", "f".repeat(38)))).toBe(false);
+    expect(existsSync(join(fc, ".env"))).toBe(false);
+    expect(readFileSync(join(fc, workerFile), "utf8")).not.toContain("planted");
+    expect(fgit("ls-files", "-v", workerFile)).toMatch(/^H /);
+    // every worker command ran in the fresh clone; the reused clone was not touched
+    for (const s of w.starts().filter((x) => x.cli === "worker")) expect(s.cwd, s.argv.join(" ")).toBe(fc);
+    expect(git(w.clone, "rev-parse", "HEAD")).toBe(head0);
+    // npm ci always, in the fresh clone, with no user / global npm config
+    expect(readFileSync(join(w.sc, "npm.log"), "utf8").trim().split("\n")).toEqual([`npm ci --no-audit --no-fund --loglevel=error userconfig=/dev/null globalconfig=/dev/null cwd=${fc}`]);
     expect(w.events()).toEqual(["admin claude-stop", `worker used=${ID},`, "admin claude-start"]);
     expect(readFileSync(join(w.state, "autorun", ID, "attempt"), "utf8")).toContain(`commit=${sha}\n`);
     expect(w.spent().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", ""], ["audit", ID]]);
@@ -471,7 +504,7 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     expect(w.starts()).toEqual([]);
   });
 
-  it("review M1: pilot --autorun with origin's develop not at root's commit, or a dirty worker clone: stopped before the preflight, nothing spent", () => {
+  it("review M1: pilot --autorun with origin's develop not at root's commit: stopped before the preflight, nothing spent", () => {
     const w = wsl();
     const admin = adminClone(w);
     insideService(w);
@@ -480,13 +513,47 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     pushOrigin(w, "moved");
     expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 20, code: "PILOT_AUTORUN_DEVELOP_MOVED", phase: "before_claim" });
     expect(w.starts()).toEqual([]);
-    const v = wsl();
-    const vadmin = adminClone(v);
-    insideService(v);
-    writeFileSync(join(v.clone, "stray.txt"), "x");
-    expect(v.pilot(["--autorun", ID, git(vadmin, "rev-parse", "HEAD")])).toMatchObject({ status: 20, code: "PILOT_AUTORUN_TREE_DIRTY" });
-    expect(existsSync(join(v.clone, "stray.txt"))).toBe(true);
-    expect(v.starts()).toEqual([]);
+  });
+
+  it("review H1: old fresh clones: the newest kept, older ones removed; links, other names and other places never touched", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    const base = join(w.home, "imagefirst");
+    const old = ["20200101T000000Z", "20200102T000000Z", "20200103T000000Z"].map((s, i) => {
+      const d = join(base, `autorun-hoshigama-imagefirst-d3-20200101-0${i + 1}-${s}`);
+      mkdirSync(join(d, "x"), { recursive: true });
+      const t = new Date(Date.UTC(2020, 0, 1 + i));
+      utimesSync(d, t, t);
+      return d;
+    });
+    const outside = tmp("sr-ifr-keep-");
+    writeFileSync(join(outside, "keep.txt"), "x");
+    symlinkSync(outside, join(base, "autorun-hoshigama-imagefirst-d3-20200101-09-20200109T000000Z"));
+    mkdirSync(join(base, "keepme"));
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE" });
+    expect(existsSync(old[0]!)).toBe(false);
+    expect(existsSync(old[1]!)).toBe(false);
+    expect(existsSync(old[2]!)).toBe(true);
+    expect(lstatSync(join(base, "autorun-hoshigama-imagefirst-d3-20200101-09-20200109T000000Z")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(outside, "keep.txt"), "utf8")).toBe("x");
+    expect(existsSync(join(base, "keepme"))).toBe(true);
+    expect(existsSync(join(base, "second-root"))).toBe(true);
+    expect(readdirSync(base).filter((n) => n.startsWith(`autorun-${ID}-`))).toHaveLength(1);
+  });
+
+  it("review H1: the hand-off did not deliver: the one re-send runs from the fresh clone (--deliver-review), then the audit", () => {
+    const w = world();
+    w.switchOn();
+    w.marker();
+    writeFileSync(join(w.home, "stub-review-fail"), "");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", pilot: "PILOT_DONE" });
+    const resend = w.starts().filter((s) => s.argv[0] === "--deliver-review");
+    expect(resend.map((s) => s.argv)).toEqual([["--deliver-review", ID]]);
+    expect(resend[0]!.cwd).toMatch(new RegExp(`/imagefirst/autorun-${ID}-\\d{8}T\\d{6}Z$`));
+    expect(readFileSync(w.review(), "utf8")).toMatch(/delivery=delivered_by_resend/);
   });
 
   it("the manual preflight refuses while the automatic run's timer or service is on; inside the service it accepts exactly that service", () => {
@@ -501,6 +568,13 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     const v = wsl();
     const vadmin = adminClone(v);
     insideService(v);
+    // the pilot's fresh clone, named in root's state file (as the pilot leaves it before the preflight)
+    const fc = join(v.home, "imagefirst", `autorun-${ID}-20261121T000000Z`);
+    git(v.t, "clone", "-q", "--branch", "develop", v.origin, fc);
+    mkdirSync(join(fc, "node_modules"));
+    symlinkSync(join(REPO, "node_modules", "tsx"), join(fc, "node_modules", "tsx"), "dir");
+    mkdirSync(join(v.t, "var", "lib", "sr-imagefirst-autostart"), { recursive: true });
+    writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-clone"), `${fc}\n`);
     writeFileSync(join(v.sc, "enabled-sr-imagefirst-autorun.timer"), "enabled");
     expect(v.preflight([ID]).rows.timers?.ok).toBe(false);
     writeFileSync(join(v.sc, "sr-imagefirst-autorun.service"), "activating");
@@ -512,6 +586,13 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     commitFiles(vadmin, { "docs/admin-only.md": Buffer.from("x") }, "a commit only in the admin clone");
     expect(v.preflight([ID]).rows.clone?.ok).toBe(false);
     git(vadmin, "reset", "-q", "--hard", "HEAD~1");
+    // the state file naming another id's clone, or a path outside the prefix: the worker rows fail (the reused clone is never used)
+    for (const bad of [join(v.home, "imagefirst", `autorun-${D4}-20261121T000000Z`), v.clone, `${fc}/../second-root`]) {
+      writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-clone"), `${bad}\n`);
+      const p = v.preflight([ID]);
+      expect([p.status, p.rows.clone?.ok, p.rows.approval?.ok], bad).toEqual([20, false, false]);
+    }
+    writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-clone"), `${fc}\n`);
     // the old automatic start is refused there too
     writeFileSync(join(v.sc, "enabled-sr-imagefirst-autostart.timer"), "enabled");
     expect(v.preflight([ID]).rows.timers?.ok).toBe(false);
@@ -566,8 +647,10 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     expect(service).toMatch(/^ExecStart=\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh$/m);
     // review M2: ExecStopPost without the unit's sandboxing ("+"), still in the unit's cgroup
     expect(service).toMatch(/^ExecStopPost=\+\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh --restore$/m);
-    // review L3: never together with the old automatic start
-    expect(service).toMatch(/^Conflicts=sr-imagefirst-autostart\.service sr-imagefirst-autostart\.timer$/m);
+    // review L3 / L-a: never together with the old automatic start's timer; never Conflicts= with its service (that would
+    // stop a running worker in the middle of a generation)
+    expect(service).toMatch(/^Conflicts=sr-imagefirst-autostart\.timer$/m);
+    expect(service).not.toMatch(/^Conflicts=.*sr-imagefirst-autostart\.service/m);
     expect(service).not.toMatch(/^User=/m);
     expect(service).toMatch(/^Type=oneshot$/m);
     expect(service).toMatch(/^KillMode=mixed$/m);

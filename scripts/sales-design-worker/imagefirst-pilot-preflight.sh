@@ -20,7 +20,9 @@
 #                sr-imagefirst-autorun.service (its own cgroup, read from the kernel: no argument or variable selects it;
 #                docs/operations/imagefirst-autorun.md) are exactly that service (activating / active: this run) and its timer
 #                accepted; every other unit is checked the same way
-#   clone        as the worker: git fetch origin develop (the automatic start's line), the tree clean, HEAD = origin/develop
+#   clone        as the worker: git fetch origin develop (the automatic start's line), the tree clean, HEAD = origin/develop.
+#                Inside the automatic run, every worker row uses the pilot's fresh clone instead (root's state file names
+#                it), with no user / system git config, and HEAD = origin/develop must be root's admin clone's commit
 #   no_prior_run as the worker: no claim, receipt, run, delivery job, inbox copy or audit for this approval id
 #   rubric       the clone's audit is rubric v2 (AUDIT_RUBRIC_VERSION if-claude-audit-v2, schema imagefirst_claude_audit_v2)
 #   approval     the worker's own --precheck (the automatic start's line, with this approval id as the grant): "would_run"
@@ -209,6 +211,15 @@ own_cgroup() {
 }
 IN_AUTORUN=0
 if [[ $'\n'"$(own_cgroup)"$'\n' == *$'\n'"$AUTORUN_CGROUP"$'\n'* ]]; then IN_AUTORUN=1; fi
+# Inside the automatic run every worker row looks at the pilot's fresh clone (named in root's own state file, written by the
+# pilot; its form checked here: ~/imagefirst/autorun-<this id>-<UTC>), never at the reused one
+if [ "$IN_AUTORUN" = 1 ]; then
+  fresh_file="$R/var/lib/sr-imagefirst-autostart/autorun-clone"
+  fresh=""
+  if [ -f "$fresh_file" ] && [ ! -L "$fresh_file" ]; then fresh="$(head -c 512 -- "$fresh_file" | tr -d '\n')"; fi
+  stamp="${fresh#"$WORKER_HOME/imagefirst/autorun-$APPROVAL-"}"
+  if [ -n "$fresh" ] && [ "$stamp" != "$fresh" ] && [[ "$stamp" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]; then CLONE="$fresh"; else CLONE="$WORKER_HOME/imagefirst/.no-autorun-clone"; fi
+fi
 
 say "approval $APPROVAL; read only: nothing is installed, enabled, started, claimed or generated"
 
@@ -270,23 +281,23 @@ AS_WORKER=(setpriv --reuid="$worker_uid" --regid="$worker_gid" --init-groups --r
 for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do
   if [ -n "${!name+x}" ]; then AS_WORKER+=("$name=${!name}"); fi
 done
+# inside the automatic run: no user or system git config for any git of the worker (the pilot's rule)
+if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1); fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
 if [ "$IN_AUTORUN" = 1 ]; then
-  # inside the automatic run: root's admin clone (clean) names the commit and the origin URL; the worker clone's own
-  # .git/config is not used for either, every git command carries hooks / fsmonitor / credential helpers off, and
-  # HEAD = origin/develop must be exactly root's commit (the pilot pinned it just before)
+  # inside the automatic run: root's admin clone (clean) names the commit; the pilot's fresh clone (just made from root's
+  # origin URL) must be clean with HEAD = origin/develop = exactly that commit; every git without user / system config and
+  # with attributes / hooks / fsmonitor / credential helpers off. No fetch here (the clone is minutes old)
   if [ -n "$R" ]; then ADMIN_GIT="$R/root/sr-capture-admin"; else ADMIN_GIT="$REPO"; fi
-  GH=(git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
+  GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
   admin_head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || admin_head=""
   admin_dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
   origin_url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || origin_url=""
   if ! [[ "$admin_head" =~ ^[0-9a-f]{40}$ ]] || [ -n "$admin_dirty" ] || ! [[ "$origin_url" =~ ^[A-Za-z0-9._:/@+-]+$ ]]; then
     row clone FAIL "root's admin clone is not clean at a readable commit, or its origin URL is unusual"
-  elif [ ! -d "$CLONE" ]; then
-    row clone FAIL "$CLONE is missing"
-  elif ! in_clone timeout --kill-after="$KILL_AFTER" "$FETCH_TIMEOUT" "${GH[@]}" fetch --quiet --no-tags "$origin_url" "+refs/heads/develop:refs/remotes/origin/develop" >/dev/null 2>&1; then
-    row clone FAIL "git fetch from root's origin URL failed (as $WORKER_USER)"
+  elif ! in_clone true; then
+    row clone FAIL "the automatic run's fresh clone is missing (or not named as expected)"
   elif ! dirty="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --untracked-files=all 2>/dev/null)" || [ -n "$dirty" ]; then
     row clone FAIL "the clone has changes, or git status failed"
   else

@@ -25,8 +25,8 @@
          2. 試行を記録（autorun/<ID>、その commit も。消さない）→ sr-jail-claude が enable だったかを復元フラグに書く
             → admin.sh claude-stop → sr-designgen のプロセスが無くなるまで待つ（最大 180 秒）
          3. 1 の確認をもう一度（同じ commit でなければ pilot なし）→ imagefirst-pilot.sh --autorun <ID> <commit>
-              worker の clone をその commit に固定（.git/config を固定の中身に置き換え、root の origin URL から fetch、
-              hooks・fsmonitor・credential helper を切り、HEAD = origin/develop = <commit>、npm ci を必ず実行）
+              使い回しの clone は使わず、root が決めた新しい場所（~/imagefirst/autorun-<ID>-<UTC>）に root の origin URL から
+              新しく clone し（利用者・システムの git 設定なし）、HEAD = origin/develop = <commit>、status --ignored が空、npm ci
               → preflight（全部 PASS でなければ何も使わずに終わる）→ used/<ID> を作る → worker 1 回（Codex 1 回）
               → 受け渡し（必要なら再送 1 回）→ 監査の dry-run → 監査 1 回 → 要約
          4. 必ず: review-ready ファイルを書く → claude-start（実行前に enable だったときだけ）→ 復元フラグを消す
@@ -137,18 +137,34 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
   `/etc/sr-design-worker` に書けず、印の中身にも関われない。印はパケットの承認の代わりにならない（worker が HEAD のパケットで確かめる）。
 - sr-designgen の process が生きている間は、root は sr-designgen として何も動かさない（git・node・npm も。jail の process が仕込んだ
   git の設定や node のコードが jail の外で同時に動くのを避ける。自動起動・pilot・preflight・再送と同じ規則）。
-- **worker の clone は root が確かめた commit に固定される**: Remote Control が動いていた間、jail の Claude（同じ利用者）は worker の clone の
-  `.git/config`（origin の URL・hooks・fsmonitor・filter・credential helper）、`.git/info/attributes`、`node_modules`、npm のハッシュの記録を
+- **生成に使う clone は毎回新しく作り、root が確かめた commit に固定する**: Remote Control が動いていた間、jail の Claude（同じ利用者）は
+  使い回しの clone（`~/imagefirst/second-root`）の `.git/config`・hooks・index のフラグ（skip-worktree など）・objects や alternates・
+  無視されたファイル（`.env*`・cache）・`node_modules`、そして home の git 設定（`~/.gitconfig` とその include、`~/.config/git/config`・`attributes`）を
   書き換えられた。だから実行時は、Remote Control を止めて sr-designgen の process が 0 になってから、
   1. root が自分の admin clone（きれい・HEAD = admin clone 自身の URL で `ls-remote` した origin の develop）でその commit を決め（止める前と後に 2 回）、
-  2. pilot が sr-designgen として worker の clone の `.git/config` を固定の中身（root の origin URL、`hooksPath = /dev/null`、`fsmonitor = false`）に
-     置き換え、`info/attributes` を消し、すべての git に `-c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never`
-     を付け、root の URL から fetch し、origin/develop = HEAD = その commit でなければ止める（`PILOT_AUTORUN_DEVELOP_MOVED` など。claim の前）、
-  3. `npm ci` を必ず実行する（`node_modules` とハッシュの記録は信じない。利用者・全体の npm の設定は `/dev/null`）、
-  4. preflight の `clone` の行も root の URL と commit で同じことを確かめ、worker の事前確認（この ID・残り 20 分以上・使用歴なし）を含む
-     全項目を見て、worker が claim の前にもう一度全部を確かめる。
+  2. pilot が sr-designgen として、root が決めた新しい場所 `~/imagefirst/autorun-<ID>-<UTC>` を `mkdir` で作り（symlink・既にある場所は断る）、
+     root の origin URL から `git clone --no-local --no-checkout` し（objects は git が受け取って確かめたものだけ。何も共有しない）、
+     origin/develop = その commit でなければ止め、`checkout --detach` し、HEAD = その commit、`git status --porcelain --ignored` が空でなければ止める
+     （`PILOT_AUTORUN_DEVELOP_MOVED` / `PILOT_AUTORUN_TREE_DIRTY`。claim の前）、
+  3. その clone で `npm ci`（利用者・全体の npm の設定は `/dev/null`）、
+  4. preflight・worker の実行・再送（`--deliver-review`）・監査はすべてその clone で動く（preflight は root の state ファイル `autorun-clone` で場所を知り、
+     形を確かめる）。worker が claim の前にもう一度全部を確かめる。
+  - worker の git はすべて `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`（node の worker が起動する git にも `worker/env.ts` が渡す）。
+    pilot・preflight が直接起動する git には、さらに `-c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null
+    -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never` を付ける。node の worker の git は `~/.config/git/attributes` を読みうるが、
+    filter などの実行の定義は利用者の設定にしか置けず、それを読まないので何も起動しない。
+  - 古い新規 clone: `~/imagefirst` の直下で `autorun-hoshigama-imagefirst-*` という名前の本物のディレクトリだけを対象に、いちばん新しい 1 つを残し、
+    それより古いものを pilot が sr-designgen として消す（自動実行が lock を持ち Remote Control を止めている間なので、使っている run は無い）。
+    symlink・ほかの名前・ほかの場所は消さない。画像・receipt・bundle は `~/sr-runs` にあり、clone を消しても残る。
+  - 手で動かすパイロットは今まで通り `~/imagefirst/second-root` を使う（変えていない）。
   印の期限（最長 24 時間）は「いつまで拾うか」だけを決め、パケットの期限は worker が守る。
-  残る前提: `~/.codex` や codex 本体など、worker の clone の外にある sr-designgen の持ち物は今まで通り信頼している（手動のパイロットと同じ）。
+
+### 引き継いでいる信頼（既知。オーナーが決める）
+
+監査（claude）と Codex は、jail の外で sr-designgen として動くとき、sr-designgen の `~/.claude`（settings の hooks など）と `~/.codex`（config）を読む。
+これらは jail の Claude も書ける場所で、手で動かすパイロットから引き継いだ前提であり、この変更では変えていない。選択肢は次の 2 つ:
+(a) 自動実行のときは `CODEX_HOME` / `CLAUDE_CONFIG_DIR` を root が用意した固定の場所に向ける（サインインの記録の扱いを別に決める必要がある）、
+(b) preflight で、これらの設定ファイルを root が持つ既知の正しい写しとバイト単位で比べ、違えば FAIL にする。
 - review-ready ファイルは root ではなく sr-designgen として、sr-designgen の process が無い間に書く（`setpriv`）。中身は pilot の `share:` の行・
   最後の行・自動実行の結果 1 行だけ（`local-only:` の行・SHA-256・場所・画像・プロンプト・秘密は入らない）。既にあれば上書きしない。
   dir が symlink なら書かない。
@@ -160,7 +176,10 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
 2. admin clone が origin の develop と違うと（承認の後に develop へ別のマージがあると）、自動実行は Remote Control に触らずに断り続ける
    （`AUTORUN_ADMIN_NOT_DEVELOP`）。そのときは admin clone を更新する 1 行を打つ。承認から実行までの 10 分ほどの間のマージは避ける。
 3. unit の hardening（`ProtectSystem=strict` など）の下で `admin.sh claude-stop / claude-start` が実機で動くかは未確認（§2 の確認 1・2）。
-4. `Conflicts=` により、自動実行の service が動くと古い自動起動の service と timer は止まる（両方を入れること自体を断っているので、普通は起きない）。
+4. `Conflicts=` は古い自動起動の **timer** にだけ付けた（自動実行の service が動くとその timer は止まる）。service には付けない
+   （生成の途中の worker を止めてしまうため）。service が動いている・enable のときは、script・preflight・承認コマンドが断る。
+5. 新しい clone と `npm ci` のぶん、ディスク（clone 1 つ + `node_modules`。古いものは 1 つだけ残す）と時間（clone 最大 10 分 + npm ci 最大 15 分）が
+   増える。preflight の `disk` の行（4 GiB 以上の空き）は今まで通り。unit の `TimeoutStartSec` は 10800 秒。
 
 ## 8. テスト
 
