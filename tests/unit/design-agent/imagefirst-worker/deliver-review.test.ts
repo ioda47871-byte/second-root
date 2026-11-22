@@ -408,7 +408,8 @@ describe("the delivery cannot start anything", () => {
     const imports = [...src.matchAll(/^import[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1]!).sort();
     expect(imports).toEqual(["../worker/state", "./bundle", "./cycle", "./local-inbox", "./preview", "./transport", "node:fs", "node:fs/promises", "node:path"]);
     const fromCycle = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*"\.\/cycle"/g)].flatMap((m) => m[1]!.split(",").map((s) => s.trim())).sort();
-    expect(fromCycle).toEqual(["checkRealApprovalId", "readApprovalAt", "runOfApprovalId", "sha256", "type CycleDeps", "type CycleReport"]);
+    // DEV-303: plus the request run id rule (a request run's receipt is delivered the same way)
+    expect(fromCycle).toEqual(["checkRealApprovalId", "isRequestRunId", "readApprovalAt", "runOfApprovalId", "sha256", "type CycleDeps", "type CycleReport"]);
     expect(src).not.toMatch(/\brequire\(|import\(|child_process|runBounded|bounded-process|runImagefirstCycle|precheckImagefirstCycle|claimApproval|invoke|ledger|node:net|node:https?|fetch\(|codex|image-once|image-first-generate|spool|github|anthropic|openai/i);
   });
 
@@ -422,7 +423,11 @@ describe("the delivery cannot start anything", () => {
     // review summary goes to stderr / the audit file, never a second stdout line
     expect(cli).toMatch(/const report = await runImagefirstCycle\([\s\S]*\);\n(\s*\/\/.*\n)?\s*say\(report\);\n\s*const review = await deliverAfterRun\(report, \{ runsDir, stateDir, signal: controller\.signal \}/);
     expect(cli.match(/\bsay\(/g)!.length).toBeGreaterThan(0);
-    expect(cli.slice(cli.indexOf("const review = await deliverAfterRun"))).not.toMatch(/\bsay\(/);
+    expect(cli.slice(cli.indexOf("const review = await deliverAfterRun"), cli.indexOf("/** DEV-303: one request run"))).not.toMatch(/\bsay\(/);
+    // DEV-303: the request mode the same way: its one stdout line first, then the hand-off, and no say() after it
+    expect(cli).toMatch(/const report = result\.report;\n\s*say\(report\);\n\s*const review = await deliverAfterRun\(report, \{ runsDir, stateDir, signal: controller\.signal \}/);
+    const requestTail = cli.slice(cli.indexOf("const review = await deliverAfterRun", cli.indexOf("const report = result.report;")), cli.indexOf("// the production entry"));
+    expect(requestTail).not.toMatch(/\bsay\(/);
   });
 
   it("the CLI's --deliver-review refuses a malformed or reserved ID and an unknown / running jail state, writing nothing", () => {

@@ -40,9 +40,12 @@ export type FactsRoot = (typeof FACTS_ROOTS)[number];
 
 /**
  * Ids a request may never use: the fixed IMAGE_FIRST approval ids and the review PoC's dummy all contain "imagefirst"
- * (run-directions.ts), so a request id can never name, claim or deliver as one of them.
+ * (run-directions.ts), so a request id can never name, claim or deliver as one of them; and the names of the directories
+ * that sit next to bundles (the review inbox's previews / audits / runs, ~/sr-runs' bundles / requests / review-inbox, the
+ * worker state's deliveries / claims, the ledger's approvals / plans).
  */
-export const isReservedRequestId = (id: string) => /imagefirst/.test(id);
+export const RESERVED_REQUEST_IDS: readonly string[] = ["previews", "audits", "runs", "bundles", "requests", "review-inbox", "deliveries", "claims", "approvals", "plans"];
+export const isReservedRequestId = (id: string) => /imagefirst/.test(id) || RESERVED_REQUEST_IDS.includes(id);
 export const isRequestId = (id: string) => REQUEST_ID_RE.test(id) && !isReservedRequestId(id);
 
 /**

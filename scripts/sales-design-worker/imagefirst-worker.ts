@@ -59,10 +59,12 @@
  * DEV-303 (owner direction 2026-11-23, docs/operations/first-client-pipeline.md §2 A/B), REQUEST mode, started by root's
  * pilot (outside the jail, as today) for one request root accepted from ~/sr-runs/requests/<id>.json:
  *
- *   node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --request <id> --request-sha256 <hex>
- *     --request-file <root's validated copy, in the run's private directory, named <id>.json>   [--precheck]
+ *   SR_IMAGEFIRST_REQUEST_FILE=<fresh clone>.request/<id>.json \
+ *   node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --request <id> --request-sha256 <hex> [--precheck]
  *
- * (the three options in any order, each once; nothing else; GRANT_ENV must not be set.) One cycle of
+ * (the options in any order, each once; nothing else; GRANT_ENV must not be set; the environment variable names root's
+ * private copy of the request: an absolute real path, no link on it, a regular file named <id>.json, at most 16 KiB,
+ * outside the clone, its SHA-256 = --request-sha256.) One cycle of
  * lib/design-agent/imagefirst-worker/request-cycle.ts: the request's SHA-256 and id, the facts pack it names (outside git),
  * the shop's kind, the plan, the one-use claim keyed by the request id, ONE invocation of the entry's request mode, the
  * receipt; then (succeeded) the same review hand-off with the request id as the bundle id
@@ -70,6 +72,11 @@
  * ~/second-root-shops/<shop_id>/runs/<id>.json (metadata only; a real shop never enters the repository). The same one
  * stdout line and exit codes as the run above; `--precheck`: 0 would run, 2 refused (nothing written). A request id
  * never runs twice (claim + ledger); `--deliver-review <request id>` re-sends its sealed bundle as for an approval id.
+ *
+ * `--validate-request <file>` (DEV-303, offline, side-effect-free; any shell, the jail included): the whole worker-side
+ * check of a request before Claude drops it into ~/sr-runs/requests/ (request.ts validateRequestFile). One JSON line:
+ * {"status":"valid","code":null,"request_id","kind","request_sha256","facts_sha256","plan_sha256"} exit 0, or
+ * {"status":"refused","code":<fixed code>} exit 2. No claim, no ledger, no write, no network, no Codex.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -78,7 +85,7 @@ import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
 import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, GRANT_ENV, gitCommitState, grantFromEnv, isRequestRunId, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
-import { REAL_SHOP_RECORD_SCHEMA, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
+import { REAL_SHOP_RECORD_SCHEMA, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
 import { precheckRequestCycle, runRequestCycle, type RequestCycleResult } from "../../lib/design-agent/imagefirst-worker/request-cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -99,11 +106,14 @@ const INVOKE_TIMEOUT_MS = WATCHDOG_MS + 2 * 60_000;
 const onOriginDevelop = (env: NodeJS.ProcessEnv) => async (commit: string) =>
   /^[0-9a-f]{40}$/.test(commit) && (await runBounded("git", ["merge-base", "--is-ancestor", commit, "origin/develop"], { cwd: REPO, env, timeoutMs: 60_000 }).then((r) => r.code === 0, () => false));
 
-/** DEV-303: the request mode's options (each once, any order) plus an optional --precheck; null = not request mode. */
+/**
+ * DEV-303: the request mode's options (each once, any order) plus an optional --precheck, and root's private copy named
+ * by SR_IMAGEFIRST_REQUEST_FILE (absolute; the strict checks are request.ts readRequestFile's); null = not request mode.
+ */
 type RequestArgs = { id: string; sha256: string; file: string; precheck: boolean };
-function requestArgs(argv: readonly string[]): RequestArgs | "USAGE" | null {
+function requestArgs(argv: readonly string[], env: NodeJS.ProcessEnv): RequestArgs | "USAGE" | null {
   if (!argv.includes("--request")) return null;
-  const want = new Set(["--request", "--request-sha256", "--request-file"]);
+  const want = new Set(["--request", "--request-sha256"]);
   const got = new Map<string, string>();
   let precheck = false;
   for (let i = 0; i < argv.length; i++) {
@@ -115,8 +125,9 @@ function requestArgs(argv: readonly string[]): RequestArgs | "USAGE" | null {
   if (got.size !== want.size) return "USAGE";
   const id = got.get("--request")!;
   const sha256 = got.get("--request-sha256")!;
-  if (!isRequestRunId(id) || !/^[0-9a-f]{64}$/.test(sha256)) return "USAGE";
-  return { id, sha256, file: got.get("--request-file")!, precheck };
+  const file = env[REQUEST_FILE_ENV];
+  if (!isRequestRunId(id) || !/^[0-9a-f]{64}$/.test(sha256) || typeof file !== "string" || !file.startsWith("/")) return "USAGE";
+  return { id, sha256, file, precheck };
 }
 
 /**
@@ -127,15 +138,27 @@ function requestArgs(argv: readonly string[]): RequestArgs | "USAGE" | null {
 export async function main(readCgroup?: () => Promise<string>): Promise<number> {
   // the arguments: none, --precheck (Issue #302 P1, the automatic start asks before it uses root's marker), or
   // --deliver-review <approval id> (Issue #302 P3 follow-up: re-send a finished run's sealed bundle to the review inbox)
-  const request = requestArgs(process.argv.slice(2));
+  // DEV-303: the offline request validator (reads only; before every place, lock and guard)
+  if (process.argv[2] === "--validate-request") {
+    if (process.argv.length !== 4) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+    try {
+      const v = await validateRequestFile({ file: process.argv[3]!, home: homedir(), repo: REPO });
+      say({ status: "valid", code: null, ...v });
+      return 0;
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      say({ status: "refused", code: typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? code : "REQUEST_UNREADABLE" });
+      return 2;
+    }
+  }
+  const request = requestArgs(process.argv.slice(2), process.env);
   if (request === "USAGE" || (request !== null && process.env[GRANT_ENV] !== undefined)) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
-  if (request !== null) return requestMode(request, readCgroup);
   const precheck = process.argv.length === 3 && process.argv[2] === "--precheck";
   const deliver = process.argv[2] === "--deliver-review";
   // Issue #302 (the owner's one-shot pilot's read-only preflight, review H1): the Codex sign-in alone, before anything is used
   const codexAuth = process.argv.length === 3 && process.argv[2] === "--check-codex-auth-only";
   if (deliver && process.argv.length !== 4) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
-  if (process.argv.length > 2 && !precheck && !deliver && !codexAuth) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
+  if (request === null && process.argv.length > 2 && !precheck && !deliver && !codexAuth) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
   if (codexAuth) {
     // the generation path's own context (places, protected paths, environment) for a run directory under ~/sr-runs that is
     // never created; then its .env rule, its sandbox set-up and ONE sandboxed sign-in status read (the shared helper's
@@ -178,6 +201,8 @@ export async function main(readCgroup?: () => Promise<string>): Promise<number> 
   // the worker outside the jail. Unreadable: refused as well. Before the lock, the claim and anything written.
   const jailUnit = await ownJailUnit(readCgroup);
   if (jailUnit !== null) return (say({ status: "refused", code: jailUnit === "unknown" ? "OWN_CGROUP_UNREADABLE" : "RUN_INSIDE_JAIL_UNIT", invoked: false }), 2);
+  // DEV-303: a request run (after the same jail guard, places and environment)
+  if (request !== null) return requestMode(request, { env, stateDir, runsDir, ledgerDir });
   if (precheck) {
     // every check up to the claim; no lock, no audit, no write, nothing invoked
     const r = await precheckImagefirstCycle({ repoRoot: REPO, stateDir, runsDir, ...(grant ? { expectApprovalId: grant } : {}) }, { commit: () => gitCommitState(REPO, env), fileAt: (commit, rel) => fileAtCommit(commit, rel), ledger: openLedger(ledgerDir) });
@@ -204,15 +229,9 @@ export async function main(readCgroup?: () => Promise<string>): Promise<number> 
 }
 
 /** DEV-303: one request run (see the header). */
-async function requestMode(r: RequestArgs, readCgroup?: () => Promise<string>): Promise<number> {
-  const env = childEnvironment(process.env);
-  const stateDir = join(expand(process.env.XDG_STATE_HOME ?? "~/.local/state"), "sr-design-worker", "imagefirst-worker");
-  const runsDir = join(homedir(), "sr-runs");
-  const ledgerDir = defaultLedgerDir(env, homedir());
-  for (const p of [stateDir, runsDir, ledgerDir, join(homedir(), "second-root-shops")]) if (await insideRepo(p)) return (say({ status: "refused", code: "PLACE_INSIDE_REPO", invoked: false }), 2);
-  // never inside a requester jail unit (as the run above)
-  const jailUnit = await ownJailUnit(readCgroup);
-  if (jailUnit !== null) return (say({ status: "refused", code: jailUnit === "unknown" ? "OWN_CGROUP_UNREADABLE" : "RUN_INSIDE_JAIL_UNIT", invoked: false }), 2);
+async function requestMode(r: RequestArgs, places: { env: NodeJS.ProcessEnv; stateDir: string; runsDir: string; ledgerDir: string }): Promise<number> {
+  const { env, stateDir, runsDir, ledgerDir } = places;
+  if (await insideRepo(join(homedir(), "second-root-shops"))) return (say({ status: "refused", code: "PLACE_INSIDE_REPO", invoked: false }), 2);
   const o = { repoRoot: REPO, stateDir, runsDir, home: homedir(), requestId: r.id, requestSha256: r.sha256, requestFile: r.file };
   if (r.precheck) {
     const p = await precheckRequestCycle(o, { commit: () => gitCommitState(REPO, env), ledger: openLedger(ledgerDir) });

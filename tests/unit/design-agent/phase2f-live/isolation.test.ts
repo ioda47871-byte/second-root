@@ -30,6 +30,12 @@ const WORKER_LIB = "lib/design-agent/imagefirst-worker/cycle.ts";
 /** Issue #302 (d4 run path): the worker's per-direction allowlist (d3 / d4), which reads only the packet table. */
 const RUN_DIRECTIONS = "lib/design-agent/imagefirst-worker/run-directions.ts";
 const WORKER_CLI = "scripts/sales-design-worker/imagefirst-worker.ts";
+/**
+ * DEV-303 (owner direction 2026-11-23, docs/operations/first-client-pipeline.md §2 A/B): the worker's request mode — its
+ * cycle (ledger precheck, the claim, ONE invocation of the entry's request mode through the injected `invoke`) and the
+ * request's files (read only; the real shop's private record). Neither takes the image call, the sandbox or Codex.
+ */
+const REQUEST_CYCLE = "lib/design-agent/imagefirst-worker/request-cycle.ts";
 /** Issue #302 P1: root's automatic start (OFF by default; its unit and timer are never installed or enabled here). */
 const WORKER_AUTOSTART = "scripts/sales-design-worker/imagefirst-autostart.sh";
 /**
@@ -50,7 +56,7 @@ const WORKER_PILOT_PREFLIGHT = "scripts/sales-design-worker/imagefirst-pilot-pre
  * run (tests/unit/design-agent/imagefirst-worker/approve.test.ts). The automatic run itself names no adapter line.
  */
 const WORKER_APPROVE = "scripts/sales-design-worker/imagefirst-approve.sh";
-const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI];
+const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI, REQUEST_CYCLE];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -73,9 +79,11 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/direction-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../three-methods/direction", "../codex", "./ledger", "./steps"],
   // Issue #293 P3: one IMAGE_FIRST batch under one approval; the batch call is passed in by its CLI
   // Issue #302 (d4 run path): plus the per-direction packet table (data only, no import)
-  [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "./approval-packets", "./ledger", "./steps"],
+  // DEV-303: plus the request id rule (request-prompt.ts isRequestId) for a request run
+  [`${LIB}/full-page-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "../image-first/prompt", "../image-first/record", "../image-first/request-prompt", "./approval-packets", "./ledger", "./steps"],
   [`${LIB}/approval-packets.ts`]: [],
-  [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
+  // DEV-303: plus the request's files (request mode rebuilds and re-checks the request, the facts and the plan itself)
+  [FULL_PAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/image-first/prompt`, `${L}/imagefirst-worker/request`, `${L}/phase2f-live/full-page-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
   // Issue #302 (d4 run path): plus the per-direction allowlist (run-directions.ts: data and pure lookups)
   [WORKER_LIB]: ["node:crypto", "node:fs", "node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state", "./run-directions"],
   // Issue #302 P3 follow-up (owner instruction 2026-11-20, exact path): plus the review delivery of a finished run
@@ -83,7 +91,9 @@ const ALLOWED: Record<string, string[]> = {
   // tests/unit/design-agent/imagefirst-worker/deliver-review.test.ts)
   // PR #310 review H1 / L5 (exact paths): plus the worker side's read-only jail state (jail-state.ts: /usr/bin/systemctl
   // by absolute path) and node:fs/promises for the review summary's audit line
-  [WORKER_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/imagefirst-worker/deliver-review`, `${L}/imagefirst-worker/jail-state`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
+  // DEV-303: plus the request cycle and the request's files (the real shop's private record)
+  [WORKER_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/imagefirst-worker/cycle`, `${L}/imagefirst-worker/deliver-review`, `${L}/imagefirst-worker/jail-state`, `${L}/imagefirst-worker/request`, `${L}/imagefirst-worker/request-cycle`, `${L}/phase2f-live/ledger`, `${L}/worker/env`, "../design-artifact/phase2f-live-cli"],
+  [REQUEST_CYCLE]: ["node:fs/promises", "node:path", "../bounded-process", "../image-first/prompt", "../image-first/request-prompt", "../phase2f-live/full-page-call", "../phase2f-live/ledger", "../phase2f-live/steps", "../worker/state", "./cycle", "./request"],
   [CLI_SHARED]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/codex`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, `${L}/protected-paths`, `${L}/sandbox`, `${L}/worker/env`],
   // DEV-124: node:os, playwright and the reference sheet make the v2 reference images before the approval is used
   // DEV-150: node:crypto for the SHA-256 of the tm0 brief that --print-pin shows
@@ -169,7 +179,7 @@ describe("isolation of the Phase 2f-2 steps", () => {
 
   it("is imported by nobody else (the CLIs are entry points; the shared helper only by the real-call CLIs)", () => {
     // Issue #302 (d4 run path): plus the per-direction allowlist, which takes only the packet table (data, no import)
-    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI, RUN_DIRECTIONS].sort());
+    expect(git(["grep", "--untracked", "-lE", "phase2f-live|phase2f-design|phase2f-image|phase2f-steps|phase2f-direction", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([DESIGN_CLI, IMAGE_CLI, CLI_SHARED, STEPS_CLI, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI, RUN_DIRECTIONS, REQUEST_CYCLE].sort());
     expect(specifiers(readFileSync(resolve(REPO, RUN_DIRECTIONS), "utf8"))).toEqual(["../phase2f-live/approval-packets"]);
     expect(git(["grep", "--untracked", "-lE", "phase2f-live-cli", "--", "lib", "app", "components", "scripts"])).toEqual([DESIGN_CLI, IMAGE_CLI, DIRECTION_CLI, FULL_PAGE_CLI, WORKER_CLI].sort());
     // Issue #293 P3: nothing starts the IMAGE_FIRST entry (run by hand by the owner only). Issue #298 P1: except the worker
@@ -220,7 +230,7 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(deliver).not.toMatch(/image-first-generate|codex|anthropic|openai|generateImage/i);
     expect(deliver.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &']);
     // the adapter never takes the image call, the sandbox or Codex: it starts the entry (its one process) and reads files
-    for (const file of [WORKER_LIB, WORKER_CLI]) expect(readFileSync(resolve(REPO, file), "utf8"), file).not.toMatch(/generateImage|image-once|prepareCodexSandbox|\/sandbox["']|runCodexJson|\/codex["']|\bfetch\(|node:https?|child_process|anthropic|openai/);
+    for (const file of [WORKER_LIB, WORKER_CLI, REQUEST_CYCLE, "lib/design-agent/imagefirst-worker/request.ts"]) expect(readFileSync(resolve(REPO, file), "utf8"), file).not.toMatch(/generateImage|image-once|prepareCodexSandbox|\/sandbox["']|runCodexJson|\/codex["']|\bfetch\(|node:https?|child_process|anthropic|openai/);
     // DEV-150: no package script, workflow, unit file or other script starts the new entries (run by hand only)
     expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b.*(phase2f-direction|three-methods-steps)", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**"])).toEqual([]);
   });

@@ -18,9 +18,10 @@
  *
  * Failures throw PromptStop with a fixed code (no path, no content).
  */
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { PromptStop } from "../image-first/prompt";
 import { buildRequestPlan, FACTS_MAX_BYTES, parseRequest, parseRequestFacts, REQUEST_MAX_BYTES, requestDirectionBytes, type FactsRoot, type ImagefirstRequest, type RequestPlan } from "../image-first/request-prompt";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
@@ -64,6 +65,8 @@ export async function readRequestFile(o: { requestFile: string; requestSha256: s
   const repo = await realpath(o.repo).catch(() => o.repo);
   if (real === null) throw new PromptStop("REQUEST_FILE_MISSING");
   if (within(real, repo) || within(o.requestFile, o.repo)) throw new PromptStop("REQUEST_FILE_IN_REPO");
+  // no link anywhere on the path (root hands a real path: <fresh clone>.request/<id>.json)
+  if (real !== resolve(o.requestFile)) throw new PromptStop("REQUEST_FILE_UNSAFE");
   // a link at the last step refuses (O_NOFOLLOW); 1 byte over the envelope cap is enough to refuse
   const bytes = await readChecked(o.requestFile, REQUEST_MAX_BYTES, { unsafe: "REQUEST_FILE_UNSAFE", big: "REQUEST_TOO_LARGE", missing: "REQUEST_FILE_MISSING" });
   const { request, sha256 } = parseRequest(bytes, o.requestSha256, o.requestId);
@@ -135,6 +138,26 @@ export async function loadRequestRun(o: { requestFile: string; requestSha256: st
   const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
   if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   return { request: r.request, requestBytes: r.bytes, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, directionBytes: requestDirectionBytes(r.request), plan };
+}
+
+/** Where root's pilot puts the run's private copy of the request (an absolute path to <dir>/<request id>.json). */
+export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
+
+/**
+ * `--validate-request <file>`: the whole worker-side check of a request Claude is about to drop into ~/sr-runs/requests/
+ * (root's quota counts a refused request too) — the file (named <id>.json, regular, no link, at most 16 KiB, outside the
+ * repository), the strict schema, the facts pack (resolution, no link, size, facts_sha256), the shop's kind and the plan
+ * (6 pictures). Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
+ * no write, no network, no Codex.
+ */
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; request_sha256: string; facts_sha256: string; plan_sha256: string }> {
+  const file = resolve(o.file);
+  const name = basename(file);
+  if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
+  const requestId = name.slice(0, -".json".length);
+  const bytes = await readChecked(file, REQUEST_MAX_BYTES, { unsafe: "REQUEST_FILE_UNSAFE", big: "REQUEST_TOO_LARGE", missing: "REQUEST_FILE_MISSING" });
+  const run = await loadRequestRun({ requestFile: file, requestSha256: createHash("sha256").update(bytes).digest("hex"), requestId, home: o.home, repo: o.repo });
+  return { request_id: run.request.id, kind: run.request.kind, request_sha256: run.requestSha256, facts_sha256: run.plan.facts_sha256, plan_sha256: run.plan.plan_sha256 };
 }
 
 export type RealShopRecord = {

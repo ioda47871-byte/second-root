@@ -55,6 +55,26 @@ export type IntakeInput = {
   now: string;
 };
 
+/** A fixed IMAGE_FIRST approval id's form (`<shop>-imagefirst-<direction>-YYYYMMDD-NN`); anything else is a request run. */
+const APPROVAL_RUN_ID = /^[a-z0-9][a-z0-9-]{1,40}-imagefirst-d\d{1,2}-\d{8}-\d{2}$/;
+const RequestManifest = z.object({ bundle_id: Slug, mode: z.literal("request"), kind: z.enum(["real_shop", "fictional"]), shop: z.string() });
+
+/**
+ * DEV-303: a request-mode run (its bundle id is the request id) is logged only when its sealed bundle in the inbox says it
+ * is a FICTIONAL shop's, and the same shop as `--shop`. A real shop's run never enters the committed log (its private
+ * record is ~/second-root-shops/<shop_id>/runs/<id>.json, written by the worker): REAL_SHOP_NOT_LOGGED.
+ */
+async function assertLoggableRun(o: IntakeInput): Promise<void> {
+  if (APPROVAL_RUN_ID.test(o.bundleId)) return;
+  const bytes = await readFile(join(o.inbox, o.bundleId, "manifest.json")).catch(() => {
+    throw new LogStop("INTAKE_MANIFEST_MISSING", `${o.bundleId}/manifest.json is missing (a request run is logged from its sealed bundle)`);
+  });
+  const m = RequestManifest.safeParse(parseJson(bytes, "INTAKE_MANIFEST_INVALID", "manifest.json"));
+  if (!m.success || m.data.bundle_id !== o.bundleId) throw new LogStop("INTAKE_MANIFEST_INVALID", "manifest.json is not this request run's bundle");
+  if (m.data.kind !== "fictional") throw new LogStop("REAL_SHOP_NOT_LOGGED", "a real shop's run is recorded privately, never in the research log");
+  if (m.data.shop !== o.shop) throw new LogStop("INTAKE_SHOP_MISMATCH", `the bundle is ${m.data.shop}'s, not ${o.shop}'s`);
+}
+
 /** Builds (does not write) the entry. Throws LogStop with a fixed code on any disagreement. */
 export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
   if (!Slug.safeParse(o.bundleId).success) throw new LogStop("INTAKE_ID_INVALID", o.bundleId);
@@ -66,6 +86,7 @@ export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
   const idx = PreviewIndex.safeParse(parseJson(indexBytes, "INTAKE_INDEX_INVALID", "INDEX.json"));
   if (!idx.success) throw new LogStop("INTAKE_INDEX_INVALID", "INDEX.json does not match imagefirst_review_previews_v1");
   if (idx.data.bundle_id !== o.bundleId) throw new LogStop("INTAKE_INDEX_INVALID", "INDEX.json names another bundle");
+  await assertLoggableRun(o);
 
   const previews: ResearchEntry["provenance"]["previews"] = [];
   for (const p of idx.data.previews) {

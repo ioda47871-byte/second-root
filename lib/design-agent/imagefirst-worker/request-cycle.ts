@@ -60,7 +60,7 @@ export type RequestCycleResult = {
   run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string } | null;
 };
 
-/** The entry's arguments in request mode (image-first-generate.ts REQUEST_VALUES): the request and the pins to re-check. */
+/** The entry's arguments in request mode (its REQUEST_VALUES): the request and the pins to re-check. */
 export function requestArgv(o: { requestFile: string; requestId: string; requestSha256: string; outDir: string; commit: string; plan: RequestRunInputs["plan"] }): string[] {
   return [
     "--request-file", o.requestFile,
@@ -105,8 +105,8 @@ export async function precheckRequestCycle(o: Omit<RequestCycleOptions, "signal"
 async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: () => number, audit: (r: RequestCycleResult) => Promise<RequestCycleResult>, precheckOnly = false): Promise<RequestCycleResult> {
   const id = o.requestId;
   let run: RequestCycleResult["run"] = null;
-  let kind: ImagefirstRequest["kind"] | undefined;
-  const refuse = (code: string): RequestCycleResult => ({ report: { mode: "request", status: "refused", code, invoked: false, ...(isRequestId(id) ? { approval_id: id } : {}), ...(kind ? { kind } : {}) }, run });
+  const seen: { kind?: ImagefirstRequest["kind"] } = {};
+  const refuse = (code: string): RequestCycleResult => ({ report: { mode: "request", status: "refused", code, invoked: false, ...(isRequestId(id) ? { approval_id: id } : {}), ...(seen.kind ? { kind: seen.kind } : {}) }, run });
   if (!isRequestId(id)) return refuse("REQUEST_ID_INVALID");
 
   // ---- the reviewed code: HEAD = origin/develop, nothing changed ----
@@ -123,7 +123,7 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
   } catch (error) {
     return refuse(error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE");
   }
-  kind = inputs.request.kind;
+  const kind = (seen.kind = inputs.request.kind);
   run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit };
   if (inputs.plan.batch.images !== REQUEST_IMAGES.total || inputs.request.codex_runs !== 1) return refuse("REQUEST_IMAGES_MISMATCH");
 
