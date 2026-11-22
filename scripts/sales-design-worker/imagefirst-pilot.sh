@@ -624,10 +624,10 @@ fi
 
 # ---------------------------------------------------------------- 1. the preflight (read only; every row PASS)
 set +e
-if [ "$REQUEST" = 1 ]; then
-  bash "$PREFLIGHT" --request "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
-else
+if [ "$REQUEST" = 0 ]; then
   bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
+else
+  bash "$PREFLIGHT" --request "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
 fi
 frc=$?
 set -e
@@ -660,13 +660,13 @@ set +e
 # node with the tsx loader is timeout's direct child, and timeout --foreground signals only that child: one stop is one
 # SIGTERM to the worker (the tsx CLI would relay it again within 30 ms, and the worker would take it as a hard stop).
 # The worker starts the entry in its own process group and stops it itself.
-if [ "$REQUEST" = 1 ]; then
+if [ "$REQUEST" = 0 ]; then
+  "${AS_WORKER[@]}" timeout --foreground --kill-after="$WORKER_KILL_AFTER" "$WORKER_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
+    node --import tsx scripts/sales-design-worker/imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &
+else
   # a standing request: no approval grant; the request id, root's SHA-256 of it, and the run's private copy
   "${AS_WORKER[@]}" timeout --foreground --kill-after="$WORKER_KILL_AFTER" "$WORKER_TIMEOUT" env "SR_IMAGEFIRST_REQUEST_FILE=$REQ_FILE" \
     node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &
-else
-  "${AS_WORKER[@]}" timeout --foreground --kill-after="$WORKER_KILL_AFTER" "$WORKER_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
-    node --import tsx scripts/sales-design-worker/imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &
 fi
 WPID=$!
 # a stop that came between PHASE=after_claim and here is passed on now (review M2)

@@ -1174,6 +1174,18 @@ describe("DEV-303 standing pre-authorization: the owner's one-time policy and Cl
     expect(src).toContain("INSTALL_DIR=/usr/local/lib/sr-imagefirst");
   });
 
+  it("MVP_SPEC §7.1: generation under the owner's one-time standing pre-authorization within root's limits; real-shop images internal only; publishing and sending still need the owner", () => {
+    const spec = readFileSync(join(REPO, "docs", "MVP_SPEC.md"), "utf8");
+    const s71 = spec.slice(spec.indexOf("### 7.1 "), spec.indexOf("\n### ", spec.indexOf("### 7.1 ") + 5));
+    expect(s71).not.toContain("今までどおり 1 回ごとのオーナーの承認が要る");
+    expect(s71).toContain("**オーナーが一度だけ設定する包括的な事前許可**（オーナー決定 2026-11-23、DEV-303）");
+    expect(s71).toContain("上限は root が守る");
+    expect(s71).toContain("**実店舗の画像は社内のデザインの参考だけ**: 相手（prospect）に見せない・共有しない・版に入れない。");
+    expect(s71).toContain("**本番の公開と営業の送信は、今までどおりオーナーの確認が要る**。自動送信は作らない。");
+    const doc = readFileSync(join(REPO, "docs", "operations", "imagefirst-autorun.md"), "utf8");
+    for (const l of ["check --expect <sha>", "apply --yes --expect <sha>", "standing --yes --expect <sha> --per-day", "enable-timer --yes --expect <sha>", "standing --revoke --yes"]) expect(doc, l).toContain(l);
+  });
+
   it("the request envelope and limits are pinned: the shared interface (id, size, schema, kinds) and the setup's ceilings", () => {
     const src = readFileSync(AUTORUN, "utf8");
     expect(src).toContain("REQ_ID_RE='^[a-z0-9][a-z0-9-]{2,62}$'");
