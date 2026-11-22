@@ -329,6 +329,49 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
     expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_MARKER_USED" });
   });
 
+  it("PR #325 CI: a timeout(1) that exits 143 after passing on a stop (as uutils' does) still gives the pilot's own result", async () => {
+    // the CI runner's timeout exited 143 although the pilot ended exit 1 (PILOT_INTERRUPTED): with the old stdout + exit
+    // status hand-off that was PILOT_NO_RESULT. A stand-in with exactly that behaviour, in front of the real one
+    const realTimeout = spawnSync("bash", ["-c", "command -v timeout"], { encoding: "utf8", env: { PATH: process.env.PATH } as unknown as NodeJS.ProcessEnv }).stdout.trim();
+    expect(realTimeout).toMatch(/^\//);
+    const w = world();
+    w.switchOn();
+    w.marker();
+    exe(join(w.bin, "timeout"), `'${realTimeout}' "$@" & c=$!
+trap 'got=1; kill -TERM $c 2>/dev/null' TERM
+wait $c; rc=$?
+while kill -0 $c 2>/dev/null; do wait $c; rc=$?; done
+wait $c; rc=$?
+if [ "\${got:-}" = 1 ]; then exit 143; fi
+exit $rc`);
+    writeFileSync(join(w.home, "stub-worker-mode"), "sleep");
+    const p = w.runAsync();
+    for (let i = 0; i < 6000 && !existsSync(join(w.home, "stub-sleeping")); i++) await new Promise((res) => setTimeout(res, 20));
+    expect(existsSync(join(w.home, "stub-sleeping"))).toBe(true);
+    p.child.kill("SIGTERM");
+    const r = await p.done;
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_INTERRUPTED", pilot: "PILOT_INTERRUPTED", rc: "restored" });
+    expect(readFileSync(w.review(), "utf8")).toContain(`IMAGEFIRST_PILOT PILOT_INTERRUPTED phase=after_claim approval=${ID} exit=1\n`);
+  });
+
+  it("PR #325 CI: the pilot's result comes from its result file, never from its stdout (a misleading or missing stdout line changes nothing)", () => {
+    const cases: [string, string, string, number, string][] = [
+      // the result file says done, stdout says nothing: done
+      ["result file only", `echo "IMAGEFIRST_PILOT PILOT_DONE phase=after_claim approval=${ID} exit=0" > '@RESULT@'`, "exit 0", 0, "PILOT_DONE"],
+      // stdout says done, no result file: no result
+      ["stdout only", `echo "IMAGEFIRST_PILOT PILOT_DONE phase=after_claim approval=${ID} exit=0"`, "exit 0", 1, "PILOT_NO_RESULT"],
+      // another approval id in the result file: no result
+      ["another id", `echo "IMAGEFIRST_PILOT PILOT_DONE phase=after_claim approval=${D4} exit=0" > '@RESULT@'`, "exit 0", 1, "PILOT_NO_RESULT"],
+    ];
+    for (const [name, write, end, status, pilot] of cases) {
+      const w = world();
+      w.switchOn();
+      w.marker();
+      writeFileSync(join(w.t, "pilot-stand-in.sh"), `${write.replace("@RESULT@", join(w.state, "autorun-result"))}\n${end}\n`);
+      expect(w.run(), name).toMatchObject({ status, pilot, rc: "restored" });
+    }
+  });
+
   it("review L1: the worker user still busy at the end: no pilot, no in-script claude-start; the flag is left for ExecStopPost (--restore)", () => {
     const w = world();
     w.switchOn();
@@ -563,12 +606,13 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
       w.switchOn();
       w.marker();
       mkdirSync(join(w.home, "sr-runs"), { mode: 0o700 });
-      writeFileSync(join(w.t, "pilot-stand-in.sh"), `echo "imagefirst-pilot: share: approval=${ID} stand-in=${name.replace(" ", "_")}"\necho "IMAGEFIRST_PILOT PILOT_STOP_INTERNAL phase=after_claim approval=${ID} exit=137"\n${end}\n`);
+      const line = `IMAGEFIRST_PILOT PILOT_STOP_INTERNAL phase=after_claim approval=${ID} exit=137`;
+      writeFileSync(join(w.t, "pilot-stand-in.sh"), `echo "imagefirst-pilot: share: approval=${ID} stand-in=${name.replace(" ", "_")}"\necho "${line}" > '${join(w.state, "autorun-result")}'\necho "${line}"\n${end}\n`);
       const started = Date.now();
       const r = w.run();
       expect(Date.now() - started, name).toBeLessThan(60_000);
       expect(r, `${name}\n${r.stdout}`).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", pilot: "PILOT_STOP_INTERNAL", rc: "restored" });
-      expect(r.stdout, name).toContain("the pilot ended PILOT_STOP_INTERNAL (exit 137)");
+      expect(r.stdout, name).toContain("the pilot ended PILOT_STOP_INTERNAL (its exit 137; the step returned 137)");
       expect(w.events(), name).toEqual(["admin claude-stop", "admin claude-start"]);
       expect(readFileSync(w.review(), "utf8"), name).toBe(
         `imagefirst-pilot: share: approval=${ID} stand-in=${name.replace(" ", "_")}\nIMAGEFIRST_PILOT PILOT_STOP_INTERNAL phase=after_claim approval=${ID} exit=137\nIMAGEFIRST_AUTORUN_RESULT AUTORUN_PILOT_STOPPED approval=${ID} pilot=PILOT_STOP_INTERNAL exit=1\n`,
@@ -717,6 +761,9 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const step = /\nstep\(\) \{\n[\s\S]*?\n\}\n/.exec(src(AUTORUN))![0].split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     expect(step).toMatch(/\n\s*wait "\$CPID"\n\s*STEP_RC=\$\?\n\s*while kill -0 "\$CPID" 2>\/dev\/null; do\n\s*wait "\$CPID"\n\s*STEP_RC=\$\?\n\s*done\n\s*wait "\$CPID"\n\s*STEP_RC=\$\?\n/);
     expect(step).not.toMatch(/STEP_RC" -gt 128/);
+    // the pilot's result is its result file, read after the step; never a line taken from its stdout
+    expect(code).not.toMatch(/grep -a '\^IMAGEFIRST_PILOT /);
+    expect(code).toMatch(/\nRESULT="\$STATE\/autorun-result"\nrm -f -- "\$RESULT" "\$STATE"\/\.autorun-result\.\*\nstep "\$WORK\/pilot" /);
     expect(code).not.toMatch(/imagefirst-worker\.ts|imagefirst-audit\.ts|image-first-generate|anthropic|openai/i);
     for (const c of [code, src(APPROVE).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")]) for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"]).toContain(m[1]);
     // approve starts no pilot, no admin.sh, never the worker run (only its precheck), never claims

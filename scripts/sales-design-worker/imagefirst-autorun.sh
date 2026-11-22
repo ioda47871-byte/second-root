@@ -105,6 +105,7 @@ WORK=""
 STOPPED_RC=0
 FLAG_WRITTEN=0
 ADMIN_SHA=""
+PILOT_LINE=""
 
 say() { printf 'imagefirst-autorun: %s\n' "$*"; }
 
@@ -288,8 +289,9 @@ finish() {
       {
         if [ -f "$WORK/pilot" ]; then
           tr -d '\000-\010\013-\037' <"$WORK/pilot" | grep -a '^imagefirst-pilot: share: ' | cut -c1-400 || true
-          tr -d '\000-\010\013-\037' <"$WORK/pilot" | grep -a '^IMAGEFIRST_PILOT ' | tail -n 1 | cut -c1-200 || true
         fi
+        # the pilot's last line: from its result file (checked above), not from its stdout
+        [ -z "$PILOT_LINE" ] || printf '%s\n' "$PILOT_LINE"
         printf 'IMAGEFIRST_AUTORUN_RESULT %s approval=%s pilot=%s exit=%s\n' "$code" "$APPROVAL" "$PILOT_CODE" "$rc"
       } >"$WORK/review" 2>/dev/null || true
       write_review "$WORK/review" || true
@@ -548,15 +550,24 @@ if [ "$arc" -ne 0 ] || [ "$ADMIN_NOW" != "$ADMIN_SHA" ]; then
 fi
 PILOT_ENV=(env)
 if [ -n "$R" ]; then PILOT_ENV+=("SR_IMAGEFIRST_PILOT_TEST_ROOT=$R"); fi
+# The pilot's result: its own result file (root's, in root's 0700 state, written by the pilot as its last act with a
+# temporary file and a rename), read only after the pilot has been reaped. Not its stdout or the exit status that comes
+# back through timeout(1): some timeout(1)s exit 143 after passing on a stop, whatever the pilot returned (PR #325 CI)
+RESULT="$STATE/autorun-result"
+rm -f -- "$RESULT" "$STATE"/.autorun-result.*
 step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"
-pline="$(grep -a '^IMAGEFIRST_PILOT ' "$WORK/pilot" | tail -n 1 | tr -d '\000-\037')" || pline=""
-if [[ "$pline" =~ ^IMAGEFIRST_PILOT\ ([A-Z_]+)\ phase=(before_claim|after_claim)\ approval=$APPROVAL\ exit=([0-9]+)$ ]] && [ "${BASH_REMATCH[3]}" = "$STEP_RC" ]; then
+pline=""
+PILOT_RC=none
+if [ -f "$RESULT" ] && [ ! -L "$RESULT" ] && [ "$(stat -c %s -- "$RESULT")" -le 512 ]; then pline="$(head -n 1 -- "$RESULT" | tr -d '\000-\037')"; fi
+if [[ "$pline" =~ ^IMAGEFIRST_PILOT\ ([A-Z_]+)\ phase=(before_claim|after_claim)\ approval=$APPROVAL\ exit=([0-9]+)$ ]]; then
   PILOT_CODE="${BASH_REMATCH[1]}"
+  PILOT_RC="${BASH_REMATCH[3]}"
+  PILOT_LINE="$pline"
 else
   PILOT_CODE=PILOT_NO_RESULT
 fi
 if [ "$INTERRUPTED" = 1 ]; then finish AUTORUN_INTERRUPTED 1; fi
-if [ "$STEP_RC" -eq 0 ] && [ "$PILOT_CODE" = PILOT_DONE ]; then finish AUTORUN_DONE 0; fi
-say "the pilot ended $PILOT_CODE (exit $STEP_RC): never retried"
+if [ "$PILOT_RC" = 0 ] && [ "$PILOT_CODE" = PILOT_DONE ]; then finish AUTORUN_DONE 0; fi
+say "the pilot ended $PILOT_CODE (its exit $PILOT_RC; the step returned $STEP_RC): never retried"
 finish AUTORUN_PILOT_STOPPED 1
 }

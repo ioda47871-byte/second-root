@@ -114,6 +114,13 @@ finish() {
   trap - EXIT INT TERM HUP
   [ "$PHASE" != after_claim ] || summary || true
   [ -z "$WORK" ] || rm -rf "$WORK"
+  # --autorun: the same last line, also as root's result file in root's 0700 state (a temporary file, then a rename), which
+  # the automatic run reads after it has reaped this process (stdout and the exit status through timeout(1) are not a
+  # reliable hand-off: some timeout(1)s exit 143 after passing on a stop, whatever this script returns)
+  if [ "$MODE" = autorun ] && [ -n "${STATE:-}" ] && [ -d "$STATE" ]; then
+    printf 'IMAGEFIRST_PILOT %s phase=%s approval=%s exit=%s\n' "$code" "$PHASE" "$APPROVAL" "$rc" >"$STATE/.autorun-result.$$" 2>/dev/null &&
+      mv -f -T -- "$STATE/.autorun-result.$$" "$STATE/autorun-result" 2>/dev/null || true
+  fi
   printf 'IMAGEFIRST_PILOT %s phase=%s approval=%s exit=%s\n' "$code" "$PHASE" "$APPROVAL" "$rc"
   exit "$rc"
 }
