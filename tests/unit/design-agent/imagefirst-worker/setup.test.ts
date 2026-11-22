@@ -4,7 +4,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { exe, ID, PILOT, PREFLIGHT, SCRIPTS } from "./pilot-world";
-import { cleanupTemps, commitFiles, git, sha, tmp } from "./support";
+import { cleanupTemps, commitFiles, git, REPO as REPO_ROOT, sha, tmp } from "./support";
 
 // Issue #302: the owner's bundled one-time setup (scripts/sales-design-worker/imagefirst-autorun-setup.sh), the real file,
 // against a fake WSL under SR_IMAGEFIRST_SETUP_TEST_ROOT: a temporary /usr, /etc, /var/lib, /root and /home; a stand-in for
@@ -30,6 +30,8 @@ const TGZ_URL: Record<Tgz, string> = {
   codex_native: "https://registry.npmjs.org/@openai/codex/-/codex-0.159.0-linux-x64.tgz",
 };
 const fileOf = (t: Tgz) => TGZ_URL[t].split("/").pop()!;
+/** DEV-303: the files the scripts step installs (the setup's own list). */
+const installFiles = () => /^INSTALL_FILES=\(\n([\s\S]*?)\n\)$/m.exec(readFileSync(join(SCRIPTS, "imagefirst-autorun-setup.sh"), "utf8"))![1]!.split("\n").map((l) => l.trim());
 const CLEAN_ENV = / env=HOME,LANG,PATH,(PWD,)?(SHLVL,)?(_,)?$/;
 
 function world() {
@@ -193,7 +195,7 @@ printf 'drwx------ sr-designgen:sr-designgen /home/sr-designgen\\napproved: none
   return { base, R, sc, bin, home, admin, origin, src, head, state, etc, oldTargets, registry, natives, trees, pins, pack, writePins, run, lines, snapshot, allDone, nm };
 }
 type World = ReturnType<typeof world>;
-const DONE4 = { cli: "DONE", codex_config: "DONE", units: "DONE", hardening_check: "DONE" };
+const DONE4 = { cli: "DONE", codex_config: "DONE", scripts: "DONE", units: "DONE", hardening_check: "DONE" };
 const apply = (w: World) => w.run(["apply", "--yes", "--expect", w.head]);
 /** Nothing of the CLIs changed: the old links in place, no package, no npm call, no download dir left. */
 const cliUntouched = (w: World) => {
@@ -209,7 +211,7 @@ describe("Issue #302 one-time setup: check is read-only", () => {
     const before = w.snapshot();
     const r = w.run(["check", "--expect", w.head]);
     expect(r).toMatchObject({ status: 0, code: "CHECK_OK" });
-    expect(w.allDone(r.steps)).toEqual({ cli: "TODO", codex_config: "TODO", units: "TODO", hardening_check: "TODO" });
+    expect(w.allDone(r.steps)).toEqual({ cli: "TODO", codex_config: "TODO", scripts: "TODO", units: "TODO", hardening_check: "TODO" });
     expect(r.steps.cli!.why).toContain(`claude: /usr/local/bin/claude -> ${w.oldTargets.claude}`);
     expect(r.stdout).toContain(`codex-config.toml SHA-256 ${sha(readFileSync(CODEX_CONFIG_REPO))}`);
     expect(w.snapshot()).toEqual(before);
@@ -469,7 +471,20 @@ describe("Issue #302 one-time setup: apply", () => {
     const log = readFileSync(join(w.state, "setup.log"), "utf8");
     expect(log).toContain(`apply OLD_LINK claude -> ${w.oldTargets.claude}\n`);
     expect(log).toContain(`apply OLD_LINK codex -> ${w.oldTargets.codex}\n`);
-    for (const s of ["cli", "codex_config", "units", "hardening_check"]) expect(log).toContain(` apply APPLIED ${s}\n`);
+    for (const s of ["cli", "codex_config", "scripts", "units", "hardening_check"]) expect(log).toContain(` apply APPLIED ${s}\n`);
+    // DEV-303: root's scripts installed (root's files, byte-identical, 0755 scripts / 0644 data, 0755 dirs) with SHA256SUMS
+    const inst = join(w.R, "usr", "local", "lib", "sr-imagefirst");
+    const files = installFiles();
+    for (const rel of files) {
+      expect(readFileSync(join(inst, rel)), rel).toEqual(readFileSync(join(REPO_ROOT, rel)));
+      expect(statSync(join(inst, rel)).mode & 0o777, rel).toBe(rel.endsWith(".sh") ? 0o755 : 0o644);
+      expect(log, rel).toContain(` apply installed /usr/local/lib/sr-imagefirst/${rel} sha256=${sha(readFileSync(join(REPO_ROOT, rel)))}\n`);
+    }
+    for (const d of [inst, join(inst, "scripts"), join(inst, "scripts", "sales-design-capture", "jail")]) expect(statSync(d).mode & 0o777, d).toBe(0o755);
+    expect(readFileSync(join(inst, "SHA256SUMS"), "utf8")).toBe(files.map((rel) => `${sha(readFileSync(join(REPO_ROOT, rel)))}  ${rel}\n`).join(""));
+    expect(statSync(join(inst, "SHA256SUMS")).mode & 0o777).toBe(0o644);
+    // check 1 runs the INSTALLED admin.sh
+    expect(hr[0]).toContain(` /usr/bin/bash ${inst}/scripts/sales-design-capture/admin.sh status`);
     expect(r.stdout).toContain("The timer is NOT enabled");
 
     // a second apply: every step DONE, nothing run again
@@ -644,6 +659,125 @@ describe("Issue #302 one-time setup: enable-timer and rollback", () => {
     expect(readlinkSync(join(w.R, "usr", "local", "bin", "claude"))).toBe(w.oldTargets.claude);
     expect(existsSync(join(w.R, "usr", "local", "bin", "codex"))).toBe(false);
     expect(r.stdout).toContain("no longer exists: not restored");
+  });
+});
+
+describe("DEV-303 one-time setup: the installed scripts and the standing pre-authorization", () => {
+  const POLICY = (w: World) => join(w.etc, "imagefirst-standing.json");
+  it("standing: writes root's policy (0644) with the limits, a UTC not_after D days ahead and the admin clone's origin URL; logged; nothing else changes", () => {
+    const w = world();
+    const before = w.snapshot();
+    const t0 = Date.now();
+    const r = w.run(["standing", "--yes", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"]);
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "STANDING_WRITTEN" });
+    const p = JSON.parse(readFileSync(POLICY(w), "utf8"));
+    expect(Object.keys(p)).toEqual(["schema", "per_day", "per_week", "not_after", "created_at", "origin_url"]);
+    expect(p).toMatchObject({ schema: "sr_imagefirst_standing_v1", per_day: 2, per_week: 8, origin_url: w.origin });
+    const created = Date.parse(p.created_at);
+    expect(p.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    expect(Math.abs(created - t0)).toBeLessThan(120_000);
+    expect(Date.parse(p.not_after) - created).toBe(30 * 86400_000);
+    expect(statSync(POLICY(w)).mode & 0o777).toBe(0o644);
+    expect(statSync(w.etc).mode & 0o777).toBe(0o755);
+    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toMatch(/ standing standing written: per_day=2 per_week=8 not_after=\S+Z created_at=\S+Z origin_url=\S+\n/);
+    expect(r.stdout).toContain("standing --revoke --yes");
+    // nothing but the policy, /etc/sr-design-worker and root's log / lock: no unit, no package, no timer, no install
+    const after = w.snapshot();
+    for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) if (!/^\/(etc|var\/lib|etc\/sr-design-worker(\/imagefirst-standing\.json)?|var\/lib\/sr-imagefirst-autostart(\/setup\.(log|lock))?)$/.test(k)) expect(after[k], k).toBe(before[k]);
+    expect(w.lines("systemctl.log").filter((l) => !/^(show|is-enabled) /.test(l))).toEqual([]);
+    expect(w.lines("npm.log")).toEqual([]);
+    // the policy is the one the automatic run accepts (its own parser, verbatim)
+    const autorun = readFileSync(join(SCRIPTS, "imagefirst-autorun.sh"), "utf8");
+    const py = /\nSTANDING_PY='\n([\s\S]*?)\n'\n/.exec(autorun)![1]!;
+    const chk = spawnSync("python3", ["-I", "-c", py, POLICY(w), String(Math.floor(Date.now() / 1000)), "4", "20", "90"], { encoding: "utf8" });
+    expect(chk.stdout.trim()).toBe(`OK 2 8 ${w.origin}`);
+    // running it again replaces it (new limits)
+    expect(w.run(["standing", "--yes", "--expect", w.head, "--per-day", "1", "--per-week", "1", "--days", "1"])).toMatchObject({ status: 0, code: "STANDING_WRITTEN" });
+    expect(JSON.parse(readFileSync(POLICY(w), "utf8"))).toMatchObject({ per_day: 1, per_week: 1 });
+    // check shows it (read-only)
+    expect(w.run(["check", "--expect", w.head]).stdout).toMatch(/standing pre-authorization: \{"schema": "sr_imagefirst_standing_v1", "per_day": 1/);
+  });
+
+  it("standing refuses limits over the ceilings (N <= 4, M <= 20, M >= N, D <= 90), no --yes, no --expect or develop moved: nothing written", () => {
+    const w = world();
+    const before = w.snapshot();
+    const bad: [string[], number, string][] = [
+      [["--per-day", "5", "--per-week", "20", "--days", "30"], 2, "STANDING_INVALID"],
+      [["--per-day", "2", "--per-week", "21", "--days", "30"], 2, "STANDING_INVALID"],
+      [["--per-day", "2", "--per-week", "8", "--days", "91"], 2, "STANDING_INVALID"],
+      [["--per-day", "3", "--per-week", "2", "--days", "30"], 2, "STANDING_INVALID"],
+      [["--per-day", "0", "--per-week", "2", "--days", "30"], 2, "STANDING_INVALID"],
+      [["--per-day", "2", "--per-week", "8"], 2, "STANDING_INVALID"],
+      [["--per-day", "2.5", "--per-week", "8", "--days", "30"], 2, "STANDING_INVALID"],
+      [["--per-day", "-1", "--per-week", "8", "--days", "30"], 2, "STANDING_INVALID"],
+    ];
+    for (const [args, status, code] of bad) expect(w.run(["standing", "--yes", "--expect", w.head, ...args]), args.join(" ")).toMatchObject({ status, code });
+    expect(w.run(["standing", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"])).toMatchObject({ status: 2, code: "SETUP_NEEDS_YES" });
+    expect(w.run(["standing", "--yes", "--per-day", "2", "--per-week", "8", "--days", "30"])).toMatchObject({ status: 2, code: "SETUP_EXPECT_REQUIRED" });
+    expect(w.run(["apply", "--yes", "--expect", w.head, "--per-day", "2"])).toMatchObject({ status: 2, code: "SETUP_USAGE" });
+    expect(w.run(["check", "--expect", w.head, "--revoke"])).toMatchObject({ status: 2, code: "SETUP_USAGE" });
+    commitFiles(w.src, { "docs/x.md": Buffer.from("x") }, "merged (test)");
+    git(w.src, "push", "-q", w.origin, "HEAD:refs/heads/develop");
+    expect(w.run(["standing", "--yes", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"])).toMatchObject({ status: 2, code: "SETUP_EXPECT_NOT_DEVELOP" });
+    expect(w.snapshot()).toEqual(before);
+  });
+
+  it("standing --revoke --yes removes the policy (no --expect, no admin clone needed); logged; a link is removed, never followed", () => {
+    const w = world();
+    expect(w.run(["standing", "--yes", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"])).toMatchObject({ status: 0, code: "STANDING_WRITTEN" });
+    expect(w.run(["standing", "--revoke"])).toMatchObject({ status: 2, code: "SETUP_NEEDS_YES" });
+    expect(w.run(["standing", "--revoke", "--yes", "--expect", w.head])).toMatchObject({ status: 2, code: "SETUP_USAGE" });
+    // the admin clone gone or dirty does not matter
+    writeFileSync(join(w.admin, "stray.txt"), "x");
+    const r = w.run(["standing", "--revoke", "--yes"]);
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "STANDING_REVOKED" });
+    expect(existsSync(POLICY(w))).toBe(false);
+    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toContain(` standing standing revoked: rm ${POLICY(w)}\n`);
+    expect(w.run(["standing", "--revoke", "--yes"])).toMatchObject({ status: 0, code: "STANDING_REVOKED" });
+    writeFileSync(join(w.base, "target.json"), "keep\n");
+    symlinkSync(join(w.base, "target.json"), POLICY(w));
+    expect(w.run(["standing", "--revoke", "--yes"])).toMatchObject({ status: 0, code: "STANDING_REVOKED" });
+    expect(() => lstatSync(POLICY(w))).toThrow();
+    expect(readFileSync(join(w.base, "target.json"), "utf8")).toBe("keep\n");
+  });
+
+  it("scripts: an installed file changed, writable by others or missing is TODO / BLOCKED; apply puts the admin clone's copy back; rollback removes the installed copy but keeps the policy", () => {
+    const w = world();
+    expect(apply(w)).toMatchObject({ status: 0, code: "APPLY_OK" });
+    const inst = join(w.R, "usr", "local", "lib", "sr-imagefirst");
+    const pilot = join(inst, "scripts", "sales-design-worker", "imagefirst-pilot.sh");
+    writeFileSync(pilot, "# changed\n", { mode: 0o755 });
+    let c = w.run(["check", "--expect", w.head]);
+    expect(c.steps.scripts).toMatchObject({ state: "TODO" });
+    expect(c.steps.scripts!.why).toContain("imagefirst-pilot.sh differs");
+    expect(w.run(["enable-timer", "--yes", "--expect", w.head])).toMatchObject({ status: 4, code: "TIMER_NOT_READY" });
+    chmodSync(pilot, 0o777);
+    c = w.run(["check", "--expect", w.head]);
+    expect(c).toMatchObject({ status: 3, code: "CHECK_BLOCKED" });
+    expect(c.steps.scripts).toMatchObject({ state: "BLOCKED" });
+    chmodSync(pilot, 0o755);
+    rmSync(join(inst, "SHA256SUMS"));
+    expect(w.run(["check", "--expect", w.head]).steps.scripts!.why).toContain("SHA256SUMS absent");
+    const again = apply(w);
+    expect(again, again.stdout).toMatchObject({ status: 0, code: "APPLY_OK" });
+    expect(readFileSync(pilot)).toEqual(readFileSync(PILOT));
+    expect(w.allDone(again.steps)).toEqual(DONE4);
+    expect(w.run(["standing", "--yes", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"])).toMatchObject({ status: 0, code: "STANDING_WRITTEN" });
+    expect(w.run(["rollback", "--yes", "--expect", w.head])).toMatchObject({ status: 0, code: "ROLLBACK_DONE" });
+    expect(existsSync(inst)).toBe(false);
+    expect(existsSync(POLICY(w))).toBe(true);
+  });
+
+  it("the units start only the installed copy; every installed script treats /usr/local/lib/sr-imagefirst as a production copy", () => {
+    const service = readFileSync(join(UNIT_SRC, "sr-imagefirst-autorun.service"), "utf8");
+    for (const l of service.split("\n").filter((x) => /^Exec/.test(x))) expect(l).toMatch(/ \/usr\/local\/lib\/sr-imagefirst\/scripts\/sales-design-worker\/imagefirst-autorun\.sh( --restore)?$/);
+    for (const rel of installFiles().filter((f) => /imagefirst-(pilot|pilot-preflight|approve|autorun-setup|deliver-review)\.sh$/.test(f))) {
+      const src = readFileSync(join(REPO_ROOT, rel), "utf8");
+      expect(src, rel).toContain("INSTALL_DIR=/usr/local/lib/sr-imagefirst");
+      expect(src, rel).toMatch(/if \[ "\$REPO" = "\$PROD_CLONE" \] \|\| \[ "\$REPO" = "\$INSTALL_DIR" \]; then/);
+    }
+    // admin.sh's own files (what it sources and checks) are installed with it
+    for (const f of ["scripts/sales-design-capture/admin.sh", "scripts/sales-design-capture/host-check.sh", "scripts/sales-design-capture/jail/jail.properties", "scripts/sales-design-capture/jail/probe.py", "scripts/ops/wsl-resource-preflight.sh"]) expect(installFiles()).toContain(f);
   });
 });
 
