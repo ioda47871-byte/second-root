@@ -44,6 +44,12 @@ const WORKER_DELIVER = "scripts/sales-design-worker/imagefirst-deliver-review.sh
  */
 const WORKER_PILOT = "scripts/sales-design-worker/imagefirst-pilot.sh";
 const WORKER_PILOT_PREFLIGHT = "scripts/sales-design-worker/imagefirst-pilot-preflight.sh";
+/**
+ * Issue #302 (PR #325, docs/operations/imagefirst-autorun.md): the owner's approval command, which starts only the
+ * adapter's read-only --precheck (the automatic start's line), and only while the worker user is idle; it never starts the
+ * run (tests/unit/design-agent/imagefirst-worker/approve.test.ts). The automatic run itself names no adapter line.
+ */
+const WORKER_APPROVE = "scripts/sales-design-worker/imagefirst-approve.sh";
 const CLIS = [DESIGN_CLI, IMAGE_CLI, STEPS_CLI, CLI_SHARED, DIRECTION_CLI, TM_STEPS_CLI, FULL_PAGE_CLI, WORKER_LIB, WORKER_CLI];
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
@@ -172,10 +178,14 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(git(["grep", "--untracked", "-lF", "image-first-generate", "--", "lib", "app", "components", "scripts", ".github", "package.json", `:!${FULL_PAGE_CLI}`])).toEqual([WORKER_LIB]);
     // Issue #302 P1 (owner-approved scope): one exception, root's automatic start (WORKER_AUTOSTART), which starts the
     // adapter once per root-owned one-use marker; its unit names only that script (tests/unit/design-agent/imagefirst-worker/autostart.test.ts)
-    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_AUTOSTART, WORKER_DELIVER, WORKER_PILOT, WORKER_PILOT_PREFLIGHT].sort());
+    expect(git(["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh|ExecStart)\\b.*imagefirst-worker\\.ts", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${WORKER_CLI}`])).toEqual([WORKER_APPROVE, WORKER_AUTOSTART, WORKER_DELIVER, WORKER_PILOT, WORKER_PILOT_PREFLIGHT].sort());
     // Issue #302: the pilot starts the adapter's run once, its preflight only the --precheck; neither names the entry or a model API (code lines)
     const codeOf = (f: string) => readFileSync(resolve(REPO, f), "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
-    expect(codeOf(WORKER_PILOT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &']);
+    // (PR #325) plus, in --autorun only, the same no-generation re-send as the wrapper's (--deliver-review), from the fresh clone
+    expect(codeOf(WORKER_PILOT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &', 'imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/deliver" 2>/dev/null 8>&- 9>&-']);
+    // the approval command: the --precheck only
+    expect(codeOf(WORKER_APPROVE).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 7>&- 8>&- 9>&-']);
+    expect(codeOf(WORKER_APPROVE)).not.toMatch(/image-first-generate|generateImage|anthropic|openai/i);
     // the preflight: the --precheck, and (review H1) the read-only Codex sign-in check, which uses nothing
     expect(codeOf(WORKER_PILOT_PREFLIGHT).match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
     for (const f of [WORKER_PILOT, WORKER_PILOT_PREFLIGHT]) expect(codeOf(f), f).not.toMatch(/image-first-generate|generateImage|anthropic|openai/i);

@@ -340,9 +340,14 @@ step() {
   if [ "$INTERRUPTED" = 1 ]; then kill -TERM "$CPID" 2>/dev/null || true; fi
   wait "$CPID"
   STEP_RC=$?
-  while [ "$STEP_RC" -gt 128 ] && kill -0 "$CPID" 2>/dev/null; do
+  # a stop signal interrupts wait (> 128) while the pilot still finishes: wait again until bash has the child's own exit
+  # status (127 = already collected: the last status stands). Never kill -0 first: the child may have just exited, and its
+  # real status must still be collected, not the interrupted wait's (the pilot's last line must match its exit code)
+  while [ "$STEP_RC" -gt 128 ]; do
     wait "$CPID"
-    STEP_RC=$?
+    r=$?
+    [ "$r" -ne 127 ] || break
+    STEP_RC=$r
   done
   set -e
   CPID=""

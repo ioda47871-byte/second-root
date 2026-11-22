@@ -692,6 +692,11 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const code = src(AUTORUN).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     expect(code.match(/bash "\$ADMIN" [^\n]*/g)).toEqual(['bash "$ADMIN" claude-start 2>&1 7>&- 8>&- 9>&-)" || rc=$?', 'bash "$ADMIN" claude-stop 2>&1 7>&- 8>&- 9>&-)"']);
     expect(code.match(/bash "\$PILOT" [^\n]*/g)).toEqual(['bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"']);
+    // PR #325 CI: after a stop signal the pilot's own exit status is always collected (wait again until 127), never cut
+    // short by a kill -0 that races the pilot's exit (which left PILOT_NO_RESULT although the pilot had printed its line)
+    const step = /\nstep\(\) \{\n[\s\S]*?\n\}\n/.exec(src(AUTORUN))![0].split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    expect(step).not.toMatch(/kill -0/);
+    expect(step).toMatch(/while \[ "\$STEP_RC" -gt 128 \]; do\n\s*wait "\$CPID"\n\s*r=\$\?\n\s*\[ "\$r" -ne 127 \] \|\| break\n\s*STEP_RC=\$r\n\s*done/);
     expect(code).not.toMatch(/imagefirst-worker\.ts|imagefirst-audit\.ts|image-first-generate|anthropic|openai/i);
     for (const c of [code, src(APPROVE).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")]) for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"]).toContain(m[1]);
     // approve starts no pilot, no admin.sh, never the worker run (only its precheck), never claims
