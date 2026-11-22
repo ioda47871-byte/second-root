@@ -72,7 +72,7 @@ export const RUN_APPROVAL_ID_RE = new RegExp(`^hoshigama-imagefirst-(?:${RUN_DIR
  * DEV-303: a request run's id (the IMAGE_FIRST request schema's REQUEST_ID_RE without its reserved ids: anything with
  * "imagefirst", and the names of the directories next to bundles in the inbox, runs and state; a test compares the two). Disjoint from RUN_APPROVAL_ID_RE: a request id never names, claims or delivers as an approval id.
  */
-export const REQUEST_RUN_ID_RE = /^(?!.*imagefirst)(?!(?:previews|audits|runs|bundles|requests|review-inbox|deliveries|claims|approvals|plans)$)[a-z0-9][a-z0-9-]{2,62}$/;
+export const REQUEST_RUN_ID_RE = /^(?!.*imagefirst)req-[a-z0-9][a-z0-9-]{2,58}$/;
 /** What a sealed bundle, the review inbox and the transport accept as a bundle id: an approval id or a request id. */
 export const BUNDLE_ID_RE = new RegExp(`(?:${RUN_APPROVAL_ID_RE.source})|(?:${REQUEST_RUN_ID_RE.source})`);
 export const isRequestRunId = (id: string) => REQUEST_RUN_ID_RE.test(id);

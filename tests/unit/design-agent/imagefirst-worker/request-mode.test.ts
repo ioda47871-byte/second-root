@@ -26,7 +26,7 @@ import { cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, tmp, workerRepo, typ
 vi.setConfig({ testTimeout: 90_000 });
 afterAll(cleanupTemps);
 
-const ID = "test-shop-a-20261120-1";
+const ID = "req-test-shop-a-1";
 const SHOP = "test-shop-a";
 /** An invented pack in the real-shop shape (kind real_shop in the test only). */
 const FACTS: FactsPack = {
@@ -174,9 +174,11 @@ describe("DEV-303 request schema (strict; root validates only the envelope)", ()
       expect(syncCode(() => parseRequest(b, sha(b), ID)), JSON.stringify(over)).toBe("REQUEST_INVALID");
     }
     expect(syncCode(() => parseRequest(ok, sha("other"), ID))).toBe("REQUEST_SHA_MISMATCH");
-    expect(syncCode(() => parseRequest(ok, sha(ok), "test-shop-b-1"))).toBe("REQUEST_ID_MISMATCH");
-    expect(syncCode(() => parseRequest(ok, sha(ok), "hoshigama-imagefirst-d3-20261120-01"))).toBe("REQUEST_ID_RESERVED");
-    expect(syncCode(() => parseRequest(ok, sha(ok), "previews"))).toBe("REQUEST_ID_RESERVED");
+    expect(syncCode(() => parseRequest(ok, sha(ok), "req-test-shop-b-1"))).toBe("REQUEST_ID_MISMATCH");
+    expect(syncCode(() => parseRequest(ok, sha(ok), "hoshigama-imagefirst-d3-20261120-01"))).toBe("REQUEST_ID_INVALID");
+    expect(syncCode(() => parseRequest(ok, sha(ok), "previews"))).toBe("REQUEST_ID_INVALID");
+    expect(syncCode(() => parseRequest(ok, sha(ok), "test-shop-a-1"))).toBe("REQUEST_ID_INVALID");
+    expect(syncCode(() => parseRequest(ok, sha(ok), "req-imagefirst-x"))).toBe("REQUEST_ID_RESERVED");
     expect(syncCode(() => parseRequest(ok, sha(ok), "../x"))).toBe("REQUEST_ID_INVALID");
     expect(syncCode(() => parseRequest(Buffer.from("{"), sha("{"), ID))).toBe("REQUEST_INVALID");
   });
@@ -189,7 +191,7 @@ describe("DEV-303 request schema (strict; root validates only the envelope)", ()
     expect(syncCode(() => parseRequest(long, sha(long), ID))).toBe("REQUEST_INVALID");
   });
   it("the worker's request id rule = the schema's (minus reserved ids), disjoint from every approval id", () => {
-    for (const id of [ID, "abc", "a-b-c", "x".repeat(63), "x".repeat(64), "ab", "-ab", "Abc", "a_b", "hoshigama-imagefirst-d3-20261120-01", "imagefirst", ...RESERVED_REQUEST_IDS]) {
+    for (const id of [ID, "req-abc", "req-ab", "req--ab", `req-${"x".repeat(59)}`, `req-${"x".repeat(60)}`, "abc", "req-Abc", "req-a_b", "hoshigama-imagefirst-d3-20261120-01", "req-imagefirst-1", ...RESERVED_REQUEST_IDS]) {
       expect(REQUEST_RUN_ID_RE.test(id), id).toBe(isRequestId(id));
     }
     expect(BUNDLE_ID_RE.test("hoshigama-imagefirst-d4-20261120-01")).toBe(true);
@@ -239,7 +241,7 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
     const link = join(tmp("sr-req-link-"), `${ID}.json`);
     symlinkSync(w.requestFile, link);
     expect(await codeOf(loadRequestRun({ requestFile: link, requestSha256: sha(w.requestBytes), requestId: ID, home: w.home, repo: w.repo }))).toBe("REQUEST_FILE_UNSAFE");
-    expect(await codeOf(loadRequestRun({ requestFile: w.requestFile, requestSha256: sha(w.requestBytes), requestId: "test-shop-a-2", home: w.home, repo: w.repo }))).toBe("REQUEST_FILE_NAME_MISMATCH");
+    expect(await codeOf(loadRequestRun({ requestFile: w.requestFile, requestSha256: sha(w.requestBytes), requestId: "req-test-shop-a-2", home: w.home, repo: w.repo }))).toBe("REQUEST_FILE_NAME_MISMATCH");
     // a link on a directory of the path (root hands a real path) is refused too
     const linkedDir = join(tmp("sr-req-ldir-"), "via");
     symlinkSync(join(w.runsDir, "requests-private", ID), linkedDir);
@@ -255,7 +257,7 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
     expect(await codeOf(validateRequestFile({ file: bad, home: w.home, repo: w.repo }))).toBe("REQUEST_INVALID");
     writeFileSync(bad, bytesOf(requestObject({ facts_sha256: sha("other") })));
     expect(await codeOf(validateRequestFile({ file: bad, home: w.home, repo: w.repo }))).toBe("FACTS_SHA_MISMATCH");
-    const misnamed = join(tmp("sr-req-val-"), "other-id.json");
+    const misnamed = join(tmp("sr-req-val-"), "req-other-id.json");
     writeFileSync(misnamed, w.requestBytes);
     expect(await codeOf(validateRequestFile({ file: misnamed, home: w.home, repo: w.repo }))).toBe("REQUEST_ID_MISMATCH");
     expect(readdirSync(w.home).sort()).toEqual(before);
@@ -323,7 +325,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(readdirSync(join(runDir, "parts")).sort()).toEqual(["pc-1.png", "pc-2.png", "sp-1.png", "sp-2.png", "sp-3.png", "sp-4.png"]);
     expect(readFileSync(join(runDir, "facts-pack.json"))).toEqual(FACTS_BYTES);
     const receipt = JSON.parse(readFileSync(report.receipt!, "utf8")) as WorkerReceipt;
-    expect(receipt).toMatchObject({ status: "succeeded", mode: "request", kind: "real_shop", request_id: ID, approval_id: ID, plan_id: ID, shop: SHOP, direction: "request", packet_sha256: sha(w.requestBytes), request_sha256: sha(w.requestBytes), facts_sha256: sha(FACTS_BYTES), counts: { pc: 2, sp: 4, total: 6, stopped: 0 }, verified: true });
+    expect(receipt).toMatchObject({ status: "succeeded", mode: "request", kind: "real_shop", request_id: ID, approval_id: ID, plan_id: ID, shop: SHOP, direction: "request", packet_sha256: sha(w.requestBytes), request_sha256: sha(w.requestBytes), facts_sha256: sha(FACTS_BYTES), counts: { pc: 2, sp: 4, total: 6, stopped: 0 }, verified: true, images_total: 6 });
     // the receipt holds no prompt and no facts value
     expect(JSON.stringify(receipt)).not.toContain("架空喫茶");
     // nothing was written into the clone (git sees a clean tree)
@@ -368,7 +370,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
 
   it("fictional: the fictional-shop check passes, the bundle is delivered and the research log intake accepts it", async () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
-    const id = "hoshigama-req-20261120-1";
+    const id = "req-hoshigama-1";
     const w = world({ id, request: requestObject({ id, kind: "fictional", shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
     const { report } = await w.cycle();
     expect(report).toMatchObject({ status: "succeeded", kind: "fictional", approval_id: id });

@@ -130,7 +130,7 @@ export type WorkerReceipt = {
  * DEV-303: what a request run's receipt adds (request-cycle.ts). shop is the request's shop_id, direction "request",
  * approval_id and plan_id the request id, packet_sha256 the request bytes' SHA-256 (the request is the run's approval).
  */
-export type RequestReceiptFields = { mode: "request"; kind: "real_shop" | "fictional"; request_id: string; request_sha256: string; facts_sha256: string };
+export type RequestReceiptFields = { mode: "request"; kind: "real_shop" | "fictional"; request_id: string; request_sha256: string; facts_sha256: string; images_total?: number };
 
 export type CycleOptions = {
   /** The worker's clone (its real path). */
@@ -507,7 +507,8 @@ export async function settleRun(s: SettleSpec, res: BoundedResult | null, interr
     counts: { pc, sp, total: images.length, stopped: stopped.length },
     verified,
     timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
-    ...(s.extra ?? {}),
+    // DEV-303: a request run reports its picture count (parts + stopped) for root's after-run check (<= 6)
+    ...(s.extra ? { ...s.extra, images_total: images.length + stopped.length } : {}),
   };
   const receiptPath = join(s.runsDir, `${s.receiptName}.receipt.json`);
   const written = await open(receiptPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)

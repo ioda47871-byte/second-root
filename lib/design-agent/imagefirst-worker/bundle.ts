@@ -190,6 +190,7 @@ type Receipt = {
   request_id?: unknown;
   request_sha256?: unknown;
   facts_sha256?: unknown;
+  images_total?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -289,6 +290,8 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[] } {
     if (!PART_RE.test(i.file)) stop("RUN_FILE_OUTSIDE");
   }
   if (new Set(images.map((i) => i.file)).size !== images.length) stop("RECEIPT_INVALID");
+  // DEV-303: a request run's reported picture count is the receipt's own list, never more than one batch's 6
+  if (r.mode === "request" && (r.images_total !== images.length || images.length > 6)) stop("RECEIPT_INVALID");
   if (r.status !== "succeeded" || r.stop_code !== null || r.verified !== true || (r.stopped_images as unknown[]).length !== 0) stop("RECEIPT_NOT_SUCCEEDED");
   const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
   const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;

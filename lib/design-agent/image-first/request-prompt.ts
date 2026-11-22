@@ -26,8 +26,8 @@ import { MAX_PARTS_PER_VIEWPORT, VIEWPORT_WIDTHS, type ImageFirstViewport } from
 export const REQUEST_SCHEMA = "sr_imagefirst_request_v1";
 export const REQUEST_PLAN_SCHEMA = "image_first_request_plan_v0";
 export const REQUEST_PROMPT_VERSION = "if-req-v0";
-/** The request id (= the request file's name without .json; root's envelope rule). */
-export const REQUEST_ID_RE = /^[a-z0-9][a-z0-9-]{2,62}$/;
+/** The request id (= the request file's name without .json; root's envelope rule): always "req-" + 3..59 characters. */
+export const REQUEST_ID_RE = /^req-[a-z0-9][a-z0-9-]{2,58}$/;
 export const REQUEST_SHOP_ID_RE = /^[a-z0-9_-]{2,41}$/;
 /** Root's envelope cap; the worker refuses anything larger before parsing. */
 export const REQUEST_MAX_BYTES = 16 * 1024;

@@ -128,6 +128,7 @@ type Receipt = {
   kind?: unknown;
   request_id?: unknown;
   request_sha256?: unknown;
+  images_total?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
@@ -217,7 +218,7 @@ async function checkRequestReceipt(r: Receipt, id: string, runDir: string, state
   if (typeof r.request_sha256 !== "string" || r.request_sha256 !== r.packet_sha256 || (r.kind !== "real_shop" && r.kind !== "fictional") || r.direction !== "request") stop("RECEIPT_INVALID");
   if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== runDir) stop("RECEIPT_INVALID");
   const c = r.counts;
-  if (r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || !c || c.pc !== 2 || c.sp !== 4 || c.total !== 6 || c.stopped !== 0) stop("RECEIPT_NOT_SUCCEEDED");
+  if (r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || !c || c.pc !== 2 || c.sp !== 4 || c.total !== 6 || c.stopped !== 0 || r.images_total !== 6) stop("RECEIPT_NOT_SUCCEEDED");
   const started = typeof r.timings?.started_at === "string" ? Date.parse(r.timings.started_at) : NaN;
   const finished = typeof r.timings?.finished_at === "string" ? Date.parse(r.timings.finished_at) : NaN;
   if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) stop("RECEIPT_INVALID");
