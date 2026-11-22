@@ -671,15 +671,16 @@ describe("DEV-303 one-time setup: the installed scripts and the standing pre-aut
     const r = w.run(["standing", "--yes", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"]);
     expect(r, r.stdout).toMatchObject({ status: 0, code: "STANDING_WRITTEN" });
     const p = JSON.parse(readFileSync(POLICY(w), "utf8"));
-    expect(Object.keys(p)).toEqual(["schema", "per_day", "per_week", "not_after", "created_at", "origin_url"]);
-    expect(p).toMatchObject({ schema: "sr_imagefirst_standing_v1", per_day: 2, per_week: 8, origin_url: w.origin });
+    expect(Object.keys(p)).toEqual(["schema", "per_day", "per_week", "not_after", "created_at", "worker_commit", "origin_url"]);
+    // CRITICAL: the worker code every run executes is the commit the owner typed (= the verified admin clone HEAD = develop then)
+    expect(p).toMatchObject({ schema: "sr_imagefirst_standing_v1", per_day: 2, per_week: 8, worker_commit: w.head, origin_url: w.origin });
     const created = Date.parse(p.created_at);
     expect(p.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
     expect(Math.abs(created - t0)).toBeLessThan(120_000);
     expect(Date.parse(p.not_after) - created).toBe(30 * 86400_000);
     expect(statSync(POLICY(w)).mode & 0o777).toBe(0o644);
     expect(statSync(w.etc).mode & 0o777).toBe(0o755);
-    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toMatch(/ standing standing written: per_day=2 per_week=8 not_after=\S+Z created_at=\S+Z origin_url=\S+\n/);
+    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toMatch(/ standing standing written: per_day=2 per_week=8 not_after=\S+Z created_at=\S+Z worker_commit=[0-9a-f]{40} origin_url=\S+\n/);
     expect(r.stdout).toContain("standing --revoke --yes");
     // nothing but the policy, /etc/sr-design-worker and root's log / lock: no unit, no package, no timer, no install
     const after = w.snapshot();
@@ -690,7 +691,7 @@ describe("DEV-303 one-time setup: the installed scripts and the standing pre-aut
     const autorun = readFileSync(join(SCRIPTS, "imagefirst-autorun.sh"), "utf8");
     const py = /\nSTANDING_PY='\n([\s\S]*?)\n'\n/.exec(autorun)![1]!;
     const chk = spawnSync("python3", ["-I", "-c", py, POLICY(w), String(Math.floor(Date.now() / 1000)), "4", "20", "90"], { encoding: "utf8" });
-    expect(chk.stdout.trim()).toBe(`OK 2 8 ${w.origin}`);
+    expect(chk.stdout.trim()).toBe(`OK 2 8 ${w.origin} ${w.head}`);
     // running it again replaces it (new limits)
     expect(w.run(["standing", "--yes", "--expect", w.head, "--per-day", "1", "--per-week", "1", "--days", "1"])).toMatchObject({ status: 0, code: "STANDING_WRITTEN" });
     expect(JSON.parse(readFileSync(POLICY(w), "utf8"))).toMatchObject({ per_day: 1, per_week: 1 });
@@ -739,6 +740,22 @@ describe("DEV-303 one-time setup: the installed scripts and the standing pre-aut
     expect(w.run(["standing", "--revoke", "--yes"])).toMatchObject({ status: 0, code: "STANDING_REVOKED" });
     expect(() => lstatSync(POLICY(w))).toThrow();
     expect(readFileSync(join(w.base, "target.json"), "utf8")).toBe("keep\n");
+  });
+
+  it("standing --unfreeze --yes removes root's freeze (logged); a leading - in the admin clone's origin URL is refused", () => {
+    const w = world();
+    expect(w.run(["standing", "--unfreeze", "--yes"])).toMatchObject({ status: 0, code: "STANDING_UNFROZEN" });
+    writeFileSync(join(w.state, "standing.frozen"), "frozen_at=1\nid=req-x01\nreason=AUTORUN_IMAGE_CAP_EXCEEDED 7 images (at most 6)\n");
+    expect(w.run(["standing", "--unfreeze"])).toMatchObject({ status: 2, code: "SETUP_NEEDS_YES" });
+    expect(w.run(["standing", "--unfreeze", "--revoke", "--yes"])).toMatchObject({ status: 2, code: "SETUP_USAGE" });
+    expect(w.run(["apply", "--unfreeze", "--yes", "--expect", w.head])).toMatchObject({ status: 2, code: "SETUP_USAGE" });
+    const r = w.run(["standing", "--unfreeze", "--yes"]);
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "STANDING_UNFROZEN" });
+    expect(existsSync(join(w.state, "standing.frozen"))).toBe(false);
+    expect(readFileSync(join(w.state, "setup.log"), "utf8")).toContain(" standing standing unfrozen: frozen_at=1 id=req-x01 reason=AUTORUN_IMAGE_CAP_EXCEEDED");
+    git(w.admin, "config", "remote.origin.url", "-uhoh");
+    expect(w.run(["standing", "--yes", "--expect", w.head, "--per-day", "2", "--per-week", "8", "--days", "30"])).toMatchObject({ status: 2, code: "SETUP_ADMIN_CLONE_UNREADABLE" });
+    expect(existsSync(join(w.etc, "imagefirst-standing.json"))).toBe(false);
   });
 
   it("scripts: an installed file changed, writable by others or missing is TODO / BLOCKED; apply puts the admin clone's copy back; rollback removes the installed copy but keeps the policy", () => {

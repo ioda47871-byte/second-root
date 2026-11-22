@@ -83,7 +83,8 @@ const runDir = join(runs, grant + "-20261121T040000Z");
 const receiptPath = runDir + ".receipt.json";
 mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
 const images: { file: string; sha256: string; bytes: number }[] = [];
-if (mode === "ok") for (const p of ["pc-1", "pc-2", "sp-1", "sp-2", "sp-3", "sp-4"]) {
+// stub-seven: one picture more than the run may make (root's after-run image ceiling must catch it)
+if (mode === "ok") for (const p of ["pc-1", "pc-2", "sp-1", "sp-2", "sp-3", "sp-4", ...(flag("stub-seven") ? ["pc-3"] : [])]) {
   const to = join(runDir, "parts", p + ".png");
   copyFileSync(join(home, "fixtures", p.slice(0, 2) + ".png"), to);
   const b = readFileSync(to);

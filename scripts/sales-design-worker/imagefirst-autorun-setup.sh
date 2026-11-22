@@ -10,14 +10,19 @@
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --yes --expect <sha> \
 #        --per-day <N 1-4> --per-week <M 1-20, at least N> --days <D 1-90>
 #   sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --revoke --yes
+#   sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --unfreeze --yes
 #
 # standing (DEV-303, owner decision 2026-11-23): the owner's ONE-TIME standing pre-authorization of image generation. It
 # writes root's /etc/sr-design-worker/imagefirst-standing.json (0644, root's; a temporary file renamed over the old one) as
 #   {"schema": "sr_imagefirst_standing_v1", "per_day": N, "per_week": M, "not_after": "<now + D days, UTC>",
-#    "created_at": "<now, UTC>", "origin_url": "<the admin clone's configured origin URL>"}
+#    "created_at": "<now, UTC>", "worker_commit": "<--expect>", "origin_url": "<the admin clone's configured origin URL>"}
 # and nothing else (separate from apply and enable-timer; it neither installs nor enables anything). From then on the
 # automatic run (imagefirst-autorun.sh) picks up Claude's request files one at a time within those limits until not_after,
-# with no per-run command. Anything outside 1 <= N <= 4, 1 <= M <= 20, M >= N, 1 <= D <= 90 is refused (STANDING_INVALID).
+# with no per-run command. worker_commit is the commit the owner typed (--expect, verified as the admin clone's clean,
+# detached HEAD and origin's develop at that moment): every run under the policy executes THAT worker code and nothing
+# else (never develop's tip); running standing again with a newer --expect is the only way newer worker code reaches runs.
+# standing --unfreeze --yes removes root's freeze (written by the automatic run when a run broke a per-run limit, e.g.
+# more than 6 images); look at the run first. Anything outside 1 <= N <= 4, 1 <= M <= 20, M >= N, 1 <= D <= 90 is refused (STANDING_INVALID).
 # standing --revoke --yes removes the policy (needs no --expect and no admin clone: it must always work). Both are logged in
 # setup.log. Changing the limits is running standing again (the new file replaces the old one).
 #
@@ -83,7 +88,8 @@
 #
 # Output: fixed lines; the last line is machine-readable:
 #   IMAGEFIRST_SETUP <CODE> exit=<n>
-# Exit: 0  CHECK_OK (nothing BLOCKED) / APPLY_OK / TIMER_ENABLED / ROLLBACK_DONE / STANDING_WRITTEN / STANDING_REVOKED
+# Exit: 0  CHECK_OK (nothing BLOCKED) / APPLY_OK / TIMER_ENABLED / ROLLBACK_DONE / STANDING_WRITTEN / STANDING_REVOKED /
+#          STANDING_UNFROZEN
 #       2  refused: usage, no --yes, --expect missing or not 40 hex, not root / a test hook in the production copy / root in
 #          a test copy, the admin clone untrusted, dirty, not detached, not at --expect, or --expect not origin's develop
 #       3  CHECK_BLOCKED / SETUP_BLOCKED: a step is BLOCKED (nothing changed by the mode that found it); rollback during a run
@@ -204,11 +210,12 @@ trap on_exit EXIT
 trap on_signal INT TERM HUP
 
 # ---------------------------------------------------------------- arguments
-USAGE="usage: imagefirst-autorun-setup.sh [check|apply|enable-timer|rollback] [--yes] --expect <40-hex commit> | standing --yes --expect <40-hex commit> --per-day <1-4> --per-week <1-20> --days <1-90> | standing --revoke --yes"
+USAGE="usage: imagefirst-autorun-setup.sh [check|apply|enable-timer|rollback] [--yes] --expect <40-hex commit> | standing --yes --expect <40-hex commit> --per-day <1-4> --per-week <1-20> --days <1-90> | standing --revoke --yes | standing --unfreeze --yes"
 MODE=check
 YES=0
 EXPECT=""
 REVOKE=0
+UNFREEZE=0
 PER_DAY=""
 PER_WEEK=""
 DAYS=""
@@ -218,6 +225,7 @@ while [ "$#" -gt 0 ]; do
     --yes) YES=1; shift ;;
     --expect) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; EXPECT="$2"; shift 2 ;;
     --revoke) REVOKE=1; shift ;;
+    --unfreeze) UNFREEZE=1; shift ;;
     --per-day) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; PER_DAY="$2"; shift 2 ;;
     --per-week) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; PER_WEEK="$2"; shift 2 ;;
     --days) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; DAYS="$2"; shift 2 ;;
@@ -225,13 +233,17 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$MODE" in check | apply | enable-timer | rollback | standing) ;; *) say "$USAGE"; finish SETUP_USAGE 2 ;; esac
-if [ "$MODE" != standing ] && { [ "$REVOKE" = 1 ] || [ -n "$PER_DAY$PER_WEEK$DAYS" ]; }; then say "$USAGE"; finish SETUP_USAGE 2; fi
+if [ "$MODE" != standing ] && { [ "$REVOKE" = 1 ] || [ "$UNFREEZE" = 1 ] || [ -n "$PER_DAY$PER_WEEK$DAYS" ]; }; then say "$USAGE"; finish SETUP_USAGE 2; fi
+[ "$REVOKE" = 0 ] || [ "$UNFREEZE" = 0 ] || { say "$USAGE"; finish SETUP_USAGE 2; }
+# --unfreeze is handled as --revoke is (no --expect, no admin clone)
+OWNER_ONLY=0
+if [ "$MODE" = standing ] && { [ "$REVOKE" = 1 ] || [ "$UNFREEZE" = 1 ]; }; then OWNER_ONLY=1; fi
 # the standing policy's ceilings (imagefirst-autorun.sh refuses a policy above them too)
 MAX_PER_DAY=4
 MAX_PER_WEEK=20
 MAX_POLICY_DAYS=90
-if [ "$MODE" = standing ] && [ "$REVOKE" = 1 ]; then
-  [ -z "$PER_DAY$PER_WEEK$DAYS$EXPECT" ] || { say "standing --revoke --yes takes nothing else"; finish SETUP_USAGE 2; }
+if [ "$OWNER_ONLY" = 1 ]; then
+  [ -z "$PER_DAY$PER_WEEK$DAYS$EXPECT" ] || { say "standing --revoke --yes / --unfreeze --yes take nothing else"; finish SETUP_USAGE 2; }
 elif [ "$MODE" = standing ]; then
   if ! [[ "$PER_DAY" =~ ^[1-9][0-9]{0,2}$ ]] || ! [[ "$PER_WEEK" =~ ^[1-9][0-9]{0,2}$ ]] || ! [[ "$DAYS" =~ ^[1-9][0-9]{0,2}$ ]] ||
     [ "$PER_DAY" -gt "$MAX_PER_DAY" ] || [ "$PER_WEEK" -gt "$MAX_PER_WEEK" ] || [ "$PER_WEEK" -lt "$PER_DAY" ] || [ "$DAYS" -gt "$MAX_POLICY_DAYS" ]; then
@@ -239,7 +251,7 @@ elif [ "$MODE" = standing ]; then
     finish STANDING_INVALID 2
   fi
 fi
-if ! { [ "$MODE" = standing ] && [ "$REVOKE" = 1 ]; }; then
+if [ "$OWNER_ONLY" = 0 ]; then
   [[ "$EXPECT" =~ ^[0-9a-f]{40}$ ]] || { say "SETUP_EXPECT_REQUIRED: --expect <the 40-hex commit the admin clone is checked out at> is required in every mode"; finish SETUP_EXPECT_REQUIRED 2; }
 fi
 if [ "$MODE" = check ]; then
@@ -314,6 +326,7 @@ ETC="$R/etc/sr-design-worker"
 CODEX_CONFIG="$ETC/codex-config.toml"
 SWITCH="$ETC/imagefirst-autostart.json"
 STANDING="$ETC/imagefirst-standing.json"
+FREEZE="$R/var/lib/sr-imagefirst-autostart/standing.frozen"
 UNIT_DIR="$R/etc/systemd/system"
 STATE="$R/var/lib/sr-imagefirst-autostart"
 LOG="$STATE/setup.log"
@@ -414,6 +427,18 @@ if [ "$MODE" = standing ] && [ "$REVOKE" = 1 ]; then
   fi
   finish STANDING_REVOKED 0
 fi
+if [ "$MODE" = standing ] && [ "$UNFREEZE" = 1 ]; then
+  open_state
+  if absent "$FREEZE"; then
+    say "standing pick-ups are not frozen"
+    log "standing unfreeze: nothing there"
+  else
+    log "standing unfrozen: $(head -c 300 -- "$FREEZE" 2>/dev/null | tr '\n' ' ' | tr -d '\000-\037')"
+    rm -f -- "$FREEZE"
+    say "standing pick-ups are unfrozen (the automatic run picks up requests again within the limits)"
+  fi
+  finish STANDING_UNFROZEN 0
+fi
 
 # The pinned SHA-256 of the reviewed Codex config: the very constant the pilot and its preflight check (both must agree).
 PINNED_SHA=""
@@ -448,7 +473,7 @@ if [ "$admin_head" != "$EXPECT" ]; then
 fi
 if [ "$MODE" != rollback ]; then
   url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || url=""
-  [[ "$url" =~ ^[A-Za-z0-9._:/@+-]+$ ]] || { say "SETUP_ADMIN_CLONE_UNREADABLE: no plain origin URL in $PROD_CLONE"; finish SETUP_ADMIN_CLONE_UNREADABLE 2; }
+  [[ "$url" =~ ^[A-Za-z0-9._:/@+][A-Za-z0-9._:/@+-]*$ ]] || { say "SETUP_ADMIN_CLONE_UNREADABLE: no plain origin URL in $PROD_CLONE (none, an unusual character, or a leading -)"; finish SETUP_ADMIN_CLONE_UNREADABLE 2; }
   remote="$(timeout --kill-after="$KILL_AFTER" "$LS_REMOTE_TIMEOUT" git -C "$ADMIN_GIT" -c protocol.ext.allow=never ls-remote "$url" refs/heads/develop 2>/dev/null)" || remote=""
   develop="${remote%%[[:space:]]*}"
   [[ "$develop" =~ ^[0-9a-f]{40}$ ]] || { say "origin's develop could not be read from the admin clone's URL: nothing done"; finish SETUP_ORIGIN_UNREACHABLE 20; }
@@ -469,13 +494,15 @@ if [ "$MODE" = standing ]; then
   until_at="$(date -u -d "@$((now_s + DAYS * 86400))" +%Y-%m-%dT%H:%M:%SZ)"
   if absent "$ETC"; then install -d "${INSTALL_OWNER[@]}" -m 0755 "$ETC"; log "install -d -m 0755 $ETC"; fi
   tmp_policy="$(mktemp "$ETC/.imagefirst-standing.json.XXXXXX")"
-  printf '{"schema": "sr_imagefirst_standing_v1", "per_day": %d, "per_week": %d, "not_after": "%s", "created_at": "%s", "origin_url": "%s"}\n' \
-    "$PER_DAY" "$PER_WEEK" "$until_at" "$created" "$url" >"$tmp_policy"
+  # worker_commit: the commit the owner typed, verified above as the admin clone's clean detached HEAD and origin's develop
+  printf '{"schema": "sr_imagefirst_standing_v1", "per_day": %d, "per_week": %d, "not_after": "%s", "created_at": "%s", "worker_commit": "%s", "origin_url": "%s"}\n' \
+    "$PER_DAY" "$PER_WEEK" "$until_at" "$created" "$EXPECT" "$url" >"$tmp_policy"
   chmod 0644 -- "$tmp_policy"
   mv -f -T -- "$tmp_policy" "$STANDING"
-  log "standing written: per_day=$PER_DAY per_week=$PER_WEEK not_after=$until_at created_at=$created origin_url=$url"
+  log "standing written: per_day=$PER_DAY per_week=$PER_WEEK not_after=$until_at created_at=$created worker_commit=$EXPECT origin_url=$url"
   say "the standing pre-authorization is written: at most $PER_DAY run(s) a day and $PER_WEEK a week (rolling), until $until_at (UTC)"
-  say "each run as before: one Codex run, at most 6 images, 15 min, never retried; one attempt per request id"
+  say "every run executes the worker code of commit $EXPECT only (to move it: standing --yes --expect <newer commit> ... again)"
+  say "root enforces the run count, one attempt per request id, the pinned commit, the timeout and (after each run) at most 6 images"
   say "to revoke it: sudo bash $INSTALL_DIR/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --revoke --yes"
   en="$(systemctl is-enabled "$TIMER" 2>/dev/null)" || true
   [ "$en" = enabled ] || say "note: $TIMER is not enabled (${en:-not installed}): nothing runs until apply and enable-timer"

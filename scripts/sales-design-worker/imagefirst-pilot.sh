@@ -41,8 +41,9 @@
 #
 # --autorun <approval id> <commit> <origin URL> (docs/operations/imagefirst-autorun.md): the same run, started only by
 #   imagefirst-autorun.sh inside sr-imagefirst-autorun.service (refused anywhere else: this process's own cgroup, read from
-#   the kernel, must be that service's; PILOT_AUTORUN_REFUSED). The differences: <commit> is the one the automatic run
-#   pinned (origin's develop when it picked the run up; it must still be in develop's history, develop may have moved on);
+#   the kernel, must be that service's; PILOT_AUTORUN_REFUSED). The differences: <commit> is the one root chose (the
+#   owner-pinned worker_commit of the standing policy, or without one the admin clone's HEAD = develop), fetched by its id
+#   (no branch tip; the origin no longer having it: PILOT_STANDING_COMMIT_UNAVAILABLE, before the claim);
 #   root's used/<approval id> must not exist (PILOT_MARKER_USED); the reused clone is never used: a fresh clone at a new
 #   root-chosen path, from <origin URL> (root's: the standing policy's or the admin clone's), <commit> checked out, with no
 #   user or system git config, status --ignored empty, then npm ci; the preflight, the worker run, the re-send and the audit
@@ -178,7 +179,7 @@ elif [ "$#" -eq 4 ] && [ "$1" = --autorun ]; then
 elif [ "$#" -eq 5 ] && [ "$1" = --autorun-request ]; then
   MODE=autorun
   REQUEST=1
-  [[ "$2" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]] || { say "PILOT_ID_INVALID: a request id is ^[a-z0-9][a-z0-9-]{2,62}\$"; finish PILOT_ID_INVALID 2; }
+  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] || { say "PILOT_ID_INVALID: a request id is ^req-[a-z0-9][a-z0-9-]{2,58}\$"; finish PILOT_ID_INVALID 2; }
   APPROVAL="$2"
   [[ "$3" =~ ^[0-9a-f]{40}$ ]] || { say "PILOT_SHA_INVALID: --autorun-request <request id> <40-hex commit root pinned> <origin URL> <request SHA-256>"; finish PILOT_SHA_INVALID 2; }
   AUTORUN_SHA="$3"
@@ -298,7 +299,7 @@ aid, receipt_path = sys.argv[1], sys.argv[2]
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 WORD = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
-AID = re.compile(r"(hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}|[a-z0-9][a-z0-9-]{2,62})\Z")
+AID = re.compile(r"(hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}|req-[a-z0-9][a-z0-9-]{2,58})\Z")
 home = os.path.realpath(os.path.expanduser("~"))
 runs = os.path.join(home, "sr-runs")
 state = os.path.join(home, ".local", "state", "sr-design-worker", "imagefirst-worker")
@@ -548,15 +549,17 @@ if [ "$MODE" = autorun ]; then
     if [ -e "$p" ] || [ -L "$p" ]; then exit 4; fi
     mkdir -m 700 -- "$p"' _ "$FRESH" 8>&- 9>&- ||
     { say "the fresh clone's directory could not be made (no ~/imagefirst directory, a link, or it exists)"; finish PILOT_AUTORUN_CLONE 20; }
-  "${AS_HOME[@]}" timeout --kill-after="$KILL_AFTER" "$CLONE_TIMEOUT" "${GH[@]}" clone --quiet --no-local --no-checkout --no-tags --single-branch --branch develop -- "$ORIGIN_URL" "$FRESH" >/dev/null 2>&1 8>&- 9>&- ||
-    { say "git clone from root's origin URL failed"; finish PILOT_AUTORUN_FETCH 20; }
-  base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse refs/remotes/origin/develop 2>/dev/null)" || base=""
-  # root's pinned commit (origin's develop when the automatic run picked this run up): origin/develop now, or an ancestor
-  # of it (develop moved on meanwhile: the pinned commit runs all the same, never the newer one)
-  if [ "$base" != "$AUTORUN_SHA" ] && ! in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" merge-base --is-ancestor "$AUTORUN_SHA" refs/remotes/origin/develop >/dev/null 2>&1; then
-    say "root's pinned commit $AUTORUN_SHA is not in origin/develop's history (${base:-?}): stopped"
-    finish PILOT_AUTORUN_COMMIT_NOT_IN_DEVELOP 20
-  fi
+  # exactly root's commit, fetched by its id (never a branch tip, never another commit): git init in the new directory, origin
+  # = root's URL, then a fetch of that one commit into refs/remotes/origin/develop (the worker checks HEAD = origin/develop
+  # in its own clone: here both are the commit root chose). The origin no longer having it: stopped, nothing spent
+  "${AS_HOME[@]}" timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" init --quiet -- "$FRESH" >/dev/null 2>&1 8>&- 9>&- ||
+    { say "git init of the fresh clone failed"; finish PILOT_AUTORUN_CLONE 20; }
+  in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" remote add origin -- "$ORIGIN_URL" >/dev/null 2>&1 ||
+    { say "git remote add failed"; finish PILOT_AUTORUN_CLONE 20; }
+  in_clone timeout --kill-after="$KILL_AFTER" "$CLONE_TIMEOUT" "${GH[@]}" fetch --quiet --no-tags origin "+$AUTORUN_SHA:refs/remotes/origin/develop" >/dev/null 2>&1 ||
+    { say "STANDING_COMMIT_UNAVAILABLE: the origin does not give root's commit $AUTORUN_SHA (or is unreachable): stopped, nothing spent"; finish PILOT_STANDING_COMMIT_UNAVAILABLE 20; }
+  base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse --verify --quiet "refs/remotes/origin/develop^{commit}" 2>/dev/null)" || base=""
+  [ "$base" = "$AUTORUN_SHA" ] || { say "the fetched commit (${base:-?}) is not root's $AUTORUN_SHA: stopped"; finish PILOT_STANDING_COMMIT_UNAVAILABLE 20; }
   in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" checkout --quiet --detach "$AUTORUN_SHA" >/dev/null 2>&1 ||
     { say "git checkout failed"; finish PILOT_AUTORUN_CLONE 20; }
   head="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse HEAD 2>/dev/null)" || head=""

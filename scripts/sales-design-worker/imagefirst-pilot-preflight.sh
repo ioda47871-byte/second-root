@@ -125,7 +125,7 @@ row() {
 # ---------------------------------------------------------------- the approval id (or a standing request's id)
 REQUEST=0
 if [ "$#" -eq 2 ] && [ "$1" = --request ]; then
-  [[ "$2" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]] || { say "PREFLIGHT_ID_INVALID: a request id is ^[a-z0-9][a-z0-9-]{2,62}\$"; finish USAGE 2; }
+  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] || { say "PREFLIGHT_ID_INVALID: a request id is ^req-[a-z0-9][a-z0-9-]{2,58}\$"; finish USAGE 2; }
   REQUEST=1
   APPROVAL="$2"
 else
@@ -315,9 +315,9 @@ AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
 if [ "$IN_AUTORUN" = 1 ]; then
   # inside the automatic run: the commit root pinned (root's own state file, written by the pilot); the pilot's fresh clone
-  # (just made from root's origin URL) must be clean with HEAD = exactly that commit, and that commit origin/develop or in
-  # its history (develop may have moved on since the pick-up); every git without user / system config and with attributes
-  # / hooks / fsmonitor / credential helpers off. No fetch here (the clone is minutes old)
+  # (that one commit, fetched by its id from root's origin URL into its origin/develop) must be clean with HEAD =
+  # origin/develop = exactly that commit; every git without user / system config and with attributes / hooks / fsmonitor
+  # / credential helpers off. No fetch here (the clone is minutes old)
   GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
   pin_file="$R/var/lib/sr-imagefirst-autostart/autorun-commit"
   admin_head=""
@@ -333,9 +333,6 @@ if [ "$IN_AUTORUN" = 1 ]; then
     base="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" rev-parse origin/develop 2>/dev/null)" || base=""
     if [ "$head" = "$admin_head" ] && [ "$base" = "$admin_head" ]; then
       row clone PASS "clean, HEAD = origin/develop = root's verified $head"
-      CLONE_OK=1
-    elif [ "$head" = "$admin_head" ] && [[ "$base" =~ ^[0-9a-f]{40}$ ]] && in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" merge-base --is-ancestor "$admin_head" "$base" >/dev/null 2>&1; then
-      row clone PASS "clean, HEAD = root's pinned $head (origin/develop has moved on to $base since the pick-up)"
       CLONE_OK=1
     else
       row clone FAIL "HEAD ${head:-?} / origin/develop ${base:-?} are not root's verified $admin_head"
