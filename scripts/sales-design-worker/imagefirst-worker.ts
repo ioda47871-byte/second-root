@@ -253,13 +253,6 @@ async function requestMode(r: RequestArgs, places: { env: NodeJS.ProcessEnv; sta
   );
   const report = result.report;
   say(report);
-  // DEV-303 (owner decision 2026-11-24): photo materials stay in their private run (~/sr-runs/<id>-<UTC>/parts); the
-  // review bundle holds a design's PC 2 + SP 4 only. A design request names them by photo_files (the line above).
-  if (report.stage === "photo_materials") {
-    if (report.status === "succeeded") process.stderr.write(`imagefirst-worker: review ${JSON.stringify({ status: "skipped", code: "PHOTO_MATERIALS_STAY_PRIVATE" })}\n`);
-    await recordRealShop(result, null);
-    return exitCodeOf(report.status);
-  }
   const review = await deliverAfterRun(report, { runsDir, stateDir, signal: controller.signal }, { fileAt: (commit, rel) => fileAtCommit(commit, rel), onOriginDevelop: onOriginDevelop(env) });
   if (review) {
     process.stderr.write(`imagefirst-worker: review ${JSON.stringify(review)}\n`);

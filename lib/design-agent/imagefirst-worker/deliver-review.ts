@@ -342,6 +342,9 @@ export type ReviewSummary = { status: DeliverReviewResult["status"] | "refused" 
  */
 export async function deliverAfterRun(report: CycleReport, o: Omit<DeliverReviewOptions, "approvalId" | "receiptPath" | "jailIdle" | "resend">, d: DeliverReviewDeps): Promise<ReviewSummary | null> {
   if (report.status !== "succeeded" || !report.receipt || !report.approval_id) return null;
+  // DEV-303 (owner decision 2026-11-24): photo materials stay in their private run (~/sr-runs/<id>-<UTC>/parts); a
+  // bundle holds a design's PC 2 + SP 4 only. A design request names them by the run line's photo_files.
+  if ((report as { stage?: unknown }).stage === "photo_materials") return { status: "refused", code: "PHOTO_MATERIALS_STAY_PRIVATE" };
   // a stop was requested: no hand-off at all (the sealed-or-not run is recovered later by the root wrapper's re-send)
   if (o.signal?.aborted) return { status: "refused", code: "REVIEW_ABORTED" };
   try {

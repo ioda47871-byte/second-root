@@ -1,8 +1,8 @@
 /**
  * DEV-303 (owner decision 2026-11-24): the entry's request mode after loadRequestRun — one request, one Codex run, by
  * stage: photo_materials → runRequestPhotoCall (1..6 picture materials); design → runRequestFullPageCall (PC 2 + SP 4),
- * with the resolved photo inputs (if the request names them) attached to that one run. Used by
- * scripts/design-artifact/image-first-generate.ts and its in-process test mirror, so both dispatch the same way.
+ * with the resolved photo inputs (if the request names them) attached to that one run. Used by the IMAGE_FIRST entry's
+ * request mode (cycle.ts GENERATE_ENTRY) and its in-process test mirror, so both dispatch the same way.
  * No process and no network here.
  */
 import { isPhotoRequest, type PhotoPlan, type RequestPlan } from "../image-first/request-prompt";
