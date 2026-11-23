@@ -53,7 +53,7 @@ export const isRequestId = (id: string) => REQUEST_ID_RE.test(id) && !isReserved
  * plain signs of a fact (a run of 3+ digits: a phone number, a year, a price; a currency sign). A tripwire, not a fact
  * checker: buildRequestPlan also refuses a direction that quotes any facts-pack value.
  */
-const UNSAFE_DIRECTION = /[\u0000-\u001f\u007f\u2028\u2029]|[<>`{}]|https?:|ftp:|:\/\/|www\.|@|\.(?:com|jp|net|org|io|co|info|biz|app|dev|shop)\b|[0-9０-９]{3,}|[円¥￥$€]/i;
+const UNSAFE_DIRECTION = /[\u0000-\u001f\u007f\u2028\u2029]|[<>`{}]|["'「」『』“”‘’„‟‹›«»〝〞〟＂＇｢｣]|https?:|ftp:|:\/\/|www\.|@|\.(?:com|jp|net|org|io|co|info|biz|app|dev|shop)\b|[0-9０-９]{3,}|[円¥￥$€]/i;
 const DirText = (max: number) =>
   z
     .string()
@@ -71,7 +71,8 @@ export const RequestDirection = z.strictObject({
 });
 export type RequestDirection = z.infer<typeof RequestDirection>;
 
-const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+/** Exactly YYYY-MM-DDTHH:MM:SSZ (root's rule: no fraction, no offset). */
+const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 export const ImagefirstRequest = z
   .strictObject({
     schema: z.literal(REQUEST_SCHEMA),
@@ -85,7 +86,9 @@ export const ImagefirstRequest = z
     max_images: z.literal(REQUEST_IMAGES.total),
     codex_runs: z.literal(1),
   })
-  .refine((r) => r.facts_ref.shop_id === r.shop_id, "facts_ref_shop_mismatch");
+  .refine((r) => r.facts_ref.shop_id === r.shop_id, "facts_ref_shop_mismatch")
+  // a real shop's facts live only in ~/second-root-shops (never inside the clone, where Codex is not kept out)
+  .refine((r) => r.kind !== "real_shop" || r.facts_ref.root === "second-root-shops", "real_shop_facts_root");
 export type ImagefirstRequest = z.infer<typeof ImagefirstRequest>;
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");

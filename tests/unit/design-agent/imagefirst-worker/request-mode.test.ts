@@ -169,7 +169,7 @@ describe("DEV-303 request schema (strict; root validates only the envelope)", ()
   it("refuses an oversize file, extra fields, wrong counts, a SHA or id mismatch, reserved ids", () => {
     const big = Buffer.concat([ok, Buffer.alloc(REQUEST_MAX_BYTES, 0x20)]);
     expect(syncCode(() => parseRequest(big, sha(big), ID))).toBe("REQUEST_TOO_LARGE");
-    for (const over of [{ extra: 1 }, { max_images: 5 }, { max_images: 7 }, { codex_runs: 2 }, { kind: "real" }, { created_at: "2026-11-20 00:30" }, { facts_ref: { root: "home", shop_id: SHOP } }, { facts_ref: { root: "local-shops", shop_id: "other-shop" } }, { direction: { ...DIRECTION, extra: "x" } }, { facts_sha256: "x" }]) {
+    for (const over of [{ extra: 1 }, { max_images: 5 }, { max_images: 7 }, { codex_runs: 2 }, { kind: "real" }, { created_at: "2026-11-20 00:30" }, { facts_ref: { root: "home", shop_id: SHOP } }, { facts_ref: { root: "local-shops", shop_id: "other-shop" } }, { facts_ref: { root: "local-shops", shop_id: SHOP } }, { created_at: "2026-11-20T00:30:00.000Z" }, { created_at: "2026-11-20T00:30:00+09:00" }, { direction: { ...DIRECTION, extra: "x" } }, { facts_sha256: "x" }]) {
       const b = bytesOf(requestObject(over));
       expect(syncCode(() => parseRequest(b, sha(b), ID)), JSON.stringify(over)).toBe("REQUEST_INVALID");
     }
@@ -183,7 +183,7 @@ describe("DEV-303 request schema (strict; root validates only the envelope)", ()
     expect(syncCode(() => parseRequest(Buffer.from("{"), sha("{"), ID))).toBe("REQUEST_INVALID");
   });
   it("refuses URLs, HTML, prompt fences, control characters and plain fact signs in the direction", () => {
-    for (const bad of ["https://example.com を参考に", "www.example.jp 風", "<b>太字</b>", "見出し<<<", "改行\nあり", "電話 052-123-4567 を大きく", "価格は500円", "メール a@b", " 前に空白", "example.com の雰囲気"]) {
+    for (const bad of ["https://example.com を参考に", "www.example.jp 風", "<b>太字</b>", "見出し<<<", "改行\nあり", "電話 052-123-4567 を大きく", "価格は500円", "メール a@b", " 前に空白", "example.com の雰囲気", "見出しに「本日限定」と書く", "『特製』の文字", "\"Fresh\" を大きく", "it's", "“新作”", "‘印’"]) {
       const b = bytesOf(requestObject({ direction: { ...DIRECTION, concept: bad } }));
       expect(syncCode(() => parseRequest(b, sha(b), ID)), bad).toBe("REQUEST_DIRECTION_UNSAFE");
     }
@@ -384,10 +384,12 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(await codeOf(entryFromInbox({ repo: REPO, inbox, bundleId: id, shop: "bicycle", direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-20T02:00:00Z" }))).toBe("INTAKE_SHOP_MISMATCH");
   });
 
-  it("local-shops root (the clone's gitignored .local-shops) works and leaves the tree clean", async () => {
-    const w = world({ request: requestObject({ facts_ref: { root: "local-shops", shop_id: SHOP } }) });
-    mkdirSync(join(w.repo, ".local-shops", SHOP), { recursive: true });
-    writeFileSync(join(w.repo, ".local-shops", SHOP, "facts-pack.json"), FACTS_BYTES);
+  it("local-shops root (the clone's gitignored .local-shops; fictional only) works and leaves the tree clean", async () => {
+    const bakery = readFileSync(resolve(REPO, BAKERY));
+    const id = "req-hoshigama-local-1";
+    const w = world({ id, request: requestObject({ id, kind: "fictional", shop_id: "hoshigama", facts_ref: { root: "local-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
+    mkdirSync(join(w.repo, ".local-shops", "hoshigama"), { recursive: true });
+    writeFileSync(join(w.repo, ".local-shops", "hoshigama", "facts-pack.json"), bakery);
     expect((await w.cycle()).report.status).toBe("succeeded");
     expect(git(w.repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
   });

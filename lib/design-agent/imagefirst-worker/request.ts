@@ -5,7 +5,8 @@
  *   the request:     the copy root validated and placed in the run's private directory (`--request-file`), named
  *                    <id>.json, a regular file (no link), at most 16 KiB, outside the repository; its bytes' SHA-256 must
  *                    equal `--request-sha256` and its id `--request` (image-first/request-prompt.ts parseRequest).
- *   the facts pack:  facts_ref.root "second-root-shops" → ~/second-root-shops/<shop_id>/facts-pack.json, or
+ *   the facts pack:  facts_ref.root "second-root-shops" → ~/second-root-shops/<shop_id>/facts-pack.json (the only root a
+ *                    real_shop request may name; the schema refuses another), or (fictional only)
  *                    "local-shops" → <clone>/.local-shops/<shop_id>/facts-pack.json (gitignored); no link at the root,
  *                    the shop directory or the file, its real path exactly that path, at most FACTS_MAX_BYTES, its
  *                    SHA-256 = the request's facts_sha256. Owner-verified values only (Identity Lock).
