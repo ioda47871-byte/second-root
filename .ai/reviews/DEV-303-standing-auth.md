@@ -21,3 +21,9 @@ OWNER MERGE ONLY (root scripts, MVP_SPEC §7.1).
   and sound. L: the image check counts files left, not calls (spec says so; a provider spend cap would make it a real
   limit); one stale doc line (fixed in bb657247); residual: the pinned worker still runs outside the jail (owner-chosen
   code; long-term a jail-equivalent unit).
+
+## Integration with #331 — Round 1 e3318d75 / c525c818 — FAIL (H1 / M1 / L1) → Round 2 799a6b82 / cdc14710 — PASS
+
+- H: phase2f-live/isolation.test.ts expectations (3 pilot + 3 preflight worker lines). M: the preflight runs the
+  worker's request precheck as the worker before root's marker. L: request ids containing "imagefirst" refused on the
+  root side. Integrated tree: typecheck clean, 451 passed, 5 known host-only failures.
