@@ -37,7 +37,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { CodexAbortedError, CodexError } from "../codex";
 import { REQUIRED_GENERATION, REQUIRED_RIGHTS, REQUIRED_STORAGE, OUTPUT_KIND, RECORD_SCHEMA, ROUTE, VIEWPORTS } from "../image-first/record";
 import type { PromptInputs, PromptPlan } from "../image-first/prompt";
-import { isRequestId } from "../image-first/request-prompt";
+import { isRequestId, type PhotoInputs, type PhotoPlan } from "../image-first/request-prompt";
 import { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec } from "./approval-packets";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, sha256, writeOnce, type CommitState } from "./steps";
@@ -54,7 +54,11 @@ export type FullPageBatchResult = {
   cliVersion: string | null;
   model: string | null;
 };
-export type FullPageBatch = (o: { prompt: string; timeoutMs: number; maxImages: number; signal?: AbortSignal }) => Promise<FullPageBatchResult>;
+/**
+ * inputImages (DEV-303, owner decision 2026-11-24): a design request's photo inputs, handed to the ONE Codex run as
+ * `--image` attachments (staged in the run's temporary work dir by image-once.ts, never in the private run directory).
+ */
+export type FullPageBatch = (o: { prompt: string; timeoutMs: number; maxImages: number; inputImages?: readonly Buffer[]; signal?: AbortSignal }) => Promise<FullPageBatchResult>;
 
 export type FullPageCallInput = {
   plan: PromptPlan;
@@ -242,8 +246,17 @@ export type RequestCallInput = {
   expected: { promptSha256: string; promptChars: number; commit: string; planSha256: string };
   outDir: string;
   repoRoot: string;
+  /** DEV-303 (owner decision 2026-11-24): the resolved photo inputs, exactly the plan's photo_inputs (names, SHA-256). */
+  photos?: readonly { name: string; sha256: string; bytes: Buffer }[];
   signal?: AbortSignal;
 };
+
+/** The photo inputs handed to the run are exactly the plan's (same names, same order, bytes with those SHA-256s). */
+function photosMatch(planned: PhotoInputs | undefined, photos: RequestCallInput["photos"]): boolean {
+  if (!planned) return photos === undefined || photos.length === 0;
+  if (!photos || photos.length !== planned.files.length || photos.length > 6) return false;
+  return planned.files.every((f, n) => photos[n]!.name === f.name && photos[n]!.sha256 === f.sha256 && sha256(photos[n]!.bytes) === f.sha256);
+}
 
 /**
  * DEV-303 (owner direction 2026-11-23, first-client-pipeline.md §2 A/B): ONE IMAGE_FIRST batch for a request root
@@ -269,6 +282,7 @@ export async function runRequestFullPageCall(i: RequestCallInput, d: Omit<FullPa
   if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
   const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
   if (parts.length !== plan.batch.images || parts.length !== 6) return refuse("PLAN_PIN_MISMATCH");
+  if (!photosMatch(plan.photo_inputs, i.photos)) return refuse("PHOTO_INPUTS_MISMATCH");
   // the owner's standing permission (root's quota and one-use marker) stands in for the per-run flag
   const checked = await checkBeforeApproval(
     { humanApprovalConfirmed: true, prompt: plan.batch.prompt, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit }, outDir: i.outDir, approvalId: i.requestId, planId: i.requestId, route: FULL_PAGE_ROUTE, retryOf: null, ...(i.signal === undefined ? {} : { signal: i.signal }) },
@@ -276,11 +290,12 @@ export async function runRequestFullPageCall(i: RequestCallInput, d: Omit<FullPa
     d,
   );
   if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
-  return executeFullPageRun({ plan, inputs: i.inputs, approvalId: i.requestId, planId: i.requestId, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit, packetSha256: i.requestSha256 }, outDir: i.outDir, ...(i.signal === undefined ? {} : { signal: i.signal }) }, d, checked.timeoutMs);
+  const photoInputs = plan.photo_inputs && i.photos ? { meta: plan.photo_inputs, bytes: i.photos.map((p) => p.bytes) } : undefined;
+  return executeFullPageRun({ plan, inputs: i.inputs, approvalId: i.requestId, planId: i.requestId, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit, packetSha256: i.requestSha256 }, outDir: i.outDir, ...(photoInputs ? { photoInputs } : {}), ...(i.signal === undefined ? {} : { signal: i.signal }) }, d, checked.timeoutMs);
 }
 
 /** What the run after the checks needs of a plan (a pinned direction's PromptPlan, or DEV-303 a request's plan). */
-export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string };
+export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string; photo_inputs?: PhotoInputs };
 type ExecuteInput = {
   plan: RunnablePlan;
   inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
@@ -289,6 +304,8 @@ type ExecuteInput = {
   /** packetSha256: the approval packet's (a pinned direction) or the request bytes' (DEV-303). */
   expected: { promptSha256: string; promptChars: number; commit: string; packetSha256: string };
   outDir: string;
+  /** DEV-303: the photo inputs attached to the one batch (metadata recorded as photo-inputs.json; the pictures are never written here). */
+  photoInputs?: { meta: PhotoInputs; bytes: Buffer[] };
   signal?: AbortSignal;
 };
 
@@ -321,6 +338,8 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
     await writeOnce(out("direction.json"), i.inputs.directionBytes);
     for (const { p } of parts) await writeOnce(out(p.prompt_file), Buffer.from(p.prompt, "utf8"));
     await writeOnce(out("prompts/batch.txt"), Buffer.from(plan.batch.prompt, "utf8"));
+    // names and SHA-256 only: an attached photo is never copied into this run (root counts parts/ and the inbox copy)
+    if (i.photoInputs) await writeOnce(out("photo-inputs.json"), { schema: "image_first_photo_inputs_v0", ...i.photoInputs.meta });
   } catch {
     await end("failed", "OUT_DIR_UNWRITABLE").catch(() => undefined);
     return { status: "stopped", code: "OUT_DIR_UNWRITABLE", stage: "call", aborted: false };
@@ -340,7 +359,7 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
 
   let res: FullPageBatchResult;
   try {
-    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: parts.length, ...(i.signal === undefined ? {} : { signal: i.signal }) });
+    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: parts.length, ...(i.photoInputs ? { inputImages: i.photoInputs.bytes } : {}), ...(i.signal === undefined ? {} : { signal: i.signal }) });
   } catch (error) {
     const aborted = error instanceof CodexAbortedError;
     const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";
@@ -427,4 +446,117 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
   }
   await end("succeeded", null);
   return { status: "succeeded", outDir: i.outDir, receipt, runId, images: parts.length, warnings };
+}
+
+export type PhotoCallInput = Omit<RequestCallInput, "plan" | "photos"> & { plan: PhotoPlan };
+
+/**
+ * DEV-303 (owner decision 2026-11-24): ONE photo-materials batch for a request root (stage photo_materials): the same
+ * checks before use as runRequestFullPageCall (run directory outside the repository, the request id's form, the plan
+ * pins, steps.ts checkBeforeApproval: prompt pin, output place, commit pin, sandbox preflight, ledger with the request id
+ * as approval and plan id: one use, ever), then ONE Codex run of 1..6 pictures, never retried. Success writes
+ * parts/photo-N.png, photo-plan.json and call.json (the shape the worker's settleRun reads); a stopped batch keeps what
+ * it returned under stopped/ only. The ledger kind and route are the full-page ones (one request = one use there).
+ */
+export async function runRequestPhotoCall(i: PhotoCallInput, d: Omit<FullPageCallDeps, "packetAt">): Promise<FullPageCallResult> {
+  const refuse = (code: string): FullPageCallResult => ({ status: "stopped", code, stage: "precheck", aborted: false });
+  const plan = i.plan;
+  if (!isAbsolute(i.outDir)) return refuse("OUT_DIR_INVALID");
+  const repo = await realpath(i.repoRoot).catch(() => null);
+  const parent = await realpath(dirname(i.outDir)).catch(() => null);
+  if (!repo) return refuse("REPO_UNRESOLVABLE");
+  if (within(i.outDir, i.repoRoot) || within(i.outDir, repo) || (parent !== null && within(parent, repo))) return refuse("RUN_DIR_IN_REPO");
+  if (!isRequestId(i.requestId) || plan.request_id !== i.requestId) return refuse("REQUEST_ID_INVALID");
+  if (!/^[a-f0-9]{64}$/.test(i.requestSha256) || plan.stage !== "photo_materials" || plan.direction_set_sha256 !== i.requestSha256) return refuse("PLAN_PIN_MISMATCH");
+  if (plan.plan_sha256 !== i.expected.planSha256) return refuse("PLAN_PIN_MISMATCH");
+  if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
+  if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
+  if (plan.photos.length !== plan.batch.images || plan.photos.length < 1 || plan.photos.length > 6) return refuse("PLAN_PIN_MISMATCH");
+  const checked = await checkBeforeApproval(
+    { humanApprovalConfirmed: true, prompt: plan.batch.prompt, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit }, outDir: i.outDir, approvalId: i.requestId, planId: i.requestId, route: FULL_PAGE_ROUTE, retryOf: null, ...(i.signal === undefined ? {} : { signal: i.signal }) },
+    FULL_PAGE_KIND,
+    d,
+  );
+  if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
+
+  // ---- the request is used from here on ----
+  const now = d.now ?? Date.now;
+  const runId = `if-${randomBytes(8).toString("hex")}`;
+  let receipt: Receipt;
+  try {
+    receipt = await d.ledger.reserve({ approval_id: i.requestId, plan_id: i.requestId, route: FULL_PAGE_ROUTE, kind: FULL_PAGE_KIND, retry_of: null, prompt_sha256: i.expected.promptSha256, prompt_chars: i.expected.promptChars, commit: i.expected.commit, run_id: runId });
+  } catch (error) {
+    return { status: "stopped", code: error instanceof LedgerStop ? error.code : "LEDGER_UNWRITABLE", stage: "call", aborted: false };
+  }
+  const started = now();
+  const end = async (status: "succeeded" | "failed" | "aborted", code: string | null) => d.ledger.finish(i.requestId, { status, code, finished_at: new Date(now()).toISOString(), elapsed_ms: now() - started });
+  const out = (rel: string) => join(i.outDir, rel);
+  const record = (status: "failed" | "aborted", code: string, extra: Record<string, unknown> = {}) => writeOnce(out("call.json"), { schema: "image_first_call_v0", status, code, receipt, plan_sha256: plan.plan_sha256, ...extra }).catch(() => undefined);
+  try {
+    await mkdir(i.outDir, { mode: 0o700 });
+    for (const sub of ["parts", "prompts"]) await mkdir(out(sub), { mode: 0o700 });
+    await writeOnce(out("facts-pack.json"), i.inputs.factsBytes);
+    await writeOnce(out("photo-brief.json"), i.inputs.directionBytes);
+    for (const p of plan.photos) await writeOnce(out(p.prompt_file), Buffer.from(p.prompt, "utf8"));
+    await writeOnce(out("prompts/batch.txt"), Buffer.from(plan.batch.prompt, "utf8"));
+  } catch {
+    await end("failed", "OUT_DIR_UNWRITABLE").catch(() => undefined);
+    return { status: "stopped", code: "OUT_DIR_UNWRITABLE", stage: "call", aborted: false };
+  }
+  const keepStopped = async (images: FullPageBatchResult["images"]) => {
+    const stopped: { file: string; sha256: string; width: number; height: number }[] = [];
+    if (images.length > 0) await mkdir(out("stopped"), { mode: 0o700 }).catch(() => undefined);
+    for (const [n, img] of images.slice(0, 6).entries()) {
+      const file = `stopped/image-${n + 1}.png`;
+      if (await writeOnce(out(file), img.png).then(() => true, () => false)) stopped.push({ file, sha256: sha256(img.png), width: img.width, height: img.height });
+    }
+    return stopped;
+  };
+  const facts = (r: FullPageBatchResult) => ({ outcome: r.outcome, stop_code: r.stopCode, image_calls: r.imageCalls, image_failed: r.imageFailed, images: r.images.length, thread_id: r.threadId });
+  const total = plan.photos.length;
+  let res: FullPageBatchResult;
+  try {
+    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: total, ...(i.signal === undefined ? {} : { signal: i.signal }) });
+  } catch (error) {
+    const aborted = error instanceof CodexAbortedError;
+    const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";
+    await record(aborted ? "aborted" : "failed", code);
+    await end(aborted ? "aborted" : "failed", code).catch(() => undefined);
+    return { status: "stopped", code, stage: "call", aborted };
+  }
+  if (i.signal?.aborted) {
+    const stopped = await keepStopped(res.images);
+    await record("aborted", "CODEX_ABORTED", { ...facts(res), stopped });
+    await end("aborted", "CODEX_ABORTED").catch(() => undefined);
+    return { status: "stopped", code: "CODEX_ABORTED", stage: "call", aborted: true };
+  }
+  const finished = now();
+  const complete = res.stopCode === null && res.outcome === "IMAGE_SAVED" && res.images.length === total && res.imageFailed === 0 && res.imageCalls === total;
+  if (!complete) {
+    const code = res.stopCode ?? (res.outcome === "IMAGE_SAVED" ? "CODEX_IMAGE_COUNT_MISMATCH" : "IMAGE_TOOL_RESULT_INVALID");
+    const stopped = await keepStopped(res.images);
+    await record("failed", code, { ...facts(res), stopped });
+    await end("failed", code).catch(() => undefined);
+    return { status: "stopped", code, stage: "call", aborted: false, outcome: res.outcome };
+  }
+  const warnings = [...(res.model === null ? ["session_model_unknown"] : []), ...(res.cliVersion === null ? ["cli_version_unknown"] : [])];
+  try {
+    for (const [n, p] of plan.photos.entries()) await writeOnce(out(p.file), res.images[n]!.png);
+    await writeOnce(out("photo-plan.json"), {
+      schema: "image_first_photo_run_v0",
+      stage: "photo_materials",
+      use: "proposal_demo_image_material_not_a_shop_record",
+      run_id: runId,
+      request_id: i.requestId,
+      shop_id: plan.shop.shop_id,
+      photos: plan.photos.map((p, n) => ({ index: p.index, file: p.file, aspect: p.aspect, prompt_file: p.prompt_file, width: res.images[n]!.width, height: res.images[n]!.height })),
+      generation: { cli_version: res.cliVersion, session_model: res.model, repo_commit: i.expected.commit, request_sha256: i.requestSha256, started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), image_calls: res.imageCalls, outcome: res.outcome },
+    });
+    await writeOnce(out("call.json"), { schema: "image_first_call_v0", status: "succeeded", code: null, receipt, plan_sha256: plan.plan_sha256, outcome: res.outcome, thread_id: res.threadId, images: plan.photos.map((p, n) => ({ file: p.file, sha256: sha256(res.images[n]!.png), width: res.images[n]!.width, height: res.images[n]!.height })), warnings });
+  } catch {
+    await end("failed", "OUT_WRITE_FAILED").catch(() => undefined);
+    return { status: "stopped", code: "OUT_WRITE_FAILED", stage: "call", aborted: false };
+  }
+  await end("succeeded", null);
+  return { status: "succeeded", outDir: i.outDir, receipt, runId, images: total, warnings };
 }

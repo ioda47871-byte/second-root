@@ -5,12 +5,13 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
 import { buildPromptPlan, loadPromptInputs, NAV_LABELS, PromptStop } from "@/lib/design-agent/image-first/prompt";
-import { buildRequestPlan, isRequestId, parseRequest, REQUEST_MAX_BYTES, RESERVED_REQUEST_IDS, type ImagefirstRequest } from "@/lib/design-agent/image-first/request-prompt";
+import { buildRequestPlan, isRequestId, parseRequest, REQUEST_MAX_BYTES, RESERVED_REQUEST_IDS, type DesignRequest, type RequestPlan } from "@/lib/design-agent/image-first/request-prompt";
 import { loadRequestAuditMaterial, requestMaterialId } from "@/lib/design-agent/imagefirst-worker/claude-audit";
 import { gitCommitState, IMAGEFIRST_RUNS, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
 import { loadRequestRun, readRequestFacts, REAL_SHOP_RECORD_SCHEMA, validateRequestFile, writeRealShopRecord } from "@/lib/design-agent/imagefirst-worker/request";
 import { precheckRequestCycle, runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
+import { runLoadedRequest } from "@/lib/design-agent/imagefirst-worker/request-run";
 import { BUNDLE_ID_RE, REQUEST_RUN_ID_RE } from "@/lib/design-agent/imagefirst-worker/run-directions";
 import { runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
@@ -99,12 +100,9 @@ async function requestEntry(argv: string[], w: { repo: string; home: string; led
   } catch (error) {
     return line({ status: "refused", code: error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE" }, 2);
   }
-  const result = await runRequestFullPageCall(
+  const result = await runLoadedRequest(
     {
-      plan: run.plan,
-      inputs: { factsBytes: run.factsBytes, directionBytes: run.directionBytes },
-      requestId: run.request.id,
-      requestSha256: run.requestSha256,
+      run,
       expected: { promptSha256: args.get("--expected-prompt-sha256")!, promptChars: chars, commit: args.get("--expected-commit")!, planSha256: args.get("--expected-plan-sha256")! },
       outDir: args.get("--out")!,
       repoRoot: w.repo,
@@ -116,7 +114,7 @@ async function requestEntry(argv: string[], w: { repo: string; home: string; led
       preflight: async () => null,
       now: () => NOW,
       batch: async (o) => {
-        const r = await generateImagesInOneRun({ sandbox: w.fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: w.fake.tmpBase, maxImages: o.maxImages, ...(o.signal === undefined ? {} : { signal: o.signal }) });
+        const r = await generateImagesInOneRun({ sandbox: w.fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: w.fake.tmpBase, maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.signal === undefined ? {} : { signal: o.signal }) });
         return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
       },
     },
@@ -266,7 +264,7 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
 });
 
 describe("DEV-303 request prompts: text from the facts pack only; the pinned prompts unchanged", () => {
-  const request = parseRequest(bytesOf(requestObject()), sha(bytesOf(requestObject())), ID).request;
+  const request = parseRequest(bytesOf(requestObject()), sha(bytesOf(requestObject())), ID).request as DesignRequest;
   const plan = buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
   const parts = [...plan.viewports.desktop_1440.parts, ...plan.viewports.mobile_390.parts];
 
@@ -293,7 +291,7 @@ describe("DEV-303 request prompts: text from the facts pack only; the pinned pro
 
   it("deterministic; a direction quoting a fact, or too few facts for 4 sections, is refused", () => {
     expect(buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS }).plan_sha256).toBe(plan.plan_sha256);
-    const quoting: ImagefirstRequest = { ...request, direction: { ...request.direction, concept: "架空喫茶 しずく の名前を大きく" } };
+    const quoting: DesignRequest = { ...request, direction: { ...request.direction, concept: "架空喫茶 しずく の名前を大きく" } };
     expect(syncCode(() => buildRequestPlan({ request: quoting, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS }))).toBe("REQUEST_DIRECTION_HAS_FACT");
     const few: FactsPack = { ...FACTS, facts: FACTS.facts.filter((f) => ["name", "description", "address"].includes(f.key)) };
     expect(syncCode(() => buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: few }))).toBe("REQUEST_FACTS_TOO_FEW");
@@ -403,7 +401,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(w.invoked.length).toBe(0);
     const run = await loadRequestRun({ requestFile: w.requestFile, requestSha256: sha(w.requestBytes), requestId: ID, home: w.home, repo: w.repo });
     const r = await runRequestFullPageCall(
-      { plan: run.plan, inputs: { factsBytes: run.factsBytes, directionBytes: run.directionBytes }, requestId: ID, requestSha256: run.requestSha256, expected: { promptSha256: run.plan.batch.sha256, promptChars: run.plan.batch.chars, commit: git(w.repo, "rev-parse", "HEAD"), planSha256: run.plan.plan_sha256 }, outDir: join(w.repo, "out"), repoRoot: w.repo },
+      { plan: run.plan as RequestPlan, inputs: { factsBytes: run.factsBytes, directionBytes: run.directionBytes }, requestId: ID, requestSha256: run.requestSha256, expected: { promptSha256: run.plan.batch.sha256, promptChars: run.plan.batch.chars, commit: git(w.repo, "rev-parse", "HEAD"), planSha256: run.plan.plan_sha256 }, outDir: join(w.repo, "out"), repoRoot: w.repo },
       { ledger: openLedger(w.ledgerDir), commit: () => gitCommitState(w.repo, ENV), batch: async () => Promise.reject(new Error("never")) },
     );
     expect(r).toMatchObject({ status: "stopped", code: "RUN_DIR_IN_REPO", stage: "precheck" });

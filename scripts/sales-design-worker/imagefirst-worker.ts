@@ -77,6 +77,11 @@
  * check of a request before Claude drops it into ~/sr-runs/requests/ (request.ts validateRequestFile). One JSON line:
  * {"status":"valid","code":null,"request_id","kind","request_sha256","facts_sha256","plan_sha256"} exit 0, or
  * {"status":"refused","code":<fixed code>} exit 2. No claim, no ledger, no write, no network, no Codex.
+ *
+ * DEV-303 (owner decision 2026-11-24), two stages: a request with stage "photo_materials" makes 1..6 picture materials
+ * in ONE Codex run (its line adds "stage" and, succeeded, "photo_files": [{name, sha256}]); they stay in that private run
+ * and are not handed to the review inbox. A design request may name them (photo_inputs); they are attached to its one
+ * Codex run and never copied into it. --validate-request adds "stage" and "photo_inputs": "checked" | "unchecked" | null.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -248,6 +253,13 @@ async function requestMode(r: RequestArgs, places: { env: NodeJS.ProcessEnv; sta
   );
   const report = result.report;
   say(report);
+  // DEV-303 (owner decision 2026-11-24): photo materials stay in their private run (~/sr-runs/<id>-<UTC>/parts); the
+  // review bundle holds a design's PC 2 + SP 4 only. A design request names them by photo_files (the line above).
+  if (report.stage === "photo_materials") {
+    if (report.status === "succeeded") process.stderr.write(`imagefirst-worker: review ${JSON.stringify({ status: "skipped", code: "PHOTO_MATERIALS_STAY_PRIVATE" })}\n`);
+    await recordRealShop(result, null);
+    return exitCodeOf(report.status);
+  }
   const review = await deliverAfterRun(report, { runsDir, stateDir, signal: controller.signal }, { fileAt: (commit, rel) => fileAtCommit(commit, rel), onOriginDevelop: onOriginDevelop(env) });
   if (review) {
     process.stderr.write(`imagefirst-worker: review ${JSON.stringify(review)}\n`);

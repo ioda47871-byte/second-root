@@ -21,14 +21,16 @@
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { PromptStop } from "../image-first/prompt";
-import { buildRequestPlan, FACTS_MAX_BYTES, parseRequest, parseRequestFacts, REQUEST_MAX_BYTES, requestDirectionBytes, type FactsRoot, type ImagefirstRequest, type RequestPlan } from "../image-first/request-prompt";
+import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type RequestPlan } from "../image-first/request-prompt";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
 
 export const SHOPS_DIR = "second-root-shops";
+/** The worker's private runs directory under its home (~/sr-runs; the worker CLI uses the same place). */
+export const RUNS_DIR = "sr-runs";
 export const LOCAL_SHOPS_DIR = ".local-shops";
 export const SHOP_RUNS = "runs";
 export const REAL_SHOP_RECORD_SCHEMA = "sr_imagefirst_request_run_v1";
@@ -121,24 +123,105 @@ export async function checkRequestShop(request: ImagefirstRequest, facts: FactsP
   if (!facts.shop_id.startsWith("fictional-") || facts.shop_id !== committed) throw new PromptStop("FACTS_SHOP_MISMATCH");
 }
 
+/** DEV-303 (owner decision 2026-11-24): one resolved photo input (its bytes checked against the request's SHA-256). */
+export type ResolvedPhoto = { name: string; sha256: string; bytes: Buffer };
 export type RequestRunInputs = {
   request: ImagefirstRequest;
   requestBytes: Buffer;
   requestSha256: string;
   factsBytes: Buffer;
   facts: FactsPack;
+  /** direction.json (design) or photo-brief.json (photo materials). */
   directionBytes: Buffer;
-  plan: RequestPlan;
+  plan: RequestPlan | PhotoPlan;
+  /** The design stage's photo inputs: resolved, "unchecked" (validation only, the photo run not there yet) or null (none). */
+  photos: ResolvedPhoto[] | "unchecked" | null;
 };
 
-/** Everything a request run is built from, checked, and its plan (the worker and the entry each rebuild it the same way). */
-export async function loadRequestRun(o: { requestFile: string; requestSha256: string; requestId: string; home: string; repo: string }): Promise<RequestRunInputs> {
+/**
+ * Everything a request run is built from, checked, and its plan (the worker and the entry each rebuild it the same way).
+ * `photoInputs` "if_present" (only --validate-request): a design request's photo inputs are checked only when the
+ * photo-materials run they name has a receipt; otherwise "unchecked". Runs always need them ("required").
+ */
+export async function loadRequestRun(o: { requestFile: string; requestSha256: string; requestId: string; home: string; repo: string; photoInputs?: "required" | "if_present" }): Promise<RequestRunInputs> {
   const r = await readRequestFile(o);
   const f = await readRequestFacts(r.request, { home: o.home, repo: o.repo });
   await checkRequestShop(r.request, f.facts, o.repo);
+  const base = { request: r.request, requestBytes: r.bytes, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts };
+  if (isPhotoRequest(r.request)) {
+    const plan = buildPhotoPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
+    if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
+    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null };
+  }
   const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
   if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
-  return { request: r.request, requestBytes: r.bytes, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, directionBytes: requestDirectionBytes(r.request), plan };
+  const photos = r.request.photo_inputs ? await resolvePhotoInputs(r.request, { runsDir: join(o.home, RUNS_DIR), mode: o.photoInputs ?? "required" }) : null;
+  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos };
+}
+
+/** A photo input is at most this large (the Codex input cap, sandbox.ts MAX_INPUT_BYTES). */
+export const PHOTO_INPUT_MAX_BYTES = 20 * 1024 * 1024;
+const RECEIPT_MAX_BYTES = 256 * 1024;
+const STAMP = "\\d{8}T\\d{6}Z";
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Ours: a real directory (no link), owned by this user, closed to group and others. */
+const ownPrivateDir = async (p: string) => {
+  const info = await lstat(p).catch(() => null);
+  return !!info && info.isDirectory() && !info.isSymbolicLink() && info.uid === process.getuid?.() && (info.mode & 0o077) === 0;
+};
+
+/**
+ * DEV-303 (owner decision 2026-11-24): the design stage's photo inputs, resolved ONLY inside the named photo-materials
+ * run's own private directory under ~/sr-runs: its one receipt <id>-<UTC>.receipt.json (ours, 0600, no link) says
+ * succeeded and verified, stage photo_materials, mode request, the same request id, the same kind and shop; the run
+ * directory is exactly <runs>/<id>-<UTC> (ours, 0700, no link) and parts/ a real directory; each named file is a regular
+ * file (no link, one name), a PNG within PHOTO_INPUT_MAX_BYTES, whose SHA-256 is the request's and the receipt's.
+ * The bytes are returned (the caller hands them to the one Codex run); nothing is copied anywhere. PromptStop codes only.
+ */
+export async function resolvePhotoInputs(request: DesignRequest, o: { runsDir: string; mode: "required" | "if_present" }): Promise<ResolvedPhoto[] | "unchecked"> {
+  const p = request.photo_inputs;
+  if (!p) throw new PromptStop("PHOTO_INPUTS_MISSING");
+  const runsInfo = await lstat(o.runsDir).catch(() => null);
+  if (!runsInfo) {
+    if (o.mode === "if_present") return "unchecked";
+    throw new PromptStop("PHOTO_INPUT_RUN_MISSING");
+  }
+  if (!(await ownPrivateDir(o.runsDir))) throw new PromptStop("PHOTO_INPUT_UNSAFE");
+  const re = new RegExp(`^${p.request_id}-${STAMP}\\.receipt\\.json$`);
+  const found = (await readdir(o.runsDir)).filter((n) => re.test(n));
+  if (found.length === 0) {
+    if (o.mode === "if_present") return "unchecked";
+    throw new PromptStop("PHOTO_INPUT_RUN_MISSING");
+  }
+  if (found.length > 1) throw new PromptStop("PHOTO_INPUT_RUN_AMBIGUOUS");
+  const receiptPath = join(o.runsDir, found[0]!);
+  const receiptBytes = await readChecked(receiptPath, RECEIPT_MAX_BYTES, { unsafe: "PHOTO_INPUT_UNSAFE", big: "PHOTO_INPUT_UNSAFE", missing: "PHOTO_INPUT_RUN_MISSING" });
+  const st = await lstat(receiptPath);
+  if (st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0) throw new PromptStop("PHOTO_INPUT_UNSAFE");
+  let r: { status?: unknown; verified?: unknown; request_stage?: unknown; mode?: unknown; request_id?: unknown; kind?: unknown; shop?: unknown; run_dir?: unknown; images?: unknown };
+  try {
+    r = JSON.parse(receiptBytes.toString("utf8")) as typeof r;
+  } catch {
+    throw new PromptStop("PHOTO_INPUT_RUN_INVALID");
+  }
+  if (!r || r.status !== "succeeded" || r.verified !== true || r.request_stage !== "photo_materials" || r.mode !== "request" || r.request_id !== p.request_id) throw new PromptStop("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
+  if (r.kind !== request.kind || r.shop !== request.shop_id) throw new PromptStop("PHOTO_INPUT_RUN_MISMATCH");
+  const runDir = join(o.runsDir, basename(found[0]!, ".receipt.json"));
+  const realRuns = await realpath(o.runsDir);
+  if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== join(realRuns, basename(runDir))) throw new PromptStop("PHOTO_INPUT_RUN_INVALID");
+  if (!(await ownPrivateDir(runDir)) || !(await realDir(join(runDir, "parts")))) throw new PromptStop("PHOTO_INPUT_UNSAFE");
+  const recorded = new Map((Array.isArray(r.images) ? (r.images as { file?: unknown; sha256?: unknown }[]) : []).map((i) => [i.file, i.sha256]));
+  const out: ResolvedPhoto[] = [];
+  for (const f of p.files) {
+    if (!PHOTO_FILE_RE.test(f.name)) throw new PromptStop("PHOTO_INPUT_UNSAFE");
+    if (recorded.get(`parts/${f.name}`) !== f.sha256) throw new PromptStop("PHOTO_INPUT_SHA_MISMATCH");
+    const bytes = await readChecked(join(runDir, "parts", f.name), PHOTO_INPUT_MAX_BYTES, { unsafe: "PHOTO_INPUT_UNSAFE", big: "PHOTO_INPUT_TOO_LARGE", missing: "PHOTO_INPUT_MISSING" });
+    if (!bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) throw new PromptStop("PHOTO_INPUT_NOT_PNG");
+    if (createHash("sha256").update(bytes).digest("hex") !== f.sha256) throw new PromptStop("PHOTO_INPUT_SHA_MISMATCH");
+    out.push({ name: f.name, sha256: f.sha256, bytes });
+  }
+  return out;
 }
 
 /** Where root's pilot puts the run's private copy of the request (an absolute path to <dir>/<request id>.json). */
@@ -151,14 +234,22 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures). Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; request_sha256: string; facts_sha256: string; plan_sha256: string }> {
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null }> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
   const requestId = name.slice(0, -".json".length);
   const bytes = await readChecked(file, REQUEST_MAX_BYTES, { unsafe: "REQUEST_FILE_UNSAFE", big: "REQUEST_TOO_LARGE", missing: "REQUEST_FILE_MISSING" });
-  const run = await loadRequestRun({ requestFile: file, requestSha256: createHash("sha256").update(bytes).digest("hex"), requestId, home: o.home, repo: o.repo });
-  return { request_id: run.request.id, kind: run.request.kind, request_sha256: run.requestSha256, facts_sha256: run.plan.facts_sha256, plan_sha256: run.plan.plan_sha256 };
+  const run = await loadRequestRun({ requestFile: file, requestSha256: createHash("sha256").update(bytes).digest("hex"), requestId, home: o.home, repo: o.repo, photoInputs: "if_present" });
+  return {
+    request_id: run.request.id,
+    kind: run.request.kind,
+    stage: isPhotoRequest(run.request) ? "photo_materials" : "design",
+    request_sha256: run.requestSha256,
+    facts_sha256: run.plan.facts_sha256,
+    plan_sha256: run.plan.plan_sha256,
+    photo_inputs: run.photos === null ? null : run.photos === "unchecked" ? "unchecked" : "checked",
+  };
 }
 
 export type RealShopRecord = {

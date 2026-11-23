@@ -34,6 +34,10 @@
  * checked again here (imagefirst-worker/request.ts), the plan is rebuilt and must be the one the worker pinned, then
  * runRequestFullPageCall: the same checks before use (commit pin, sandbox preflight, ledger: the request id used once,
  * ever) and the same one Codex batch. Codex never sees ~/second-root-shops or the request's directory (protected paths).
+ *
+ * DEV-303 (owner decision 2026-11-24): by the request's stage (imagefirst-worker/request-run.ts): photo_materials makes
+ * 1..6 picture materials (parts/photo-N.png); design may name a photo_materials run's pictures (photo_inputs), resolved
+ * only inside that run under ~/sr-runs and attached to the one Codex run with --image (never copied into this run).
  */
 import { readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -41,7 +45,8 @@ import { dirname, join, resolve } from "node:path";
 import { cleanupActiveImageCalls, generateImagesInOneRun } from "../../lib/design-agent/design-image/image-once";
 import { buildPromptPlan, loadPromptInputs, PromptStop, type DirectionKey } from "../../lib/design-agent/image-first/prompt";
 import { loadRequestRun, SHOPS_DIR } from "../../lib/design-agent/imagefirst-worker/request";
-import { packetOfDirection, runFullPageCall, runRequestFullPageCall, type FullPageBatch } from "../../lib/design-agent/phase2f-live/full-page-call";
+import { runLoadedRequest } from "../../lib/design-agent/imagefirst-worker/request-run";
+import { packetOfDirection, runFullPageCall, type FullPageBatch } from "../../lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
 import { fileAtCommit, liveContext, parseArgs, REPO, runMain, say, stopSignals } from "./phase2f-live-cli";
 
@@ -61,7 +66,7 @@ function batchIn(ctx: Ctx): FullPageBatch {
   return async (o) => {
     const sandbox = ctx.sandbox();
     if (sandbox === null) throw new Error("no sandbox");
-    const r = await generateImagesInOneRun({ sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: tmpdir(), maxImages: o.maxImages, ...(o.signal === undefined ? {} : { signal: o.signal }) });
+    const r = await generateImagesInOneRun({ sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: tmpdir(), maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.signal === undefined ? {} : { signal: o.signal }) });
     return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
   };
 }
@@ -80,12 +85,9 @@ async function requestMain(): Promise<number> {
   }
   const ctx = await liveContext(args.get("--out")!, stop, null, [join(homedir(), SHOPS_DIR), dirname(requestFile)]);
   if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
-  const result = await runRequestFullPageCall(
+  const result = await runLoadedRequest(
     {
-      plan: run.plan,
-      inputs: { factsBytes: run.factsBytes, directionBytes: run.directionBytes },
-      requestId: run.request.id,
-      requestSha256: run.requestSha256,
+      run,
       expected: { promptSha256: args.get("--expected-prompt-sha256")!, promptChars: chars, commit: args.get("--expected-commit")!, planSha256: args.get("--expected-plan-sha256")! },
       outDir: ctx.outDir,
       repoRoot: REPO,

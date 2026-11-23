@@ -55,6 +55,39 @@
 - `comp-lane.ts` で PC/SP を検査し、`comp-copy.ts` で文章を監査し、`package-local.ts` → `import-local.ts`。
 - 管理画面で品質承認（オーナー）→ 営業文の下書き → 送信承認（オーナー）→ 手で送る。
 
+### D. 二段の依頼: 写真素材 → デザイン（オーナー決定 2026-11-24。MVP_SPEC §7.1 の限定の改定）
+
+1 店の計画は **2 回の実行・最大 12 枚**。どちらの段も 1 依頼 ID = 1 回の Codex 実行・最大 6 枚・再試行なし（root の上限・1 回限りの記録は今のまま）。
+
+1. **素材の段** `stage: "photo_materials"`: 営業提案に置く写真風の**画像素材**を 1〜6 枚（店の記録ではない）。被写体は質感・道具・顔の写らない手元・光など。
+   文字・ロゴ・人の顔・店の外観や店内・建物・その店の商品として見せる物・値段やメニューの表示は入れない。被写体 1 つにつき 1 枚、
+   枠は画像ツールの寸法から Web 向けに 1〜2 枚目 横 3:2、3〜4 枚目 正方形、5〜6 枚目 縦 2:3。
+
+   ```json
+   { "schema": "sr_imagefirst_request_v1", "id": "req-<shop>-photos-1", "shop_id": "<shop_id>", "kind": "real_shop",
+     "created_at": "YYYY-MM-DDTHH:MM:SSZ", "stage": "photo_materials",
+     "photo_brief": { "subjects": ["<1〜6 個、各 200 字まで>"], "mood": "<300 字まで>", "avoid": "<300 字まで>" },
+     "facts_ref": { "root": "second-root-shops", "shop_id": "<shop_id>" }, "facts_sha256": "<sha256>",
+     "max_images": <subjects の数>, "codex_runs": 1 }
+   ```
+
+   brief は direction と同じ検査（URL・HTML・引用符・3 桁以上の数字・通貨記号・facts の値を含めない）。結果は private の
+   `~/sr-runs/<依頼 ID>-<UTC>/parts/photo-N.png` に残り、**review inbox には渡さない**（inbox の bundle はデザインの PC 2 + SP 4 だけ）。
+   worker の結果の 1 行と receipt（`request_stage: "photo_materials"`）に、各画像の名前と SHA-256（`photo_files`）が出る。
+2. **デザインの段**（今の依頼、`stage: "design"` または省略）に、任意で `photo_inputs` を足す:
+
+   ```json
+   "photo_inputs": { "request_id": "req-<shop>-photos-1", "files": [ { "name": "photo-1.png", "sha256": "<sha256>" } ] }
+   ```
+
+   files は 1〜6 個。worker は、その素材の段の run の private な置き場（`~/sr-runs` の中だけ。link なし・通常のファイル・20 MiB まで・
+   SHA-256 一致・成功した receipt で kind と shop_id が同じ）からだけ読み、1 回の Codex 実行に `--image` で添付する（Codex の一時作業 dir に写すだけ）。
+   **添付した画像をデザインの run の `parts/` や inbox の bundle に写さない**（root は実行後に両方の画像を数え、6 枚を超えると止める）。
+   プロンプト: 添付の写真だけをページの写真に使う。写真の枠ごとに小さく「イメージ」、ヘッダーとフッターの隅に小さく「提案用デモ」。
+   文字は今までどおり facts pack の値と決まったラベルだけ。写真と店の事実は別の枠に分け、写真の枠は差し替えられる単純な長方形・角丸にする。
+3. `--validate-request` は新しい項目も確かめる。`photo_inputs` は形を offline で確かめ、ファイルの検査は素材の段の run があるときだけ
+   （結果の `photo_inputs`: `checked` / `unchecked` / `null`）。`unchecked` の依頼は実行では断られる（`PHOTO_INPUT_RUN_MISSING`）。
+
 ## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
 
 1. 候補を選ぶ（営業エージェントの run で登録済みの候補。新しく作らない）。
@@ -70,6 +103,8 @@
 6. `package-local.ts` → 事実の登録（workflow §5）→ `import-local.ts --facts-from-store`（ローカル）。hosted は runbook B-5a の後だけ。
 7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
 8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
+9. 写真素材を使う場合（§2 D）: 3 の前に素材の段の依頼を置き、結果の `photo_files` をデザインの段の `photo_inputs` に写す。
+   素材を頁に使うときは MVP_SPEC §7.1 の限定の改定の 5 条件（「イメージ」の表示・店の物として見せない・事実と分ける・「提案用デモ」の表示・差し替えられる）をすべて守る。
 
 ## 3. オーナーの判断・承認が要るもの
 

@@ -15,6 +15,13 @@
  * copy-record LABELS_BY_KEY). Identity Lock: no photo or photo-like picture, no product, dish, interior, building or
  * person drawn (a picture is a design reference only, never a fact source); no price, award, history, person, review,
  * menu detail, reservation or limited offer is made up. The pinned d1 / d3 / d4 prompts (prompt.ts) are not touched.
+ *
+ * DEV-303 (owner decision 2026-11-24, MVP_SPEC §7.1 limited amendment): two stages. `stage: "photo_materials"` carries a
+ * `photo_brief` instead of a direction and makes 1..6 photographic image MATERIALS for a sales proposal demo (buildPhotoPlan;
+ * no text, logo, face, storefront, interior, building, product shown as the shop's, price or menu). The design stage
+ * (`stage: "design"` or none) may name a photo_materials run's pictures (`photo_inputs`): they are attached to its one
+ * Codex run, every photo frame is labelled 「イメージ」, the page shows 「提案用デモ」, and the page text is still only facts
+ * values and the fixed labels. Without photo_inputs a design request's prompts and plan are byte-identical to before.
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -71,25 +78,82 @@ export const RequestDirection = z.strictObject({
 });
 export type RequestDirection = z.infer<typeof RequestDirection>;
 
+/**
+ * DEV-303 (owner decision 2026-11-24): the photo-materials stage's brief. Plain text under the same tripwire as the
+ * direction (no URL, HTML, quote, digit run, currency sign; buildPhotoPlan also refuses a facts-pack value). One picture
+ * per subject (1..6). Subjects are materials for a sales proposal (textures, tools, hands without faces, light), never a
+ * record of the shop.
+ */
+export const PhotoBrief = z.strictObject({
+  subjects: z.array(DirText(200)).min(1).max(REQUEST_IMAGES.total),
+  mood: DirText(300),
+  avoid: DirText(300),
+});
+export type PhotoBrief = z.infer<typeof PhotoBrief>;
+
+/** The only names a photo material has in its run's parts/ (photo-1.png .. photo-6.png). */
+export const PHOTO_FILE_RE = /^photo-[1-6]\.png$/;
+/**
+ * DEV-303 (owner decision 2026-11-24): the design stage's optional photo inputs: a photo_materials request's id and 1..6
+ * of its files by name and SHA-256. The worker resolves them only inside that request's own run under ~/sr-runs.
+ */
+export const PhotoInputs = z
+  .strictObject({
+    request_id: z.string().regex(REQUEST_ID_RE).refine((id) => !isReservedRequestId(id), "photo_inputs_reserved"),
+    files: z
+      .array(z.strictObject({ name: z.string().regex(PHOTO_FILE_RE), sha256: z.string().regex(/^[0-9a-f]{64}$/) }))
+      .min(1)
+      .max(REQUEST_IMAGES.total),
+  })
+  .refine((p) => new Set(p.files.map((f) => f.name)).size === p.files.length, "photo_inputs_duplicate");
+export type PhotoInputs = z.infer<typeof PhotoInputs>;
+
 /** Exactly YYYY-MM-DDTHH:MM:SSZ (root's rule: no fraction, no offset). */
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-export const ImagefirstRequest = z
+const ENVELOPE = {
+  schema: z.literal(REQUEST_SCHEMA),
+  id: z.string().regex(REQUEST_ID_RE),
+  shop_id: z.string().regex(REQUEST_SHOP_ID_RE),
+  kind: z.enum(["real_shop", "fictional"]),
+  created_at: z.string().regex(UTC).refine((s) => Number.isFinite(Date.parse(s)), "created_at_invalid"),
+  facts_ref: z.strictObject({ root: z.enum(FACTS_ROOTS), shop_id: z.string().regex(REQUEST_SHOP_ID_RE) }),
+  facts_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  codex_runs: z.literal(1),
+};
+type EnvelopeShape = { shop_id: string; kind: "real_shop" | "fictional"; facts_ref: { root: FactsRoot; shop_id: string } };
+const factsRefOk = (r: EnvelopeShape) => r.facts_ref.shop_id === r.shop_id;
+// a real shop's facts live only in ~/second-root-shops (never inside the clone, where Codex is not kept out)
+const realShopRootOk = (r: EnvelopeShape) => r.kind !== "real_shop" || r.facts_ref.root === "second-root-shops";
+
+/** The design stage (the original request; `stage` may be left out). PC 2 + SP 4 = 6 pictures. */
+export const DesignRequest = z
   .strictObject({
-    schema: z.literal(REQUEST_SCHEMA),
-    id: z.string().regex(REQUEST_ID_RE),
-    shop_id: z.string().regex(REQUEST_SHOP_ID_RE),
-    kind: z.enum(["real_shop", "fictional"]),
-    created_at: z.string().regex(UTC).refine((s) => Number.isFinite(Date.parse(s)), "created_at_invalid"),
+    ...ENVELOPE,
+    stage: z.literal("design").optional(),
     direction: RequestDirection,
-    facts_ref: z.strictObject({ root: z.enum(FACTS_ROOTS), shop_id: z.string().regex(REQUEST_SHOP_ID_RE) }),
-    facts_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    photo_inputs: PhotoInputs.optional(),
     max_images: z.literal(REQUEST_IMAGES.total),
-    codex_runs: z.literal(1),
   })
-  .refine((r) => r.facts_ref.shop_id === r.shop_id, "facts_ref_shop_mismatch")
-  // a real shop's facts live only in ~/second-root-shops (never inside the clone, where Codex is not kept out)
-  .refine((r) => r.kind !== "real_shop" || r.facts_ref.root === "second-root-shops", "real_shop_facts_root");
-export type ImagefirstRequest = z.infer<typeof ImagefirstRequest>;
+  .refine(factsRefOk, "facts_ref_shop_mismatch")
+  .refine(realShopRootOk, "real_shop_facts_root")
+  .refine((r) => r.photo_inputs === undefined || r.photo_inputs.request_id !== r.id, "photo_inputs_self");
+export type DesignRequest = z.infer<typeof DesignRequest>;
+
+/** DEV-303 (owner decision 2026-11-24): the photo-materials stage. One picture per subject; max_images = that count. */
+export const PhotoMaterialsRequest = z
+  .strictObject({
+    ...ENVELOPE,
+    stage: z.literal("photo_materials"),
+    photo_brief: PhotoBrief,
+    max_images: z.number().int().min(1).max(REQUEST_IMAGES.total),
+  })
+  .refine(factsRefOk, "facts_ref_shop_mismatch")
+  .refine(realShopRootOk, "real_shop_facts_root")
+  .refine((r) => r.max_images === r.photo_brief.subjects.length, "photo_count_mismatch");
+export type PhotoMaterialsRequest = z.infer<typeof PhotoMaterialsRequest>;
+
+export type ImagefirstRequest = DesignRequest | PhotoMaterialsRequest;
+export const isPhotoRequest = (r: ImagefirstRequest): r is PhotoMaterialsRequest => r.stage === "photo_materials";
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
@@ -109,8 +173,10 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   } catch {
     throw new PromptStop("REQUEST_INVALID");
   }
-  const r = ImagefirstRequest.safeParse(json);
-  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? "REQUEST_DIRECTION_UNSAFE" : "REQUEST_INVALID");
+  // the stage picks the schema (no stage: the design stage); each schema is strict
+  const photo = !!json && typeof json === "object" && (json as { stage?: unknown }).stage === "photo_materials";
+  const r = (photo ? PhotoMaterialsRequest : DesignRequest).safeParse(json);
+  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_PHOTO_BRIEF_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
   if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
   return { request: r.data, sha256: got };
 }
@@ -201,13 +267,19 @@ export type RequestPlan = {
   shop: { shop_id: string; display_name: string; category_code: string };
   viewports: Record<ImageFirstViewport, PlannedViewport>;
   batch: { prompt: string; sha256: string; chars: number; images: number };
+  /** DEV-303 (owner decision 2026-11-24): only when the request names photo inputs (bound into plan_sha256). */
+  photo_inputs?: PhotoInputs;
   plan_sha256: string;
 };
 
-export type RequestInputs = { request: ImagefirstRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
+/** The fixed words a design with photo inputs may add: the label on every photo, and the proposal-demo marker. */
+export const PHOTO_LABEL = "イメージ";
+export const DEMO_MARKER = "提案用デモ";
+
+export type RequestInputs = { request: DesignRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
 
 /** direction.json for a request: the direction object as canonical JSON (written into the private run directory). */
-export const requestDirectionBytes = (request: ImagefirstRequest) => Buffer.from(`${JSON.stringify(request.direction, null, 2)}\n`, "utf8");
+export const requestDirectionBytes = (request: DesignRequest) => Buffer.from(`${JSON.stringify(request.direction, null, 2)}\n`, "utf8");
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
@@ -262,17 +334,25 @@ function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; view
   lines.push(`文字の組み方: ${d.typography}`);
   lines.push(pc ? `PC 版の組み方: ${d.layout_pc}` : `スマートフォン版の組み方: ${d.layout_sp}`);
   lines.push(`避けること: ${d.avoid}`);
-  lines.push("写真や写真風の絵は使わず、線画・図形・色の面・文字だけで組む。商品・料理・店内・建物・人物の姿は描かない（描いたものが店の実物と取り違えられないように）。");
+  const photos = request.photo_inputs;
+  if (photos) {
+    lines.push(`写真: 添付した ${photos.files.length} 枚の写真（入力画像）だけを、このページに置く写真として使う。それ以外の写真や写真風の絵を作らない。添付の写真は提案用の画像素材で、店の実物の写真ではない。`);
+    lines.push("写真の枠: 写真は単純な長方形か角丸の長方形の枠にそのまま収め、後で店の本物の写真と差し替えられるようにする。写真の上に文字を重ねない。");
+    lines.push(`写真の表示: 写真を置いたすべての枠の隅に、小さく「${PHOTO_LABEL}」と書く。`);
+    lines.push("写真と店の事実（店名・紹介文・品目・来店の情報）は別の枠や区画に分け、写真が店の事実を写しているように見せない。商品・料理・店内・建物・人物の姿を新しく描かない。");
+    if (first || last) lines.push(`提案用デモの印: ${first ? "ヘッダーの隅" : "フッターの隅"}に、小さく「${DEMO_MARKER}」と書く（店の公式サイトではないことの印）。`);
+  } else lines.push("写真や写真風の絵は使わず、線画・図形・色の面・文字だけで組む。商品・料理・店内・建物・人物の姿は描かない（描いたものが店の実物と取り違えられないように）。");
   lines.push("");
   lines.push("デザインの原則（特定の既存サイトや作品を真似しない）:");
   for (const p of PRINCIPLES) lines.push(`- ${p.text}`);
   lines.push("");
   lines.push("画像に書いてよい文字（次の文字列だけを、一字一句そのまま。言い換え・要約・翻訳・分割をしない）:");
   for (const t of texts) lines.push(`- 「${t}」`);
+  if (photos) lines.push(`- 「${PHOTO_LABEL}」（写真の枠の隅だけ）${first || last ? `\n- 「${DEMO_MARKER}」（${first ? "ヘッダー" : "フッター"}の隅だけ）` : ""}`);
   if (first) lines.push(`ナビゲーションの項目に使ってよい語: ${nav.map((x) => `「${x}」`).join(" ")}`);
   for (const b of o.boxes) if (LABELLED.has(b.id)) lines.push(`区画「${b.id}」の値の上に小さな見出しとして使ってよい語: ${byId.get(b.id)!.keys.map((key) => `「${labelOf(key)}」`).join(" ")}`);
   lines.push("それ以外の文字・英字・見出し・キャッチコピー・ロゴは描かない。数字だけの目盛りや時刻のラベルを単独で書かない（数字が現れるのは上の文字列の中だけ）。文字の代わりに読めない模様の文字を描かない。");
-  lines.push("画像の文字は店の事実の根拠にならない。価格・受賞・歴史や創業の年・人物（店主・職人など）・評判・お客様の声・メニューの説明・予約・限定の表示を作らない。人の顔や手を描かない。");
+  lines.push(`画像の文字は店の事実の根拠にならない。価格・受賞・歴史や創業の年・人物（店主・職人など）・評判・お客様の声・メニューの説明・予約・限定の表示を作らない。${photos ? "添付の写真のほかに、人の顔や手を描かない。" : "人の顔や手を描かない。"}`);
   return `${lines.join("\n")}\n`;
 }
 
@@ -304,13 +384,17 @@ export function buildRequestPlan(inputs: RequestInputs): RequestPlan {
   const all = [...viewports.desktop_1440.parts.map((p) => ({ vp: "PC 1440", p })), ...viewports.mobile_390.parts.map((p) => ({ vp: "SP 390", p }))];
   if (all.length !== REQUEST_IMAGES.total || viewports.desktop_1440.parts.length !== REQUEST_IMAGES.pc || viewports.mobile_390.parts.length !== REQUEST_IMAGES.sp) throw new PromptStop("SPLIT_INVALID");
   const about = request.kind === "fictional" ? "The shop is fictional." : "This is an internal design reference only: never depict products, dishes, interiors, buildings or people.";
+  const photos = request.photo_inputs;
+  const photoRule = photos
+    ? `- ${photos.files.length} photographs are attached as input images. They are AI-generated image materials for a proposal demo, not photographs of the shop. Use only them as the photographs inside the designs, each in a plain rectangular or rounded-rectangle frame; never create any other photograph or photo-like picture.\n`
+    : "";
   const batchPrompt = `Make the ${all.length} section images of ONE website design comp (a flat website screen design, not a photo, not a poster, not a device mockup) with the image generation tool. ${about}
 
 Rules for this run:
 - Call the image generation tool exactly ${all.length} times, once per image below, in the order given (Image 1 first, Image ${all.length} last). Never more than ${all.length} calls in all.
 - For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
 - Each image is a portrait frame (taller than wide).
-- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
+${photoRule}- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
 - Do not run shell commands, do not read or write files, do not browse.
 - When you have finished, reply with one line only: DONE followed by the number of images saved.
 
@@ -332,7 +416,122 @@ ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.n
     shop: { shop_id: facts.shop_id, display_name: value("name"), category_code: value("category") || "unknown" },
     viewports,
     batch,
+    ...(photos ? { photo_inputs: photos } : {}),
   } as const;
   const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, viewports: Object.fromEntries(Object.entries(viewports).map(([k, v]) => [k, { ...v, parts: v.parts.map((p) => ({ ...p, prompt: undefined })) }])) };
   return { ...body, plan_sha256: sha256(canonical(stripped)) };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// DEV-303 (owner decision 2026-11-24): stage 1, photo materials. Up to 6 standalone photographic image MATERIALS for a
+// sales proposal demo (never a record of the shop): no text, logo, face, storefront, interior, building, product
+// presented as the shop's own, price or menu display. No facts-pack value enters a photo prompt (the facts pack only
+// binds the request to its shop and is checked against the brief). One Codex run, one picture per subject.
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const PHOTO_PLAN_SCHEMA = "image_first_photo_plan_v0";
+export const PHOTO_PROMPT_VERSION = "if-photo-v0";
+/**
+ * Web-friendly frames the image tool already makes (its 1536x1024, 1024x1024 and 1024x1536 sizes), by position:
+ * subjects 1-2 a wide 3:2 (a hero or band), 3-4 a square, 5-6 a tall 2:3 (a side or SP slot).
+ */
+export const PHOTO_ASPECTS = [
+  { key: "landscape_3x2", size: "1536x1024", words: "横長（横:縦 = 3:2）", en: "landscape 3:2 (1536x1024)" },
+  { key: "square_1x1", size: "1024x1024", words: "正方形（1:1）", en: "square 1:1 (1024x1024)" },
+  { key: "portrait_2x3", size: "1024x1536", words: "縦長（横:縦 = 2:3）", en: "portrait 2:3 (1024x1536)" },
+] as const;
+export const photoAspectOf = (index: number) => PHOTO_ASPECTS[Math.min(2, Math.floor((index - 1) / 2))]!;
+
+export type PlannedPhoto = { index: number; name: string; file: string; prompt_file: string; aspect: (typeof PHOTO_ASPECTS)[number]["key"]; prompt: string; prompt_sha256: string; prompt_chars: number };
+export type PhotoPlan = {
+  schema: typeof PHOTO_PLAN_SCHEMA;
+  prompt_version: typeof PHOTO_PROMPT_VERSION;
+  stage: "photo_materials";
+  request_id: string;
+  kind: ImagefirstRequest["kind"];
+  direction_key: "request";
+  direction_id: string;
+  /** SHA-256 of photo-brief.json (the brief, canonical JSON; written into the private run directory). */
+  direction_sha256: string;
+  direction_set_sha256: string;
+  request_sha256: string;
+  facts_sha256: string;
+  shop: { shop_id: string; display_name: string; category_code: string };
+  photos: PlannedPhoto[];
+  batch: { prompt: string; sha256: string; chars: number; images: number };
+  plan_sha256: string;
+};
+export type PhotoInputsOfPlan = { request: PhotoMaterialsRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
+
+/** photo-brief.json for a photo-materials request (the brief as canonical JSON). */
+export const photoBriefBytes = (request: PhotoMaterialsRequest) => Buffer.from(`${JSON.stringify(request.photo_brief, null, 2)}\n`, "utf8");
+
+function photoPrompt(brief: PhotoBrief, index: number, total: number): string {
+  const aspect = photoAspectOf(index);
+  const lines = [
+    "これは営業提案用のデモページに置く画像素材（イメージ写真）1枚です。特定の店の記録写真ではなく、どの店の実物でもありません。",
+    `この画像の役割: ${total} 枚の画像素材のうちの ${index} 枚目。`,
+    `被写体: ${brief.subjects[index - 1]}`,
+    `雰囲気: ${brief.mood}`,
+    `避けること: ${brief.avoid}`,
+    `枠: ${aspect.words}の写真。Web ページの枠にそのまま置ける、自然な光の落ち着いた写真の質感。`,
+    "",
+    "必ず守ること:",
+    "- 文字・数字・記号・看板・ロゴ・透かし・ラベルを一切入れない。",
+    "- 人の顔や頭を写さない（手元だけはよい）。",
+    "- 店の外観・店内・建物・看板・商品の陳列棚・値札・メニュー表を写さない。",
+    "- ある店の実物（店内、建物、売り物）に見えるように描かない。素材・道具・手元・光・質感だけを主題にする。",
+    "- 実在の人物・作品・ブランドを真似しない。",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The photo-materials plan: one prompt per subject (no facts value, no shop name), the ONE batch prompt and the plan
+ * SHA (the same canonical form as buildRequestPlan). Pure. Refuses a brief that quotes a facts-pack value
+ * (REQUEST_PHOTO_BRIEF_HAS_FACT).
+ */
+export function buildPhotoPlan(inputs: PhotoInputsOfPlan): PhotoPlan {
+  const { request, facts } = inputs;
+  const brief = request.photo_brief;
+  const text = [...brief.subjects, brief.mood, brief.avoid].join("\n").normalize("NFKC").toLowerCase();
+  for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && text.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_PHOTO_BRIEF_HAS_FACT");
+  const total = brief.subjects.length;
+  if (total < 1 || total > REQUEST_IMAGES.total || request.max_images !== total) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
+  const photos = brief.subjects.map((_, i): PlannedPhoto => {
+    const prompt = photoPrompt(brief, i + 1, total);
+    return { index: i + 1, name: `photo-${i + 1}`, file: `parts/photo-${i + 1}.png`, prompt_file: `prompts/photo-${i + 1}.txt`, aspect: photoAspectOf(i + 1).key, prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
+  });
+  const batchPrompt = `Make ${total} standalone photographic image materials for a sales proposal demo with the image generation tool. They are not photographs of any real shop and must never show text, logos, faces, storefronts, interiors, buildings, products on display, prices or menus.
+
+Rules for this run:
+- Call the image generation tool exactly ${total} times, once per image below, in the order given (Image 1 first, Image ${total} last). Never more than ${total} calls in all.
+- For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
+- Make each image in the size given for it.
+- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
+- Do not run shell commands, do not read or write files, do not browse.
+- When you have finished, reply with one line only: DONE followed by the number of images saved.
+
+${photos.map((p) => `Image ${p.index} of ${total} — ${photoAspectOf(p.index).en} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
+`;
+  const value = (key: string) => facts.facts.find((f) => f.key === key)?.value ?? "";
+  const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: total };
+  const body = {
+    schema: PHOTO_PLAN_SCHEMA,
+    prompt_version: PHOTO_PROMPT_VERSION,
+    stage: "photo_materials",
+    request_id: request.id,
+    kind: request.kind,
+    direction_key: "request",
+    direction_id: `photo-${request.id}`.slice(0, 41),
+    direction_sha256: sha256(photoBriefBytes(request)),
+    direction_set_sha256: inputs.requestSha256,
+    request_sha256: inputs.requestSha256,
+    facts_sha256: sha256(inputs.factsBytes),
+    shop: { shop_id: facts.shop_id, display_name: value("name"), category_code: value("category") || "unknown" },
+    photos,
+    batch,
+  } as const;
+  const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, photos: photos.map((p) => ({ ...p, prompt: undefined })) };
+  return { ...body, photos, plan_sha256: sha256(canonical(stripped)) };
 }
