@@ -10547,14 +10547,16 @@
     },
     {
       "id": "DEV-312a",
-      "title": "Issue #312: 5万円デモ採用+顧客所有CMS/ホスティングの比較・最小納品仕様を確定",
+      "title": "Issue #312: Pages CMS第一候補で顧客所有GitHub/Cloudflareの最小納品仕様を比較・検証",
       "status": "ready",
       "priority": "P2",
       "depends_on": [],
-      "purpose": "現在のP0営業MVPとIMAGE_FIRST開発を止めず、将来の5万円買い切り商品化に必要なCMS・顧客名義公開構成・法務/価格不整合の調査を文書化する。優先するのは既存の高品質デモと初契約の獲得。Issue #312 / PR #313を参照。",
+      "purpose": "2026-11-23オーナーの方針によりPages CMSを第一候補として調査・架空店舗PoC設計を先行。顧客名義GitHub+Cloudflare Pagesに構図固有のサイトを納品し、店主が1人で商品更新できることを検証する。microCMS/Sveltia/Decapは代替候補。現在のP0営業MVPとIMAGE_FIRST開発を妨げない。",
       "acceptance_criteria": [
         "Brot Yanagi商品CMSの実装・ライセンスを可能なら読み取り比較し、アクセスできなければ未確認と明記",
-        "microCMS Hobby・Sanity Free・既存Supabase CMS・静的データ方式を顧客の操作性、権限、料金上限、画像、移管、障害・サービス変更・解約条件で比較",
+        "Pages CMS hosted（GitHub App/1人owner/メール招待/制約・利用規約・停止/商用大量導入）を主比較対象に、microCMS Hobby・Sveltia/Decap・既存Supabase CMSと操作性・権限・料金・画像・移管・障害を比較",
+        "Pages CMSの.githubやデザインテンプレートを強制せず、顧客repoルートの.pages.ymlで商品45件/営業時間/お知らせを編集する構成を設計。CMS更新はGitコミット→Cloudflare Pagesビルド、Webhook前提にしない",
+        "GitHubとCloudflareのアカウント/Pages CMS連携は顧客自身が認証・承認し、Second Rootは一時的な最小作業権限だけ持つ。2つの会員登録とCMSログインを分けて説明",
         "顧客名義のCMS/ホスティング/ドメインを基本とし、SecretをSecond Rootが保管し続けない納品・アクセス権剥奪設計を記録",
         "デモ採用5万円は現時点で商品方針。公開Pricing/Faqの税別5万円・CMSなし・初年度管理込みとの不整合を列挙し、本番文面を勝手に変更しない",
         "既存の進行中P0営業MVP・DEV-302/IMAGE_FIRSTのCI、レビュー、承認ゲートを変更しない"
@@ -10634,16 +10636,16 @@
       "depends_on": [
         "DEV-312b"
       ],
-      "purpose": "選定した外部CMSから顧客の操作でWebサイトが自動更新され、Second Rootの承認・更新代行が不要であることを架空店舗環境で検証する。",
+      "purpose": "Pages CMS hostedを第一候補として、顧客のGitHubリポジトリへの商品/写真コミットでCloudflare Pagesが自動再ビルドし、Second Rootの承認・更新代行を要しないことを架空店舗で検証。外部CMS認可を含む実機テストは別途承認。",
       "acceptance_criteria": [
         "顧客権限で商品追加・価格/写真変更・非公開・営業時間更新・臨時休業・お知らせを編集/公開できる",
-        "公開イベントから静的サイトの再ビルドとサイト反映が起き、反映待ち・失敗を顧客が認識できる",
-        "Webhook失敗、ビルド失敗、連続更新、Free枠超過でも最後の正常サイトを維持し、秘密URL・CMSキーをログ/公開JS/リポジトリに漏らさない",
+        "Pages CMSの保存で顧客repoへのコミットが行われ、Cloudflare PagesのGit連携で静的再ビルド・サイト反映される。反映待ち・失敗を顧客が認識できる",
+        "GitHubへの書き込み失敗、Git連携停止、ビルド失敗、連続更新、Free枠超過でも旧正常サイトが保全され、GitHub Appへの許可と秘密情報が最小限で、漏えいがない",
         "CMS所有アカウントとWeb公開アカウントは顧客側に置き、Second Rootの操作なしで更新できることを実証",
         "実測した初期設定工数・1回の更新時間・更新遅延・無料枠/利用コスト・失敗リスクを記録"
       ],
       "required_tests": [
-        "オフラインWebhook/ビルドスタブによる連携・失敗・再試行テスト",
+        "オフラインCMS Git commit/Cloudflare buildスタブによる連携・失敗・再試行テスト",
         "秘密情報漏えい・認可・反映結果の検査",
         "PC1440/SP390検証",
         "lint / typecheck / check:secrets / 関連CI",
@@ -10683,7 +10685,8 @@
         "顧客へCMS・hosting・domain・repoの所有/利用権、操作ガイド、バックアップ/移管手順を明記",
         "Second Root側の権限削除後も、顧客権限だけでメニューを更新し公開し続けられる",
         "顧客名義の費用、無料枠超過、サービス終了、移管、障害対応の契約責任分界点を明記",
-        "受注〜納品のSecond Root担当工数を測り5万円で採算可能か判定する"
+        "受注〜納品のSecond Root担当工数を測り5万円で採算可能か判定する",
+        "顧客所有GitHub/Cloudflare、Pages CMS hostedの利用主体・ログイン・GitHub App許可・削除/移行手順を検証し、納品後のSecond Root権限がゼロであることを確認"
       ],
       "required_tests": [
         "架空店舗でのE2E（秘密情報と実顧客は使わない）",
