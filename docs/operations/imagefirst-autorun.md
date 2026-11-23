@@ -45,7 +45,7 @@ sudo bash $S enable-timer --yes --expect <sha>         # 10 分ごとの timer �
 
 Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を置く。root が見るのは外側だけ:
 
-- 依頼 ID: `^req-[a-z0-9][a-z0-9-]{2,58}$`（ファイル名と同じ。必ず `req-` で始まり、承認 ID の形 `hoshigama-imagefirst-...` にはならない。承認 ID も `req-` では始まらない）。ファイルは 16 KiB まで、普通のファイル（リンク・FIFO・ディレクトリは不可）。
+- 依頼 ID: `^(?!.*imagefirst)req-[a-z0-9][a-z0-9-]{2,58}$`（ファイル名と同じ。`imagefirst` を含む ID は使えない。必ず `req-` で始まり、承認 ID の形 `hoshigama-imagefirst-...` にはならない。承認 ID も `req-` では始まらない）。ファイルは 16 KiB まで、普通のファイル（リンク・FIFO・ディレクトリは不可）。
 - JSON: `{"schema": "sr_imagefirst_request_v1", "id": <ファイル名と同じ>, "shop_id": <^[a-z0-9_-]{2,41}$>, "kind": "real_shop" | "fictional", "created_at": <UTC の ISO、末尾 Z>, ...}`。
   ほかの欄は worker の仕事（root は読まない）。**依頼はデータだけ**: 依頼の中身でコード・commit・上限・場所は選べない（動くのはオーナーが固定した commit の worker）。
 - root は依頼を **worker として**読む（setpriv、root 自身の作業ファイルへの pipe。root は worker のファイルを開かない）。
@@ -76,7 +76,8 @@ Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を�
   確かめる（違えば `AUTORUN_INSTALL_UNTRUSTED` で何もしない）。管理用 clone のスクリプトを root で動かすことはもう無い。
 - **worker への受け渡し**: pilot は root の `requests/<ID>.json` の SHA-256 を確かめ、worker として、その回の clone の隣の
   `<clone>.request/<ID>.json`（0600）へ写す。worker は `imagefirst-worker.ts --request <ID> --request-sha256 <hex>` で 1 回だけ動く
-  （環境変数 `SR_IMAGEFIRST_REQUEST_FILE` がその写しを指す。承認 ID の grant は渡さない）。
+  （環境変数 `SR_IMAGEFIRST_REQUEST_FILE` がその写しを指す。承認 ID の grant は渡さない）。その前に preflight が、同じ引数に `--precheck` を付けて
+  worker の事前確認を走らせる（exit 0 と `would_run` 以外は FAIL で、何も使わない）。
 - **実店舗の画像は社内のデザインの参考だけ**（相手に見せない・共有しない・版に入れない）。本番の公開と営業の送信は今までどおりオーナーの確認が要る。自動送信は無い。
 
 ### 0.4 1 回ごとの承認（手動の代替。下の §1）

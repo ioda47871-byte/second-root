@@ -179,7 +179,7 @@ elif [ "$#" -eq 4 ] && [ "$1" = --autorun ]; then
 elif [ "$#" -eq 5 ] && [ "$1" = --autorun-request ]; then
   MODE=autorun
   REQUEST=1
-  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] || { say "PILOT_ID_INVALID: a request id is ^req-[a-z0-9][a-z0-9-]{2,58}\$"; finish PILOT_ID_INVALID 2; }
+  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] && [[ "$2" != *imagefirst* ]] || { say "PILOT_ID_INVALID: a request id is ^(?!.*imagefirst)req-[a-z0-9][a-z0-9-]{2,58}\$"; finish PILOT_ID_INVALID 2; }
   APPROVAL="$2"
   [[ "$3" =~ ^[0-9a-f]{40}$ ]] || { say "PILOT_SHA_INVALID: --autorun-request <request id> <40-hex commit root pinned> <origin URL> <request SHA-256>"; finish PILOT_SHA_INVALID 2; }
   AUTORUN_SHA="$3"
@@ -630,7 +630,7 @@ set +e
 if [ "$REQUEST" = 0 ]; then
   bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
 else
-  bash "$PREFLIGHT" --request "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-
+  bash "$PREFLIGHT" --request "$APPROVAL" "$REQUEST_SHA" >"$WORK/preflight" 2>&1 8>&- 9>&-
 fi
 frc=$?
 set -e

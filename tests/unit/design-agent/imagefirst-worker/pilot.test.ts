@@ -404,7 +404,8 @@ describe("Issue #302 pilot: the copied primitives stay identical; nothing instal
     expect(pilot.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &', 'imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &', 'imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/deliver" 2>/dev/null 8>&- 9>&-']);
     expect(pilot.match(/imagefirst-audit\.ts[^\n]*/g)).toEqual(['imagefirst-audit.ts "$APPROVAL" --dry-run >"$WORK/dry" 2>/dev/null 8>&- 9>&-', 'imagefirst-audit.ts "$APPROVAL" >"$WORK/audit" 2>/dev/null 8>&- 9>&- &']);
     expect(pilot.match(/bash "\$(PREFLIGHT|DELIVER)"[^\n]*/g)).toEqual(['bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-', 'bash "$PREFLIGHT" --request "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-', 'bash "$DELIVER" "$APPROVAL" >"$WORK/deliver" 2>&1']);
-    expect(pre.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
+    // DEV-303: plus a standing request's precheck (the worker's --request ... --precheck, inside the automatic run only)
+    expect(pre.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
     expect(pre.match(/imagefirst-audit\.ts[^\n]*/g)).toEqual(["imagefirst-audit.ts --check-auth-only >\"$WORK/auth\" 2>/dev/null 8>&- 9>&-"]);
     for (const [name, c] of [["pilot", pilot], ["preflight", pre]] as const) {
       // never the automatic start's switch or marker; the only file of /etc/sr-design-worker named is root's reviewed Codex

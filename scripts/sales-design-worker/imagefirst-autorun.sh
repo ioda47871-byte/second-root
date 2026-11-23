@@ -555,6 +555,7 @@ print("OK %d" % t)
 '
 # a request id always starts with req- (an approval id, hoshigama-imagefirst-..., never does)
 REQ_ID_RE='^req-[a-z0-9][a-z0-9-]{2,58}$'
+# ... and never containing "imagefirst" (the worker refuses those): ^(?!.*imagefirst)req-..., bash has no look-ahead
 # The worker user's privilege drop for root's reads and notices (as write_review's); never with a file descriptor of root's
 as_worker_cmd() {
   local uid gid
@@ -628,7 +629,7 @@ pick_request() {
     for f in *.json; do if [ -e "$f" ] || [ -L "$f" ]; then printf "%s\0" "$f"; fi; done' </dev/null >"$names" 2>/dev/null 7>&- 8>&- 9>&- || return 1
   while IFS= read -r -d '' f; do
     id="${f%.json}"
-    [[ "$f" == *.json ]] && [[ "$id" =~ $REQ_ID_RE ]] || continue
+    [[ "$f" == *.json ]] && [[ "$id" =~ $REQ_ID_RE ]] && [[ "$id" != *imagefirst* ]] || continue
     seen_id "$id" && continue
     n=$((n + 1))
     [ "$n" -le "$REQ_MAX_NAMES" ] || break

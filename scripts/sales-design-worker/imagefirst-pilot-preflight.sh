@@ -6,9 +6,9 @@
 # directory of root's that it removes. It starts no generation and no model call.
 #
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <approval id>
-#   (inside the automatic run only) imagefirst-pilot-preflight.sh --request <request id>: a standing request (DEV-303); the
-#   approval row then checks the run's private copy of root's request instead of a packet (the worker checks its SHA-256
-#   and its content itself when it starts)
+#   (inside the automatic run only) imagefirst-pilot-preflight.sh --request <request id> <request SHA-256>: a standing
+#   request (DEV-303); the approval row then runs the worker's own --precheck of that request (its private copy, root's
+#   SHA-256) instead of the packet's: exit 0 with "would_run", else FAIL (before anything is spent)
 #
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin). Root never runs git, node or a parser on files
 # the worker user controls: every command in the worker's clone runs as the worker user, with the automatic start's
@@ -124,12 +124,15 @@ row() {
 
 # ---------------------------------------------------------------- the approval id (or a standing request's id)
 REQUEST=0
-if [ "$#" -eq 2 ] && [ "$1" = --request ]; then
-  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] || { say "PREFLIGHT_ID_INVALID: a request id is ^req-[a-z0-9][a-z0-9-]{2,58}\$"; finish USAGE 2; }
+REQUEST_SHA=""
+if [ "$#" -eq 3 ] && [ "$1" = --request ]; then
+  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] && [[ "$2" != *imagefirst* ]] || { say "PREFLIGHT_ID_INVALID: a request id is ^(?!.*imagefirst)req-[a-z0-9][a-z0-9-]{2,58}\$"; finish USAGE 2; }
+  [[ "$3" =~ ^[0-9a-f]{64}$ ]] || { say "PREFLIGHT_REQUEST_SHA_INVALID: the request's SHA-256 is 64 hex"; finish USAGE 2; }
   REQUEST=1
   APPROVAL="$2"
+  REQUEST_SHA="$3"
 else
-  [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id> | --request <request id>"; finish USAGE 2; }
+  [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id> | --request <request id> <request SHA-256>"; finish USAGE 2; }
   [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish USAGE 2; }
   APPROVAL="$1"
   [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
@@ -382,16 +385,7 @@ else
 fi
 
 # ---------------------------------------------------------------- the worker's own precheck (the packet at HEAD, the window, the pins, unused)
-if [ "$REQUEST" = 1 ]; then
-  # a standing request (DEV-303): no packet and no expiry of its own (the owner's standing policy is root's, checked by the
-  # automatic run). The run's private copy of root's request must be there, a regular file of at most 16 KiB, as the
-  # worker; the worker checks its SHA-256 (root's) and its content when it starts
-  if in_clone bash -c 'f="$1.request/$2.json"; [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] && [ "$(stat -c %s -- "$f")" -le 16384 ]' _ "$CLONE" "$APPROVAL"; then
-    row approval PASS "standing request $APPROVAL: the run's private copy of root's request is in place (the worker checks its SHA-256)"
-  else
-    row approval FAIL "standing request $APPROVAL: the run's private copy of root's request is missing"
-  fi
-elif [ "$CLONE_OK" = 1 ]; then
+if [ "$REQUEST" = 0 ] && [ "$CLONE_OK" = 1 ]; then
   set +e
   "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
     node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
@@ -410,6 +404,25 @@ elif [ "$CLONE_OK" = 1 ]; then
     row approval FAIL "under $((MIN_LEFT_SECONDS / 60)) min of the approval left ($((left < 0 ? 0 : left / 60)) min, or the expiry unreadable): start with at least $((MIN_LEFT_SECONDS / 60)) min left"
   else
     row approval PASS "the worker would run now, $((left / 60)) min of the approval left: $pline"
+  fi
+elif [ "$REQUEST" = 1 ] && [ "$CLONE_OK" = 1 ]; then
+  # a standing request (DEV-303): no packet and no expiry of its own (the owner's standing policy is root's, checked by the
+  # automatic run). The worker's own precheck of the request, as the worker, in the fresh clone: the run's private copy of
+  # root's request (SR_IMAGEFIRST_REQUEST_FILE) with root's SHA-256; exit 0 with "would_run" only (2: refused). Writes nothing
+  if in_clone bash -c 'f="$1.request/$2.json"; [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] && [ "$(stat -c %s -- "$f")" -le 16384 ]' _ "$CLONE" "$APPROVAL"; then
+    set +e
+    "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "SR_IMAGEFIRST_REQUEST_FILE=$CLONE.request/$APPROVAL.json" \
+      node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
+    prc=$?
+    set -e
+    pline="$(tail -n 1 "$WORK/precheck" | tr -d '\000-\037' | cut -c1-400)"
+    if [ "$prc" -eq 0 ] && [[ "$pline" == '{'*'"status":"would_run"'* ]]; then
+      row approval PASS "standing request $APPROVAL: the worker would run it now: $pline"
+    else
+      row approval FAIL "standing request $APPROVAL: precheck exit $prc: ${pline:-<no line>}"
+    fi
+  else
+    row approval FAIL "standing request $APPROVAL: the run's private copy of root's request is missing"
   fi
 else
   row approval FAIL "skipped: the clone is not on origin/develop"

@@ -47,6 +47,12 @@ const reqFile = process.env.SR_IMAGEFIRST_REQUEST_FILE ?? null;
 const reqSha = reqFile && existsSync(reqFile) ? sha(readFileSync(reqFile)) : null;
 appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "worker", argv, grant, cwd: process.cwd(), env: Object.keys(process.env).sort(), execArgv: process.execArgv, codexHome: process.env.CODEX_HOME ?? null, codexFiles: seen(codexHome), requestFile: reqFile, requestSha: reqSha }) + "\\n");
 if (requestMode && (argv[2] !== "--request-sha256" || reqSha !== argv[3])) { say({ status: "refused", code: "REQUEST_SHA_MISMATCH", invoked: false, approval_id: grant }); process.exit(2); }
+// a standing request's precheck (--request <id> --request-sha256 <hex> --precheck): one JSON line, 0 would_run / 2 refused, nothing written
+if (requestMode && argv[4] === "--precheck") {
+  if (flag("stub-request-precheck")) { say({ status: "refused", code: text("stub-request-precheck"), invoked: false, request_id: grant }); process.exit(2); }
+  say({ status: "would_run", code: null, invoked: false, request_id: grant });
+  process.exit(0);
+}
 // a sign-in refreshed by the CLI during the run (the automatic run copies it back afterwards)
 if ((argv.length === 0 || requestMode) && flag("stub-refresh") && process.env.CODEX_HOME) writeFileSync(join(process.env.CODEX_HOME, "auth.json"), "refreshed-codex\\n");
 const BUNDLE = "4".repeat(64);
@@ -232,6 +238,6 @@ exit 1`,
   };
   const starts = (): Start[] => (existsSync(join(home, "stub.log")) ? readFileSync(join(home, "stub.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Start) : []);
   /** What actually spends: the worker run (no arguments, or a standing request's --request), the audit (no --dry-run), the re-send. */
-  const spent = () => starts().filter((s) => (s.cli === "worker" && (s.argv.length === 0 || s.argv[0] === "--request")) || (s.cli === "audit" && s.argv.length === 1 && s.argv[0] !== "--check-auth-only"));
+  const spent = () => starts().filter((s) => (s.cli === "worker" && (s.argv.length === 0 || (s.argv[0] === "--request" && !s.argv.includes("--precheck")))) || (s.cli === "audit" && s.argv.length === 1 && s.argv[0] !== "--check-auth-only"));
   return { t, home, sc, bin, clone, origin, src, env, spawn, pilot, preflight, starts, spent };
 }

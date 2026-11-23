@@ -102,7 +102,7 @@ esac`,
   exe(
     join(w.bin, "setpriv"),
     `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${w.sc}/setpriv.log'
-if [ "\${@: -1}" = scripts/sales-design-worker/imagefirst-worker.ts ] || [[ " $* " == *" scripts/sales-design-worker/imagefirst-worker.ts --request "* ]]; then echo "worker used=$(ls '${state}/used' 2>/dev/null | tr '\\n' ,)" >> '${events}'; fi
+if [ "\${@: -1}" = scripts/sales-design-worker/imagefirst-worker.ts ] || { [[ " $* " == *" scripts/sales-design-worker/imagefirst-worker.ts --request "* ]] && [ "\${@: -1}" != --precheck ]; }; then echo "worker used=$(ls '${state}/used' 2>/dev/null | tr '\\n' ,)" >> '${events}'; fi
 exec "$@"`,
   );
   const env = { ...w.env, SR_IMAGEFIRST_AUTORUN_TEST_ROOT: w.t, SR_IMAGEFIRST_APPROVE_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv;
@@ -982,14 +982,34 @@ describe("DEV-303 standing pre-authorization: the owner's one-time policy and Cl
     expect(statSync(`${fc}.request/${RID}.json`).mode & 0o777).toBe(0o600);
     expect(w.spent().filter((x) => x.cli === "audit").map((x) => x.argv)).toEqual([[RID]]);
     expect(r.stdout).toMatch(/\| approval +\| PASS \| standing request req-hoshigama-001/);
-    // no packet precheck for a request
+    // no packet precheck for a request; the worker's own precheck of the request instead, in the fresh clone, before the run
     expect(w.starts().filter((x) => x.cli === "worker" && x.argv[0] === "--precheck")).toEqual([]);
+    const pre = w.starts().filter((x) => x.cli === "worker" && x.argv.includes("--precheck"));
+    expect(pre.map((x) => x.argv)).toEqual([["--request", RID, "--request-sha256", want, "--precheck"]]);
+    expect(pre[0]!.cwd).toBe(fc);
+    expect(pre[0]!.requestSha).toBe(want);
     expect(w.events()).toEqual(["admin claude-stop", `worker used=${RID},`, "admin claude-start"]);
     expect(readFileSync(w.review(RID), "utf8")).toContain(`IMAGEFIRST_AUTORUN_RESULT AUTORUN_DONE approval=${RID} pilot=PILOT_DONE exit=0`);
     // the next firings: nothing new, Remote Control untouched, nothing spent again (the request file is still there)
     for (let i = 0; i < 2; i++) expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST", approval: "none", rc: "untouched" });
     expect(w.events()).toHaveLength(3);
     expect(w.spent()).toHaveLength(2);
+  });
+
+  it("the worker's own precheck of the request runs before anything is spent: refused (exit 2) = preflight FAIL, no worker run, nothing used", () => {
+    const w = world();
+    w.switchOn();
+    w.standing();
+    w.request(RID);
+    writeFileSync(join(w.home, "stub-request-precheck"), "REQUEST_SHOP_NOT_CONFIRMED");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", approval: RID, pilot: "PILOT_PREFLIGHT_FAILED", rc: "restored" });
+    expect(r.stdout).toMatch(/\| approval +\| FAIL \| standing request req-hoshigama-001: precheck exit 2: .*REQUEST_SHOP_NOT_CONFIRMED/);
+    expect(w.spent()).toEqual([]);
+    expect(w.used()).toEqual([]);
+    expect(w.attempted()).toEqual([RID]);
+    expect(w.starts().filter((x) => x.cli === "worker" && x.argv.includes("--precheck")).map((x) => x.argv.at(-1))).toEqual(["--precheck"]);
+    expect(w.events()).toEqual(["admin claude-stop", "admin claude-start"]);
   });
 
   it("no, expired, unsafe or invalid policy: nothing runs and no request is read", () => {
@@ -1111,6 +1131,7 @@ describe("DEV-303 standing pre-authorization: the owner's one-time policy and Cl
     writeFileSync(join(dir, "ab.json"), "{}");
     // an approval id's form (or any id without req-) is never a request
     writeFileSync(join(dir, `${ID}.json`), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: ID, shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
+    writeFileSync(join(dir, "req-imagefirst-x.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "req-imagefirst-x", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
     writeFileSync(join(dir, "good-but-no-prefix.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "good-but-no-prefix", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
     const started = Date.now();
     const r = w.run();
@@ -1278,6 +1299,7 @@ describe("DEV-303 standing pre-authorization: the owner's one-time policy and Cl
   it("the request envelope and limits are pinned: the shared interface (id, size, schema, kinds) and the setup's ceilings", () => {
     const src = readFileSync(AUTORUN, "utf8");
     expect(src).toContain("REQ_ID_RE='^req-[a-z0-9][a-z0-9-]{2,58}$'");
+    expect(src).toContain('[[ "$id" =~ $REQ_ID_RE ]] && [[ "$id" != *imagefirst* ]]');
     // an approval id can never start with req- (every parser of one wants hoshigama-imagefirst-...), and a request id never
     // has an approval id's form
     for (const f of [AUTORUN, APPROVE, PILOT, PREFLIGHT]) for (const m of readFileSync(f, "utf8").matchAll(/hoshigama-imagefirst-d\[34\]-\[0-9\]\{8\}-\[0-9\]\{2\}/g)) expect(m[0]).not.toMatch(/^req-/);
