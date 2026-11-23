@@ -29,7 +29,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { checkPng, MOCKUP_PNG_LIMITS, PngError, type PngLimits } from "../design-image/png";
-import { RUN_APPROVAL_ID_RE, runOfApprovalId } from "./run-directions";
+import { BUNDLE_ID_RE, isRequestRunId, RUN_APPROVAL_ID_RE, runOfApprovalId } from "./run-directions";
 
 export const BUNDLE_SCHEMA = "imagefirst_private_bundle_v1";
 const MiB = 1024 * 1024;
@@ -75,8 +75,12 @@ function termsValid(m: BundleManifest): boolean {
   );
 }
 
-/** A ほし窯 d3 or d4 approval id (run-directions.ts); the receipt's direction must be the one its id names. */
-export const APPROVAL_ID_RE = RUN_APPROVAL_ID_RE;
+/**
+ * A ほし窯 d3 or d4 approval id (run-directions.ts; the receipt's direction must be the one its id names) or, DEV-303, a
+ * request run's id (a receipt with mode "request", direction "request"). The two forms never overlap.
+ */
+export const APPROVAL_ID_RE = BUNDLE_ID_RE;
+const SHOP_ID_RE = /^[a-z0-9_-]{2,41}$/;
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
@@ -143,6 +147,9 @@ export type BundleManifest = {
   direction: string;
   packet_sha256: string;
   plan_sha256: string;
+  /** DEV-303: a request run's bundle (absent on a pinned direction's). */
+  mode?: "request";
+  kind?: "real_shop" | "fictional";
   /** SHA-256 of the bundled (redacted) receipt.json. */
   receipt_sha256: string;
   /** SHA-256 of the worker's original receipt bytes: checkable only against the original on the worker's machine. */
@@ -178,6 +185,12 @@ type Receipt = {
   images: unknown;
   stopped_images: unknown;
   counts: unknown;
+  mode?: unknown;
+  kind?: unknown;
+  request_id?: unknown;
+  request_sha256?: unknown;
+  facts_sha256?: unknown;
+  images_total?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -260,8 +273,15 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[] } {
   if (typeof r.plan_id !== "string" || !PLAN_ID_RE.test(r.plan_id)) stop("RECEIPT_INVALID");
   if (typeof r.commit !== "string" || !COMMIT_RE.test(r.commit)) stop("RECEIPT_INVALID");
   if (typeof r.packet_sha256 !== "string" || !SHA_RE.test(r.packet_sha256) || typeof r.plan_sha256 !== "string" || !SHA_RE.test(r.plan_sha256)) stop("RECEIPT_INVALID");
-  // the direction is the one the approval id names (a d3 id never seals a d4 receipt, nor the other way round)
-  if (r.shop !== "hoshigama" || r.direction !== runOfApprovalId(r.approval_id as string)?.direction || typeof r.run_dir !== "string") stop("RECEIPT_INVALID");
+  if (r.mode === "request") {
+    // DEV-303: a request run: its id has the request form, its shop is the request's, the request is its approval
+    if (!isRequestRunId(r.approval_id as string) || r.request_id !== r.approval_id || r.plan_id !== r.approval_id || r.direction !== "request" || typeof r.shop !== "string" || !SHOP_ID_RE.test(r.shop)) stop("RECEIPT_INVALID");
+    if ((r.kind !== "real_shop" && r.kind !== "fictional") || r.request_sha256 !== r.packet_sha256 || typeof r.facts_sha256 !== "string" || !SHA_RE.test(r.facts_sha256) || typeof r.run_dir !== "string") stop("RECEIPT_INVALID");
+  } else {
+    // the direction is the one the approval id names (a d3 id never seals a d4 receipt, nor the other way round)
+    if (r.mode !== undefined || r.kind !== undefined || !RUN_APPROVAL_ID_RE.test(r.approval_id as string)) stop("RECEIPT_INVALID");
+    if (r.shop !== "hoshigama" || r.direction !== runOfApprovalId(r.approval_id as string)?.direction || typeof r.run_dir !== "string") stop("RECEIPT_INVALID");
+  }
   if (!Array.isArray(r.images) || !Array.isArray(r.stopped_images)) stop("RECEIPT_INVALID");
   const images = r.images as ReceiptImage[];
   for (const i of images) {
@@ -270,6 +290,8 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[] } {
     if (!PART_RE.test(i.file)) stop("RUN_FILE_OUTSIDE");
   }
   if (new Set(images.map((i) => i.file)).size !== images.length) stop("RECEIPT_INVALID");
+  // DEV-303: a request run's reported picture count is the receipt's own list, never more than one batch's 6
+  if (r.mode === "request" && (r.images_total !== images.length || images.length > 6)) stop("RECEIPT_INVALID");
   if (r.status !== "succeeded" || r.stop_code !== null || r.verified !== true || (r.stopped_images as unknown[]).length !== 0) stop("RECEIPT_NOT_SUCCEEDED");
   const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
   const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;
@@ -372,8 +394,9 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
     approval_id: bundleId,
     plan_id: r.plan_id as string,
     commit: r.commit as string,
-    shop: "hoshigama",
+    shop: r.shop as string,
     direction: r.direction as string,
+    ...(r.mode === "request" ? { mode: "request" as const, kind: r.kind as "real_shop" | "fictional" } : {}),
     packet_sha256: r.packet_sha256 as string,
     plan_sha256: r.plan_sha256 as string,
     receipt_sha256: sha256(bundledReceipt),
@@ -508,7 +531,7 @@ export async function verifyBundleDir(dir: string, o: VerifyOptions = {}): Promi
   }
   const { r, images } = parsed;
   if (r.approval_id !== m.approval_id || r.plan_id !== m.plan_id || r.commit !== m.commit || r.packet_sha256 !== m.packet_sha256 || r.plan_sha256 !== m.plan_sha256 || r.run_dir !== RECEIPT_RUN_DIR_REDACTED) stop("BUNDLE_RECEIPT_MISMATCH");
-  if (m.shop !== r.shop || m.direction !== r.direction) stop("BUNDLE_RECEIPT_MISMATCH");
+  if (m.shop !== r.shop || m.direction !== r.direction || m.mode !== r.mode || m.kind !== r.kind) stop("BUNDLE_RECEIPT_MISMATCH");
   const parts = m.files.filter((f) => f.role === "part");
   if (parts.length !== images.length || images.some((i) => !parts.some((p) => p.path === i.file && p.sha256 === i.sha256 && p.bytes === i.bytes))) stop("BUNDLE_RECEIPT_MISMATCH");
   const pc = parts.filter((p) => p.path.startsWith("parts/pc-")).length;

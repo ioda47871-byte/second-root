@@ -28,7 +28,7 @@ import { appendFile, lstat, mkdir, open, readdir, readFile } from "node:fs/promi
 import { join } from "node:path";
 import { runBounded, type BoundedResult } from "../bounded-process";
 import { buildPromptPlan, loadPromptInputs, PromptStop } from "../image-first/prompt";
-import { IMAGEFIRST_RUNS, runOfApprovalId, type ImagefirstRun, type RunDirection } from "./run-directions";
+import { IMAGEFIRST_RUNS, isRequestRunId, runOfApprovalId, type ImagefirstRun, type RunDirection } from "./run-directions";
 import { FULL_PAGE_KIND, FULL_PAGE_ROUTE, MAX_APPROVAL_WINDOW_MS, parseUtcInstant, readApprovalPacket } from "../phase2f-live/full-page-call";
 import { LedgerStop, type Ledger } from "../phase2f-live/ledger";
 import type { CommitState } from "../phase2f-live/steps";
@@ -44,7 +44,7 @@ export const GENERATE_ENTRY = "scripts/design-artifact/image-first-generate.ts";
  * row (the owner's approved d3 pilot, unchanged), which a cycle without a grant uses; a grant (root's one-use marker)
  * selects the row its approval ID names.
  */
-export { IMAGEFIRST_RUNS, runOfApprovalId, type ImagefirstRun, type RunDirection };
+export { IMAGEFIRST_RUNS, isRequestRunId, runOfApprovalId, type ImagefirstRun, type RunDirection };
 export const IMAGEFIRST_ALLOWLIST = IMAGEFIRST_RUNS.d3;
 /**
  * The date part reserved for the dummy review PoC (review-poc.ts DUMMY_ID, hoshigama-imagefirst-d3-00000000-00). PR #308
@@ -125,7 +125,12 @@ export type WorkerReceipt = {
   /** Every picture's SHA-256 on disk equals the one the entry recorded in call.json. */
   verified: boolean;
   timings: { started_at: string; finished_at: string; elapsed_ms: number };
-};
+} & Partial<RequestReceiptFields>;
+/**
+ * DEV-303: what a request run's receipt adds (request-cycle.ts). shop is the request's shop_id, direction "request",
+ * approval_id and plan_id the request id, packet_sha256 the request bytes' SHA-256 (the request is the run's approval).
+ */
+export type RequestReceiptFields = { mode: "request"; kind: "real_shop" | "fictional"; request_id: string; request_sha256: string; facts_sha256: string; images_total?: number };
 
 export type CycleOptions = {
   /** The worker's clone (its real path). */
@@ -238,9 +243,10 @@ type ClaimResult = "claimed" | "APPROVAL_ALREADY_CLAIMED" | "CLAIMS_DIR_UNSAFE" 
  * `claims` handle with O_EXCL|O_NOFOLLOW. A path swapped after the earlier lstat checks cannot redirect it any more.
  * Without /proc (not Linux) nothing is created: CLAIM_FAILED, never "claimed".
  */
-export async function claimApproval(stateDir: string, approvalId: string, at: number): Promise<ClaimResult> {
-  // nothing is created for an id a real run may not use (the dummy PoC's reserved date included)
-  const idCheck = checkRealApprovalId(approvalId);
+export async function claimApproval(stateDir: string, approvalId: string, at: number, checkId: (id: string) => ApprovalIdCheck = checkRealApprovalId): Promise<ClaimResult> {
+  // nothing is created for an id a real run may not use (the dummy PoC's reserved date included); DEV-303: a request run
+  // passes its own id rule (request.ts), whose ids never have an approval id's form
+  const idCheck = checkId(approvalId);
   if (idCheck !== "ok") return idCheck;
   const handles: Awaited<ReturnType<typeof open>>[] = [];
   const unsafe = (code: string | undefined) => code === "ELOOP" || code === "ENOTDIR";
@@ -268,17 +274,17 @@ export async function claimApproval(stateDir: string, approvalId: string, at: nu
     for (const h of handles.reverse()) await h.close().catch(() => undefined);
   }
 }
-const claimed = (stateDir: string, approvalId: string) => lstat(join(stateDir, "claims", `${approvalId}.used`)).then(() => true, (e: { code?: string }) => e.code !== "ENOENT");
+export const claimed = (stateDir: string, approvalId: string) => lstat(join(stateDir, "claims", `${approvalId}.used`)).then(() => true, (e: { code?: string }) => e.code !== "ENOENT");
 
 /** Read only (the precheck): missing is fine (it would be created 0700); an existing one must be a private directory of ours. */
-async function privateOrMissing(path: string): Promise<boolean> {
+export async function privateOrMissing(path: string): Promise<boolean> {
   const info = await lstat(path).catch((e: { code?: string }) => (e.code === "ENOENT" ? "missing" : null));
   if (info === "missing") return true;
   return !!info && info.isDirectory() && !info.isSymbolicLink() && info.uid === process.getuid?.() && (info.mode & 0o077) === 0;
 }
 
 /** A directory of ours: real (not a link), owned by this user, closed to group and others. Created 0700 if missing. */
-async function privateDir(path: string): Promise<boolean> {
+export async function privateDir(path: string): Promise<boolean> {
   await mkdir(path, { recursive: true, mode: 0o700 }).catch(() => undefined);
   const info = await lstat(path).catch(() => null);
   return !!info && info.isDirectory() && !info.isSymbolicLink() && info.uid === process.getuid?.() && (info.mode & 0o077) === 0;
@@ -305,7 +311,7 @@ function lastJson(stdout: string): { status?: unknown; code?: unknown; stage?: u
   }
 }
 
-const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+export const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 
 export async function runImagefirstCycle(o: CycleOptions, d: CycleDeps): Promise<CycleReport> {
   const now = d.now ?? Date.now;
@@ -435,73 +441,91 @@ async function locked(o: CycleOptions, d: CycleDeps, now: () => number, audit: (
   }
   return end(res, o.signal?.aborted === true || res?.aborted === true);
 
-  // ---- read the private run back: every picture hashed on disk and compared with what the entry recorded ----
-  async function settle(res: BoundedResult | null, interrupted: boolean): Promise<CycleReport> {
-    const finished = now();
-    const out = res ? lastJson(res.stdout) : null;
-    const images = await hashFiles(runDir, "parts");
-    const stopped = await hashFiles(runDir, "stopped");
-    const call = await readFile(join(runDir, "call.json"), "utf8").then((t) => JSON.parse(t) as { status?: string; images?: unknown }, () => null);
-    // a stopped call.json records only a count of pictures (never parts): nothing to compare
-    const recorded = new Map((Array.isArray(call?.images) ? (call.images as { file?: string; sha256?: string }[]) : []).map((i) => [i.file, i.sha256]));
-    const verified = images.length > 0 && images.length === recorded.size && images.every((i) => recorded.get(i.file) === i.sha256);
-    const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
-    const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;
-    const cliOk = res?.code === 0 && !res.timedOut && out?.status === "succeeded" && call?.status === "succeeded";
-    const complete = cliOk && verified && pc === a.images.pc && sp === a.images.sp;
-    let stopCode: string | null = null;
-    let stage: WorkerReceipt["stage"] = null;
-    if (!complete) {
-      if (interrupted) [stopCode, stage] = ["WORKER_INTERRUPTED", "call"];
-      else if (cliOk) [stopCode, stage] = ["BUNDLE_VERIFY_FAILED", "verify"];
-      else if (!res) [stopCode, stage] = ["CLI_NOT_STARTED", "precheck"];
-      else if (res.timedOut) [stopCode, stage] = ["CLI_TIMEOUT", "call"];
-      else {
-        stopCode = typeof out?.code === "string" && STOP_CODE.test(out.code) ? out.code : res.code === null ? "CLI_KILLED" : "CLI_RESULT_INVALID";
-        stage = out?.stage === "precheck" || res.code === 2 ? "precheck" : "call";
-      }
-    }
-    const receipt: WorkerReceipt = {
-      schema: "imagefirst_worker_receipt_v1",
-      status: complete ? "succeeded" : "stopped",
-      stop_code: stopCode,
-      stage,
-      interrupted,
-      cli_exit: res?.code ?? null,
-      cli_timed_out: res?.timedOut ?? false,
-      shop: a.shop,
-      direction: a.direction,
-      approval_id: approvalId,
-      plan_id: planId,
-      commit,
-      packet_sha256: packetSha256,
-      plan_sha256: a.planSha256,
-      prompt_sha256: a.promptSha256,
-      prompt_chars: a.promptChars,
-      run_dir: runDir,
-      images,
-      stopped_images: stopped,
-      counts: { pc, sp, total: images.length, stopped: stopped.length },
-      verified,
-      timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
-    };
-    const receiptPath = join(o.runsDir, `${approvalId}-${stamp(started)}.receipt.json`);
-    const written = await open(receiptPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
-      .then(async (h) => {
-        try {
-          await h.writeFile(`${JSON.stringify(receipt, null, 2)}\n`);
-        } finally {
-          await h.close();
-        }
-        return true;
-      })
-      .catch(() => false);
-    // runBounded aborted before the start: nothing ran (PR #305 review L2); the approval stays claimed all the same
-    const notStarted = res?.aborted === true && res.code === null && res.signal === null && res.stdout === "" && res.stderr === "";
-    const base = { invoked: !notStarted, approval_id: approvalId, run_dir: runDir, ...(written ? { receipt: receiptPath } : {}) };
-    if (!written) return { status: "stopped", code: "RECEIPT_UNWRITABLE", ...base };
-    return complete ? { status: "succeeded", code: null, ...base } : { status: "stopped", code: stopCode, ...base };
+  // ---- read the private run back (settleRun): every picture hashed on disk and compared with what the entry recorded ----
+  function settle(res: BoundedResult | null, interrupted: boolean): Promise<CycleReport> {
+    return settleRun({ runsDir: o.runsDir, runDir, receiptName: `${approvalId}-${stamp(started)}`, started, now, images: a.images, fields: { shop: a.shop, direction: a.direction, approval_id: approvalId, plan_id: planId, commit, packet_sha256: packetSha256, plan_sha256: a.planSha256, prompt_sha256: a.promptSha256, prompt_chars: a.promptChars } }, res, interrupted);
   }
+}
+
+/** What a finished run's receipt names (the allowlist row's values, or DEV-303 a request's). */
+export type SettleSpec = {
+  runsDir: string;
+  runDir: string;
+  /** <id>-<UTC stamp>: the receipt is <runsDir>/<receiptName>.receipt.json. */
+  receiptName: string;
+  started: number;
+  now: () => number;
+  images: { readonly pc: number; readonly sp: number };
+  fields: Pick<WorkerReceipt, "shop" | "direction" | "approval_id" | "plan_id" | "commit" | "packet_sha256" | "plan_sha256" | "prompt_sha256" | "prompt_chars">;
+  /** DEV-303: a request run's own fields, appended after the common ones. */
+  extra?: RequestReceiptFields;
+};
+
+/**
+ * The end of one invoked run: the private run directory read back (every picture hashed on disk and compared with what
+ * the entry recorded in call.json), the receipt written once (O_EXCL, 0600) and the report. Never invokes anything.
+ */
+export async function settleRun(s: SettleSpec, res: BoundedResult | null, interrupted: boolean): Promise<CycleReport> {
+  const { now, runDir, started } = s;
+  const a = s.images;
+  const finished = now();
+  const out = res ? lastJson(res.stdout) : null;
+  const images = await hashFiles(runDir, "parts");
+  const stopped = await hashFiles(runDir, "stopped");
+  const call = await readFile(join(runDir, "call.json"), "utf8").then((t) => JSON.parse(t) as { status?: string; images?: unknown }, () => null);
+  // a stopped call.json records only a count of pictures (never parts): nothing to compare
+  const recorded = new Map((Array.isArray(call?.images) ? (call.images as { file?: string; sha256?: string }[]) : []).map((i) => [i.file, i.sha256]));
+  const verified = images.length > 0 && images.length === recorded.size && images.every((i) => recorded.get(i.file) === i.sha256);
+  const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
+  const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;
+  const cliOk = res?.code === 0 && !res.timedOut && out?.status === "succeeded" && call?.status === "succeeded";
+  const complete = cliOk && verified && pc === a.pc && sp === a.sp;
+  let stopCode: string | null = null;
+  let stage: WorkerReceipt["stage"] = null;
+  if (!complete) {
+    if (interrupted) [stopCode, stage] = ["WORKER_INTERRUPTED", "call"];
+    else if (cliOk) [stopCode, stage] = ["BUNDLE_VERIFY_FAILED", "verify"];
+    else if (!res) [stopCode, stage] = ["CLI_NOT_STARTED", "precheck"];
+    else if (res.timedOut) [stopCode, stage] = ["CLI_TIMEOUT", "call"];
+    else {
+      stopCode = typeof out?.code === "string" && STOP_CODE.test(out.code) ? out.code : res.code === null ? "CLI_KILLED" : "CLI_RESULT_INVALID";
+      stage = out?.stage === "precheck" || res.code === 2 ? "precheck" : "call";
+    }
+  }
+  const receipt: WorkerReceipt = {
+    schema: "imagefirst_worker_receipt_v1",
+    status: complete ? "succeeded" : "stopped",
+    stop_code: stopCode,
+    stage,
+    interrupted,
+    cli_exit: res?.code ?? null,
+    cli_timed_out: res?.timedOut ?? false,
+    ...s.fields,
+    run_dir: runDir,
+    images,
+    stopped_images: stopped,
+    counts: { pc, sp, total: images.length, stopped: stopped.length },
+    verified,
+    timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
+    // DEV-303: a request run reports its picture count (parts + stopped) for root's after-run check (<= 6)
+    ...(s.extra ? { ...s.extra, images_total: images.length + stopped.length } : {}),
+  };
+  const receiptPath = join(s.runsDir, `${s.receiptName}.receipt.json`);
+  const written = await open(receiptPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
+    .then(async (h) => {
+      try {
+        await h.writeFile(`${JSON.stringify(receipt, null, 2)}\n`);
+      } finally {
+        await h.close();
+      }
+      return true;
+    })
+    .catch(() => false);
+  // runBounded aborted before the start: nothing ran (PR #305 review L2); the approval stays claimed all the same
+  const notStarted = res?.aborted === true && res.code === null && res.signal === null && res.stdout === "" && res.stderr === "";
+  const base = { invoked: !notStarted, approval_id: s.fields.approval_id, run_dir: runDir, ...(written ? { receipt: receiptPath } : {}) };
+  if (!written) return { status: "stopped", code: "RECEIPT_UNWRITABLE", ...base };
+  return complete ? { status: "succeeded", code: null, ...base } : { status: "stopped", code: stopCode, ...base };
 }
 
 export type ApprovalAt = { approvalId: string; planId: string; expiresMs: number; packetSha256: string };

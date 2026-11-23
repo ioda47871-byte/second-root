@@ -210,7 +210,7 @@ export async function codexSignInCheck(ctx: Pick<LiveContext, "preflight" | "san
 }
 
 /** Checks the places and builds what a real call needs; a stop code when a place is refused (nothing used). */
-export async function liveContext(out: string, stop: () => void, pin: GenerationPin | null = null): Promise<LiveContext | { code: string }> {
+export async function liveContext(out: string, stop: () => void, pin: GenerationPin | null = null, extraProtected: readonly string[] = []): Promise<LiveContext | { code: string }> {
   if (!isAbsolute(out)) return { code: "USAGE" };
   if (await insideRepo(out)) return { code: "OUT_DIR_INSIDE_REPO" };
   const parentProblem = await outParentProblem(out);
@@ -226,7 +226,8 @@ export async function liveContext(out: string, stop: () => void, pin: Generation
   // the output dir under its parent's real path (a linked parent such as ~/runs -> /mnt/d/runs is fine)
   const outDir = join(await realpath(dirname(resolve(out))), basename(resolve(out)));
   // Codex never sees the worker's directories, the ledger or where the results go
-  const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(outDir)])];
+  // DEV-303: a request run also hides the shops' facts (~/second-root-shops) and the request's private directory
+  const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(outDir), ...extraProtected.map((p) => resolve(p))])];
   const codexHome = process.env.CODEX_HOME ? expand(process.env.CODEX_HOME) : join(homedir(), ".codex");
   let sandbox: CodexSandbox | null = null;
   let previousModel: string | null = null;

@@ -22,13 +22,26 @@
  * Afterwards, offline: the check CLI's --assemble on the run directory (docs/design/image-first-handoff.md §7).
  *
  * Exit: 0 every planned picture was saved, 2 refused before anything was used, 1 the approval was used and the run stopped.
+ *
+ * DEV-303 (owner direction 2026-11-23, docs/operations/first-client-pipeline.md §2 A/B), request mode — started only by
+ * the worker's request cycle (lib/design-agent/imagefirst-worker/request-cycle.ts), never by hand:
+ *
+ *   ... image-first-generate.ts --request-file <private dir>/<id>.json --request-id <id> --request-sha256 <sha>
+ *     --out <~/sr-runs/<run>> --expected-commit <sha> --expected-plan-sha256 <sha> --expected-prompt-sha256 <sha>
+ *     --expected-prompt-chars <n>
+ *
+ * The request (its SHA-256 and id), the facts pack it names (outside git, its SHA-256) and the shop's kind are read and
+ * checked again here (imagefirst-worker/request.ts), the plan is rebuilt and must be the one the worker pinned, then
+ * runRequestFullPageCall: the same checks before use (commit pin, sandbox preflight, ledger: the request id used once,
+ * ever) and the same one Codex batch. Codex never sees ~/second-root-shops or the request's directory (protected paths).
  */
 import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { cleanupActiveImageCalls, generateImagesInOneRun } from "../../lib/design-agent/design-image/image-once";
 import { buildPromptPlan, loadPromptInputs, PromptStop, type DirectionKey } from "../../lib/design-agent/image-first/prompt";
-import { packetOfDirection, runFullPageCall } from "../../lib/design-agent/phase2f-live/full-page-call";
+import { loadRequestRun, SHOPS_DIR } from "../../lib/design-agent/imagefirst-worker/request";
+import { packetOfDirection, runFullPageCall, runRequestFullPageCall, type FullPageBatch } from "../../lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
 import { fileAtCommit, liveContext, parseArgs, REPO, runMain, say, stopSignals } from "./phase2f-live-cli";
 
@@ -39,8 +52,57 @@ const { controller, stop } = stopSignals({ cleanup: cleanupActiveImageCalls });
 const FLAGS = new Set(["--human-approval-confirmed"]);
 const VALUES = new Set(["--direction", "--out", "--plan-id", "--approval-id", "--approval-expires", "--packet", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-plan-sha256", "--expected-packet-sha256", "--expected-commit"]);
 const REQUIRED = [...VALUES];
+/** DEV-303: request mode's arguments (all required; no flag). */
+const REQUEST_VALUES = new Set(["--request-file", "--request-id", "--request-sha256", "--out", "--expected-commit", "--expected-plan-sha256", "--expected-prompt-sha256", "--expected-prompt-chars"]);
+
+type Ctx = Exclude<Awaited<ReturnType<typeof liveContext>>, { code: string }>;
+/** The one batch call, only in the sandbox the preflight prepared. */
+function batchIn(ctx: Ctx): FullPageBatch {
+  return async (o) => {
+    const sandbox = ctx.sandbox();
+    if (sandbox === null) throw new Error("no sandbox");
+    const r = await generateImagesInOneRun({ sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: tmpdir(), maxImages: o.maxImages, ...(o.signal === undefined ? {} : { signal: o.signal }) });
+    return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
+  };
+}
+
+/** DEV-303: one request run (see the header). */
+async function requestMain(): Promise<number> {
+  const args = parseArgs(process.argv.slice(2), new Set(), REQUEST_VALUES);
+  const chars = Number(args?.get("--expected-prompt-chars"));
+  if (!args || [...REQUEST_VALUES].some((f) => !args.has(f)) || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  const requestFile = resolve(args.get("--request-file")!);
+  let run;
+  try {
+    run = await loadRequestRun({ requestFile, requestSha256: args.get("--request-sha256")!, requestId: args.get("--request-id")!, home: homedir(), repo: REPO });
+  } catch (error) {
+    return (say({ status: "refused", code: error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE" }), 2);
+  }
+  const ctx = await liveContext(args.get("--out")!, stop, null, [join(homedir(), SHOPS_DIR), dirname(requestFile)]);
+  if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
+  const result = await runRequestFullPageCall(
+    {
+      plan: run.plan,
+      inputs: { factsBytes: run.factsBytes, directionBytes: run.directionBytes },
+      requestId: run.request.id,
+      requestSha256: run.requestSha256,
+      expected: { promptSha256: args.get("--expected-prompt-sha256")!, promptChars: chars, commit: args.get("--expected-commit")!, planSha256: args.get("--expected-plan-sha256")! },
+      outDir: ctx.outDir,
+      repoRoot: REPO,
+      signal: controller.signal,
+    },
+    { ledger: openLedger(ctx.ledgerDir), commit: ctx.commit, preflight: ctx.preflight, batch: batchIn(ctx) },
+  );
+  if (result.status === "succeeded") {
+    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.runId, images: result.images, warnings: result.warnings });
+    return 0;
+  }
+  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.outcome ? { image_outcome: result.outcome } : {}) });
+  return result.stage === "precheck" ? 2 : 1;
+}
 
 async function main(): Promise<number> {
+  if (process.argv[2] === "--request-file") return requestMain();
   const args = parseArgs(process.argv.slice(2), FLAGS, VALUES);
   const chars = Number(args?.get("--expected-prompt-chars"));
   const key = args?.get("--direction");
@@ -78,12 +140,7 @@ async function main(): Promise<number> {
       commit: ctx.commit,
       packetAt: (commit, rel) => fileAtCommit(commit, rel),
       preflight: ctx.preflight,
-      batch: async (o) => {
-        const sandbox = ctx.sandbox();
-        if (sandbox === null) throw new Error("no sandbox");
-        const r = await generateImagesInOneRun({ sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: tmpdir(), maxImages: o.maxImages, ...(o.signal === undefined ? {} : { signal: o.signal }) });
-        return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
-      },
+      batch: batchIn(ctx),
     },
   );
   if (result.status === "succeeded") {
