@@ -1757,6 +1757,28 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
         expect(deriveImageOutcome(none, false)).toBe("TOOL_NOT_CALLED");
       });
 
+      it("Issue #335 follow-up, PoC path: TOOL_REFUSED_ARGS stops as CODEX_IMAGE_ARGS_REFUSED (capability), never CODEX_NO_IMAGE / request; the refusal kind is in the line", async () => {
+        for (const words of ["Here is the design.", `sorry ${CANARY}`, "Image generation is unavailable."]) {
+          const result = await runDesignImagePoc(options(({ cwd }) => {
+            leaveLog(cwd, [turn161(), imagegenCell(), cellError("`referenced_image_paths` must contain at most 5 paths")], META_159);
+            return ok(answer(words));
+          }));
+          expect(result).toEqual({ status: "stopped", code: "CODEX_IMAGE_ARGS_REFUSED" });
+          const { d, text, summary } = diag();
+          expect(d.session).toMatchObject({ image_tool_calls: 0, code_mode_arg_error: true, code_mode_arg_error_kind: "REF_PATHS_TOO_MANY" });
+          expect(d.classification).toMatchObject({ image_outcome: "TOOL_REFUSED_ARGS", stop_class: "capability" });
+          expect(summary).toContain("code=CODEX_IMAGE_ARGS_REFUSED");
+          expect(summary).toContain("outcome=TOOL_REFUSED_ARGS");
+          expect(summary).toContain("class=capability");
+          expect(summary).toContain("cm_arg_err=1");
+          expect(summary).toMatch(/ cm_arg_err_kind=REF_PATHS_TOO_MANY$/);
+          clean(text, summary);
+        }
+        expect(pocStopClass("CODEX_IMAGE_ARGS_REFUSED")).toBe("capability");
+        expect(pocStopClass("CODEX_IMAGE_ARGS_REFUSED", "TOOL_REFUSED_ARGS", "TEXT_OTHER")).toBe("capability");
+        expect(pocStopClass("CODEX_IMAGE_ARGS_REFUSED", "TOOL_REFUSED_ARGS", "TEXT_TOOL_UNAVAILABLE")).toBe("capability");
+      });
+
       it("review F1, spoof 1: a cell that completed and PRINTED Codex's prefix with a 503 is advisory (cell_print): the code stays OTHER, never TRANSIENT", async () => {
         const printed = {
           timestamp: "t",
@@ -1964,7 +1986,7 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
         expect(d.schema).toBe("sr-design-image-poc-diagnostics/5");
         expect(d.session).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["OTHER"], image_call_ms: [157_684], image_fail_timings: ["140-170s"] });
         expect(d.classification).toMatchObject({ image_outcome: "TOOL_FAILED", stop_class: "capability" });
-        expect(summary).toMatch(/ img_call_ms=157684 img_fail_timing=140-170s$/);
+        expect(summary).toMatch(/ img_call_ms=157684 img_fail_timing=140-170s cm_arg_err_kind=-$/);
         clean(text, summary);
         expect(text + summary).not.toContain(String(T0));
       });

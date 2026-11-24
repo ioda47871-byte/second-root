@@ -131,7 +131,8 @@ export type PocCode =
   | "CODEX_IMAGE_INVALID"
   | "CODEX_DOTENV_PRESENT"
   | "CODEX_PREFLIGHT_FAILED"
-  | "CODEX_IMAGE_TOOL_FAILED";
+  | "CODEX_IMAGE_TOOL_FAILED"
+  | "CODEX_IMAGE_ARGS_REFUSED";
 
 /**
  * How automation treats a stop (DEV-078, docs/operations/design-image-poc.md
@@ -139,7 +140,9 @@ export type PocCode =
  *
  * - approval / input: nothing was started; fix the request or get approval
  * - environment: the machine, sign-in, jail or plan usage; halt and alert, no model call is worth retrying
- * - capability: the image tool failed, or the model said it has none; halt and alert, check HUMAN-021's local steps
+ * - capability: the image tool failed, or the model said it has none; halt and alert, check HUMAN-021's local steps.
+ *   Issue #335: also the image tool refusing the call's arguments before it started (TOOL_REFUSED_ARGS →
+ *   CODEX_IMAGE_ARGS_REFUSED; the refusal kind is in the diagnostics line), never read as a plain "no image"
  * - request: Codex ran but made no image (e.g. answered in text); a failure of this request, never retried as is
  * - transient (DEV-081): the image tool was called and failed with a server / network error only (5xx, timeout, connection),
  *   as Codex's own error text says (TOOL_FAILED_TRANSIENT). Halt and alert; never retried automatically — a human may
@@ -187,6 +190,8 @@ const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
  * answer says (DEV-080): the model's view of its tools there says nothing about whether the tool was offered.
  */
 export function pocStopClass(code: string, outcome?: ImageOutcome | null, answer?: AnswerTextCode | null): PocStopClass {
+  // Issue #335: refused before the call started (its arguments), whatever the answer says: halt and alert
+  if (code === "CODEX_IMAGE_ARGS_REFUSED") return "capability";
   if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_SEEN_CODE_MODE") return "inconclusive";
   if (code === "CODEX_IMAGE_TOOL_FAILED" && outcome === "TOOL_FAILED_TRANSIENT") return "transient";
   if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_CALLED" && answer === "TEXT_TOOL_UNAVAILABLE") return "capability";
@@ -659,6 +664,8 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       if (error instanceof PocError && error.code === "CODEX_NO_IMAGE" && diag.session) {
         const outcome = deriveImageOutcome(diag.session, false);
         if (outcome === "TOOL_FAILED_USAGE_LIMIT") throw new PocError("CODEX_QUOTA");
+        // Issue #335: the image tool refused the call's arguments before it started (its own stop, not CODEX_NO_IMAGE)
+        if (outcome === "TOOL_REFUSED_ARGS") throw new PocError("CODEX_IMAGE_ARGS_REFUSED");
         if (outcome === "TOOL_FAILED" || outcome === "TOOL_FAILED_POLICY" || outcome === "TOOL_FAILED_UNSUPPORTED" || outcome === "TOOL_FAILED_TRANSIENT") {
           throw new PocError("CODEX_IMAGE_TOOL_FAILED");
         }

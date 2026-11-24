@@ -16,6 +16,7 @@ import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent,
 import { SandboxError, stageInputBytes, type CodexSandbox } from "../sandbox";
 import { classifyAnswerText, deriveImageOutcome, parseCodexVersion, readSessionFacts, type AnswerTextCode, type CodeModeArgErrorKind, type ImageFailureReason, type ImageOutcome, type ToolMode } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
+import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
 
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PNG_NAME = /^[A-Za-z0-9_.-]{1,120}\.png$/i;
@@ -104,7 +105,7 @@ type RunSeen = {
   diagnostics: ImageRunDiagnostics;
 };
 /**
- * inputImages (DEV-303, owner decision 2026-11-24; batch only): at most MAX_BATCH_IMAGES PNGs attached to the one exec
+ * inputImages (DEV-303, owner decision 2026-11-24; batch only): at most IMAGE_TOOL_MAX_REFS (5, Issue #335) PNGs attached to the one exec
  * with `--image`, staged as copies in this call's temporary work dir (removed with it). None: the command line is the
  * PoC's, unchanged.
  */
@@ -308,7 +309,9 @@ async function takeImages(dir: string): Promise<Array<{ bytes: Buffer; width: nu
  */
 export async function generateImagesInOneRun(o: RunOptions & { maxImages: number }): Promise<ImageBatchResult> {
   if (!Number.isInteger(o.maxImages) || o.maxImages < 1 || o.maxImages > MAX_BATCH_IMAGES) throw new Error("generateImagesInOneRun: maxImages must be 1..6");
-  if ((o.inputImages?.length ?? 0) > MAX_BATCH_IMAGES) throw new Error("generateImagesInOneRun: at most 6 input images");
+  // Issue #335: the image tool refuses more than IMAGE_TOOL_MAX_REFS reference pictures per call (the same limit as the
+  // request check, PHOTO_INPUTS_OVER_TOOL_LIMIT); never start a run that would hand it more
+  if ((o.inputImages?.length ?? 0) > IMAGE_TOOL_MAX_REFS) throw new Error(`generateImagesInOneRun: at most ${IMAGE_TOOL_MAX_REFS} input images`);
   const result = (r: Partial<ImageBatchResult> & Pick<ImageBatchResult, "outcome" | "stopCode">): ImageBatchResult => ({ images: [], imageCalls: 0, imageFailed: 0, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
   return imageRun(
     o,

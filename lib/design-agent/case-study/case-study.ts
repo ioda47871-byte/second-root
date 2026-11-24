@@ -547,7 +547,7 @@ export async function writeViewingPage(i: CaseStudyInspection, o: { outDir: stri
   }
   await mkdir(join(out, "images"), { recursive: true, mode: 0o700 });
   // checked again once it exists: nothing may have moved it into the repository in between
-  if (inRepo(await realpath(out).catch(() => null)) || (await realpath(out)) !== (await realPlace(out))) throw new CaseStudyStop("CASE_STUDY_PAGE_IN_REPO");
+  if (inRepo(await realpath(out).catch(() => null))) throw new CaseStudyStop("CASE_STUDY_PAGE_IN_REPO");
   const names = viewingPageImageNames(i);
   const write = async (rel: string, bytes: Buffer | string) => {
     const h = await open(join(out, rel), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);

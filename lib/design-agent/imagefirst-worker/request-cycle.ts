@@ -58,7 +58,8 @@ export type RequestCycleDeps = {
 export type RequestCycleResult = {
   /** photo_files: DEV-303 a succeeded photo-materials run's pictures (names and SHA-256), what a design request's photo_inputs names. */
   report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[] };
-  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string } | null;
+  /** caseStudySha256: Issue #336 the checked case study's SHA-256 (request.ts readRequestCaseStudy), null when the run has none. */
+  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null } | null;
 };
 
 /** The entry's arguments in request mode (its REQUEST_VALUES): the request and the pins to re-check. */
@@ -133,7 +134,7 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
     return refuse(error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE");
   }
   const kind = (seen.kind = inputs.request.kind);
-  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit };
+  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null };
   const photoStage = isPhotoRequest(inputs.request);
   // one Codex run; a design run makes PC 2 + SP 4, a photo-materials run 1..6 pictures (one per subject)
   const images = photoStage ? { pc: 0, sp: 0, photo: inputs.request.max_images } : REQUEST_IMAGES;
@@ -179,6 +180,8 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
           facts_sha256: plan.facts_sha256,
           ...(photoStage ? { request_stage: "photo_materials" as const } : {}),
           ...(!isPhotoRequest(inputs.request) && inputs.request.photo_inputs ? { photo_inputs: inputs.request.photo_inputs } : {}),
+          // Issue #336: the design stage's checked case study, by its SHA-256 only (never its path or content)
+          ...(inputs.caseStudy ? { case_study_sha256: inputs.caseStudy.sha256 } : {}),
         },
       },
       res,

@@ -26,6 +26,7 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
 import { LABELS_BY_KEY } from "../quality-pipeline/copy-record";
 import { FactsPack } from "../quality-pipeline/facts-pack";
 import { boxesFor, NAV_LABELS, PRINCIPLES, PromptStop, splitSections, type PlannedPart, type PlannedViewport } from "./prompt";
@@ -113,8 +114,9 @@ export type PhotoInputs = z.infer<typeof PhotoInputs>;
  * reference pictures per call (rust-v0.159.0 ext/image-generation/src/tool.rs MAX_EDIT_IMAGES: "`referenced_image_paths`
  * must contain at most 5 paths", refused before the call starts and leaving no record). A request that would hand one run
  * more is refused at request validation (`--validate-request` and the worker alike) with PHOTO_INPUTS_OVER_TOOL_LIMIT.
+ * The value is shared with the image call's own guard (../image-tool-limits.ts, a constant only).
  */
-export const PHOTO_TOOL_MAX_REFS = 5;
+export const PHOTO_TOOL_MAX_REFS = IMAGE_TOOL_MAX_REFS;
 const photoInputsWithinToolLimit = (p: PhotoInputs | undefined) => p === undefined || p.files.length <= PHOTO_TOOL_MAX_REFS;
 
 /**

@@ -45,7 +45,7 @@
 | CP-022 | Harissy | [記録](CP-022-Harissy-CRUMB-FRACTURE-v1.md) | ChatGPT の会話 |
 | CP-023 | BURGERS,INC | [記録](CP-023-BURGERS-INC-NEON-FLIP-v4.md) | ChatGPT の会話 |
 | CP-024 | Boheme. 全ページ v2 | [記録](CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md) | ChatGPT の会話（リポジトリの疑似復元 v3 は採用原本ではない） |
-| SR-002 | 金時湯（PR #237、未マージ） | [PR #237](https://github.com/ioda47871-byte/second-root/pull/237) | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #237 に記録） |
+| SR-002 | 金時湯（PR #237、未マージ） | [PR #237](https://github.com/ioda47871-byte/second-root/pull/237) | ChatGPT ライブラリ `/セカンドルート/` の ZIP。照合する値は承認 PNG の SHA-256（PR #237。`金時湯_地下水の物語.png`、`originals-index.json` の `expected_sha256`） |
 | CP-033（= SR-003） | MARTELLI B v4（PR #240、未マージ） | [PR #240](https://github.com/ioda47871-byte/second-root/pull/240) | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #240 に記録） |
 | CP-034（= SR-004） | 中善提灯店 v12-B FULL「折り型」（2026-11-09 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `/セカンドルート/SecondRoot_CP034_v12B_FullWeb_20261109.zip`、SHA-256 `6f4fea138de381b2bca2d0d687f6ac821f897a0ee5e0079ffa97ba61632e51a1`。採用記録 `SecondRoot_CP034_v12B_Approved_Research_Record_20261109.md`。GitHub に研究記録なし |
 | CP-035（= SR-005） | 昭雲堂印店 A-v2 OneSheet（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `/セカンドルート/SecondRoot_CP035_A_OneSheet_v2_20261110.zip`、SHA-256 `81ad1b3f1351bc843ac97ca6aed761353e00f5ddc25715dc2a46da90051a5382`。採用記録 `SecondRoot_CP035_A_v2_Owner_Approved_20261110.md`。GitHub に研究記録なし |
@@ -84,6 +84,6 @@
 
 ## 原本を増やす順番（Issue #336）
 
-1. B のうち、ChatGPT ライブラリに ZIP と SHA-256 がそろう SR-002・CP-033〜037 を、オーナーが受け渡し、SHA-256 と目視を確かめて非公開の置き場に置く（CP-034〜037 は PC/SP 全ページの Web サイトで、全ページの参照に向く）。
+1. B のうち、ChatGPT ライブラリに ZIP と記録した SHA-256（SR-002 は承認 PNG の SHA-256（PR #237））がそろう SR-002・CP-033〜037 を、オーナーが受け渡し、SHA-256 と目視を確かめて非公開の置き場に置く（CP-034〜037 は PC/SP 全ページの Web サイトで、全ページの参照に向く）。
 2. B の CP-004〜024 は、PC と SP がそろう HTML の PoC（CP-024・CP-009・CP-015 など）を先に。
 3. C は原本の所在をオーナーに確かめてから。見つからなければ C のまま残し、参照に使わない。
