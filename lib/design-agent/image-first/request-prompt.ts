@@ -107,6 +107,14 @@ export const PhotoInputs = z
   })
   .refine((p) => new Set(p.files.map((f) => f.name)).size === p.files.length, "photo_inputs_duplicate");
 export type PhotoInputs = z.infer<typeof PhotoInputs>;
+/**
+ * Issue #335 / docs/design/image-first-production-flow.md §3.5, §6.1 row 1: the image tool takes at most this many
+ * reference pictures per call (rust-v0.159.0 ext/image-generation/src/tool.rs MAX_EDIT_IMAGES: "`referenced_image_paths`
+ * must contain at most 5 paths", refused before the call starts and leaving no record). A request that would hand one run
+ * more is refused at request validation (`--validate-request` and the worker alike) with PHOTO_INPUTS_OVER_TOOL_LIMIT.
+ */
+export const PHOTO_TOOL_MAX_REFS = 5;
+const photoInputsWithinToolLimit = (p: PhotoInputs | undefined) => p === undefined || p.files.length <= PHOTO_TOOL_MAX_REFS;
 
 /** Exactly YYYY-MM-DDTHH:MM:SSZ (root's rule: no fraction, no offset). */
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -178,6 +186,7 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   const r = (photo ? PhotoMaterialsRequest : DesignRequest).safeParse(json);
   if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_PHOTO_BRIEF_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
   if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
+  if (!isPhotoRequest(r.data) && !photoInputsWithinToolLimit(r.data.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
   return { request: r.data, sha256: got };
 }
 
@@ -276,33 +285,6 @@ export type RequestPlan = {
 export const PHOTO_LABEL = "イメージ";
 export const DEMO_MARKER = "提案用デモ";
 
-/**
- * Issue #335: the image tool takes at most this many reference pictures per call (rust-v0.159.0,
- * ext/image-generation/src/tool.rs MAX_EDIT_IMAGES: `referenced_image_paths` must contain at most 5 paths).
- */
-export const PHOTO_TOOL_MAX_REFS = 5;
-/**
- * Issue #335: image-once.ts WORK_DIR_TOKEN (the same literal; a test keeps them equal). The tool's paths must be absolute
- * (tool.rs ImagegenArgs: `Vec<AbsolutePathBuf>`, parsed without a base path, so `inputs/photo-1.png` alone is refused), and
- * the call's work dir is made per call; image-once replaces this with that dir, only when the photos are attached.
- */
-export const WORK_DIR_TOKEN = "{{SR_WORK_DIR}}";
-/** Where image-once stages the n-th attached photo (sandbox.ts stageInputBytes: <work dir>/inputs/photo-<n>.png, in photo_inputs order). */
-export const stagedPhotoPath = (n: number) => `${WORK_DIR_TOKEN}/inputs/photo-${n}.png`;
-
-/**
- * Issue #335: which attached photos each picture of the batch may use, by staged position (1-based). A fixed rotation:
- * picture i (1-based, batch order PC 1..2 then SP 1..4) takes min(n, perImage) photos, positions ((i - 1 + j) mod n) + 1
- * for j = 0.. in photo_inputs order. So with up to 5 photos every picture may use all of them, and with 6 each picture
- * leaves out a different one. More than PHOTO_TOOL_MAX_REFS for one picture stops before any call
- * (PHOTO_INPUTS_OVER_TOOL_LIMIT): the tool would refuse it.
- */
-export function assignPhotos(n: number, images: number, perImage: number = Math.min(n, PHOTO_TOOL_MAX_REFS)): number[][] {
-  if (!Number.isInteger(n) || n < 1 || !Number.isInteger(perImage) || perImage < 1 || perImage > n) throw new PromptStop("PHOTO_INPUTS_INVALID");
-  if (perImage > PHOTO_TOOL_MAX_REFS) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
-  return Array.from({ length: images }, (_, i) => Array.from({ length: perImage }, (_, j) => ((i + j) % n) + 1));
-}
-
 export type RequestInputs = { request: DesignRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
 
 /** direction.json for a request: the direction object as canonical JSON (written into the private run directory). */
@@ -317,7 +299,7 @@ function labelOf(key: string): string {
   return label;
 }
 
-function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; viewport: ImageFirstViewport; groups: string[][]; k: number; boxes: { id: string; box: { y: number; h: number } }[]; photoRefs?: number[] }): string {
+function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; viewport: ImageFirstViewport; groups: string[][]; k: number; boxes: { id: string; box: { y: number; h: number } }[] }): string {
   const { inputs, viewport, groups, k } = o;
   const { request, facts } = inputs;
   const d = request.direction;
@@ -363,9 +345,7 @@ function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; view
   lines.push(`避けること: ${d.avoid}`);
   const photos = request.photo_inputs;
   if (photos) {
-    const refs = o.photoRefs ?? [];
-    if (refs.length < 1 || refs.length > PHOTO_TOOL_MAX_REFS) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
-    lines.push(`写真: 参照画像として渡す次の ${refs.length} 枚の写真（${refs.map((n) => `photo-${n}.png`).join("・")}）だけを、このページに置く写真として使う。それ以外の写真や写真風の絵を作らない。添付の写真は提案用の画像素材で、店の実物の写真ではない。`);
+    lines.push(`写真: 添付した ${photos.files.length} 枚の写真（入力画像）だけを、このページに置く写真として使う。それ以外の写真や写真風の絵を作らない。添付の写真は提案用の画像素材で、店の実物の写真ではない。`);
     lines.push("写真の枠: 写真は単純な長方形か角丸の長方形の枠にそのまま収め、後で店の本物の写真と差し替えられるようにする。写真の上に文字を重ねない。");
     lines.push(`写真の表示: 写真を置いたすべての枠の隅に、小さく「${PHOTO_LABEL}」と書く。`);
     lines.push("写真と店の事実（店名・紹介文・品目・来店の情報）は別の枠や区画に分け、写真が店の事実を写しているように見せない。商品・料理・店内・建物・人物の姿を新しく描かない。");
@@ -393,44 +373,32 @@ function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; view
  */
 export function buildRequestPlan(inputs: RequestInputs): RequestPlan {
   const { request, facts } = inputs;
+  // Issue #335: never a plan whose one run would need more reference pictures than the image tool takes
+  if (!photoInputsWithinToolLimit(request.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
   // the direction carries no fact: no facts-pack value (but the category code, a generic word) appears in its text
   const dirText = Object.values(request.direction).join("\n").normalize("NFKC").toLowerCase();
   for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && dirText.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_DIRECTION_HAS_FACT");
   const sections = requestSections(facts);
   const ids = sections.map((s) => s.id);
-  const photos = request.photo_inputs;
-  // Issue #335: each picture's photos (at most PHOTO_TOOL_MAX_REFS), fixed before any prompt is built
-  const refsOf = photos ? assignPhotos(photos.files.length, REQUEST_IMAGES.total) : undefined;
   const viewports = {} as Record<ImageFirstViewport, PlannedViewport>;
   for (const viewport of ["desktop_1440", "mobile_390"] as const) {
     const groups = splitSections(ids, viewport);
     if (groups.length > MAX_PARTS_PER_VIEWPORT || groups.some((g) => g.length === 0)) throw new PromptStop("SPLIT_INVALID");
     const tag = viewport === "desktop_1440" ? "pc" : "sp";
-    const offset = viewport === "desktop_1440" ? 0 : (viewports.desktop_1440?.parts.length ?? 0);
     const parts = groups.map((g, i): PlannedPart => {
       const boxes = boxesFor(g, ids[0]!);
-      const photoRefs = refsOf?.[offset + i];
-      if (refsOf && !photoRefs) throw new PromptStop("SPLIT_INVALID");
-      const prompt = partPrompt({ inputs, sections, viewport, groups, k: i + 1, boxes, ...(photoRefs ? { photoRefs } : {}) });
+      const prompt = partPrompt({ inputs, sections, viewport, groups, k: i + 1, boxes });
       return { index: i + 1, name: `${tag}-${i + 1}`, file: `parts/${tag}-${i + 1}.png`, prompt_file: `prompts/${tag}-${i + 1}.txt`, frame: "portrait_2x3", sections: boxes, prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
     });
     viewports[viewport] = { target_css_width: VIEWPORT_WIDTHS[viewport], mode: "section_sequence", section_order: [...ids], parts, seams: parts.slice(1).map((_, i) => ({ after_part: i + 1, kind: "section_break" as const })) };
   }
   const all = [...viewports.desktop_1440.parts.map((p) => ({ vp: "PC 1440", p })), ...viewports.mobile_390.parts.map((p) => ({ vp: "SP 390", p }))];
-  if (refsOf && refsOf.length !== all.length) throw new PromptStop("SPLIT_INVALID");
   if (all.length !== REQUEST_IMAGES.total || viewports.desktop_1440.parts.length !== REQUEST_IMAGES.pc || viewports.mobile_390.parts.length !== REQUEST_IMAGES.sp) throw new PromptStop("SPLIT_INVALID");
   const about = request.kind === "fictional" ? "The shop is fictional." : "This is an internal design reference only: never depict products, dishes, interiors, buildings or people.";
-  const n = photos?.files.length ?? 0;
-  // Issue #335: how the photos reach the image tool (`referenced_image_paths`, at most 5 absolute paths per call), and the
-  // image tool may read them (only it; the model itself still reads and writes no file)
+  const photos = request.photo_inputs;
   const photoRule = photos
-    ? `- ${n} photographs are attached as input images. They are AI-generated image materials for a proposal demo, not photographs of the shop. Use only them as the photographs inside the designs, each in a plain rectangular or rounded-rectangle frame; never create any other photograph or photo-like picture.
-- The attached photographs are staged as the files ${stagedPhotoPath(1)}${n > 1 ? ` to ${stagedPhotoPath(n)}` : ""} (in the order attached). Each image below names the photographs it uses, at most ${PHOTO_TOOL_MAX_REFS}. In that image's call, pass exactly those paths, as written, in the image tool's \`referenced_image_paths\` argument (never more than ${PHOTO_TOOL_MAX_REFS} paths; do not use \`num_last_images_to_include\`).\n`
+    ? `- ${photos.files.length} photographs are attached as input images. They are AI-generated image materials for a proposal demo, not photographs of the shop. Use only them as the photographs inside the designs, each in a plain rectangular or rounded-rectangle frame; never create any other photograph or photo-like picture.\n`
     : "";
-  const filesRule = photos
-    ? "- Do not run shell commands, do not write files, do not browse. Do not open or read files yourself: only the image tool reads the photographs, through `referenced_image_paths`."
-    : "- Do not run shell commands, do not read or write files, do not browse.";
-  const header = (vp: string, p: PlannedPart, i: number) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.name}${refsOf ? ` — referenced_image_paths: ${JSON.stringify(refsOf[i]!.map(stagedPhotoPath))}` : ""}:`;
   const batchPrompt = `Make the ${all.length} section images of ONE website design comp (a flat website screen design, not a photo, not a poster, not a device mockup) with the image generation tool. ${about}
 
 Rules for this run:
@@ -438,10 +406,10 @@ Rules for this run:
 - For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
 - Each image is a portrait frame (taller than wide).
 ${photoRule}- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
-${filesRule}
+- Do not run shell commands, do not read or write files, do not browse.
 - When you have finished, reply with one line only: DONE followed by the number of images saved.
 
-${all.map(({ vp, p }, i) => `${header(vp, p, i)}\n<<<\n${p.prompt}>>>`).join("\n\n")}
+${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
 `;
   const value = (key: string) => facts.facts.find((f) => f.key === key)?.value ?? "";
   const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: all.length };

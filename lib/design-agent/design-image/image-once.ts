@@ -111,16 +111,6 @@ type RunSeen = {
 type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number; inputImages?: readonly Buffer[] };
 
 /**
- * Issue #335: the fixed placeholder a prompt with input images uses for this call's temporary work dir. The image tool's
- * `referenced_image_paths` takes absolute paths only (rust-v0.159.0: ext/image-generation/src/tool.rs ImagegenArgs is
- * `Vec<AbsolutePathBuf>`, parsed by serde_json without a base path, so a relative entry is refused before the call), and
- * the work dir is made per call. So the pinned prompt names `{{SR_WORK_DIR}}/inputs/photo-N.png`, and with input images
- * (only then) every occurrence is replaced by the work dir the `--image` copies were staged in (the same absolute path
- * `--cd` and `--image` give the jailed CLI). request-prompt.ts carries the same literal (a test keeps them equal).
- */
-export const WORK_DIR_TOKEN = "{{SR_WORK_DIR}}";
-
-/**
  * Issue #335: what the session log and the answer already told about a run, as fixed values only (never text). Carried
  * into the caller's record on every stop of a run that reached Codex.
  */
@@ -179,8 +169,6 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
     const cliVersion = version && version.code === 0 && !version.timedOut ? parseCodexVersion(version.stdout) : null;
     if (signal?.aborted) throw new CodexAbortedError();
     const attached = o.inputImages && o.inputImages.length > 0 ? await stageInputBytes(cwd, o.inputImages) : [];
-    // Issue #335: only with input images, the placeholder becomes the absolute work dir they were staged in
-    const prompt = attached.length > 0 ? o.prompt.split(WORK_DIR_TOKEN).join(cwd) : o.prompt;
     before = await imageThreads(codexHome);
     const started = now();
     let run;
@@ -188,7 +176,7 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
       // the PoC's command line: the image feature pinned on, read-only, the built-in provider only
       run = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, ...attached.map((path) => `--image=${path}`), "-"], {
         workDir: cwd,
-        input: prompt,
+        input: o.prompt,
         timeoutMs: o.timeoutMs,
         ...withSignal,
       });
