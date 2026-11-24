@@ -1,6 +1,6 @@
 # IMAGE_FIRST の自動実行（承認コマンド 1 行 → 生成 1 回、Issue #302）
 
-> **状態: コードと手順だけ。WSL には install も enable もしていない。** 下の §2 の設置は、オーナーが承認したうえで WSL の root が行う
+> **状態: コードと手順だけ。WSL には install も enable もしていない。** 下の §2 の設置（`imagefirst-autorun-setup.sh` の check → apply → enable-timer）は、オーナーが承認したうえで WSL の root が行う
 > **安全境界の操作**である（systemd の unit と timer を入れ、Remote Control を自動で止めて戻すことを許す）。Claude は行わない。
 > 入れた後も、オーナーの switch と承認コマンドが書く使い切りの印（どちらも root 所有）が無ければ何もせず、Remote Control にも触らない。
 > この文書と仕組みは、承認パケット（§10）の承認を置き換えない。生成 1 回ごとに、今まで通りパケットの承認とマージが要る。
@@ -42,29 +42,58 @@
 ## 2. 一度だけの設置（オーナーの承認が要る安全境界の操作。WSL の root で）
 
 前提: `docs/operations/imagefirst-worker-port.md` §7.2 の専用 clone（`/home/sr-designgen/imagefirst/second-root`）と、
-`~sr-designgen/sr-runs`（sr-designgen の 0700）があること。古い毎時の自動起動（`sr-imagefirst-autostart.timer`）は**入れない・入っていれば止める**
-（同じ印を読むため。承認コマンド・自動実行・preflight のどれも、それが enable か active なら断る）。
+`~sr-designgen/sr-runs`（sr-designgen の 0700）があること。古い毎時の自動起動（`sr-imagefirst-autostart.timer`）は入っていれば
+設置の script が止める（同じ印を読むため。承認コマンド・自動実行・preflight のどれも、それが enable か active なら断る）。
+
+設置は 1 つの script（`scripts/sales-design-worker/imagefirst-autorun-setup.sh`）にまとめてあり、オーナーの操作は次の 3 回だけ
+（それぞれ別の承認）。`<SHA>` は Claude が示す origin の develop の commit（40 桁）。script は admin clone が root のもので・きれいで・
+`<SHA>` に detach されていて、`<SHA>` が origin の develop（admin clone 自身の URL への `ls-remote`）でなければ何もせずに断る。
+
+**(a) 確かめる（読むだけ。どこにも何も書かない）**: 出力をそのまま Claude に見せる。
 
 ```bash
-sudo git -C /root/sr-capture-admin fetch -q origin && sudo git -C /root/sr-capture-admin checkout -q --detach origin/develop
-sudo systemctl disable --now sr-imagefirst-autostart.timer 2>/dev/null || true
-sudo install -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-imagefirst-autorun.service /etc/systemd/system/
-sudo install -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-imagefirst-autorun.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-# enable の前の確認 1（Remote Control は止まらない）: unit と同じ hardening の下で admin.sh status が動くこと
-sudo systemd-run --wait --pipe --collect -p ProtectSystem=strict -p ProtectHome=read-only -p ReadWritePaths=/home/sr-designgen -p PrivateTmp=yes -p NoNewPrivileges=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes -p "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh status
-sudo install -d -o root -g root -m 0755 /etc/sr-design-worker
-# the reviewed Codex config for the run's own CODEX_HOME (§6 設定の信頼境界; without it every run stops at config_trust)
-sudo install -o root -g root -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/codex-config.toml /etc/sr-design-worker/codex-config.toml
-echo '{"enabled": true}' | sudo tee /etc/sr-design-worker/imagefirst-autostart.json >/dev/null && sudo chmod 0644 /etc/sr-design-worker/imagefirst-autostart.json
-sudo systemctl enable --now sr-imagefirst-autorun.timer
-systemctl list-timers --all | grep -i sr-imagefirst || true
+sudo git -C /root/sr-capture-admin fetch -q origin && sudo git -C /root/sr-capture-admin checkout -q --detach <SHA>
+sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh check --expect <SHA>
 ```
 
-確認 1 で `status` の表が出ず `Permission denied`・`Read-only file system` などで止まったら、**timer を enable しない**（最後の行は打たない）。
-その行を Claude に見せる（hardening の調整は別の承認）。
+4 つの段階ごとに `SETUP_STEP <名前> <DONE|TODO|BLOCKED> <理由>` が出て、最後の行が `IMAGEFIRST_SETUP CHECK_OK exit=0`
+（BLOCKED が無い）か `CHECK_BLOCKED exit=3`。段階:
 
-enable の前の確認 2（任意。**Remote Control が数秒止まり、この Claude のセッションも切れる**。WSL の端末で、オーナーが打つ）:
+| 段階 | すること（apply のとき） |
+|---|---|
+| `cli` | `claude`・`codex` を root 所有で `/usr/local` に入れる。**root でベンダーのコードを動かさない**: 使う 4 つの tarball（`@anthropic-ai/claude-code@2.1.295`、そのネイティブ版 `@anthropic-ai/claude-code-linux-x64@2.1.295`、`@openai/codex@0.159.0`、そのネイティブ版 `@openai/codex@0.159.0-linux-x64`）は、registry の URL と sha512（npm の `dist.integrity`）を script に固定してある。(1) 4 つを `curl -q`（https だけ、`env -i`）で root だけの場所に落とし、**何かを変える前に** sha512 を照合し、中身が `package/` の下のふつうのファイルとディレクトリだけであることを確かめる。(2) いまの `/usr/local/bin/claude`・`codex`（sr-designgen の home を指す root の symlink）の**指す先を setup.log に記録してから、その 2 つの symlink だけ**を消す（そこが home を指す symlink 以外なら BLOCKED で何も触らない）。(3) 2 つの本体を**照合済みの手元の tarball から** `/usr/bin/npm install -g --prefix /usr/local --ignore-scripts --omit=optional` で入れ（`env -i`・`HOME=/root`・固定の PATH・umask 022。proxy・CA・npm の環境変数は渡さない。利用者と全体の npm 設定は `/dev/null`）、入ったファイルを tarball のものとすべて比べる。(4) claude-code の唯一の lifecycle script（postinstall の `node install.cjs`。ネイティブの `claude` を `bin/claude.exe` の placeholder の上に写すだけ）は動かさず、script 自身が照合済みのネイティブ `claude` を `bin/claude.exe` に root 0755 で置く。codex には lifecycle script が無く、ネイティブ版を npm が optional dependency を置く場所（`@openai/codex/node_modules/@openai/codex-linux-x64`。`bin/codex.js` がそこを探す）に置く。DONE の条件: それぞれの実体（`readlink -f`）が root のもので `/` まで他人が書けない、package.json の版が固定の版、ネイティブの 2 つが 1 MiB を超える ELF で SHA-256 が固定値と同じ（CLI は実行しない） |
+| `codex_config` | リポジトリの `codex-config.toml` を `/etc/sr-design-worker/`（root 0755）に root 0644 で置き、SHA-256 が pilot と preflight の `CODEX_CONFIG_SHA256` と同じことを確かめる |
+| `units` | 古い `sr-imagefirst-autostart.timer` を disable（あれば）→ 自動実行の unit 2 つを 0644 で置く → `daemon-reload` → switch `/etc/sr-design-worker/imagefirst-autostart.json` を**無いときだけ** `{"enabled": true}` で作る（あれば中身を変えない） |
+| `hardening_check` | 下の付録の確認 1 を、unit の `[Service]` の性質を**すべて**（lifecycle の `Type`・`ExecStart`・`ExecStopPost`・`TimeoutStartSec`・`TimeoutStopSec`・`KillMode`・`SuccessExitStatus` を除く。`ProtectKernelLogs`・`LockPersonality`・`RestrictRealtime`・`UMask`・`StateDirectory`・`ReadWritePaths=/home/sr-designgen -/var/lib/sr-design-cycle`・資源の上限を含む）付けて行う（`admin.sh status`。Remote Control は止まらない。テストが script と unit の一致を両方向で固定）。表が出なければ `SETUP_HARDENING_FAILED` でそこで止まり、timer は off のまま、rollback の行を出す |
+
+**(b) 入れる（別の承認）**: (a) が `CHECK_OK` で、Claude と中身を確かめた後。
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh apply --yes --expect <SHA>
+```
+
+ダウンロードは約 280 MB（ほとんどがネイティブ版 2 つ）。`/var/lib/sr-imagefirst-autostart/` の下の一時 dir に展開し（約 700 MB）、終わったら消す。
+その filesystem の空きが 1024 MiB 未満なら `SETUP_BLOCKED`（何も落とさない）。各 tarball は固定した大きさ + 4 KiB を超えると curl が止める
+（`--max-filesize`）。setuid・setgid・sticky の付いた中身は断り、置いた後も 2 つの package に `chmod -R u-s,g-s,-t` をかける。入った package の dir に
+tarball に無いファイルがあれば断る。rollback は途中で止まっても打ち直せる（もう戻っている symlink は済みとして扱う）。
+最後の行が `IMAGEFIRST_SETUP APPLY_OK exit=0`（4 段階すべて DONE）なら終わり。もう一度打っても、DONE の段階は何もしない。
+**apply は timer を enable しない。** 何をしたか（古い symlink の指す先を含む）は root だけが読める
+`/var/lib/sr-imagefirst-autostart/setup.log`（0600、dir は 0700）に残る。`SETUP_HARDENING_FAILED` など途中で止まったら、その出力を Claude に見せる
+（hardening の調整は別の承認）。
+
+**(c) timer を入れる（別の承認）**: 4 段階すべてが DONE でなければ断る（TODO が残れば `TIMER_NOT_READY` exit 4、BLOCKED があれば `SETUP_BLOCKED` exit 3）。
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh enable-timer --yes --expect <SHA>
+```
+
+`systemctl enable --now sr-imagefirst-autorun.timer` をして、その `list-timers` の行を出す（`IMAGEFIRST_SETUP TIMER_ENABLED exit=0`）。
+
+**サインインのファイル**（`~/.codex/auth.json`・`~/.claude/.credentials.json`）は sr-designgen の home に置いたまま。設置の script も root も読まない
+（実行のたびに pilot が sr-designgen として写す。§6）。sr-designgen 自身の PATH（`~/.npm-global/bin` が先）と home の CLI は変えないので、
+jail の Claude は今まで通り自分の claude を使う。自動実行の worker の PATH（`/usr/local/bin:/usr/bin:/bin`）だけが root の CLI を見る。
+
+**任意の確認 2**（**Remote Control が数秒止まり、この Claude のセッションも切れる**。WSL の端末で、オーナーが打つ。(c) の前がよい）:
 同じ hardening で `claude-stop` → `claude-start` が動くか。`CLAUDE_STOPPED` と `CLAUDE_STARTED (jailed)` が出れば合格。
 `claude-start` が失敗したら、hardening なしで `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-start` を 1 回打って戻す
 （ExecStopPost の `--restore` は `+` で hardening なしに動くので、本番でも最後は戻せる）。
@@ -74,6 +103,26 @@ H='-p ProtectSystem=strict -p ProtectHome=read-only -p ReadWritePaths=/home/sr-d
 sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-stop
 sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-start
 ```
+
+**元に戻す**（apply を取り消す。admin clone はきれいで `<SHA>`（そのとき checkout されている commit）に detach されていること。develop が先へ進んでいてもよい）:
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh rollback --yes --expect <SHA>
+```
+
+**setup.log が「apply が変えた」と記録したもの（最後の完了した rollback より後）だけ**を戻す: `units` を変えていれば timer を disable → unit 2 つを消す →
+`daemon-reload`。`cli` を変えていれば npm の 2 つを `npm uninstall -g --prefix /usr/local`（置いたネイティブ版ごと消える）→ 記録した古い symlink を
+そのまま戻す（指す先がまだあり、場所が空いているときだけ）。`codex_config` を置いていれば `/etc/sr-design-worker/codex-config.toml` を消す。
+確認 1 の合格の記録（`/var/lib/sr-imagefirst-autostart/setup-hardening.ok`）も消す。apply の前からあったもの（手で置いた config や unit）は消さない。
+古い `sr-imagefirst-autostart.timer` は **disable のまま**（戻さない）。`used/`・`autorun/`・worker の claim・入口の ledger・switch は**消さない**。
+自動実行が動いている間（service が active）は断る。
+
+**rollback の後の注意**: 戻した `/usr/local/bin/claude`・`codex` は、今と同じく sr-designgen の home（jail の Claude が書ける場所）を指す root の symlink である。
+**root（`sudo`）で `claude`・`codex` を打たない**（root が利用者の書けるプログラムを動かすことになる）。
+
+終了コード（script の先頭にも書いてある）: 0 成功、2 断った（使い方・`--yes` なし・`--expect` なし・admin clone・test 用の写しを root で）、3 BLOCKED（`CHECK_BLOCKED` / `SETUP_BLOCKED`）、4 timer の前提が未完、
+11 別の設置が実行中、20 origin を読めない、30〜33 apply の段階の失敗（cli / codex_config / units / hardening）、34 timer の enable の失敗、
+35 rollback の一部ができなかった、40 / 41 signal / 内部。
 
 設置した後も、印が無ければ 10 分ごとに switch と印を 1〜2 個読んで終わる（ネットワークなし、Remote Control に触らない）。
 印があるときだけ、Remote Control を止める前に admin clone から origin の develop を `ls-remote` で読む（数秒）。
@@ -86,7 +135,7 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
 | 実行中の 1 回を止める | `sudo systemctl stop sr-imagefirst-autorun.service`（pilot が worker・監査へ止める合図を渡して記録を待ち、その後 claude-start する。承認 ID は使った扱い） |
 | OFF にする（timer は残す） | `echo '{"enabled": false}' \| sudo tee /etc/sr-design-worker/imagefirst-autostart.json` |
 | 1 回の許可を取り消す（まだ始まっていなければ） | `sudo rm /etc/sr-design-worker/imagefirst-run.json` |
-| すべて外す | timer を disable → `sudo rm /etc/systemd/system/sr-imagefirst-autorun.{service,timer}` → `sudo systemctl daemon-reload` |
+| すべて外す | `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh rollback --yes --expect <SHA>`（§2。手で: timer を disable → `sudo rm /etc/systemd/system/sr-imagefirst-autorun.{service,timer}` → `sudo systemctl daemon-reload`） |
 | Remote Control が戻っていない | `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh status` を見てから `claude-start` を 1 回 |
 
 `/var/lib/sr-imagefirst-autostart/used/`・`autorun/`、worker の `claims/`、入口の ledger は**消さない**（消すと同じ承認 ID がもう一度使える状態になる）。
@@ -196,7 +245,8 @@ SHA-256 が違う、`.cfg` に予定外のもの（`codex/` は `auth.json` と 
 worker の PATH で見た `claude`・`codex`・`node` の実体（symlink をたどった先）が root のもの・他人が書けないもの（`/` まで。`trusted_path`）でない
 （`~/.local/bin`・nvm・npm-global など worker の home の中の CLI は jail の Claude が差し替えられる）、のどれかで FAIL にし、pilot は何も始めない。
 **オーナーの前提**: 自動実行を使うには、`claude`・`codex`・`node` を root 所有の場所（`/usr/local/bin` など）に入れておく必要がある
-（いまの WSL では `claude` は `~/.npm-global`、`codex` は `~/.local/bin` にあり、このままでは `config_trust` が FAIL する）。
+（いまの WSL では `/usr/local/bin/claude` は `~/.npm-global`、`/usr/local/bin/codex` は `~/.local/bin` を指す symlink で、このままでは `config_trust` が FAIL する）。
+§2 の設置の script の `cli` の段階がこれを行う（固定の版を root 所有で `/usr/local` に入れ、古い symlink は記録して rollback で戻せる）。
 tsx の loader は新しい clone の `node_modules`（固定の lockfile からの `npm ci`）のものを使う。
 
 **途中で殺された run のサインイン**: pilot が SIGKILL などで終わると、その copy-back は走らない。(1) 自動実行は、pilot を回収した後に結果が無い・
@@ -226,7 +276,8 @@ CLI が実行中に `.cfg` へ書くログ・バックアップなどは戻さ�
 
 (a) を選んだ理由: 守る対象を「読ませるものの一覧」（config 1 つ + サインイン 2 つ）に絞れ、CLI の版が上がって読む場所が増えても既定で見えないため。
 
-**オーナーの一度だけの root 操作（承認が要る。まだ誰も行っていない）**: リポジトリの `scripts/sales-design-worker/codex-config.toml` を置く。
+**オーナーの一度だけの root 操作（承認が要る。まだ誰も行っていない）**: リポジトリの `scripts/sales-design-worker/codex-config.toml` を置く
+（§2 の設置の script の `codex_config` の段階。script は固定値を pilot・preflight から読み、置いた後に SHA-256 を確かめる）。
 中身はコメントだけ（MCP サーバー・notify・provider・profile なし）。SHA-256 `697ade397a322574f3b9693811ad257e6a6f1bb511bbed37626c849c7a53b9dd`
 （`imagefirst-pilot.sh` と `imagefirst-pilot-preflight.sh` の `CODEX_CONFIG_SHA256`。テストがリポジトリのファイルと一致することを固定）。
 
@@ -267,8 +318,49 @@ preflight で止まって何も使っていない（`used/<ID>` も claim も無
 
 ```
 npx vitest run tests/unit/design-agent/imagefirst-worker/autorun.test.ts tests/unit/design-agent/imagefirst-worker/approve.test.ts
+npx vitest run tests/unit/design-agent/imagefirst-worker/setup.test.ts
 ```
+
+`setup.test.ts` は設置の script を、test の root の中の偽の `/usr`・`/etc`・`/var/lib`・`/root`・`/home` の上で動かす（registry は npm の形の
+偽の tarball 4 つと test だけの固定値、curl はそれを写す代役、npm は手元の tarball を npm と同じ形に入れる代役、systemctl・systemd-run は呼ばれ方を
+記録する代役）。sha512・中身・ネイティブ版の照合、`--ignore-scripts`、proxy などの環境変数が npm・curl に渡らないこと、hardening が unit と両方向で一致することも確かめる。check が何も書かないこと、apply の拒否・冪等・timer を enable しないこと、
+hardening の失敗で止まること、rollback が symlink を戻し `used/`・`autorun/` に触らないこと、固定の SHA-256 が一致することを確かめる。
 
 pilot の偽 WSL（`tests/unit/design-agent/imagefirst-worker/pilot-world.ts`）の上で、本物の自動実行・承認コマンド・pilot・preflight・再送を動かす。
 admin.sh は claude-stop / claude-start を記録して偽の jail の状態を切り替える代役、cgroup は test の root の中のファイル。本物の root・systemd・
 Remote Control・Codex・Claude・ネットワークは使わない。
+
+## 付録 A. 手で打つ設置（以前の手順。設置の script が同じことをする）
+
+script を使わずに設置するときの元の手順（確認 1 を含む）。script と違い、`claude`・`codex` を root 所有の場所へ入れる段階は含まない
+（§6 の「オーナーの前提」）。
+
+```bash
+sudo git -C /root/sr-capture-admin fetch -q origin && sudo git -C /root/sr-capture-admin checkout -q --detach origin/develop
+sudo systemctl disable --now sr-imagefirst-autostart.timer 2>/dev/null || true
+sudo install -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-imagefirst-autorun.service /etc/systemd/system/
+sudo install -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/systemd/sr-imagefirst-autorun.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+# enable の前の確認 1（Remote Control は止まらない）: unit と同じ hardening の下で admin.sh status が動くこと
+sudo systemd-run --wait --pipe --collect -p ProtectSystem=strict -p ProtectHome=read-only -p ReadWritePaths=/home/sr-designgen -p PrivateTmp=yes -p NoNewPrivileges=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes -p "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh status
+sudo install -d -o root -g root -m 0755 /etc/sr-design-worker
+# the reviewed Codex config for the run's own CODEX_HOME (§6 設定の信頼境界; without it every run stops at config_trust)
+sudo install -o root -g root -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/codex-config.toml /etc/sr-design-worker/codex-config.toml
+echo '{"enabled": true}' | sudo tee /etc/sr-design-worker/imagefirst-autostart.json >/dev/null && sudo chmod 0644 /etc/sr-design-worker/imagefirst-autostart.json
+sudo systemctl enable --now sr-imagefirst-autorun.timer
+systemctl list-timers --all | grep -i sr-imagefirst || true
+```
+
+確認 1 で `status` の表が出ず `Permission denied`・`Read-only file system` などで止まったら、**timer を enable しない**（最後の行は打たない）。
+その行を Claude に見せる（hardening の調整は別の承認）。
+
+enable の前の確認 2（任意。**Remote Control が数秒止まり、この Claude のセッションも切れる**。WSL の端末で、オーナーが打つ）:
+同じ hardening で `claude-stop` → `claude-start` が動くか。`CLAUDE_STOPPED` と `CLAUDE_STARTED (jailed)` が出れば合格。
+`claude-start` が失敗したら、hardening なしで `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-start` を 1 回打って戻す
+（ExecStopPost の `--restore` は `+` で hardening なしに動くので、本番でも最後は戻せる）。
+
+```bash
+H='-p ProtectSystem=strict -p ProtectHome=read-only -p ReadWritePaths=/home/sr-designgen -p PrivateTmp=yes -p NoNewPrivileges=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes'
+sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-stop
+sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-start
+```
