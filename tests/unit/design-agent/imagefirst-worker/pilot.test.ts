@@ -400,13 +400,18 @@ describe("Issue #302 pilot: the copied primitives stay identical; nothing instal
     const pilot = code(PILOT);
     const pre = code(PREFLIGHT);
     // the one worker run, and (--autorun only) the re-send from the fresh clone (docs/operations/imagefirst-autorun.md)
-    expect(pilot.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &', 'imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/deliver" 2>/dev/null 8>&- 9>&-']);
+    // DEV-303: a standing request's one run (--request <id> --request-sha256 <hex>) instead of the approval grant's
+    expect(pilot.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &', 'imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" >"$WORK/out" 2>"$WORK/err" 8>&- 9>&- &', 'imagefirst-worker.ts --deliver-review "$APPROVAL" >"$WORK/deliver" 2>/dev/null 8>&- 9>&-']);
     expect(pilot.match(/imagefirst-audit\.ts[^\n]*/g)).toEqual(['imagefirst-audit.ts "$APPROVAL" --dry-run >"$WORK/dry" 2>/dev/null 8>&- 9>&-', 'imagefirst-audit.ts "$APPROVAL" >"$WORK/audit" 2>/dev/null 8>&- 9>&- &']);
-    expect(pilot.match(/bash "\$(PREFLIGHT|DELIVER)"[^\n]*/g)).toEqual(['bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-', 'bash "$DELIVER" "$APPROVAL" >"$WORK/deliver" 2>&1']);
-    expect(pre.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
+    expect(pilot.match(/bash "\$(PREFLIGHT|DELIVER)"[^\n]*/g)).toEqual(['bash "$PREFLIGHT" "$APPROVAL" >"$WORK/preflight" 2>&1 8>&- 9>&-', 'bash "$PREFLIGHT" --request "$APPROVAL" "$REQUEST_SHA" >"$WORK/preflight" 2>&1 8>&- 9>&-', 'bash "$DELIVER" "$APPROVAL" >"$WORK/deliver" 2>&1']);
+    // DEV-303: plus a standing request's precheck (the worker's --request ... --precheck, inside the automatic run only)
+    expect(pre.match(/imagefirst-worker\.ts[^\n]*/g)).toEqual(['imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-', 'imagefirst-worker.ts --check-codex-auth-only >"$WORK/codex" 2>/dev/null 8>&- 9>&-']);
     expect(pre.match(/imagefirst-audit\.ts[^\n]*/g)).toEqual(["imagefirst-audit.ts --check-auth-only >\"$WORK/auth\" 2>/dev/null 8>&- 9>&-"]);
     for (const [name, c] of [["pilot", pilot], ["preflight", pre]] as const) {
-      expect(c, name).not.toMatch(/image-first-generate|generateImage|anthropic|openai|imagefirst-autostart\.json|imagefirst-run\.json|\/etc\/sr-design-worker/i);
+      // never the automatic start's switch or marker; the only file of /etc/sr-design-worker named is root's reviewed Codex
+      // config, read only inside the automatic run (config trust, docs/operations/imagefirst-autorun.md)
+      expect(c, name).not.toMatch(/image-first-generate|generateImage|anthropic|openai|imagefirst-autostart\.json|imagefirst-run\.json/i);
+      expect(c.match(/\/etc\/sr-design-worker[^\s"]*/g) ?? [], name).toEqual(["/etc/sr-design-worker/codex-config.toml"]);
       // systemctl only reads (show / is-enabled): never enable, disable, start, stop, mask, daemon-reload, link
       for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"], `${name}: systemctl ${m[1]}`).toContain(m[1]);
       // a model CLI is never started: codex / claude appear only as `command -v` presence checks (the preflight)

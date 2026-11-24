@@ -25,19 +25,36 @@ export const exe = (path: string, body: string) => {
 };
 
 /** The stub worker CLI (imagefirst-worker.ts in the clone): --precheck, the run, --deliver-review; files in the real shapes. */
-export const STUB_WORKER = `import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+export const STUB_WORKER = `import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 const home = process.env.HOME ?? "";
 const state = join(home, ".local", "state", "sr-design-worker", "imagefirst-worker");
 const runs = join(home, "sr-runs");
-const grant = process.env.SR_IMAGEFIRST_EXPECT_APPROVAL_ID ?? "";
 const argv = process.argv.slice(2);
+// DEV-303: a standing request (--request <id> --request-sha256 <hex>, the run's private copy in SR_IMAGEFIRST_REQUEST_FILE):
+// the request id takes the approval id's place; the copy must have exactly the SHA-256 root passed
+const requestMode = argv[0] === "--request";
+const grant = requestMode ? (argv[1] ?? "") : (process.env.SR_IMAGEFIRST_EXPECT_APPROVAL_ID ?? "");
 const flag = (n: string) => existsSync(join(home, n));
 const text = (n: string) => readFileSync(join(home, n), "utf8").trim();
 const say = (o: object) => console.log(JSON.stringify(o));
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "worker", argv, grant, cwd: process.cwd(), env: Object.keys(process.env).sort(), execArgv: process.execArgv }) + "\\n");
+// what a model CLI started by this worker would see as its config dir (CODEX_HOME; else ~/.codex)
+const codexHome = process.env.CODEX_HOME ?? join(home, ".codex");
+const seen = (d: string) => { try { return (readdirSync(d, { recursive: true }) as string[]).map(String).sort(); } catch { return null; } };
+const reqFile = process.env.SR_IMAGEFIRST_REQUEST_FILE ?? null;
+const reqSha = reqFile && existsSync(reqFile) ? sha(readFileSync(reqFile)) : null;
+appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "worker", argv, grant, cwd: process.cwd(), env: Object.keys(process.env).sort(), execArgv: process.execArgv, codexHome: process.env.CODEX_HOME ?? null, codexFiles: seen(codexHome), requestFile: reqFile, requestSha: reqSha }) + "\\n");
+if (requestMode && (argv[2] !== "--request-sha256" || reqSha !== argv[3])) { say({ status: "refused", code: "REQUEST_SHA_MISMATCH", invoked: false, approval_id: grant }); process.exit(2); }
+// a standing request's precheck (--request <id> --request-sha256 <hex> --precheck): one JSON line, 0 would_run / 2 refused, nothing written
+if (requestMode && argv[4] === "--precheck") {
+  if (flag("stub-request-precheck")) { say({ status: "refused", code: text("stub-request-precheck"), invoked: false, request_id: grant }); process.exit(2); }
+  say({ status: "would_run", code: null, invoked: false, request_id: grant });
+  process.exit(0);
+}
+// a sign-in refreshed by the CLI during the run (the automatic run copies it back afterwards)
+if ((argv.length === 0 || requestMode) && flag("stub-refresh") && process.env.CODEX_HOME) writeFileSync(join(process.env.CODEX_HOME, "auth.json"), "refreshed-codex\\n");
 const BUNDLE = "4".repeat(64);
 const delivered = (id: string) => {
   mkdirSync(join(state, "deliveries"), { recursive: true, mode: 0o700 });
@@ -72,7 +89,8 @@ const runDir = join(runs, grant + "-20261121T040000Z");
 const receiptPath = runDir + ".receipt.json";
 mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
 const images: { file: string; sha256: string; bytes: number }[] = [];
-if (mode === "ok") for (const p of ["pc-1", "pc-2", "sp-1", "sp-2", "sp-3", "sp-4"]) {
+// stub-seven: one picture more than the run may make (root's after-run image ceiling must catch it)
+if (mode === "ok") for (const p of ["pc-1", "pc-2", "sp-1", "sp-2", "sp-3", "sp-4", ...(flag("stub-seven") ? ["pc-3"] : [])]) {
   const to = join(runDir, "parts", p + ".png");
   copyFileSync(join(home, "fixtures", p.slice(0, 2) + ".png"), to);
   const b = readFileSync(to);
@@ -100,13 +118,17 @@ process.exit(0);
 `;
 
 /** The stub audit CLI (imagefirst-audit.ts in the clone): --check-auth-only, <id> --dry-run, <id>; audit.json in the real shape. */
-export const STUB_AUDIT = `import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+export const STUB_AUDIT = `import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 const home = process.env.HOME ?? "";
 const argv = process.argv.slice(2);
 const flag = (n: string) => existsSync(join(home, n));
 const say = (o: object) => console.log(JSON.stringify(o));
-appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "audit", argv, env: Object.keys(process.env).sort() }) + "\\n");
+// what the Claude CLI started by this audit would see as its config dir (CLAUDE_CONFIG_DIR; else ~/.claude)
+const claudeDir = process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude");
+const seen = (d: string) => { try { return (readdirSync(d, { recursive: true }) as string[]).map(String).sort(); } catch { return null; } };
+appendFileSync(join(home, "stub.log"), JSON.stringify({ cli: "audit", argv, env: Object.keys(process.env).sort(), claudeDir: process.env.CLAUDE_CONFIG_DIR ?? null, claudeFiles: seen(claudeDir), codexHome: process.env.CODEX_HOME ?? null }) + "\\n");
+if (argv.length === 1 && argv[0] !== "--check-auth-only" && flag("stub-refresh") && process.env.CLAUDE_CONFIG_DIR) writeFileSync(join(process.env.CLAUDE_CONFIG_DIR, ".credentials.json"), "refreshed-claude\\n");
 if (argv[0] === "--check-auth-only") {
   if (flag("stub-auth-fail")) { say({ status: "refused", code: "CLAUDE_API_KEY_AUTH", approval_id: "--check-auth-only" }); process.exit(2); }
   say({ status: "auth_ok", code: null });
@@ -136,7 +158,7 @@ export async function loadPngs() {
   PNG.sp = await sharp({ create: { width: 6, height: 9, channels: 3, background: "#f0e8d8" } }).png().toBuffer();
 }
 
-export type Start = { cli: "worker" | "audit"; argv: string[]; grant?: string; cwd?: string; env: string[]; execArgv?: string[] };
+export type Start = { cli: "worker" | "audit"; argv: string[]; grant?: string; cwd?: string; env: string[]; execArgv?: string[]; codexHome?: string | null; codexFiles?: string[] | null; claudeDir?: string | null; claudeFiles?: string[] | null; requestFile?: string | null; requestSha?: string | null };
 
 export function wsl() {
   const t = tmp("sr-ifp-");
@@ -215,7 +237,7 @@ exit 1`,
     return { status: r.status, verdict: m[1]!, failed: Number(m[3]), stdout: r.stdout, rows: Object.fromEntries([...r.stdout.matchAll(/^imagefirst-pilot-preflight: \| (\S+)\s+\| (PASS|FAIL) \| (.*)$/gm)].map((x) => [x[1]!, { ok: x[2] === "PASS", why: x[3]! }])) };
   };
   const starts = (): Start[] => (existsSync(join(home, "stub.log")) ? readFileSync(join(home, "stub.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Start) : []);
-  /** What actually spends: the worker run (no arguments), the audit (no --dry-run), the re-send. */
-  const spent = () => starts().filter((s) => (s.cli === "worker" && s.argv.length === 0) || (s.cli === "audit" && s.argv.length === 1 && s.argv[0] !== "--check-auth-only"));
+  /** What actually spends: the worker run (no arguments, or a standing request's --request), the audit (no --dry-run), the re-send. */
+  const spent = () => starts().filter((s) => (s.cli === "worker" && (s.argv.length === 0 || (s.argv[0] === "--request" && !s.argv.includes("--precheck")))) || (s.cli === "audit" && s.argv.length === 1 && s.argv[0] !== "--check-auth-only"));
   return { t, home, sc, bin, clone, origin, src, env, spawn, pilot, preflight, starts, spent };
 }

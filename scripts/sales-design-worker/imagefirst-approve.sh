@@ -4,7 +4,11 @@
 # (imagefirst-autorun.sh), and nothing else: it never starts the worker or the pilot, never stops Remote Control, never
 # claims, never creates root's used/<id> or attempt/<id>.
 #
-#   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-approve.sh <approval id>
+#   sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-approve.sh <approval id>
+#   (or the admin clone's copy: sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-approve.sh <approval id>)
+#
+# DEV-303: the per-run approval is now the MANUAL FALLBACK. With the owner's standing pre-authorization
+# (imagefirst-autorun-setup.sh standing) no per-run command is needed; this one still works without a standing policy.
 #
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin), by a person. In this order (anything
 # unexpected refuses; no marker is written):
@@ -13,7 +17,8 @@
 #      fetch of origin develop its HEAD is origin/develop (else the exact checkout line is printed; it never updates itself);
 #      then, in that root-owned clone at that commit, the id's own packet has §10 状態 承認済み and exactly this id in its
 #      "<d> の承認 ID" row (plain line patterns, no parser); its 期限 row, when readable, is the packet's expiry (past:
-#      refused; the marker carries it when within 24 h, and the worker's precheck must report the same)
+#      refused; unreadable: refused; more than 24 h ahead: refused, run again later; the marker carries exactly it, and
+#      the worker's precheck must report the same)
 #   3. the owner's switch /etc/sr-design-worker/imagefirst-autostart.json exists and says {"enabled": true} (else the
 #      lines to turn it on are printed): a marker without the switch would do nothing, so it is not written
 #   4. the old hourly automatic start's units neither active nor enabled (it reads the same marker and would run the
@@ -27,7 +32,7 @@
 #      20 min left is accepted; the marker then carries that expiry.
 #      While Remote Control (or anything of the worker user) runs, which is the usual case, NOTHING runs as the worker
 #      (the same rule as every other root script: no worker-controlled code outside the jail while the jail's processes
-#      live): the marker gets the packet's own expiry (else now + 24 h, with a note) and every check is made at run time,
+#      live): the marker gets the packet's own expiry (never a guess) and every check is made at run time,
 #      with Remote Control stopped and the worker's clone pinned to root's verified commit:
 #      the pilot's preflight (the worker's precheck for this id, the 20 min rule, no prior run), then the worker's own
 #      checks and claim. The marker names only the id the owner typed; it grants nothing the packet does not.
@@ -106,8 +111,11 @@ APPROVAL="$1"
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the owner's installed copy (imagefirst-autorun-setup.sh apply: root's, writable by nobody else) is a production copy too;
+# either way the packet is read from root's admin clone
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_APPROVE_TEST_ROOT:-}"
-if [ "$REPO" = "$PROD_CLONE" ]; then
+if [ "$REPO" = "$PROD_CLONE" ] || [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   [ -z "$TEST_ROOT" ] || { say "APPROVE_TEST_HOOK_REFUSED: test hooks are refused in $PROD_CLONE"; finish APPROVE_USAGE 2; }
   [ "$(id -u)" = 0 ] || { say "run as root: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-approve.sh <approval id>"; finish APPROVE_USAGE 2; }
@@ -116,7 +124,7 @@ if [ "$REPO" = "$PROD_CLONE" ]; then
   FILE_ROOT=root
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   WORKER_PATH=/usr/local/bin:/usr/bin:/bin
-  ADMIN_GIT="$REPO"
+  ADMIN_GIT="$PROD_CLONE"
 else
   # Any other copy runs only the unit tests' fake WSL (tests/unit/design-agent/imagefirst-worker/approve.test.ts).
   [ -n "$TEST_ROOT" ] && [ -d "$TEST_ROOT" ] || { say "run from the root-only clone: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-approve.sh <approval id>"; finish APPROVE_USAGE 2; }
@@ -288,6 +296,8 @@ if [ -n "$PACKET_EXPIRES" ]; then
   elif [ "$pexp_s" -lt "$(now)" ]; then say "APPROVE_PACKET_EXPIRED: the packet's expiry $PACKET_EXPIRES has passed"; finish APPROVE_PACKET_EXPIRED 2
   fi
 fi
+# the marker's expiry is the packet's §10 expiry, and nothing else (owner direction, Issue #302): unreadable = refused
+[ -n "$PACKET_EXPIRES" ] || { say "APPROVE_PACKET_EXPIRY_UNREADABLE: $PACKET_PATH §10 at $admin_head has no plain UTC 期限 (YYYY-MM-DDTHH:MM:SSZ): no marker"; finish APPROVE_PACKET_EXPIRY_UNREADABLE 2; }
 say "packet $PACKET_PATH at $admin_head: 承認済み for $APPROVAL, expiry ${PACKET_EXPIRES:-unreadable}"
 
 # ---------------------------------------------------------------- 3. the owner's switch must be on
@@ -345,12 +355,8 @@ CODE=APPROVE_RECORDED_DEFERRED
 EXPIRES=""
 if busy; then
   say "the worker user is busy ($BUSY_WHY): nothing runs as the worker now; every check is made at run time, with Remote Control stopped"
-  if [ -n "$PACKET_EXPIRES" ] && [ $((pexp_s - $(now))) -le "$MAX_WINDOW" ]; then
-    EXPIRES="$PACKET_EXPIRES"
-  else
-    EXPIRES="$(date -u -d "@$(( $(now) + MAX_WINDOW ))" +%Y-%m-%dT%H:%M:%SZ)"
-    say "note: the packet's expiry is ${PACKET_EXPIRES:-unreadable}${PACKET_EXPIRES:+ (more than 24 h ahead)}: the marker gets now + 24 h; the worker keeps the packet's own expiry"
-  fi
+  # the packet's own expiry (more than 24 h ahead is refused below, as the worker would refuse it: run this again later)
+  EXPIRES="$PACKET_EXPIRES"
 else
   # the automatic start's and the pilot's locks: no poll, pilot or cycle uses the worker's clone meanwhile
   exec 9>"$STATE/autostart.lock"
@@ -406,7 +412,7 @@ else
   fi
   EXPIRES="${BASH_REMATCH[2]}"
   # the worker's answer must agree with the packet root read from its own clone
-  if [ -n "$PACKET_EXPIRES" ] && [ "$EXPIRES" != "$PACKET_EXPIRES" ]; then
+  if [ "$EXPIRES" != "$PACKET_EXPIRES" ]; then
     say "APPROVE_PRECHECK_UNEXPECTED: the worker reports the expiry $EXPIRES, the packet at $admin_head says $PACKET_EXPIRES: no marker"
     finish APPROVE_PRECHECK_UNEXPECTED 2
   fi

@@ -6,6 +6,9 @@
 # directory of root's that it removes. It starts no generation and no model call.
 #
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <approval id>
+#   (inside the automatic run only) imagefirst-pilot-preflight.sh --request <request id> <request SHA-256>: a standing
+#   request (DEV-303); the approval row then runs the worker's own --precheck of that request (its private copy, root's
+#   SHA-256) instead of the packet's: exit 0 with "would_run", else FAIL (before anything is spent)
 #
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin). Root never runs git, node or a parser on files
 # the worker user controls: every command in the worker's clone runs as the worker user, with the automatic start's
@@ -28,6 +31,10 @@
 #   approval     the worker's own --precheck (the automatic start's line, with this approval id as the grant): "would_run"
 #                for exactly this id (the packet at HEAD approved for it, inside its window, the pins, never claimed,
 #                unused in the ledger), and at least MIN_LEFT_SECONDS (20 min) before the expiry it reports. It writes nothing
+#   config_trust (inside the automatic run only) root's /etc/sr-design-worker/codex-config.toml root's only with the pinned
+#                SHA-256; the run's own CODEX_HOME holding exactly that config.toml and a copy of auth.json, its own
+#                CLAUDE_CONFIG_DIR exactly a copy of .credentials.json (no other entry, no link); no CLAUDE.md /
+#                CLAUDE.local.md in the audit directory's parents. The codex / claude rows below then run with those dirs
 #   codex        as the worker: the codex binary on its PATH, ~/.codex/auth.json present (never read or printed), no
 #                ~/.codex/.env in any form, then imagefirst-worker.ts --check-codex-auth-only (the generation path's own
 #                sandbox and one sandboxed sign-in status read: an API-key login or a broken sandbox fails here, before
@@ -73,6 +80,8 @@ AUTH_TIMEOUT=120
 MIN_FREE_MIB=4096
 # inside the automatic run: its fresh clone + npm ci (~1 GiB) and the newest earlier one kept: 2 GiB more (6144 in all)
 AUTORUN_EXTRA_MIB=2048
+# inside the automatic run: root's reviewed Codex config, as imagefirst-pilot.sh (the same constant; a test pins both)
+CODEX_CONFIG_SHA256=697ade397a322574f3b9693811ad257e6a6f1bb511bbed37626c849c7a53b9dd
 # the pilot starts only with at least 20 min of the approval left (the worker's own precheck asks for 5)
 MIN_LEFT_SECONDS=1200
 GRANT_ENV=SR_IMAGEFIRST_EXPECT_APPROVAL_ID
@@ -113,17 +122,29 @@ row() {
   [ "$2" = PASS ] || FAILS=$((FAILS + 1))
 }
 
-# ---------------------------------------------------------------- the approval id
-[ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id>"; finish USAGE 2; }
-[[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish USAGE 2; }
-APPROVAL="$1"
-[[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
+# ---------------------------------------------------------------- the approval id (or a standing request's id)
+REQUEST=0
+REQUEST_SHA=""
+if [ "$#" -eq 3 ] && [ "$1" = --request ]; then
+  [[ "$2" =~ ^req-[a-z0-9][a-z0-9-]{2,58}$ ]] && [[ "$2" != *imagefirst* ]] || { say "PREFLIGHT_ID_INVALID: a request id is ^(?!.*imagefirst)req-[a-z0-9][a-z0-9-]{2,58}\$"; finish USAGE 2; }
+  [[ "$3" =~ ^[0-9a-f]{64}$ ]] || { say "PREFLIGHT_REQUEST_SHA_INVALID: the request's SHA-256 is 64 hex"; finish USAGE 2; }
+  REQUEST=1
+  APPROVAL="$2"
+  REQUEST_SHA="$3"
+else
+  [ "$#" -eq 1 ] || { say "usage: imagefirst-pilot-preflight.sh <approval id> | --request <request id> <request SHA-256>"; finish USAGE 2; }
+  [[ "$1" =~ ^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$ ]] || { say "PREFLIGHT_ID_INVALID: expected hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN"; finish USAGE 2; }
+  APPROVAL="$1"
+  [[ "$APPROVAL" != hoshigama-imagefirst-d[34]-00000000-* ]] || { say "PREFLIGHT_ID_RESERVED: the date 00000000 is the dummy PoC's, never a real run's"; finish USAGE 2; }
+fi
 
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the owner's installed copy (imagefirst-autorun-setup.sh apply: root's, writable by nobody else) is a production copy too
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_PILOT_TEST_ROOT:-}"
-if [ "$REPO" = "$PROD_CLONE" ]; then
+if [ "$REPO" = "$PROD_CLONE" ] || [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   [ -z "$TEST_ROOT" ] || { say "PREFLIGHT_TEST_HOOK_REFUSED: test hooks are refused in $PROD_CLONE"; finish USAGE 2; }
   [ "$(id -u)" = 0 ] || { say "run as root: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-pilot-preflight.sh <approval id>"; finish USAGE 2; }
@@ -167,9 +188,11 @@ if [ -z "$R" ]; then
   for f in "$SELF" "$REPO/scripts/ops/wsl-resource-preflight.sh"; do
     trusted_path "$f" || { say "PREFLIGHT_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish USAGE 2; }
   done
-  admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
-  [ -z "$admin_dirty" ] || { say "PREFLIGHT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish USAGE 2; }
-  say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+  if [ "$REPO" = "$PROD_CLONE" ]; then
+    admin_dirty="$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
+    [ -z "$admin_dirty" ] || { say "PREFLIGHT_ADMIN_CLONE_DIRTY: $REPO has changes (check it out detached at the approved commit first)"; finish USAGE 2; }
+    say "admin clone $REPO at $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) (clean)"
+  fi
 fi
 
 # Busy unless both units are stopped and the worker user runs nothing. Fail closed: an error or any other state is busy.
@@ -213,6 +236,7 @@ own_cgroup() {
 }
 IN_AUTORUN=0
 if [[ $'\n'"$(own_cgroup)"$'\n' == *$'\n'"$AUTORUN_CGROUP"$'\n'* ]]; then IN_AUTORUN=1; fi
+[ "$REQUEST" = 0 ] || [ "$IN_AUTORUN" = 1 ] || { say "PREFLIGHT_REQUEST_REFUSED: --request is checked only inside sr-imagefirst-autorun.service"; finish USAGE 2; }
 # Inside the automatic run every worker row looks at the pilot's fresh clone (named in root's own state file, written by the
 # pilot; its form checked here: ~/imagefirst/autorun-<this id>-<UTC>), never at the reused one
 if [ "$IN_AUTORUN" = 1 ]; then
@@ -287,19 +311,22 @@ for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE
 done
 # inside the automatic run: no user or system git config for any git of the worker (the pilot's rule)
 if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0=/dev/null); fi
+# inside the automatic run: the run's own model-CLI config dirs (the pilot built them next to the fresh clone)
+CFG="$CLONE.cfg"
+if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(CODEX_HOME="$CFG/codex" CLAUDE_CONFIG_DIR="$CFG/claude"); fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
 if [ "$IN_AUTORUN" = 1 ]; then
-  # inside the automatic run: root's admin clone (clean) names the commit; the pilot's fresh clone (just made from root's
-  # origin URL) must be clean with HEAD = origin/develop = exactly that commit; every git without user / system config and
-  # with attributes / hooks / fsmonitor / credential helpers off. No fetch here (the clone is minutes old)
-  if [ -n "$R" ]; then ADMIN_GIT="$R/root/sr-capture-admin"; else ADMIN_GIT="$REPO"; fi
+  # inside the automatic run: the commit root pinned (root's own state file, written by the pilot); the pilot's fresh clone
+  # (that one commit, fetched by its id from root's origin URL into its origin/develop) must be clean with HEAD =
+  # origin/develop = exactly that commit; every git without user / system config and with attributes / hooks / fsmonitor
+  # / credential helpers off. No fetch here (the clone is minutes old)
   GH=(git -c core.attributesFile=/dev/null -c core.excludesFile=/dev/null -c core.hooksPath=/dev/null -c core.fsmonitor=false -c credential.helper= -c protocol.ext.allow=never -c core.sshCommand=ssh)
-  admin_head="$(git -C "$ADMIN_GIT" rev-parse HEAD 2>/dev/null)" || admin_head=""
-  admin_dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || admin_dirty="unreadable"
-  origin_url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || origin_url=""
-  if ! [[ "$admin_head" =~ ^[0-9a-f]{40}$ ]] || [ -n "$admin_dirty" ] || ! [[ "$origin_url" =~ ^[A-Za-z0-9._:/@+-]+$ ]]; then
-    row clone FAIL "root's admin clone is not clean at a readable commit, or its origin URL is unusual"
+  pin_file="$R/var/lib/sr-imagefirst-autostart/autorun-commit"
+  admin_head=""
+  if [ -f "$pin_file" ] && [ ! -L "$pin_file" ]; then admin_head="$(head -c 100 -- "$pin_file" | tr -d '\n')"; fi
+  if ! [[ "$admin_head" =~ ^[0-9a-f]{40}$ ]]; then
+    row clone FAIL "root's pinned commit (the automatic run's state) is missing or unreadable"
   elif ! in_clone true; then
     row clone FAIL "the automatic run's fresh clone is missing (or not named as expected)"
   elif ! dirty="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --untracked-files=all 2>/dev/null)" || [ -n "$dirty" ]; then
@@ -358,7 +385,7 @@ else
 fi
 
 # ---------------------------------------------------------------- the worker's own precheck (the packet at HEAD, the window, the pins, unused)
-if [ "$CLONE_OK" = 1 ]; then
+if [ "$REQUEST" = 0 ] && [ "$CLONE_OK" = 1 ]; then
   set +e
   "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "$GRANT_ENV=$APPROVAL" \
     node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
@@ -378,8 +405,78 @@ if [ "$CLONE_OK" = 1 ]; then
   else
     row approval PASS "the worker would run now, $((left / 60)) min of the approval left: $pline"
   fi
+elif [ "$REQUEST" = 1 ] && [ "$CLONE_OK" = 1 ]; then
+  # a standing request (DEV-303): no packet and no expiry of its own (the owner's standing policy is root's, checked by the
+  # automatic run). The worker's own precheck of the request, as the worker, in the fresh clone: the run's private copy of
+  # root's request (SR_IMAGEFIRST_REQUEST_FILE) with root's SHA-256; exit 0 with "would_run" only (2: refused). Writes nothing
+  if in_clone bash -c 'f="$1.request/$2.json"; [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] && [ "$(stat -c %s -- "$f")" -le 16384 ]' _ "$CLONE" "$APPROVAL"; then
+    set +e
+    "${AS_WORKER[@]}" timeout --foreground --kill-after="$KILL_AFTER" "$PRECHECK_TIMEOUT" env "SR_IMAGEFIRST_REQUEST_FILE=$CLONE.request/$APPROVAL.json" \
+      node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --request "$APPROVAL" --request-sha256 "$REQUEST_SHA" --precheck >"$WORK/precheck" 2>/dev/null 8>&- 9>&-
+    prc=$?
+    set -e
+    pline="$(tail -n 1 "$WORK/precheck" | tr -d '\000-\037' | cut -c1-400)"
+    if [ "$prc" -eq 0 ] && [[ "$pline" == '{'*'"status":"would_run"'* ]]; then
+      row approval PASS "standing request $APPROVAL: the worker would run it now: $pline"
+    else
+      row approval FAIL "standing request $APPROVAL: precheck exit $prc: ${pline:-<no line>}"
+    fi
+  else
+    row approval FAIL "standing request $APPROVAL: the run's private copy of root's request is missing"
+  fi
 else
   row approval FAIL "skipped: the clone is not on origin/develop"
+fi
+
+# ---------------------------------------------------------------- config_trust (inside the automatic run only)
+# The model CLIs started outside the jail must see no config the jailed Claude can write: root's reviewed Codex config
+# (root's only, the pinned SHA-256), and the run's own dirs holding exactly that config and the two sign-in copies (no other
+# entry, no link). The audit's working directory lies under ~/.local/state: no CLAUDE.md / CLAUDE.local.md in its parents.
+if [ "$IN_AUTORUN" = 1 ]; then
+  CODEX_CONFIG="$R/etc/sr-design-worker/codex-config.toml"
+  root_sha=""
+  if [ -f "$CODEX_CONFIG" ] && [ ! -L "$CODEX_CONFIG" ] && [ "$(stat -c %s -- "$CODEX_CONFIG")" -le 4096 ]; then
+    if [ -z "$R" ]; then trusted_path "$CODEX_CONFIG" && root_sha="$(sha256sum <"$CODEX_CONFIG" | cut -d" " -f1)"
+    elif [ "$(stat -c %U -- "$CODEX_CONFIG")" = "$(id -un)" ] && [ $(( 0$(stat -c %a -- "$CODEX_CONFIG") & 022 )) -eq 0 ]; then root_sha="$(sha256sum <"$CODEX_CONFIG" | cut -d" " -f1)"
+    fi
+  fi
+  if [ "$root_sha" != "$CODEX_CONFIG_SHA256" ]; then
+    row config_trust FAIL "root's $CODEX_CONFIG is missing, not root's only (writable by others, a link) or not the reviewed content (SHA-256)"
+  elif ! cfg_out="$(in_clone bash -c 'c="$1"; want="$2"
+      [ -d "$c" ] && [ ! -L "$c" ] || { echo "no config dir"; exit 1; }
+      [ "$(cd "$c" && ls -A | LC_ALL=C sort | tr "\n" " ")" = "claude codex " ] || { echo "unexpected entries in the config dir"; exit 1; }
+      [ "$(cd "$c/codex" && ls -A | LC_ALL=C sort | tr "\n" " ")" = "auth.json config.toml " ] || { echo "CODEX_HOME holds other entries"; exit 1; }
+      [ "$(cd "$c/claude" && ls -A | LC_ALL=C sort | tr "\n" " ")" = ".credentials.json " ] || { echo "CLAUDE_CONFIG_DIR holds other entries"; exit 1; }
+      for f in "$c/codex/auth.json" "$c/codex/config.toml" "$c/claude/.credentials.json"; do
+        [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] || { echo "a config file is not a regular non-empty file"; exit 1; }
+      done
+      [ "$(sha256sum <"$c/codex/config.toml" | cut -d" " -f1)" = "$want" ] || { echo "CODEX_HOME/config.toml is not the reviewed one"; exit 1; }
+      for d in "$HOME" "$HOME/.local" "$HOME/.local/state" "$HOME/.local/state/sr-design-worker" "$HOME/.local/state/sr-design-worker/imagefirst-worker"; do
+        for m in CLAUDE.md CLAUDE.local.md .claude/CLAUDE.md .claude/rules; do if [ -e "$d/$m" ] || [ -L "$d/$m" ]; then echo "a $m in the audit directory'"'"'s parents"; exit 1; fi; done
+      done
+      echo ok' _ "$CFG" "$CODEX_CONFIG_SHA256" 2>/dev/null)"; then
+    row config_trust FAIL "the run's own CODEX_HOME / CLAUDE_CONFIG_DIR are not exactly as built: ${cfg_out:-unreadable}"
+  else
+    # the CLI programs themselves, as the worker's PATH resolves them (links followed): root's and writable by nobody else
+    # up to / (the test world: outside the worker's home). A claude / codex / node in ~/.local, an nvm or npm-global dir of
+    # the worker could be replaced by the jailed Claude. (The tsx loader is the fresh clone's, from npm ci of the pinned lock)
+    bins="$(in_clone bash -c 'for b in claude codex node; do p="$(command -v "$b")" || { echo "missing:$b"; continue; }; readlink -f -- "$p" || echo "missing:$b"; done' 2>/dev/null)" || bins=""
+    bin_why=""
+    n=0
+    while IFS= read -r p; do
+      n=$((n + 1))
+      if ! [[ "$p" =~ ^/[A-Za-z0-9._/@+-]+$ ]]; then bin_why="${p:-?} (not found)"; break; fi
+      if [ -z "$R" ]; then trusted_path "$p" || { bin_why="$p is not root's only up to /"; break; }
+      elif [[ "$p" == "$WORKER_HOME"/* ]]; then bin_why="$p is in the worker's home"; break
+      fi
+    done <<<"$bins"
+    [ "$n" = 3 ] || [ -n "$bin_why" ] || bin_why="claude / codex / node could not be resolved"
+    if [ -n "$bin_why" ]; then
+      row config_trust FAIL "a model CLI program is not root-trusted: $bin_why"
+    else
+      row config_trust PASS "root's reviewed Codex config; the run's CODEX_HOME / CLAUDE_CONFIG_DIR hold only it and the sign-in copies; the model CLI programs (claude / codex / node) root-trusted"
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------- codex: present, no .env, signed in with ChatGPT (checked in the sandbox)

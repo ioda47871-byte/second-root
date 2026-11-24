@@ -1,0 +1,6 @@
+# Second Root IMAGE_FIRST automatic run: the only Codex config the run's isolated CODEX_HOME holds.
+# The owner installs this exact file, root-owned 0644, at /etc/sr-design-worker/codex-config.toml
+# (docs/operations/imagefirst-autorun.md). Its SHA-256 is pinned in imagefirst-pilot.sh and
+# imagefirst-pilot-preflight.sh (CODEX_CONFIG_SHA256); any other content stops the run before the claim.
+# On purpose nothing else: no MCP servers, no notify, no model providers, no profiles. The run passes
+# everything it needs on the command line.
