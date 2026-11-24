@@ -23,3 +23,13 @@ Independent reviewer (separate context, read-only), also checking integration wi
   typecheck clean, 678 passed, 5 failed = known host-only. Root limits unchanged: envelope accepts the new fields,
   ≤6 images per run for both stages, one attempt per id, pinned worker_commit, quotas, freeze.
 - Accepted residual (Medium): same-uid forged run with a self-consistent sealed bundle; gate = owner's final check.
+
+## Re-check after retarget (develop 78f43ebe with #326/#328/#330) — 8b1810fe — FAIL (docs Medium only)
+
+- Diff identical to the reviewed change (patch-id overall and per file); merge brought only develop content; root
+  limits hold for both stages (envelope, precheck, ≤6 per run, inputs not counted, audit skip → PILOT_DONE, one attempt
+  per id, pinned worker_commit, quotas, freeze); tests: only known host-only failures; typecheck clean.
+- M (docs): MVP_SPEC §7.1 contradicted itself after the merge (#330's "実店舗の画像は社内のデザインの参考だけ" and the
+  older "実店舗の prospect に AI 画像を見せない・共有しない" stayed in force next to #333's exception); same in
+  first-client-pipeline.md line 14 and imagefirst-autorun.md line 81 → each sentence now names the limited amendment
+  as its only exception, and the amendment lists exactly which sentences it excepts. Spec-text tests pass.
