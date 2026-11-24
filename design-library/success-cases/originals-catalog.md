@@ -12,7 +12,7 @@
 
 ## A 原本あり（4 件。他店の参照に数えられるのは 3 件）
 
-機械が読む索引は [`originals-index.json`](originals-index.json)（id・種類・リポジトリのパス・SHA-256・`counts_as_reference`。SR-001 は `false`）。店ごとの分析の記録（`case-study.json`、リポジトリの外）の検査 `scripts/design-artifact/case-study-check.ts` は、この索引で「参照に数える原本」を決める。B・C の id は索引の `private_original_ids` にあり、原本を非公開の置き場に取り込み SHA-256 を確かめた場合だけ、記録の中で `private_verified` として数えられる（手順は `.claude/skills/second-root-design-director/references/evidence-and-cases.md`）。
+機械が読む索引は [`originals-index.json`](originals-index.json)（id・種類・リポジトリのパス・SHA-256・`counts_as_reference`。SR-001 は `false`）。店ごとの分析の記録（`case-study.json`、リポジトリの外）の検査 `scripts/design-artifact/case-study-check.ts` は、この索引で「参照に数える原本」を決める。B の id は索引の `private_original_ids` にあり、原本を非公開の置き場に取り込み、見たファイル（または原本の ZIP と中の見た画像）の SHA-256 がその例の記録の値（`manifest.json` の欄、または索引の `expected_sha256` の採用記録の値）と一致した場合だけ、記録の中で `private_verified` として数えられる。C の id（`unavailable_ids`）は数えない（手順は `.claude/skills/second-root-design-director/references/evidence-and-cases.md`）。
 
 | ID | 事例 | 開く | 注 |
 |---|---|---|---|

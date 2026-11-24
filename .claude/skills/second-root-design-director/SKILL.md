@@ -101,9 +101,10 @@ description: Second Root の店舗サイトのデザインを方向づけるア�
   同じ「翻訳の型」の例のほうが役に立つことが多い
 - **実店舗のデザインに入る前に、分析の記録と確認ページが要る (Issue #336)。**原本を実際に開いた成功例を
   3 件以上 (`design-library/success-cases/originals-index.json` の `counts_as_reference` の原本、
-  または非公開の置き場で SHA-256 を確かめた原本。SR-001 と文章だけの例は数えない)、店ごとの非公開の
+  または区分 B の原本で、見たファイルの SHA-256 がその例の記録の値と一致するもの。SR-001・区分 C・文章だけの例は数えない)、店ごとの非公開の
   `case-study.json` に記録し、`scripts/design-artifact/case-study-check.ts` で検査し、確認ページをオーナーに見せ、
-  オーナーの確認 (`owner_confirmation`) を記録してから方向案・指示文・依頼に進む。3 件に足りなければ
+  オーナーが確認したと言ったら Claude が `owner_confirmation` (そのページの `page_sha256` を含む。ページの内容に
+  結びつく記録であり、オーナー本人の署名ではない) を記録してから方向案・指示文・依頼に進む。3 件に足りなければ
   足りないと書いて止まる。手順と記録の形は `references/evidence-and-cases.md` の
   「デザイン着手前の分析の記録と確認ページ」
 

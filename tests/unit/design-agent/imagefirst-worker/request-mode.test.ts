@@ -289,8 +289,11 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
     // a draft (no owner confirmation), too few originals, another shop's record
     const draft = caseStudyBytes(SHOP, { owner_confirmation: undefined });
     expect(await check(named(draft), draft)).toBe("CASE_STUDY_NOT_OWNER_CONFIRMED");
-    const two = Buffer.from(JSON.stringify({ ...JSON.parse(CASE_STUDY.toString()), cases: JSON.parse(CASE_STUDY.toString()).cases.slice(0, 2), owner_confirmation: { confirmed: true, confirmed_at: "2026-11-20T00:00:00Z", selected_ids: ["CP-001", "CP-002"] } }));
+    const two = Buffer.from(JSON.stringify({ ...JSON.parse(CASE_STUDY.toString()), cases: JSON.parse(CASE_STUDY.toString()).cases.slice(0, 2), owner_confirmation: { confirmed: true, confirmed_at: "2026-11-20T00:00:00Z", selected_ids: ["CP-001", "CP-002"], page_sha256: "0".repeat(64) } }));
     expect(await check(named(two), two)).toBe("CASE_STUDY_TOO_FEW_ORIGINALS");
+    // a confirmation that is not bound to the page this record renders to
+    const wrongPage = caseStudyBytes(SHOP, { owner_confirmation: { confirmed: true, confirmed_at: "2026-11-20T00:00:00Z", selected_ids: ["CP-001", "CP-002", "CP-003"], page_sha256: "0".repeat(64) } });
+    expect(await check(named(wrongPage), wrongPage)).toBe("CASE_STUDY_PAGE_MISMATCH");
     const other = caseStudyBytes("test-shop-b");
     expect(await check(named(other), other)).toBe("CASE_STUDY_SHOP_MISMATCH");
     // a linked record is refused

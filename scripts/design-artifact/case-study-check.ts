@@ -8,10 +8,13 @@
  * --check  every viewed file exists with its SHA-256, and at least 3 originals count (image / page_render of an
  *          originals-index id with counts_as_reference, or a private_verified private original). Gate mode (the
  *          default; what request mode runs) also needs owner_confirmation whose selected_ids are exactly the counted
- *          ids. --draft skips the owner confirmation (the analysis before the owner has seen the page).
+ *          ids and whose page_sha256 is the SHA-256 of the viewing page this record renders to. --draft skips the owner
+ *          confirmation (the analysis before the owner has seen the page).
  * --page   the same file checks (no count or confirmation needed: the owner sees what is missing), then a static local
- *          HTML (no script, no network, no external font) with the viewed images copied next to it, written to --out
- *          (outside this repository, empty or absent). Open <out>/index.html in a browser.
+ *          HTML (no script, no network, no external font; CSP) with the viewed images copied next to it, written to
+ *          --out (outside this repository, links resolved; empty or absent). Open <out>/index.html in a browser. The
+ *          printed page_sha256 is what Claude records in owner_confirmation once the owner has confirmed that page; the
+ *          page never shows the confirmation, so recording it does not change the page.
  *
  * The record must be OUTSIDE this repository (e.g. ~/second-root-shops/<shop_id>/case-study.json). Repo-relative file
  * paths in it resolve against this repository. Only --page writes, and only into --out.
@@ -86,7 +89,7 @@ export async function caseStudyMain(argv: string[], repoRoot: string = REPO): Pr
       return 0;
     }
     const written = await writeViewingPage(inspection, { outDir: args.out, repo });
-    say({ status: "page_written", page: written.page, images: written.images.length, ...summary(inspection) });
+    say({ status: "page_written", page: written.page, page_sha256: written.page_sha256, images: written.images.length, ...summary(inspection) });
     return 0;
   } catch (error) {
     if (!(error instanceof CaseStudyStop)) throw error;

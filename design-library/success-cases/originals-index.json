@@ -4,14 +4,21 @@
   "scope": "Category A of originals-catalog.md: success cases whose original (or registered viewing preview / page) Claude can open in this repository, with the SHA-256 of each file computed from the committed bytes. Read by scripts/design-artifact/case-study-check.ts (lib/design-agent/case-study/case-study.ts). Does not change manifest.json or second-root-research-successes.json (the ledgers stay the source of truth for counts and policy).",
   "rules": {
     "counts_as_reference": "Only an original with counts_as_reference true counts toward the 3 originals a shop's case study needs (docs/design/image-first-production-flow.md §1 stage 1, §3.1). SR-001 is viewable but never counts: second-root-research-successes.json policy, a fictional shop's own page is not a reference for other shops.",
-    "private_original_ids": "Catalog ids (B / C) whose original is not in this repository. A case study may count one only when it marks the case private_verified and lists the private file(s) outside the repository by absolute path and SHA-256, the checker finds each file with that SHA-256, and the owner confirms the selection on the viewing page."
+    "private_original_ids": "Category B ids whose original is not in this repository. A case study counts one only when it marks the case private_verified, lists the private file(s) outside the repository by absolute path and SHA-256, the checker finds each file with that SHA-256, and at least one file's SHA-256 is recorded for that id: manifest.json's sha256 fields (rejected / not-preferred revisions excluded) for CP-004..024, expected_sha256 below for SR-002 and CP-033..037. A cited .zip must match a recorded SHA-256 and the viewed images must be listed with it. The owner confirms on the viewing page.",
+    "expected_sha256": "From the adoption records: SR-002 the approved PNG (PR #237), CP-033 the adopted ZIP (PR #240), CP-034..037 the adopted ZIPs (Issue #193, originals-catalog.md).",
+    "unavailable_ids": "Category C: only candidate file names, no recorded SHA-256; never counted until the original is found and recorded.",
+    "never_counted": "SR-001 never counts (also hard-coded in the checker)."
   },
   "originals": [
     {
       "id": "CP-001",
       "kind": "image",
       "files": [
-        { "path": "design-library/success-cases/assets/CP-001_Mond.webp", "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82", "role": "concept" }
+        {
+          "path": "design-library/success-cases/assets/CP-001_Mond.webp",
+          "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82",
+          "role": "concept"
+        }
       ],
       "counts_as_reference": true
     },
@@ -19,7 +26,11 @@
       "id": "CP-002",
       "kind": "image",
       "files": [
-        { "path": "design-library/success-cases/assets/CP-002_Sissi.webp", "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef", "role": "concept" }
+        {
+          "path": "design-library/success-cases/assets/CP-002_Sissi.webp",
+          "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef",
+          "role": "concept"
+        }
       ],
       "counts_as_reference": true
     },
@@ -27,8 +38,16 @@
       "id": "CP-003",
       "kind": "image",
       "files": [
-        { "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp", "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6", "role": "pc" },
-        { "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp", "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0", "role": "sp" }
+        {
+          "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+          "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+          "role": "pc"
+        },
+        {
+          "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
+          "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
+          "role": "sp"
+        }
       ],
       "counts_as_reference": true
     },
@@ -36,18 +55,81 @@
       "id": "SR-001",
       "kind": "page_render",
       "files": [
-        { "path": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/index.html", "sha256": "de7ccbc2469f4e14c0db5cae6cf39c5b5a34a6c03ca7b685a6304dc0460e4503", "role": "page" },
-        { "path": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/style.css", "sha256": "32957e480201e0ce17860498ba5af71b956ad2f379e5b6be8b611970b1223a5b", "role": "page" },
-        { "path": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/copy.json", "sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780", "role": "page" }
+        {
+          "path": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/index.html",
+          "sha256": "de7ccbc2469f4e14c0db5cae6cf39c5b5a34a6c03ca7b685a6304dc0460e4503",
+          "role": "page"
+        },
+        {
+          "path": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/style.css",
+          "sha256": "32957e480201e0ce17860498ba5af71b956ad2f379e5b6be8b611970b1223a5b",
+          "role": "page"
+        },
+        {
+          "path": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9/copy.json",
+          "sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780",
+          "role": "page"
+        }
       ],
       "counts_as_reference": false,
       "not_counted_reason": "second-root-research-successes.json policy: a fictional shop's own Second Root page, not a reference for other shops"
     }
   ],
   "private_original_ids": [
-    "CP-004", "CP-005", "CP-006", "CP-007", "CP-008", "CP-009", "CP-010", "CP-011", "CP-012", "CP-013",
-    "CP-015", "CP-016", "CP-017", "CP-018", "CP-019", "CP-020", "CP-021", "CP-022", "CP-023", "CP-024",
-    "CP-026", "CP-027", "CP-028", "CP-029", "CP-030", "CP-031", "CP-032",
-    "CP-033", "CP-034", "CP-035", "CP-036", "CP-037", "SR-002"
+    "CP-004",
+    "CP-005",
+    "CP-006",
+    "CP-007",
+    "CP-008",
+    "CP-009",
+    "CP-010",
+    "CP-011",
+    "CP-012",
+    "CP-013",
+    "CP-015",
+    "CP-016",
+    "CP-017",
+    "CP-018",
+    "CP-019",
+    "CP-020",
+    "CP-021",
+    "CP-022",
+    "CP-023",
+    "CP-024",
+    "CP-033",
+    "CP-034",
+    "CP-035",
+    "CP-036",
+    "CP-037",
+    "SR-002"
+  ],
+  "expected_sha256": {
+    "SR-002": [
+      "da08c7981d26f269e73408edb0f12d631f1fd19071f4e7853138086795392695"
+    ],
+    "CP-033": [
+      "5f18b6672bbc60d7db18c2af7b123fd2db448a78b8272c5e085746f1634edd77"
+    ],
+    "CP-034": [
+      "6f4fea138de381b2bca2d0d687f6ac821f897a0ee5e0079ffa97ba61632e51a1"
+    ],
+    "CP-035": [
+      "81ad1b3f1351bc843ac97ca6aed761353e00f5ddc25715dc2a46da90051a5382"
+    ],
+    "CP-036": [
+      "1527f51c1dc3109682e65c4192a46c7c07e02cbe47bea91af321cbeecdd74f61"
+    ],
+    "CP-037": [
+      "4c4202266eb6b3814b012ea3c237feffc38428327f7fc27d64087b69105260eb"
+    ]
+  },
+  "unavailable_ids": [
+    "CP-026",
+    "CP-027",
+    "CP-028",
+    "CP-029",
+    "CP-030",
+    "CP-031",
+    "CP-032"
   ]
 }
