@@ -102,8 +102,10 @@ APPROVAL="$1"
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the owner's installed copy (imagefirst-autorun-setup.sh apply: root's, writable by nobody else) is a production copy too
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_DELIVER_TEST_ROOT:-}"
-if [ "$REPO" = "$PROD_CLONE" ]; then
+if [ "$REPO" = "$PROD_CLONE" ] || [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   [ -z "$TEST_ROOT" ] || { say "DELIVER_TEST_HOOK_REFUSED: test hooks are refused in $PROD_CLONE"; finish DELIVER_USAGE 2; }
   [ "$(id -u)" = 0 ] || { say "run as root: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-deliver-review.sh <approval id>"; finish DELIVER_USAGE 2; }

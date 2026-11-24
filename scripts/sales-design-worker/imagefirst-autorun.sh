@@ -1,49 +1,76 @@
 #!/usr/bin/env bash
-# Second Root IMAGE_FIRST automatic run (Issue #302, docs/operations/imagefirst-autorun.md): after the owner's one approval
-# command (imagefirst-approve.sh <approval id>, which writes root's one-use run marker), ONE limited pilot for that id,
-# unattended: Remote Control stopped, the EXISTING pilot once (preflight, one worker run, delivery, audit dry run, one audit,
-# summary), Remote Control ALWAYS started again, and a review-ready file of the pilot's shareable lines for Claude. It has no
-# runner, approval parser, retry or agent of its own: it starts admin.sh claude-stop / claude-start and imagefirst-pilot.sh
-# (--autorun <id> <root-verified commit>), and nothing else.
+# Second Root IMAGE_FIRST automatic run (Issue #302, DEV-303, docs/operations/imagefirst-autorun.md): ONE limited pilot per
+# firing, unattended, for either
+#   (a) the owner's per-run approval: imagefirst-approve.sh <approval id> wrote root's one-use run marker (the manual
+#       fallback, kept as it was), or
+#   (b) the owner's ONE-TIME standing pre-authorization (owner decision 2026-11-23): root's policy
+#       /etc/sr-design-worker/imagefirst-standing.json (written by imagefirst-autorun-setup.sh standing) and a request
+#       file Claude (the worker user) drops in ~sr-designgen/sr-runs/requests/<id>.json, within root's limits (per day /
+#       per week, rolling, counted from root's own attempt records; until the policy's not_after).
+# Remote Control stopped, the EXISTING pilot once (preflight, one worker run, delivery, audit dry run, one audit, summary),
+# Remote Control ALWAYS started again, and a review-ready file of the pilot's shareable lines for Claude. It has no runner,
+# approval parser, retry or agent of its own: it starts admin.sh claude-stop / claude-start and imagefirst-pilot.sh, and
+# nothing else.
 #
 #   run by sr-imagefirst-autorun.service only (its timer, every 10 minutes); refused anywhere else
 #   ExecStopPost: imagefirst-autorun.sh --restore (Remote Control started again if a run could not do it itself)
 #
-# Run by root, only from the root-only admin clone (/root/sr-capture-admin), only inside sr-imagefirst-autorun.service (its
-# own cgroup, read from the kernel). The unit and its timer are NOT installed or enabled by anything in this repository.
-# Root never runs git, node or a parser on files the worker user controls: it parses only its own root-owned switch and
-# marker (the automatic start's parsers, verbatim); the worker's clone is handled by the pilot (as the worker, outside the
-# jail), and the review-ready file is written AS the worker user (setpriv), so root never follows a path the worker owns.
+# Run by root, only from the owner's INSTALLED copy (/usr/local/lib/sr-imagefirst, put there by the setup's apply: root's
+# files, writable by nobody else up to /, each with the SHA-256 recorded in its SHA256SUMS), only inside
+# sr-imagefirst-autorun.service (its own cgroup, read from the kernel). Root never runs scripts from the admin clone or the
+# repository's develop; the worker's code is a fresh clone of the commit root pins (below), run as the worker by the pilot.
+# Root never runs git, node or a parser on files the worker user controls: it parses only its own root-owned switch,
+# marker and policy, and the bytes of a request that the WORKER read for it (setpriv, a pipe into root's own work file;
+# root never opens a file of the worker). The review-ready file and a rejection notice are written AS the worker.
 #
 # One firing, in this order. Anything before step 6 ends quietly, Remote Control untouched:
-#   1. the owner's switch /etc/sr-design-worker/imagefirst-autostart.json ({"enabled": true}); absent / false: OFF, exit 0,
-#      nothing touched
+#   1. the owner's switch /etc/sr-design-worker/imagefirst-autostart.json ({"enabled": true}); absent / false: OFF
 #   2. inside sr-imagefirst-autorun.service (else refused, exit 2); this script's lock (another firing: exit 11)
-#   3. the owner's one-use run marker /etc/sr-design-worker/imagefirst-run.json (the automatic start's rules: exactly
-#      {"approval_id", "expires_at"}, the id form, not the reserved date, at most 24 h ahead): missing / expired: exit 10;
-#      invalid / unsafe / too far: exit 2; root's used/<id> (the pilot's, the automatic start's) or attempt/<id> (this
-#      script's) already there: exit 10
-#   4. the old hourly automatic start's units neither active nor enabled (both reading one marker is refused, exit 2);
-#      the design cycle's timer off and its service stopped, and no automatic start poll, pilot or cycle holding its lock
-#      (else busy, exit 12)
-#   5. the production copy: the scripts it runs root's and writable by nobody else up to /; root's admin clone clean and
-#      its HEAD exactly origin's develop (git ls-remote of the admin clone's own configured URL; root's own clone only):
-#      that commit is the one the run is pinned to (else refused, Remote Control untouched)
-#   6. the intent recorded: attempt/<id> (atomic mkdir in root's 0700 state, never removed: ONE attempt per id, whatever
-#      happens next); whether the jailed Claude is enabled; the restore flag (with that answer) and STOPPED_RC together;
-#      then admin.sh claude-stop, then (bounded) until the automatic start's busy() says idle: the jailed Claude stopped
-#      and disabled, the design cycle stopped, no process of the worker user
-#   7. step 5's check again (the same commit, else no pilot), then imagefirst-pilot.sh --autorun <id> <commit>: the
-#      a fresh clone of root's origin URL at that commit in a new root-chosen directory (the reused clone is never used; no
-#      user / system git config; npm ci), then the manual pilot's every check, step and code, plus root's used/<id> created right
-#      before the worker starts (the worker never starts twice for one id; its own claim and the entry's ledger as before)
+#   3. the standing policy, when present, first (unsafe / invalid: refused, exit 2, nothing runs at all); then
+#      (a) the owner's run marker /etc/sr-design-worker/imagefirst-run.json (the automatic start's rules: exactly
+#      {"approval_id", "expires_at"}, the id form, not the reserved date, at most 24 h ahead): invalid / unsafe / too far:
+#      exit 2; due, and root's used/<id> / autorun/<id> absent: this run is (a). Otherwise (absent, expired, used,
+#      attempted):
+#      (b) the standing policy: absent: nothing due (exit 10, the marker's own code); a link, not root's, writable by
+#      others, or not exactly {"schema": "sr_imagefirst_standing_v1", "per_day" 1-4, "per_week" 1-20, "not_after",
+#      "created_at" (UTC, at most 90 days apart), "worker_commit" (40 hex)[, "origin_url"]}: refused (exit 2), nothing
+#      runs; expired: exit 10; root's freeze file (below) present: AUTORUN_STANDING_FROZEN, exit 2
+#   4. the old hourly automatic start's units neither active nor enabled (exit 2); the design cycle's timer off and its
+#      service stopped, and no automatic start poll, pilot or cycle holding its lock (else busy, exit 12)
+#   5. the installed copy: this script, the pilot, its preflight, admin.sh (+ host-check.sh, jail files) and the memory
+#      check root's, writable by nobody else up to /, and each the SHA-256 in root's SHA256SUMS (else refused, exit 2).
+#      (b) only: the attempts root recorded (autorun/<id>/attempt, every one, failed or not; an unreadable one counts as
+#      now) within the last 24 h below per_day and within the last 7 days below per_week (else exit 10, nothing read);
+#      then the requests, read AS THE WORKER: names <id>.json (id ^req-[a-z0-9][a-z0-9-]{2,58}$), at most 16 KiB, a regular
+#      file (no link, no FIFO; ids are ^req-[a-z0-9][a-z0-9-]{2,58}$, never an approval id's form); the envelope
+#      {"schema": "sr_imagefirst_request_v1", "id" = the name, "shop_id",
+#      "kind": "real_shop" | "fictional", "created_at" (UTC)}. An id root has seen (autorun/, rejected/, used/) is skipped;
+#      an invalid request gets root's rejected/<id> with a reason code (never read again) and the worker's
+#      ~/sr-runs/review-inbox/requests/<id>.rejected (written by the worker); the OLDEST valid one (created_at, then id)
+#      is copied into root's requests/<id>.json (0600) and its SHA-256 recorded. None: exit 10.
+#      Then the commit, the ONLY worker code the run executes outside the jail: while the policy is in force (request runs
+#      and per-run approvals alike) its worker_commit, which the owner pinned with setup standing --expect <commit> (never
+#      develop's tip; root first fetches exactly that commit into its own throw-away repository: the origin no longer having
+#      it is AUTORUN_STANDING_COMMIT_UNAVAILABLE, nothing attempted). Without a policy (a per-run approval only, as before
+#      DEV-303): root's admin clone clean with its HEAD = origin's develop, asked again after the idle wait (moved: no
+#      pilot). Requests are data only: nothing in a request selects code, a commit or a limit
+#   6. the intent recorded: autorun/<id>/attempt (atomic mkdir in root's 0700 state, never removed: ONE attempt per id,
+#      whatever happens next; it counts against the limits); whether the jailed Claude is enabled; the restore flag and
+#      STOPPED_RC together; then admin.sh claude-stop, then (bounded) until the automatic start's busy() says idle
+#   7. imagefirst-pilot.sh --autorun <id> <commit> <origin URL> ((a)) or --autorun-request <id> <commit> <origin URL>
+#      <request SHA-256> ((b)): a fresh clone of that URL with that commit checked out in a new root-chosen directory,
+#      the manual pilot's every check, step and code, root's used/<id> created right before the worker starts; for (b)
+#      the worker gets --request <id> --request-sha256 <hex> and a private copy of root's request file
+#   7b. after the pilot, once the worker may have started: the run's images counted AS THE WORKER (its run dir's parts/
+#      and the inbox copy of its bundle). More than 6 (or no count): AUTORUN_IMAGE_CAP_EXCEEDED, exit 1, and root's
+#      /var/lib/sr-imagefirst-autostart/standing.frozen stops all standing pick-ups until setup standing --unfreeze --yes
 #   8. always (an EXIT trap: success, failure, a stop signal): the review-ready file (only while no worker process runs),
 #      then admin.sh claude-start if the jailed Claude was enabled before (else it is left stopped), then the restore flag
 #      removed. If the worker user is still busy at that point, claude-start is left to the unit's ExecStopPost (after
 #      systemd has ended what is left in this unit). A SIGKILL or a power loss skips the trap: the unit's ExecStopPost
 #      (--restore) starts Remote Control when the flag is still there and says it was enabled; WSL stopping skips both.
 # A stop signal during step 7 is passed on to the pilot, which passes it on to the worker or audit and waits for its record;
-# then step 8. Nothing is ever retried: a second firing for the same id stops in step 3.
+# then step 8. Nothing is ever retried: a second firing for the same id stops in step 3 / 5.
 #
 # The review-ready file: ~sr-designgen/sr-runs/review-inbox/runs/<id>.share.txt (0600, the worker's), written once by the
 # worker user (never overwritten, no link followed in its directories): only the pilot's "share:" lines, its last line, and
@@ -51,11 +78,13 @@
 #
 # Output (the journal): fixed lines, the pilot's output; the last line is machine-readable:
 #   IMAGEFIRST_AUTORUN <CODE> approval=<id|none> pilot=<PILOT CODE|none> remote_control=<untouched|restored|left_stopped|deferred|not_restored> exit=<n>
-# Exit: 0 off / the pilot done (PILOT_DONE) and Remote Control restored, 10 nothing due, 11 locked, 12 busy (Remote Control
-#       untouched), 2 refused (switch / marker unsafe or invalid, not the service, the old automatic start enabled, usage,
-#       untrusted / dirty admin clone or not at origin's develop), 20 origin not reachable (before anything), 1 attempted
-#       and the pilot did not end PILOT_DONE (or the idle wait failed, or develop moved meanwhile),
-#       3 Remote Control could not be started again (it overrides 0 / 1), 40 / 41 a signal / internal error before step 6.
+#   (approval= is the approval id for (a), the request id for (b))
+# Exit: 0 off / the pilot done (PILOT_DONE) and Remote Control restored, 10 nothing due (no marker / request, used,
+#       attempted, expired, the limit reached), 11 locked, 12 busy (Remote Control untouched), 2 refused (switch / marker /
+#       policy unsafe or invalid, not the service, the old automatic start enabled, usage, the installed copy untrusted or
+#       not the one recorded, not the installed copy), 20 origin not reachable (before anything), 1 attempted and the
+#       pilot did not end PILOT_DONE (or the idle wait failed), 3 Remote Control could not be started again (it overrides
+#       0 / 1), 40 / 41 a signal / internal error before step 6.
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
 {
@@ -92,6 +121,18 @@ PILOT_TIMEOUT=9000
 # a stopped pilot passes the stop on and waits for the worker (90 s) or the audit (90 s) to end
 PILOT_KILL_AFTER=200
 MAX_WINDOW=86400
+# the standing pre-authorization (root's policy): its hard ceilings (the setup refuses more), the request files
+MAX_PER_DAY=4
+MAX_PER_WEEK=20
+MAX_POLICY_DAYS=90
+REQ_MAX_BYTES=16384
+REQ_READ_TIMEOUT=10
+# at most this many request names are looked at in one firing (sorted; the rest wait for the next firing)
+REQ_MAX_NAMES=40
+# at most this many rejection records are kept
+REQ_MAX_REJECTED=200
+# the per-run image ceiling root checks after a run (the worker's own limit is the owner-pinned worker code's)
+MAX_IMAGES=6
 
 MODE=run
 PHASE=before_stop
@@ -106,6 +147,10 @@ STOPPED_RC=0
 FLAG_WRITTEN=0
 ADMIN_SHA=""
 PILOT_LINE=""
+# a: the owner's per-run marker (approval id); b: the standing policy and a request (request id)
+KIND=none
+REQ_SHA=""
+ORIGIN=""
 
 say() { printf 'imagefirst-autorun: %s\n' "$*"; }
 
@@ -121,11 +166,18 @@ fi
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the owner's installed copy (imagefirst-autorun-setup.sh apply): the only place the production script runs from
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_AUTORUN_TEST_ROOT:-}"
 if [ "$REPO" = "$PROD_CLONE" ]; then
+  # root never runs the admin clone's scripts any more (DEV-303): the unit starts the installed copy
+  say "AUTORUN_NOT_INSTALLED_COPY: runs only from the installed copy $INSTALL_DIR (imagefirst-autorun-setup.sh apply), not from $PROD_CLONE"
+  printf 'IMAGEFIRST_AUTORUN AUTORUN_USAGE approval=none pilot=none remote_control=untouched exit=2\n'
+  exit 2
+elif [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   if [ -n "$TEST_ROOT" ] || [ "$(id -u)" != 0 ]; then
-    say "AUTORUN_TEST_HOOK_REFUSED / not root: runs as root from $PROD_CLONE inside sr-imagefirst-autorun.service only"
+    say "AUTORUN_TEST_HOOK_REFUSED / not root: runs as root from $INSTALL_DIR inside sr-imagefirst-autorun.service only"
     printf 'IMAGEFIRST_AUTORUN AUTORUN_USAGE approval=none pilot=none remote_control=untouched exit=2\n'
     exit 2
   fi
@@ -138,7 +190,7 @@ if [ "$REPO" = "$PROD_CLONE" ]; then
 else
   # Any other copy runs only the unit tests' fake WSL (tests/unit/design-agent/imagefirst-worker/autorun.test.ts).
   if [ -z "$TEST_ROOT" ] || [ ! -d "$TEST_ROOT" ]; then
-    say "runs only from the root-only clone $PROD_CLONE, inside sr-imagefirst-autorun.service"
+    say "runs only from the installed copy $INSTALL_DIR, inside sr-imagefirst-autorun.service"
     printf 'IMAGEFIRST_AUTORUN AUTORUN_USAGE approval=none pilot=none remote_control=untouched exit=2\n'
     exit 2
   fi
@@ -153,10 +205,13 @@ fi
 PILOT="$REPO/scripts/sales-design-worker/imagefirst-pilot.sh"
 # the test world only (R is empty in the production copy): a stand-in pilot that ends in a given way (exit 137, SIGKILL)
 if [ -n "$R" ] && [ -f "$R/pilot-stand-in.sh" ]; then PILOT="$R/pilot-stand-in.sh"; fi
-# root's admin clone: this copy itself (the test world: its stand-in under the test root)
-if [ -n "$R" ]; then ADMIN_GIT="$R$PROD_CLONE"; else ADMIN_GIT="$REPO"; fi
+# root's admin clone: only its configured origin URL is read (the test world: its stand-in under the test root)
+ADMIN_GIT="$R$PROD_CLONE"
 SWITCH="$R/etc/sr-design-worker/imagefirst-autostart.json"
 MARKER="$R/etc/sr-design-worker/imagefirst-run.json"
+STANDING="$R/etc/sr-design-worker/imagefirst-standing.json"
+# root's freeze of standing pickups (a run broke a per-run limit); only the owner's setup standing --unfreeze removes it
+FREEZE="$R/var/lib/sr-imagefirst-autostart/standing.frozen"
 STATE="$R/var/lib/sr-imagefirst-autostart"
 CYCLE_STATE="$R/var/lib/sr-design-cycle"
 RESTORE_FLAG="$STATE/autorun.restore-pending"
@@ -390,6 +445,222 @@ step() {
   tr -d '\000-\010\013-\037' <"$out" | cut -c1-400
 }
 
+# ---------------------------------------------------------------- the installed copy (DEV-303)
+# A file of the installed copy: root's and writable by nobody else up to / (trusted_path). The test world: every component
+# up to the test root this user's and writable by nobody else.
+install_path_ok() {
+  local p
+  if [ -z "$R" ]; then trusted_path "$1"; return; fi
+  p="$(readlink -f -- "$1")" || return 1
+  case "$p" in "$R"/*) ;; *) return 1 ;; esac
+  while [ "$p" != "$R" ]; do
+    [ "$(stat -c %U -- "$p")" = "$FILE_ROOT" ] || return 1
+    [ $(( 0$(stat -c %a -- "$p") & 022 )) -eq 0 ] || return 1
+    p="$(dirname -- "$p")"
+  done
+}
+# This copy is the installed one, and every file the setup recorded in root's SHA256SUMS (this script, the pilot, its
+# preflight, admin.sh and what it sources, the memory check, ...) is a regular file there, trusted, with that SHA-256.
+# Sets INSTALL_WHY. The test world checks it only when the script runs from its own installed copy under the test root.
+INSTALL_WHY=""
+installed_ok() {
+  local base="$R$INSTALL_DIR" sums line rel f n=0 need
+  sums="$base/SHA256SUMS"
+  [ "$REPO" = "$base" ] || { INSTALL_WHY="this copy is not $INSTALL_DIR"; return 1; }
+  [ -f "$sums" ] && [ ! -L "$sums" ] && [ "$(stat -c %s -- "$sums")" -le 65536 ] && install_path_ok "$sums" || { INSTALL_WHY="$INSTALL_DIR/SHA256SUMS is missing or not root's only"; return 1; }
+  while IFS= read -r line; do
+    [[ "$line" =~ ^([0-9a-f]{64})\ \ ([A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)$ ]] || { INSTALL_WHY="SHA256SUMS has a line not in the form <sha256>  <path>"; return 1; }
+    rel="${BASH_REMATCH[2]}"
+    case "/$rel/" in */../* | */./*) INSTALL_WHY="SHA256SUMS names $rel"; return 1 ;; esac
+    f="$base/$rel"
+    [ -f "$f" ] && [ ! -L "$f" ] && install_path_ok "$f" || { INSTALL_WHY="$INSTALL_DIR/$rel is missing, a link, or not root's only up to /"; return 1; }
+    [ "$(sha256sum <"$f" | cut -d" " -f1)" = "${BASH_REMATCH[1]}" ] || { INSTALL_WHY="$INSTALL_DIR/$rel is not the copy the setup recorded (SHA-256)"; return 1; }
+    n=$((n + 1))
+  done <"$sums"
+  for need in scripts/sales-design-worker/imagefirst-autorun.sh scripts/sales-design-worker/imagefirst-pilot.sh \
+    scripts/sales-design-worker/imagefirst-pilot-preflight.sh scripts/sales-design-capture/admin.sh \
+    scripts/sales-design-capture/host-check.sh scripts/ops/wsl-resource-preflight.sh; do
+    grep -qE "^[0-9a-f]{64}  ${need//./\\.}\$" -- "$sums" || { INSTALL_WHY="SHA256SUMS does not record $need"; return 1; }
+  done
+  [ "$n" -gt 0 ]
+}
+
+# ---------------------------------------------------------------- the standing pre-authorization (DEV-303)
+# Root's policy (root's own file): exactly the keys below, the limits within the setup's ceilings, UTC times at most 90
+# days apart, created_at not ahead of now (5 min of clock slack), worker_commit the 40-hex commit the owner pinned. Prints
+# OK <per_day> <per_week> <origin|-> <worker_commit>, EXPIRED, or INVALID.
+STANDING_PY='
+import datetime, json, re, sys
+path, now, max_day, max_week, max_days = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+TS = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z", re.ASCII)
+def bad():
+    print("INVALID"); sys.exit(0)
+def ts(v):
+    if not isinstance(v, str) or not TS.match(v): bad()
+    try:
+        return int(datetime.datetime.strptime(v, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc).timestamp())
+    except ValueError:
+        bad()
+def lim(v, top):
+    if not isinstance(v, int) or isinstance(v, bool) or v < 1 or v > top: bad()
+    return v
+try:
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+except Exception:
+    bad()
+need = {"schema", "per_day", "per_week", "not_after", "created_at", "worker_commit"}
+if not isinstance(d, dict) or not need <= set(d) or not set(d) <= need | {"origin_url"}: bad()
+if d["schema"] != "sr_imagefirst_standing_v1": bad()
+day, week = lim(d["per_day"], max_day), lim(d["per_week"], max_week)
+if week < day: bad()
+created, until = ts(d["created_at"]), ts(d["not_after"])
+if until <= created or until - created > max_days * 86400 or created > now + 300 or until - now > max_days * 86400: bad()
+commit = d["worker_commit"]
+if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit, re.ASCII): bad()
+origin = d.get("origin_url", "-")
+if origin != "-" and (not isinstance(origin, str) or not re.fullmatch(r"[A-Za-z0-9._:/@+][A-Za-z0-9._:/@+-]*", origin, re.ASCII) or len(origin) > 300): bad()
+print("EXPIRED" if until <= now else "OK %d %d %s %s" % (day, week, origin, commit))
+'
+# A request's envelope, from the bytes the WORKER read for root (root's own work file): only these fields are root's
+# business (the rest is the worker's). Prints OK <created_at epoch> or REJECT <reason code>.
+REQUEST_PY='
+import datetime, json, re, sys
+path, rid, cap = sys.argv[1], sys.argv[2], int(sys.argv[3])
+def rej(code):
+    print("REJECT " + code); sys.exit(0)
+try:
+    with open(path, "rb") as f:
+        b = f.read(cap + 1)
+except Exception:
+    rej("REQ_UNREADABLE")
+if len(b) > cap: rej("REQ_TOO_LARGE")
+try:
+    d = json.loads(b.decode("utf-8"))
+except Exception:
+    rej("REQ_NOT_JSON")
+if not isinstance(d, dict): rej("REQ_NOT_JSON")
+if d.get("schema") != "sr_imagefirst_request_v1": rej("REQ_SCHEMA")
+if d.get("id") != rid: rej("REQ_ID_MISMATCH")
+s = d.get("shop_id")
+if not isinstance(s, str) or not re.fullmatch(r"[a-z0-9_-]{2,41}", s, re.ASCII): rej("REQ_SHOP_ID")
+if d.get("kind") not in ("real_shop", "fictional"): rej("REQ_KIND")
+c = d.get("created_at")
+if not isinstance(c, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", c, re.ASCII): rej("REQ_CREATED_AT")
+try:
+    t = int(datetime.datetime.strptime(c, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc).timestamp())
+except ValueError:
+    rej("REQ_CREATED_AT")
+print("OK %d" % t)
+'
+# a request id always starts with req- (an approval id, hoshigama-imagefirst-..., never does)
+REQ_ID_RE='^req-[a-z0-9][a-z0-9-]{2,58}$'
+# ... and never containing "imagefirst" (the worker refuses those): ^(?!.*imagefirst)req-..., bash has no look-ahead
+# The worker user's privilege drop for root's reads and notices (as write_review's); never with a file descriptor of root's
+as_worker_cmd() {
+  local uid gid
+  uid="$(id -u "$WORKER_USER" 2>/dev/null)" && gid="$(id -g "$WORKER_USER" 2>/dev/null)" || return 1
+  AS_W=(setpriv --reuid="$uid" --regid="$gid" --init-groups --reset-env --no-new-privs -- env -i HOME="$WORKER_HOME" PATH="$WORKER_PATH" LANG=C.UTF-8)
+}
+# Root's attempts within the last 24 h and 7 days (rolling): every autorun/<id> (the per-run approvals' too), failed or
+# not; a record without a readable attempted_at counts at its directory's time (unreadable too: now). Sets DAY_N, WEEK_N.
+count_attempts() {
+  local d t n age
+  DAY_N=0
+  WEEK_N=0
+  n="$(now)"
+  [ -d "$STATE/autorun" ] || return 0
+  for d in "$STATE"/autorun/*; do
+    [ -e "$d" ] || [ -L "$d" ] || continue
+    t=""
+    if [ -f "$d/attempt" ] && [ ! -L "$d/attempt" ]; then t="$(sed -n 's/^attempted_at=\([0-9]\{1,12\}\)$/\1/p' -- "$d/attempt" | head -n 1)"; fi
+    if [ -z "$t" ]; then
+      t="$(stat -c %Y -- "$d" 2>/dev/null)" || t=""
+      [[ "$t" =~ ^[0-9]+$ ]] || t="$n"
+      say "the attempt record ${d##*/} has no readable attempted_at: its directory's time is counted"
+    fi
+    age=$((n - t))
+    if [ "$age" -lt 604800 ]; then WEEK_N=$((WEEK_N + 1)); fi
+    if [ "$age" -lt 86400 ]; then DAY_N=$((DAY_N + 1)); fi
+  done
+}
+seen_id() {
+  local x
+  for x in autorun rejected used; do
+    if [ -e "$STATE/$x/$1" ] || [ -L "$STATE/$x/$1" ]; then return 0; fi
+  done
+  return 1
+}
+# An invalid request: root's rejected/<id> (with its reason code; never read again), then the worker's notice
+# ~/sr-runs/review-inbox/requests/<id>.rejected, written AS the worker (no link followed, never overwritten, 0600).
+reject_request() {
+  local id="$1" why="$2"
+  mkdir -p -m 0700 "$STATE/rejected"
+  # bounded: past REQ_MAX_REJECTED records nothing more is recorded (an unrecorded bad request is skipped again next time)
+  if [ "$(find "$STATE/rejected" -mindepth 1 -maxdepth 1 | wc -l)" -ge "$REQ_MAX_REJECTED" ]; then
+    say "request $id is invalid ($why), but rejected/ holds $REQ_MAX_REJECTED records already: not recorded (skipped)"
+    return 0
+  fi
+  mkdir -m 0700 "$STATE/rejected/$id" 2>/dev/null || return 0
+  printf 'request_id=%s\nreason=%s\nrejected_at=%s\n' "$id" "$why" "$(now)" >"$STATE/rejected/$id/reason"
+  say "request $id rejected: $why (never read again)"
+  # shellcheck disable=SC2016
+  timeout --kill-after=5 "$REQ_READ_TIMEOUT" "${AS_W[@]}" bash -c 'set -u; umask 077; r="$HOME/sr-runs"; d="$r/review-inbox/requests"
+    for p in "$r" "$r/review-inbox" "$d"; do
+      if [ ! -e "$p" ] && [ ! -L "$p" ] && [ "$p" != "$r" ]; then mkdir -m 700 -- "$p" || exit 3; fi
+      [ -d "$p" ] && [ ! -L "$p" ] || exit 3
+    done
+    f="$d/$1.rejected"
+    if [ -e "$f" ] || [ -L "$f" ]; then exit 4; fi
+    t="$(mktemp -- "$d/.rejected.XXXXXX")" || exit 3
+    printf "IMAGEFIRST_REQUEST_REJECTED id=%s reason=%s\n" "$1" "$2" >"$t" && chmod 600 -- "$t" && ln -- "$t" "$f"; rc=$?; rm -f -- "$t"; exit "$rc"' _ "$id" "$why" </dev/null 7>&- 8>&- 9>&- ||
+    say "the worker's notice for $id is not written (no ~/sr-runs, a link, or it exists already)"
+}
+# The requests, read AS THE WORKER (a pipe into root's own work files; root opens no file of the worker): the names, then
+# each unseen one (a regular file, no link, at most REQ_MAX_BYTES), its envelope checked. The oldest valid one (created_at,
+# then id) is copied into root's requests/<id>.json (0600). Sets APPROVAL (the request id) and REQ_SHA; returns 1 if none.
+pick_request() {
+  local names="$WORK/req-names" valid="$WORK/req-valid" n=0 id f rc got chosen
+  : >"$valid"
+  # shellcheck disable=SC2016
+  timeout --kill-after=5 "$REQ_READ_TIMEOUT" "${AS_W[@]}" bash -c 'set -u; r="$HOME/sr-runs"; d="$r/requests"
+    for p in "$r" "$d"; do [ -d "$p" ] && [ ! -L "$p" ] || exit 3; done
+    cd -- "$d" || exit 3
+    for f in *.json; do if [ -e "$f" ] || [ -L "$f" ]; then printf "%s\0" "$f"; fi; done' </dev/null >"$names" 2>/dev/null 7>&- 8>&- 9>&- || return 1
+  while IFS= read -r -d '' f; do
+    id="${f%.json}"
+    [[ "$f" == *.json ]] && [[ "$id" =~ $REQ_ID_RE ]] && [[ "$id" != *imagefirst* ]] || continue
+    seen_id "$id" && continue
+    n=$((n + 1))
+    [ "$n" -le "$REQ_MAX_NAMES" ] || break
+    rc=0
+    # shellcheck disable=SC2016
+    timeout --kill-after=5 "$REQ_READ_TIMEOUT" "${AS_W[@]}" bash -c 'set -u; f="$HOME/sr-runs/requests/$1.json"
+      [ -f "$f" ] && [ ! -L "$f" ] || exit 3
+      exec head -c "$2" -- "$f"' _ "$id" "$((REQ_MAX_BYTES + 1))" </dev/null >"$WORK/req.$id" 2>/dev/null 7>&- 8>&- 9>&- || rc=$?
+    case "$rc" in
+      0) ;;
+      3) reject_request "$id" REQ_NOT_REGULAR; continue ;;
+      *) reject_request "$id" REQ_UNREADABLE; continue ;;
+    esac
+    if [ "$(stat -c %s -- "$WORK/req.$id")" -gt "$REQ_MAX_BYTES" ]; then reject_request "$id" REQ_TOO_LARGE; continue; fi
+    got="$(python3 -I -c "$REQUEST_PY" "$WORK/req.$id" "$id" "$REQ_MAX_BYTES" 7>&- 8>&- 9>&-)" || got="REJECT REQ_UNREADABLE"
+    case "$got" in
+      "OK "*) printf '%s %s\n' "${got#OK }" "$id" >>"$valid" ;;
+      "REJECT "*) reject_request "$id" "${got#REJECT }" ;;
+      *) reject_request "$id" REQ_UNREADABLE ;;
+    esac
+  done <"$names"
+  chosen="$(LC_ALL=C sort -k1,1n -k2,2 -- "$valid" | head -n 1)"
+  [ -n "$chosen" ] || return 1
+  APPROVAL="${chosen#* }"
+  mkdir -p -m 0700 "$STATE/requests"
+  cp -- "$WORK/req.$APPROVAL" "$STATE/requests/.$APPROVAL.json.tmp"
+  chmod 0600 -- "$STATE/requests/.$APPROVAL.json.tmp"
+  mv -f -T -- "$STATE/requests/.$APPROVAL.json.tmp" "$STATE/requests/$APPROVAL.json"
+  REQ_SHA="$(sha256sum <"$STATE/requests/$APPROVAL.json" | cut -d" " -f1)"
+}
+
 # ---------------------------------------------------------------- --restore (the unit's ExecStopPost)
 if [ "$MODE" = restore ]; then
   in_autorun_unit || { say "AUTORUN_NOT_SERVICE: --restore runs only as sr-imagefirst-autorun.service's ExecStopPost"; finish AUTORUN_NOT_SERVICE 2; }
@@ -465,23 +736,45 @@ exec 7>"$STATE/autorun.lock"
 flock -n 7 || { say "another firing is running; nothing done"; finish AUTORUN_LOCKED 11; }
 WORK="$(mktemp -d "$STATE/autorun.XXXXXX")"
 
-# ---------------------------------------------------------------- 3. the owner's one-use run marker
-if [ ! -e "$MARKER" ] && [ ! -L "$MARKER" ]; then
-  finish AUTORUN_IDLE_NO_MARKER 10
+# ---------------------------------------------------------------- 3. the standing policy (if any), then (a) the run marker, else (b) a request
+# The policy first: while one is present it must be safe and valid (else nothing runs at all, the marker's run neither),
+# and while it is in force its owner-pinned worker_commit is the ONLY worker code any run executes.
+STANDING_OK=0
+POLICY_STATE=absent
+POLICY_ORIGIN=-
+WORKER_COMMIT=""
+if [ -e "$STANDING" ] || [ -L "$STANDING" ]; then
+  owner_file "$STANDING" || { say "AUTORUN_STANDING_UNSAFE: the standing policy must be a root-owned regular file nobody else can write: nothing runs"; finish AUTORUN_STANDING_UNSAFE 2; }
+  policy="$(python3 -I -c "$STANDING_PY" "$STANDING" "$(now)" "$MAX_PER_DAY" "$MAX_PER_WEEK" "$MAX_POLICY_DAYS" 7>&- 8>&- 9>&-)" || policy=INVALID
+  case "$policy" in
+    "OK "*) read -r PER_DAY PER_WEEK POLICY_ORIGIN WORKER_COMMIT <<<"${policy#OK }"; STANDING_OK=1; POLICY_STATE=ok ;;
+    EXPIRED) POLICY_STATE=expired ;;
+    *) say "AUTORUN_STANDING_INVALID: expected exactly {\"schema\": \"sr_imagefirst_standing_v1\", \"per_day\": 1-$MAX_PER_DAY, \"per_week\": 1-$MAX_PER_WEEK, \"not_after\", \"created_at\", \"worker_commit\"[, \"origin_url\"]} (at most $MAX_POLICY_DAYS days): nothing runs"; finish AUTORUN_STANDING_INVALID 2 ;;
+  esac
 fi
-owner_file "$MARKER" || { say "AUTORUN_MARKER_UNSAFE: the run marker must be a root-owned regular file nobody else can write"; finish AUTORUN_MARKER_UNSAFE 2; }
-marker="$(python3 -I -c "$MARKER_PY" "$MARKER" "$(now)" "$MAX_WINDOW" 7>&- 8>&- 9>&-)" || marker=INVALID
-case "$marker" in
-  "OK "*) APPROVAL="${marker#OK }" ;;
-  "EXPIRED "*) APPROVAL="${marker#EXPIRED }"; finish AUTORUN_IDLE_MARKER_EXPIRED 10 ;;
-  "TOO_FAR "*) APPROVAL="${marker#TOO_FAR }"; say "AUTORUN_MARKER_TOO_FAR: expires_at more than 24 h ahead"; finish AUTORUN_MARKER_INVALID 2 ;;
-  *) say "AUTORUN_MARKER_INVALID: expected exactly {\"approval_id\": \"hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN\", \"expires_at\": \"<UTC>Z\"}"; finish AUTORUN_MARKER_INVALID 2 ;;
-esac
-if [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/used/$APPROVAL" ]; then
-  finish AUTORUN_IDLE_MARKER_USED 10
+IDLE_CODE=AUTORUN_IDLE_NO_MARKER
+if [ -e "$MARKER" ] || [ -L "$MARKER" ]; then
+  owner_file "$MARKER" || { say "AUTORUN_MARKER_UNSAFE: the run marker must be a root-owned regular file nobody else can write"; finish AUTORUN_MARKER_UNSAFE 2; }
+  marker="$(python3 -I -c "$MARKER_PY" "$MARKER" "$(now)" "$MAX_WINDOW" 7>&- 8>&- 9>&-)" || marker=INVALID
+  case "$marker" in
+    "OK "*) APPROVAL="${marker#OK }"
+      if [ -e "$STATE/used/$APPROVAL" ] || [ -L "$STATE/used/$APPROVAL" ]; then IDLE_CODE=AUTORUN_IDLE_MARKER_USED
+      elif [ -e "$STATE/autorun/$APPROVAL" ] || [ -L "$STATE/autorun/$APPROVAL" ]; then IDLE_CODE=AUTORUN_IDLE_ATTEMPTED
+      else KIND=approval
+      fi ;;
+    "EXPIRED "*) APPROVAL="${marker#EXPIRED }"; IDLE_CODE=AUTORUN_IDLE_MARKER_EXPIRED ;;
+    "TOO_FAR "*) APPROVAL="${marker#TOO_FAR }"; say "AUTORUN_MARKER_TOO_FAR: expires_at more than 24 h ahead"; finish AUTORUN_MARKER_INVALID 2 ;;
+    *) say "AUTORUN_MARKER_INVALID: expected exactly {\"approval_id\": \"hoshigama-imagefirst-<d3|d4>-YYYYMMDD-NN\", \"expires_at\": \"<UTC>Z\"}"; finish AUTORUN_MARKER_INVALID 2 ;;
+  esac
 fi
-if [ -e "$STATE/autorun/$APPROVAL" ] || [ -L "$STATE/autorun/$APPROVAL" ]; then
-  finish AUTORUN_IDLE_ATTEMPTED 10
+if [ "$KIND" = none ]; then
+  # no per-run approval due: the owner's standing pre-authorization, if there is one (absent: nothing due, as before)
+  [ "$POLICY_STATE" != absent ] || finish "$IDLE_CODE" 10
+  APPROVAL=none
+  if [ "$POLICY_STATE" = expired ]; then say "the standing pre-authorization has expired (not_after): nothing runs until the owner sets a new one"; finish AUTORUN_IDLE_STANDING_EXPIRED 10; fi
+  # frozen by root after a run broke a per-run limit: only the owner clears it (setup standing --unfreeze --yes)
+  if [ -e "$FREEZE" ] || [ -L "$FREEZE" ]; then say "AUTORUN_STANDING_FROZEN: a run broke a per-run limit ($(head -c 200 -- "$FREEZE" 2>/dev/null | tr -d '\000-\037')): no request is picked up until the owner runs standing --unfreeze --yes"; finish AUTORUN_STANDING_FROZEN 2; fi
+  KIND=request
 fi
 
 # ---------------------------------------------------------------- 4. never with the old automatic start; nothing else running
@@ -495,15 +788,30 @@ st="$(systemctl show -p ActiveState --value sr-design-cycle.service 2>/dev/null)
 if ! ( exec 9>"$STATE/autostart.lock" && flock -n 9 ); then say "busy: an automatic start poll or a pilot holds its lock"; finish AUTORUN_BUSY 12; fi
 if [ -d "$CYCLE_STATE" ] && [ ! -L "$CYCLE_STATE" ] && ! ( exec 8>>"$CYCLE_STATE/cycle.lock" && flock -n 8 ); then say "busy: a design cycle holds its lock"; finish AUTORUN_BUSY 12; fi
 
-# ---------------------------------------------------------------- 5. the production copy: trusted scripts, a clean admin clone
-if [ -z "$R" ]; then
-  for f in "$SELF" "$PILOT" "$REPO/scripts/sales-design-worker/imagefirst-pilot-preflight.sh" "$REPO/scripts/sales-design-worker/imagefirst-deliver-review.sh" "$ADMIN"; do
-    trusted_path "$f" || { say "AUTORUN_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish AUTORUN_ADMIN_CLONE_UNTRUSTED 2; }
-  done
+# ---------------------------------------------------------------- 5. the installed copy; (b) the limits and a request; the commit pinned
+# The production copy: always its own installed copy, each file the one the setup recorded. The test world checks it only
+# when it runs from its own installed copy under the test root.
+if [ -z "$R" ] || [ "$REPO" = "$R$INSTALL_DIR" ]; then
+  installed_ok || { say "AUTORUN_INSTALL_UNTRUSTED: $INSTALL_WHY (run the setup's check, then apply)"; finish AUTORUN_INSTALL_UNTRUSTED 2; }
 fi
-# root's admin clone: clean, and its HEAD exactly origin's develop (asked with ls-remote from the admin clone's own
-# configured URL: nothing is written, so it also works under the unit's read-only /root). Sets ADMIN_NOW. Returns
-# 1 unreadable, 2 dirty, 3 origin not reachable, 4 HEAD is not origin's develop (ADMIN_REMOTE says what is).
+if [ "$KIND" = request ]; then
+  count_attempts
+  if [ "$DAY_N" -ge "$PER_DAY" ] || [ "$WEEK_N" -ge "$PER_WEEK" ]; then
+    say "the standing limit is reached ($DAY_N in 24 h of $PER_DAY, $WEEK_N in 7 days of $PER_WEEK): nothing read, nothing runs"
+    finish AUTORUN_IDLE_QUOTA 10
+  fi
+  as_worker_cmd || { say "AUTORUN_NO_WORKER_USER: $WORKER_USER"; finish AUTORUN_NO_WORKER_USER 2; }
+  if ! pick_request; then APPROVAL=none; finish AUTORUN_IDLE_NO_REQUEST 10; fi
+  say "request $APPROVAL is the oldest valid one (root's copy, SHA-256 recorded; $DAY_N in 24 h of $PER_DAY, $WEEK_N in 7 days of $PER_WEEK)"
+fi
+# The commit the run executes (the only worker code it runs outside the jail):
+#   - while the standing policy is in force (request runs AND per-run approvals): the policy's worker_commit, which the owner
+#     pinned with setup standing --expect <commit> (never develop's tip, never another commit). Root first checks the origin
+#     still has it (a fetch of exactly that commit into root's own throw-away repository, as root, nothing run): if not,
+#     AUTORUN_STANDING_COMMIT_UNAVAILABLE and nothing is attempted or spent;
+#   - without a standing policy (a per-run approval only, as before DEV-303): root's admin clone, clean, with its HEAD exactly
+#     origin's develop (the commit the owner checked out), asked again after the idle wait (moved: no pilot).
+# The origin URL: the policy's origin_url (when it names one), else root's admin clone's configured URL (only that value).
 ADMIN_NOW=""
 ADMIN_REMOTE=""
 admin_commit() {
@@ -513,28 +821,49 @@ admin_commit() {
   dirty="$(git -C "$ADMIN_GIT" --no-optional-locks status --porcelain --untracked-files=normal 2>/dev/null)" || return 1
   [ -z "$dirty" ] || return 2
   url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || return 1
-  [[ "$url" =~ ^[A-Za-z0-9._:/@+-]+$ ]] || return 1
+  [[ "$url" =~ ^[A-Za-z0-9._:/@+][A-Za-z0-9._:/@+-]*$ ]] || return 1
   remote="$(timeout --kill-after="$KILL_AFTER" "$ADMIN_FETCH_TIMEOUT" git -C "$ADMIN_GIT" -c protocol.ext.allow=never ls-remote "$url" refs/heads/develop 2>/dev/null 7>&- 8>&- 9>&-)" || return 3
   ADMIN_REMOTE="${remote%%[[:space:]]*}"
   [[ "$ADMIN_REMOTE" =~ ^[0-9a-f]{40}$ ]] || return 3
   [ "$head" = "$ADMIN_REMOTE" ] || return 4
   ADMIN_NOW="$head"
 }
-arc=0
-admin_commit || arc=$?
-case "$arc" in
-  0) ADMIN_SHA="$ADMIN_NOW" ;;
-  2) say "AUTORUN_ADMIN_CLONE_DIRTY: $PROD_CLONE has changes"; finish AUTORUN_ADMIN_CLONE_DIRTY 2 ;;
-  3) say "origin's develop could not be read from the admin clone's URL: nothing done (Remote Control untouched)"; finish AUTORUN_STOP_ADMIN_FETCH 20 ;;
-  4) say "AUTORUN_ADMIN_NOT_DEVELOP: the admin clone is not at origin's develop $ADMIN_REMOTE (Remote Control untouched). Run: sudo git -C $PROD_CLONE fetch -q origin && sudo git -C $PROD_CLONE checkout -q --detach origin/develop"
-    finish AUTORUN_ADMIN_NOT_DEVELOP 2 ;;
-  *) say "AUTORUN_ADMIN_CLONE_UNREADABLE: $PROD_CLONE"; finish AUTORUN_ADMIN_CLONE_UNREADABLE 2 ;;
-esac
+if [ "$STANDING_OK" = 1 ] && [ "$POLICY_ORIGIN" != - ]; then ORIGIN="$POLICY_ORIGIN"
+else ORIGIN="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || ORIGIN=""
+fi
+if ! [[ "$ORIGIN" =~ ^[A-Za-z0-9._:/@+][A-Za-z0-9._:/@+-]*$ ]]; then say "AUTORUN_ORIGIN_UNREADABLE: no plain origin URL (the policy's origin_url or $PROD_CLONE's)"; finish AUTORUN_ORIGIN_UNREADABLE 2; fi
+RECHECK_ADMIN=0
+if [ "$STANDING_OK" = 1 ]; then
+  ADMIN_SHA="$WORKER_COMMIT"
+  probe="$WORK/commit-probe"
+  if ! { git init -q --bare -- "$probe" >/dev/null 2>&1 7>&- 8>&- 9>&- &&
+    timeout --kill-after="$KILL_AFTER" "$ADMIN_FETCH_TIMEOUT" git -C "$probe" -c protocol.ext.allow=never fetch -q --no-tags --depth=1 "$ORIGIN" "$ADMIN_SHA" >/dev/null 2>&1 7>&- 8>&- 9>&- &&
+    git -C "$probe" cat-file -e "$ADMIN_SHA^{commit}" 2>/dev/null; }; then
+    say "AUTORUN_STANDING_COMMIT_UNAVAILABLE: the origin does not have the owner-pinned worker commit $ADMIN_SHA (or is unreachable): nothing attempted. The owner pins another with setup standing --yes --expect <commit> ..."
+    finish AUTORUN_STANDING_COMMIT_UNAVAILABLE 20
+  fi
+  rm -rf -- "$probe"
+else
+  arc=0
+  admin_commit || arc=$?
+  case "$arc" in
+    0) ADMIN_SHA="$ADMIN_NOW"; RECHECK_ADMIN=1 ;;
+    2) say "AUTORUN_ADMIN_CLONE_DIRTY: $PROD_CLONE has changes"; finish AUTORUN_ADMIN_CLONE_DIRTY 2 ;;
+    3) say "origin's develop could not be read from the admin clone's URL: nothing done (Remote Control untouched)"; finish AUTORUN_STOP_ADMIN_FETCH 20 ;;
+    4) say "AUTORUN_ADMIN_NOT_DEVELOP: the admin clone is not at origin's develop $ADMIN_REMOTE (Remote Control untouched). Run: sudo git -C $PROD_CLONE fetch -q origin && sudo git -C $PROD_CLONE checkout -q --detach origin/develop"
+      finish AUTORUN_ADMIN_NOT_DEVELOP 2 ;;
+    *) say "AUTORUN_ADMIN_CLONE_UNREADABLE: $PROD_CLONE"; finish AUTORUN_ADMIN_CLONE_UNREADABLE 2 ;;
+  esac
+fi
 
 # ---------------------------------------------------------------- 6. the intent, then Remote Control stopped
 mkdir -p -m 0700 "$STATE/autorun"
 if ! mkdir -m 0700 "$STATE/autorun/$APPROVAL" 2>/dev/null; then finish AUTORUN_IDLE_ATTEMPTED 10; fi
-printf 'approval_id=%s\nattempted_at=%s\ncommit=%s\n' "$APPROVAL" "$(now)" "$ADMIN_SHA" >"$STATE/autorun/$APPROVAL/attempt"
+if [ "$KIND" = request ]; then
+  printf 'request_id=%s\nkind=standing\nattempted_at=%s\ncommit=%s\nrequest_sha256=%s\n' "$APPROVAL" "$(now)" "$ADMIN_SHA" "$REQ_SHA" >"$STATE/autorun/$APPROVAL/attempt"
+else
+  printf 'approval_id=%s\nattempted_at=%s\ncommit=%s\n' "$APPROVAL" "$(now)" "$ADMIN_SHA" >"$STATE/autorun/$APPROVAL/attempt"
+fi
 # whether the jailed Claude was enabled before: only then is it started again afterwards
 was="$(systemctl is-enabled sr-jail-claude.service 2>/dev/null)" || true
 if [ "$was" = enabled ]; then was_enabled=yes; else was_enabled=no; fi
@@ -556,7 +885,7 @@ if [ "$INTERRUPTED" = 1 ]; then
   finish AUTORUN_STOP_SIGNAL 40
 fi
 PHASE=after_stop
-say "approval $APPROVAL is due (admin clone $ADMIN_SHA): one attempt (recorded); stopping Remote Control (admin.sh claude-stop; was enabled: $was_enabled)"
+say "$KIND $APPROVAL is due (commit $ADMIN_SHA pinned): one attempt (recorded); stopping Remote Control (admin.sh claude-stop; was enabled: $was_enabled)"
 set +e
 out="$(timeout --kill-after="$KILL_AFTER" "$ADMIN_TIMEOUT" bash "$ADMIN" claude-stop 2>&1 7>&- 8>&- 9>&-)"
 src=$?
@@ -573,21 +902,29 @@ while busy; do
 done
 say "idle: the jailed Claude stopped and disabled, no process of $WORKER_USER"
 
-# ---------------------------------------------------------------- 7. root's commit again, then the existing pilot once, pinned to it
-arc=0
-admin_commit || arc=$?
-if [ "$arc" -ne 0 ] || [ "$ADMIN_NOW" != "$ADMIN_SHA" ]; then
-  say "the admin clone or origin's develop changed since the check (was $ADMIN_SHA): no pilot (nothing used)"
-  finish AUTORUN_STOP_DEVELOP_MOVED 1
+# ---------------------------------------------------------------- 7. the existing pilot once, pinned to root's commit (never re-compared with develop)
+# without a standing policy (as before DEV-303): root's admin clone and origin's develop again; moved: no pilot
+if [ "$RECHECK_ADMIN" = 1 ]; then
+  arc=0
+  admin_commit || arc=$?
+  if [ "$arc" -ne 0 ] || [ "$ADMIN_NOW" != "$ADMIN_SHA" ]; then
+    say "the admin clone or origin's develop changed since the check (was $ADMIN_SHA): no pilot (nothing used)"
+    finish AUTORUN_STOP_DEVELOP_MOVED 1
+  fi
 fi
+say "the pilot: $PILOT"
 PILOT_ENV=(env)
 if [ -n "$R" ]; then PILOT_ENV+=("SR_IMAGEFIRST_PILOT_TEST_ROOT=$R"); fi
 # The pilot's result: its own result file (root's, in root's 0700 state, written by the pilot as its last act with a
 # temporary file and a rename), read only after the pilot has been reaped. Not its stdout or the exit status that comes
 # back through timeout(1): some timeout(1)s exit 143 after passing on a stop, whatever the pilot returned (PR #325 CI)
 RESULT="$STATE/autorun-result"
-rm -f -- "$RESULT" "$STATE"/.autorun-result.* "$STATE/autorun-clone"
-step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"
+rm -f -- "$RESULT" "$STATE"/.autorun-result.* "$STATE/autorun-clone" "$STATE/autorun-commit"
+if [ "$KIND" = request ]; then
+  step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun-request "$APPROVAL" "$ADMIN_SHA" "$ORIGIN" "$REQ_SHA"
+else
+  step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA" "$ORIGIN"
+fi
 pline=""
 PILOT_RC=none
 if [ -f "$RESULT" ] && [ ! -L "$RESULT" ] && [ "$(stat -c %s -- "$RESULT")" -le 512 ]; then pline="$(head -n 1 -- "$RESULT" | tr -d '\000-\037')"; fi
@@ -601,6 +938,31 @@ fi
 # a pilot that was killed (no result, or the step ended by a signal) never ran its copy-back: the run's sign-in copies the
 # CLIs may have refreshed go back now (before Remote Control returns), else the next run's start does it
 if [ "$PILOT_CODE" = PILOT_NO_RESULT ] || [ "$STEP_RC" -ge 128 ]; then recover_signins || true; fi
+# The per-run image ceiling, checked by root after the run (the worker's own limits are the owner-pinned worker code's):
+# once the worker may have started, the run's pictures are counted AS THE WORKER (its run directory's parts/ and the
+# inbox copy of its bundle; image files only). More than MAX_IMAGES, or no count: AUTORUN_IMAGE_CAP_EXCEEDED, and root's
+# freeze file stops every further standing pick-up until the owner's setup standing --unfreeze --yes.
+if [[ "$pline" == *" phase=after_claim "* ]] || [ "$PILOT_CODE" = PILOT_NO_RESULT ]; then
+  IMG_N=""
+  if ! busy && as_worker_cmd; then
+    # shellcheck disable=SC2016
+    IMG_N="$(timeout --kill-after=5 30 "${AS_W[@]}" bash -c 'set -u; id="$1"; r="$HOME/sr-runs"; n=0
+      [ -d "$r" ] && [ ! -L "$r" ] || { echo 0; exit 0; }
+      for d in "$r/$id"-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z/parts "$r/review-inbox/$id"; do
+        [ -d "$d" ] && [ ! -L "$d" ] || continue
+        c="$(find "$d" -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" -o -iname "*.gif" \) | wc -l)" || exit 3
+        if [ "$c" -gt "$n" ]; then n="$c"; fi
+      done
+      echo "$n"' _ "$APPROVAL" </dev/null 2>/dev/null 7>&- 8>&- 9>&-)" || IMG_N=""
+  fi
+  if ! [[ "$IMG_N" =~ ^[0-9]+$ ]] || [ "$IMG_N" -gt "$MAX_IMAGES" ]; then
+    why="${IMG_N:-uncountable} images (at most $MAX_IMAGES)"
+    printf 'frozen_at=%s\nid=%s\nreason=AUTORUN_IMAGE_CAP_EXCEEDED %s\n' "$(now)" "$APPROVAL" "$why" >"$FREEZE"
+    say "AUTORUN_IMAGE_CAP_EXCEEDED: the run of $APPROVAL left $why: standing pick-ups are FROZEN until the owner runs standing --unfreeze --yes"
+    finish AUTORUN_IMAGE_CAP_EXCEEDED 1
+  fi
+  say "images of this run: $IMG_N (at most $MAX_IMAGES)"
+fi
 if [ "$INTERRUPTED" = 1 ]; then finish AUTORUN_INTERRUPTED 1; fi
 if [ "$PILOT_RC" = 0 ] && [ "$PILOT_CODE" = PILOT_DONE ]; then finish AUTORUN_DONE 0; fi
 say "the pilot ended $PILOT_CODE (its exit $PILOT_RC; the step returned $STEP_RC): never retried"

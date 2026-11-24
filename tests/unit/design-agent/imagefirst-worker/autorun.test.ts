@@ -102,7 +102,7 @@ esac`,
   exe(
     join(w.bin, "setpriv"),
     `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${w.sc}/setpriv.log'
-if [ "\${@: -1}" = scripts/sales-design-worker/imagefirst-worker.ts ]; then echo "worker used=$(ls '${state}/used' 2>/dev/null | tr '\\n' ,)" >> '${events}'; fi
+if [ "\${@: -1}" = scripts/sales-design-worker/imagefirst-worker.ts ] || { [[ " $* " == *" scripts/sales-design-worker/imagefirst-worker.ts --request "* ]] && [ "\${@: -1}" != --precheck ]; }; then echo "worker used=$(ls '${state}/used' 2>/dev/null | tr '\\n' ,)" >> '${events}'; fi
 exec "$@"`,
   );
   const env = { ...w.env, SR_IMAGEFIRST_AUTORUN_TEST_ROOT: w.t, SR_IMAGEFIRST_APPROVE_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv;
@@ -114,8 +114,8 @@ exec "$@"`,
     expect(existsSync(join(w.sc, "model-cli.log")), "a codex / claude binary was started").toBe(false);
     return { status, stdout, code: m![1]!, approval: m![2]!, pilot: m![3]!, rc: m![4]! };
   };
-  const run = (args: string[] = []) => {
-    const r = spawnSync("bash", [AUTORUN, ...args], { env, encoding: "utf8", timeout: 400_000 });
+  const run = (args: string[] = [], script: string = AUTORUN) => {
+    const r = spawnSync("bash", [script, ...args], { env, encoding: "utf8", timeout: 400_000 });
     return parse(r.status, r.stdout);
   };
   const runAsync = () => {
@@ -141,6 +141,24 @@ exec "$@"`,
     attempted: () => (existsSync(join(state, "autorun")) ? readdirSync(join(state, "autorun")) : []),
     flag: () => existsSync(join(state, "autorun.restore-pending")),
     review: (id: string = ID) => join(w.home, "sr-runs", "review-inbox", "runs", `${id}.share.txt`),
+    /** DEV-303: the owner's standing policy (root's file, 0644). */
+    standing: (over: Record<string, unknown> = {}, days = 30) =>
+      writeFileSync(join(etc, "imagefirst-standing.json"), JSON.stringify({ schema: "sr_imagefirst_standing_v1", per_day: 2, per_week: 8, not_after: utc(Date.now() + days * 86400_000), created_at: utc(Date.now() - 60_000), worker_commit: git(admin, "rev-parse", "HEAD"), ...over }), { mode: 0o644 }),
+    /** DEV-303: Claude's request file (the worker's ~/sr-runs/requests/<id>.json); returns its bytes. */
+    request: (id: string, over: Record<string, unknown> = {}) => {
+      mkdirSync(join(w.home, "sr-runs", "requests"), { recursive: true, mode: 0o700 });
+      const b = Buffer.from(JSON.stringify({ schema: "sr_imagefirst_request_v1", id, shop_id: "hoshigama", kind: "fictional", created_at: "2026-11-23T00:00:00Z", direction: "worker's business", ...over }));
+      writeFileSync(join(w.home, "sr-runs", "requests", `${id}.json`), b, { mode: 0o600 });
+      return b;
+    },
+    rejected: () => (existsSync(join(state, "rejected")) ? readdirSync(join(state, "rejected")).sort() : []),
+    /** A stand-in pilot (fast): records its arguments; PILOT_DONE unless <sc>/pilot-fail. */
+    fastPilot: () =>
+      writeFileSync(
+        join(w.t, "pilot-stand-in.sh"),
+        `echo "$*" >> '${w.sc}/pilot-args.log'\ncode=PILOT_DONE; rc=0; if [ -f '${w.sc}/pilot-fail' ]; then code=PILOT_WORKER_STOPPED; rc=1; fi\necho "IMAGEFIRST_PILOT $code phase=after_claim approval=$2 exit=$rc" > '${join(state, "autorun-result")}'\nexit $rc\n`,
+      ),
+    pilotArgs: () => (existsSync(join(w.sc, "pilot-args.log")) ? readFileSync(join(w.sc, "pilot-args.log"), "utf8").trim().split("\n").filter(Boolean) : []),
   };
 }
 type World = ReturnType<typeof world>;
@@ -452,7 +470,7 @@ exit $rc`);
     expect(w.events()).toEqual([]);
   });
 
-  it("review M1: root's admin clone not at origin's develop (refused, Remote Control untouched), or develop moving during the stop (no pilot)", () => {
+  it("review M1 (no standing policy, as before DEV-303): root's admin clone not at origin's develop (refused, Remote Control untouched), or develop moving during the stop (no pilot)", () => {
     const w = world();
     w.switchOn();
     w.marker();
@@ -466,7 +484,6 @@ exit $rc`);
     git(w.admin, "checkout", "-q", "--detach", "origin/develop");
     expect(w.run()).toMatchObject({ status: 2, code: "AUTORUN_ADMIN_CLONE_DIRTY", rc: "untouched" });
     untouched(w);
-    // develop moves while Remote Control is being stopped: no pilot, nothing used, Remote Control back
     const v = world();
     v.switchOn();
     v.marker();
@@ -478,6 +495,50 @@ exit $rc`);
     expect(v.events()).toEqual(["admin claude-stop", "admin claude-start"]);
     expect(v.starts()).toEqual([]);
     expect(v.used()).toEqual([]);
+  });
+
+  it("DEV-303 CRITICAL: under a standing policy every run executes ONLY the owner-pinned worker_commit (never develop's tip, no ancestor rule); develop moving changes nothing", () => {
+    // develop moves on before and during the run; the admin clone has changes: none of it matters, the pin runs
+    const w = world();
+    w.switchOn();
+    const pinned = git(w.admin, "rev-parse", "HEAD");
+    w.standing({ worker_commit: pinned });
+    w.marker();
+    const tip = pushOrigin(w, "claude-merged-later");
+    writeFileSync(join(w.admin, "stray.txt"), "x");
+    const helper = join(w.sc, "move-develop");
+    git(w.t, "clone", "-q", "--branch", "develop", w.origin, helper);
+    commitFiles(helper, { "docs/moved.md": Buffer.from("x") }, "moved");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: ID, pilot: "PILOT_DONE", rc: "restored" });
+    expect(r.stdout).toContain(`a fresh clone at root's verified commit ${pinned}`);
+    expect(r.stdout).toMatch(new RegExp(`\\| clone +\\| PASS \\| clean, HEAD = origin/develop = root's verified ${pinned}`));
+    expect(readFileSync(join(w.state, "autorun", ID, "attempt"), "utf8")).toContain(`commit=${pinned}\n`);
+    const fresh = readdirSync(join(w.home, "imagefirst")).filter((n) => /^autorun-.*Z$/.test(n));
+    expect(git(join(w.home, "imagefirst", fresh[0]!), "rev-parse", "HEAD")).toBe(pinned);
+    expect(git(w.origin, "rev-parse", "refs/heads/develop")).not.toBe(pinned);
+    expect(tip).not.toBe(pinned);
+    // a pinned commit that is not on develop at all (another branch the origin has): exactly it runs
+    const v = world();
+    v.switchOn();
+    const side = tmp("sr-ifr-side-");
+    git(side, "clone", "-q", "--branch", "develop", v.origin, ".");
+    commitFiles(side, { "docs/side.md": Buffer.from("side") }, "side");
+    git(side, "push", "-q", "origin", "HEAD:refs/heads/side");
+    const sideSha = git(side, "rev-parse", "HEAD");
+    v.standing({ worker_commit: sideSha });
+    v.request("req-side");
+    expect(v.run()).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-side" });
+    expect(readFileSync(join(v.state, "autorun", "req-side", "attempt"), "utf8")).toContain(`commit=${sideSha}\n`);
+    // the origin no longer has the pin: nothing attempted, nothing spent, Remote Control untouched
+    const u = world();
+    u.switchOn();
+    u.standing({ worker_commit: "0123456789abcdef0123456789abcdef01234567" });
+    u.request("req-gone");
+    const g = u.run();
+    expect(g, g.stdout).toMatchObject({ status: 20, code: "AUTORUN_STANDING_COMMIT_UNAVAILABLE", rc: "untouched" });
+    untouched(u);
+    expect(u.rejected()).toEqual([]);
   });
 
   it("claude-start fails: exit 3, the flag stays; the unit's ExecStopPost (--restore) starts it once; --restore without the flag does nothing", () => {
@@ -551,30 +612,32 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     const w = wsl();
     const admin = adminClone(w);
     const sha = git(admin, "rev-parse", "HEAD");
-    const r = w.pilot(["--autorun", ID, sha]);
+    const r = w.pilot(["--autorun", ID, sha, w.origin]);
     expect([r.status, r.code, r.phase]).toEqual([2, "PILOT_AUTORUN_REFUSED", "before_claim"]);
     expect(w.starts()).toEqual([]);
-    for (const bad of [["--autorun", ID], ["--autorun", "../x", sha], ["--autorun", "hoshigama-imagefirst-d3-00000000-01", sha], ["--autorun", ID, ID], ["--autorun", ID, sha.toUpperCase()], ["--autorun", ID, sha, sha]]) expect(w.pilot(bad).status, bad.join(" ")).toBe(2);
+    for (const bad of [["--autorun", ID], ["--autorun", ID, sha], ["--autorun", "../x", sha, w.origin], ["--autorun", "hoshigama-imagefirst-d3-00000000-01", sha, w.origin], ["--autorun", ID, ID, w.origin], ["--autorun", ID, sha.toUpperCase(), w.origin], ["--autorun", ID, sha, sha, sha], ["--autorun-request", "x", sha, w.origin, "a".repeat(64)], ["--autorun-request", "req-ok", sha, w.origin, "short"]]) expect(w.pilot(bad).status, bad.join(" ")).toBe(2);
     insideService(w);
-    // review M1: another commit than root's admin clone's, or an admin clone with changes: refused before anything
-    expect(w.pilot(["--autorun", ID, "0".repeat(40)])).toMatchObject({ status: 2, code: "PILOT_AUTORUN_SHA_MISMATCH" });
-    writeFileSync(join(admin, "stray.txt"), "x");
-    expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 2, code: "PILOT_AUTORUN_SHA_MISMATCH" });
-    rmSync(join(admin, "stray.txt"));
+    // DEV-303: the origin URL is root's (passed by the automatic run); an unusual one is refused before anything
+    expect(w.pilot(["--autorun", ID, sha, "-uhoh"])).toMatchObject({ status: 2, code: "PILOT_AUTORUN_ORIGIN_INVALID" });
+    expect(w.pilot(["--autorun", ID, sha, "a b"])).toMatchObject({ status: 2, code: "PILOT_AUTORUN_ORIGIN_INVALID" });
     mkdirSync(join(w.t, "var", "lib", "sr-imagefirst-autostart", "used", ID), { recursive: true });
-    expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 2, code: "PILOT_MARKER_USED", phase: "before_claim" });
+    expect(w.pilot(["--autorun", ID, sha, w.origin])).toMatchObject({ status: 2, code: "PILOT_MARKER_USED", phase: "before_claim" });
     expect(w.starts()).toEqual([]);
   });
 
-  it("review M1: pilot --autorun with origin's develop not at root's commit: stopped before the preflight, nothing spent", () => {
+  it("DEV-303: pilot --autorun fetches exactly root's commit by id; one the origin does not have: PILOT_STANDING_COMMIT_UNAVAILABLE before the preflight, nothing spent", () => {
     const w = wsl();
-    const admin = adminClone(w);
+    adminClone(w);
     insideService(w);
     writeFileSync(join(w.sc, "sr-imagefirst-autorun.service"), "activating");
-    const sha = git(admin, "rev-parse", "HEAD");
-    pushOrigin(w, "moved");
-    expect(w.pilot(["--autorun", ID, sha])).toMatchObject({ status: 20, code: "PILOT_AUTORUN_DEVELOP_MOVED", phase: "before_claim" });
+    expect(w.pilot(["--autorun", ID, "0123456789abcdef0123456789abcdef01234567", w.origin])).toMatchObject({ status: 20, code: "PILOT_STANDING_COMMIT_UNAVAILABLE", phase: "before_claim" });
     expect(w.starts()).toEqual([]);
+    expect(existsSync(join(w.t, "var", "lib", "sr-imagefirst-autostart", "used"))).toBe(false);
+    // the pilot never compares with develop's tip or accepts an ancestor: the source has no merge-base / clone --branch
+    const pilot = readFileSync(PILOT, "utf8");
+    expect(pilot).not.toMatch(/merge-base --is-ancestor "\$AUTORUN_SHA"|clone --quiet --no-local/);
+    expect(pilot).toContain('fetch --quiet --no-tags origin "+$AUTORUN_SHA:refs/remotes/origin/develop"');
+    expect(readFileSync(PREFLIGHT, "utf8")).not.toMatch(/has moved on|merge-base --is-ancestor "\$admin_head"/);
   });
 
   it("review H1: old fresh clones: the newest kept, older ones removed; links, other names and other places never touched", () => {
@@ -851,6 +914,9 @@ kill -KILL $$
     symlinkSync(join(REPO, "node_modules", "tsx"), join(fc, "node_modules", "tsx"), "dir");
     mkdirSync(join(v.t, "var", "lib", "sr-imagefirst-autostart"), { recursive: true });
     writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-clone"), `${fc}\n`);
+    // DEV-303: the commit root pinned (the pilot writes it next to the clone's name)
+    const pinned = git(vadmin, "rev-parse", "HEAD");
+    writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-commit"), `${pinned}\n`);
     // and its own config dirs, as the pilot builds them
     configTrust(v);
     buildCfg(`${fc}.cfg`);
@@ -860,11 +926,20 @@ kill -KILL $$
     const ok = v.preflight([ID]);
     expect(ok.status, ok.stdout).toBe(0);
     expect(ok.rows.timers?.why).toMatch(/inside sr-imagefirst-autorun\.service \(activating\)/);
-    expect(ok.rows.clone?.why).toBe(`clean, HEAD = origin/develop = root's verified ${git(vadmin, "rev-parse", "HEAD")}`);
-    // review M1: inside the service the clone row compares with root's commit, not only with the clone's own origin/develop
-    commitFiles(vadmin, { "docs/admin-only.md": Buffer.from("x") }, "a commit only in the admin clone");
+    expect(ok.rows.clone?.why).toBe(`clean, HEAD = origin/develop = root's verified ${pinned}`);
+    // review M1 / DEV-303: inside the service the clone row compares with root's PINNED commit (root's state file), not
+    // with the clone's own origin/develop; a missing or other pin fails
+    writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-commit"), `${"0".repeat(40)}\n`);
     expect(v.preflight([ID]).rows.clone?.ok).toBe(false);
-    git(vadmin, "reset", "-q", "--hard", "HEAD~1");
+    rmSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-commit"));
+    expect(v.preflight([ID]).rows.clone?.why).toMatch(/pinned commit .* missing/);
+    writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-commit"), `${pinned}\n`);
+    // DEV-303: no ancestor rule: the clone's origin/develop anything but the pin (e.g. a later commit) fails
+    commitFiles(fc, { "docs/later.md": Buffer.from("x") }, "later on develop");
+    git(fc, "update-ref", "refs/remotes/origin/develop", "HEAD");
+    git(fc, "reset", "-q", "--hard", "HEAD~1");
+    expect(v.preflight([ID]).rows.clone?.ok).toBe(false);
+    git(fc, "update-ref", "refs/remotes/origin/develop", "HEAD");
     // the state file naming another id's clone, or a path outside the prefix: the worker rows fail (the reused clone is never used)
     for (const bad of [join(v.home, "imagefirst", `autorun-${D4}-20261121T000000Z`), v.clone, `${fc}/../second-root`]) {
       writeFileSync(join(v.t, "var", "lib", "sr-imagefirst-autostart", "autorun-clone"), `${bad}\n`);
@@ -875,6 +950,374 @@ kill -KILL $$
     // the old automatic start is refused there too
     writeFileSync(join(v.sc, "enabled-sr-imagefirst-autostart.timer"), "enabled");
     expect(v.preflight([ID]).rows.timers?.ok).toBe(false);
+  });
+});
+
+describe("DEV-303 standing pre-authorization: the owner's one-time policy and Claude's request files", () => {
+  const RID = "req-hoshigama-001";
+
+  it("one request end to end: picked up as the worker, root's copy + SHA-256, the worker gets --request <id> --request-sha256 <hex> and a private copy; never twice", () => {
+    const w = world();
+    w.switchOn();
+    w.standing();
+    const bytes = w.request(RID);
+    const want = sha(bytes);
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: RID, pilot: "PILOT_DONE", rc: "restored" });
+    // root's copy: 0600 in root's 0700 state, the very bytes; the attempt records the request's SHA-256 and the pinned commit
+    const copy = join(w.state, "requests", `${RID}.json`);
+    expect(readFileSync(copy)).toEqual(bytes);
+    expect(statSync(copy).mode & 0o777).toBe(0o600);
+    const attempt = readFileSync(join(w.state, "autorun", RID, "attempt"), "utf8");
+    expect(attempt).toMatch(new RegExp(`^request_id=${RID}\\nkind=standing\\nattempted_at=\\d+\\ncommit=${git(w.admin, "rev-parse", "HEAD")}\\nrequest_sha256=${want}\\n$`));
+    // the worker: once, with the request id and root's SHA-256, no approval grant, the run's private copy (same bytes)
+    const fresh = readdirSync(join(w.home, "imagefirst")).filter((n) => /^autorun-req-hoshigama-001-\d{8}T\d{6}Z$/.test(n));
+    expect(fresh).toHaveLength(1);
+    const fc = join(w.home, "imagefirst", fresh[0]!);
+    const runs = w.spent().filter((x) => x.cli === "worker");
+    expect(runs.map((x) => x.argv)).toEqual([["--request", RID, "--request-sha256", want]]);
+    expect(runs[0]!.requestFile).toBe(`${fc}.request/${RID}.json`);
+    expect(runs[0]!.requestSha).toBe(want);
+    expect(runs[0]!.env).not.toContain("SR_IMAGEFIRST_EXPECT_APPROVAL_ID");
+    expect(statSync(`${fc}.request/${RID}.json`).mode & 0o777).toBe(0o600);
+    expect(w.spent().filter((x) => x.cli === "audit").map((x) => x.argv)).toEqual([[RID]]);
+    expect(r.stdout).toMatch(/\| approval +\| PASS \| standing request req-hoshigama-001/);
+    // no packet precheck for a request; the worker's own precheck of the request instead, in the fresh clone, before the run
+    expect(w.starts().filter((x) => x.cli === "worker" && x.argv[0] === "--precheck")).toEqual([]);
+    const pre = w.starts().filter((x) => x.cli === "worker" && x.argv.includes("--precheck"));
+    expect(pre.map((x) => x.argv)).toEqual([["--request", RID, "--request-sha256", want, "--precheck"]]);
+    expect(pre[0]!.cwd).toBe(fc);
+    expect(pre[0]!.requestSha).toBe(want);
+    expect(w.events()).toEqual(["admin claude-stop", `worker used=${RID},`, "admin claude-start"]);
+    expect(readFileSync(w.review(RID), "utf8")).toContain(`IMAGEFIRST_AUTORUN_RESULT AUTORUN_DONE approval=${RID} pilot=PILOT_DONE exit=0`);
+    // the next firings: nothing new, Remote Control untouched, nothing spent again (the request file is still there)
+    for (let i = 0; i < 2; i++) expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST", approval: "none", rc: "untouched" });
+    expect(w.events()).toHaveLength(3);
+    expect(w.spent()).toHaveLength(2);
+  });
+
+  it("the worker's own precheck of the request runs before anything is spent: refused (exit 2) = preflight FAIL, no worker run, nothing used", () => {
+    const w = world();
+    w.switchOn();
+    w.standing();
+    w.request(RID);
+    writeFileSync(join(w.home, "stub-request-precheck"), "REQUEST_SHOP_NOT_CONFIRMED");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", approval: RID, pilot: "PILOT_PREFLIGHT_FAILED", rc: "restored" });
+    expect(r.stdout).toMatch(/\| approval +\| FAIL \| standing request req-hoshigama-001: precheck exit 2: .*REQUEST_SHOP_NOT_CONFIRMED/);
+    expect(w.spent()).toEqual([]);
+    expect(w.used()).toEqual([]);
+    expect(w.attempted()).toEqual([RID]);
+    expect(w.starts().filter((x) => x.cli === "worker" && x.argv.includes("--precheck")).map((x) => x.argv.at(-1))).toEqual(["--precheck"]);
+    expect(w.events()).toEqual(["admin claude-stop", "admin claude-start"]);
+  });
+
+  it("no, expired, unsafe or invalid policy: nothing runs and no request is read", () => {
+    const cases: [string, (w: World) => void, number, string][] = [
+      ["no policy", () => {}, 10, "AUTORUN_IDLE_NO_MARKER"],
+      ["expired", (w) => w.standing({ not_after: utc(Date.now() - 60_000), created_at: utc(Date.now() - 86400_000) }), 10, "AUTORUN_IDLE_STANDING_EXPIRED"],
+      ["writable by others (not root's only)", (w) => { w.standing(); chmodSync(join(w.etc, "imagefirst-standing.json"), 0o666); }, 2, "AUTORUN_STANDING_UNSAFE"],
+      ["a link", (w) => { w.standing(); writeFileSync(join(w.etc, "elsewhere.json"), readFileSync(join(w.etc, "imagefirst-standing.json")), { mode: 0o644 }); rmSync(join(w.etc, "imagefirst-standing.json")); symlinkSync(join(w.etc, "elsewhere.json"), join(w.etc, "imagefirst-standing.json")); }, 2, "AUTORUN_STANDING_UNSAFE"],
+      ["per_day over 4", (w) => w.standing({ per_day: 5, per_week: 20 }), 2, "AUTORUN_STANDING_INVALID"],
+      ["per_week over 20", (w) => w.standing({ per_week: 21 }), 2, "AUTORUN_STANDING_INVALID"],
+      ["per_week under per_day", (w) => w.standing({ per_day: 3, per_week: 2 }), 2, "AUTORUN_STANDING_INVALID"],
+      ["more than 90 days", (w) => w.standing({}, 91), 2, "AUTORUN_STANDING_INVALID"],
+      ["created in the future", (w) => w.standing({ created_at: utc(Date.now() + 3600_000) }), 2, "AUTORUN_STANDING_INVALID"],
+      ["another key", (w) => w.standing({ unlimited: true }), 2, "AUTORUN_STANDING_INVALID"],
+      ["another schema", (w) => w.standing({ schema: "sr_imagefirst_standing_v2" }), 2, "AUTORUN_STANDING_INVALID"],
+      ["a boolean limit", (w) => w.standing({ per_day: true }), 2, "AUTORUN_STANDING_INVALID"],
+      ["an unusual origin_url", (w) => w.standing({ origin_url: "-uhoh" }), 2, "AUTORUN_STANDING_INVALID"],
+      ["no worker_commit", (w) => w.standing({ worker_commit: undefined }), 2, "AUTORUN_STANDING_INVALID"],
+      ["a short worker_commit", (w) => w.standing({ worker_commit: "abc123" }), 2, "AUTORUN_STANDING_INVALID"],
+      ["an invalid policy blocks a due marker too", (w) => { w.standing({ per_day: 9 }); w.marker(); }, 2, "AUTORUN_STANDING_INVALID"],
+    ];
+    for (const [name, arrange, status, code] of cases) {
+      const w = world();
+      w.switchOn();
+      w.request(RID);
+      arrange(w);
+      expect(w.run(), name).toMatchObject({ status, code, approval: "none", rc: "untouched" });
+      untouched(w);
+      expect(w.rejected(), name).toEqual([]);
+      expect(existsSync(join(w.state, "requests")), name).toBe(false);
+    }
+  });
+
+  it("the limits: per day and per week, rolling, from root's attempt records (a failed attempt counts, an unreadable one counts as now)", () => {
+    const w = world();
+    w.switchOn();
+    w.standing({ per_day: 2, per_week: 3 });
+    w.fastPilot();
+    const s = Math.floor(Date.now() / 1000);
+    const plant = (id: string, at: string | null) => {
+      mkdirSync(join(w.state, "autorun", id), { recursive: true, mode: 0o700 });
+      if (at !== null) writeFileSync(join(w.state, "autorun", id, "attempt"), `request_id=${id}\nkind=standing\nattempted_at=${at}\n`);
+    };
+    plant("old-a", String(s - 23 * 3600));
+    plant("old-b", String(s - 25 * 3600));
+    w.request("req-one", { created_at: "2026-11-01T00:00:00Z" });
+    w.request("req-two", { created_at: "2026-11-02T00:00:00Z" });
+    // 1 in 24 h (< 2), 2 in 7 days (< 3): the oldest request runs; its pilot fails, the attempt counts all the same
+    writeFileSync(join(w.sc, "pilot-fail"), "");
+    expect(w.run()).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", approval: "req-one", pilot: "PILOT_WORKER_STOPPED" });
+    rmSync(join(w.sc, "pilot-fail"));
+    // now 2 in 24 h and 3 in 7 days: the limit; req-two is not even read
+    const q = w.run();
+    expect(q, q.stdout).toMatchObject({ status: 10, code: "AUTORUN_IDLE_QUOTA", approval: "none", rc: "untouched" });
+    expect(existsSync(join(w.state, "requests", "req-two.json"))).toBe(false);
+    // 2 h later: old-a left the 24 h window, but the week still holds 3
+    writeFileSync(join(w.t, "clock"), String(s + 2 * 3600));
+    expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_QUOTA" });
+    // 8 days later: every earlier attempt is out of both windows: req-two runs
+    writeFileSync(join(w.t, "clock"), String(s + 8 * 86400));
+    expect(w.run()).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-two" });
+    expect(w.pilotArgs().map((l) => l.split(" ").slice(0, 2).join(" "))).toEqual(["--autorun-request req-one", "--autorun-request req-two"]);
+    // an attempt record without a readable time counts as now (fail closed)
+    const v = world();
+    v.switchOn();
+    v.standing({ per_day: 1, per_week: 8 });
+    v.fastPilot();
+    mkdirSync(join(v.state, "autorun", "broken"), { recursive: true, mode: 0o700 });
+    v.request("req-three");
+    expect(v.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_QUOTA" });
+    expect(v.pilotArgs()).toEqual([]);
+  });
+
+  it("the oldest valid request first (created_at, then id); one attempt per id even after a failure, never retried or re-read", () => {
+    const w = world();
+    w.switchOn();
+    w.standing({ per_day: 4, per_week: 20 });
+    w.fastPilot();
+    w.request("req-c01", { created_at: "2026-11-20T00:00:00Z" });
+    w.request("req-b01", { created_at: "2026-11-21T00:00:00Z" });
+    w.request("req-a01", { created_at: "2026-11-21T00:00:00Z", kind: "real_shop", shop_id: "some_shop-1" });
+    writeFileSync(join(w.sc, "pilot-fail"), "");
+    expect(w.run()).toMatchObject({ status: 1, code: "AUTORUN_PILOT_STOPPED", approval: "req-c01" });
+    rmSync(join(w.sc, "pilot-fail"));
+    // the failed request rewritten by the worker afterwards: never read again
+    w.request("req-c01", { created_at: "2020-01-01T00:00:00Z" });
+    expect(w.run()).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-a01" });
+    expect(w.run()).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-b01" });
+    expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST" });
+    const origin = git(w.admin, "config", "--get", "remote.origin.url");
+    const head = git(w.admin, "rev-parse", "HEAD");
+    const args = w.pilotArgs();
+    expect(args.map((l) => l.split(" ")[1])).toEqual(["req-c01", "req-a01", "req-b01"]);
+    for (const l of args) expect(l).toMatch(new RegExp(`^--autorun-request req-[a-c]01 ${head} ${origin.replace(/[.]/g, "\\.")} [0-9a-f]{64}$`));
+    expect(w.attempted().sort()).toEqual(["req-a01", "req-b01", "req-c01"]);
+    expect(w.events()).toEqual(["admin claude-stop", "admin claude-start", "admin claude-stop", "admin claude-start", "admin claude-stop", "admin claude-start"]);
+  });
+
+  it("invalid requests: root's rejected/<id> with a reason, the worker's notice (written as the worker), never retried; links, FIFOs, directories and oversize files are refused", () => {
+    const w = world();
+    w.switchOn();
+    w.standing({ per_day: 4, per_week: 20 });
+    w.fastPilot();
+    const dir = join(w.home, "sr-runs", "requests");
+    w.request("req-bad-schema", { schema: "sr_imagefirst_request_v0" });
+    w.request("req-id-mismatch", { id: "someone-else" });
+    w.request("req-bad-shop", { shop_id: "Hoshi Gama!" });
+    w.request("req-bad-kind", { kind: "prospect" });
+    w.request("req-bad-time", { created_at: "2026-11-23 00:00" });
+    w.request("req-good", { created_at: "2026-11-23T01:00:00Z" });
+    writeFileSync(join(dir, "req-not-json.json"), "{nope", { mode: 0o600 });
+    writeFileSync(join(dir, "req-too-big.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "req-too-big", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z", pad: "x".repeat(17_000) }), { mode: 0o600 });
+    writeFileSync(join(w.t, "outside.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "req-link", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
+    symlinkSync(join(w.t, "outside.json"), join(dir, "req-link.json"));
+    expect(spawnSync("mkfifo", [join(dir, "req-fifo.json")]).status).toBe(0);
+    mkdirSync(join(dir, "req-dir.json"));
+    // names that are no request id: ignored, never recorded
+    writeFileSync(join(dir, "Bad_Name.json"), "{}");
+    writeFileSync(join(dir, "ab.json"), "{}");
+    // an approval id's form (or any id without req-) is never a request
+    writeFileSync(join(dir, `${ID}.json`), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: ID, shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
+    writeFileSync(join(dir, "req-imagefirst-x.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "req-imagefirst-x", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
+    writeFileSync(join(dir, "good-but-no-prefix.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "good-but-no-prefix", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
+    const started = Date.now();
+    const r = w.run();
+    expect(Date.now() - started).toBeLessThan(60_000);
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-good" });
+    const want: Record<string, string> = { "req-bad-schema": "REQ_SCHEMA", "req-id-mismatch": "REQ_ID_MISMATCH", "req-bad-shop": "REQ_SHOP_ID", "req-bad-kind": "REQ_KIND", "req-bad-time": "REQ_CREATED_AT", "req-not-json": "REQ_NOT_JSON", "req-too-big": "REQ_TOO_LARGE", "req-link": "REQ_NOT_REGULAR", "req-fifo": "REQ_NOT_REGULAR", "req-dir": "REQ_NOT_REGULAR" };
+    expect(w.rejected()).toEqual(Object.keys(want).sort());
+    const notices = join(w.home, "sr-runs", "review-inbox", "requests");
+    for (const [id, why] of Object.entries(want)) {
+      expect(readFileSync(join(w.state, "rejected", id, "reason"), "utf8"), id).toMatch(new RegExp(`^request_id=${id}\\nreason=${why}\\nrejected_at=\\d+\\n$`));
+      expect(readFileSync(join(notices, `${id}.rejected`), "utf8"), id).toBe(`IMAGEFIRST_REQUEST_REJECTED id=${id} reason=${why}\n`);
+      expect(statSync(join(notices, `${id}.rejected`)).mode & 0o777, id).toBe(0o600);
+      expect(existsSync(join(w.state, "requests", `${id}.json`)), id).toBe(false);
+    }
+    expect(readdirSync(notices).sort()).toEqual(Object.keys(want).map((id) => `${id}.rejected`).sort());
+    // every read and every notice went through the worker's privilege drop (the setpriv stand-in logs each)
+    expect(readFileSync(join(w.sc, "setpriv.log"), "utf8").trim().split("\n").length).toBeGreaterThanOrEqual(1 + Object.keys(want).length * 2);
+    // never retried: the same files (even fixed ones) are not read again; the notices are not rewritten
+    w.request("req-bad-schema");
+    const before = Object.fromEntries(Object.keys(want).map((id) => [id, statSync(join(w.state, "rejected", id, "reason")).mtimeMs]));
+    expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST" });
+    for (const id of Object.keys(want)) expect(statSync(join(w.state, "rejected", id, "reason")).mtimeMs, id).toBe(before[id]);
+    expect(w.pilotArgs().map((l) => l.split(" ")[1])).toEqual(["req-good"]);
+    // the requests directory (or ~/sr-runs) as a link: nothing read at all
+    const v = world();
+    v.switchOn();
+    v.standing();
+    v.fastPilot();
+    mkdirSync(join(v.t, "elsewhere"), { recursive: true });
+    mkdirSync(join(v.home, "sr-runs"), { recursive: true });
+    symlinkSync(join(v.t, "elsewhere"), join(v.home, "sr-runs", "requests"));
+    writeFileSync(join(v.t, "elsewhere", "req-planted.json"), JSON.stringify({ schema: "sr_imagefirst_request_v1", id: "req-planted", shop_id: "x1", kind: "fictional", created_at: "2026-11-01T00:00:00Z" }));
+    expect(v.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST", rc: "untouched" });
+    expect(v.rejected()).toEqual([]);
+    expect(v.pilotArgs()).toEqual([]);
+  });
+
+  it("the per-run approval (the manual fallback) still works with a standing policy present, and goes first; a used marker falls through to the requests", () => {
+    const w = world();
+    w.switchOn();
+    w.standing({ per_day: 4, per_week: 20 });
+    w.fastPilot();
+    w.marker();
+    w.request(RID);
+    expect(w.run()).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: ID });
+    // the stand-in pilot did not create used/<id>: the attempt record stops the marker; the request runs next
+    expect(w.run()).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: RID });
+    expect(w.run()).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST" });
+    const args = w.pilotArgs();
+    // under the policy the per-run approval also runs the owner-pinned worker_commit
+    expect(args[0]).toMatch(new RegExp(`^--autorun ${ID} ${git(w.admin, "rev-parse", "HEAD")} \\S+$`));
+    expect(args[1]).toMatch(new RegExp(`^--autorun-request ${RID} [0-9a-f]{40} \\S+ [0-9a-f]{64}$`));
+    // the approval's attempt keeps its own form
+    expect(readFileSync(join(w.state, "autorun", ID, "attempt"), "utf8")).toMatch(new RegExp(`^approval_id=${ID}\\nattempted_at=\\d+\\ncommit=[0-9a-f]{40}\\n$`));
+    // and without any policy the per-run approval works as before (the success test above runs the real pilot)
+  });
+
+  it("the installed copy: run from root's SHA256SUMS-recorded copy; a file writable by others, changed, unrecorded or missing is refused before anything", () => {
+    const w = world();
+    w.switchOn();
+    w.standing();
+    w.request(RID);
+    const inst = join(w.t, "usr", "local", "lib", "sr-imagefirst");
+    const setupSrc = readFileSync(join(SCRIPTS, "imagefirst-autorun-setup.sh"), "utf8");
+    const files = /^INSTALL_FILES=\(\n([\s\S]*?)\n\)$/m.exec(setupSrc)![1]!.split("\n").map((l) => l.trim());
+    expect(files).toContain("scripts/sales-design-worker/imagefirst-autorun.sh");
+    const install = () => {
+      for (const rel of files) {
+        mkdirSync(join(inst, rel, ".."), { recursive: true, mode: 0o755 });
+        writeFileSync(join(inst, rel), readFileSync(join(REPO, rel)), { mode: rel.endsWith(".sh") ? 0o755 : 0o644 });
+        chmodSync(join(inst, rel), rel.endsWith(".sh") ? 0o755 : 0o644);
+      }
+      writeFileSync(join(inst, "SHA256SUMS"), files.map((rel) => `${sha(readFileSync(join(REPO, rel)))}  ${rel}\n`).join(""), { mode: 0o644 });
+      for (const d of [join(w.t, "usr"), join(w.t, "usr", "local"), join(w.t, "usr", "local", "lib")]) chmodSync(d, 0o755);
+    };
+    install();
+    const AT = join(inst, "scripts", "sales-design-worker", "imagefirst-autorun.sh");
+    const PILOT_AT = join(inst, "scripts", "sales-design-worker", "imagefirst-pilot.sh");
+    const refusals: [string, () => void][] = [
+      ["the pilot writable by others", () => chmodSync(PILOT_AT, 0o775)],
+      ["a directory writable by others", () => chmodSync(join(inst, "scripts"), 0o777)],
+      ["the pilot changed", () => writeFileSync(PILOT_AT, `${readFileSync(PILOT_AT, "utf8")}\n# changed\n`)],
+      ["admin.sh not recorded", () => writeFileSync(join(inst, "SHA256SUMS"), readFileSync(join(inst, "SHA256SUMS"), "utf8").split("\n").filter((l) => !l.endsWith("sales-design-capture/admin.sh")).join("\n"))],
+      ["SHA256SUMS missing", () => rmSync(join(inst, "SHA256SUMS"))],
+      ["the memory check a link", () => { const f = join(inst, "scripts", "ops", "wsl-resource-preflight.sh"); rmSync(f); symlinkSync(join(REPO, "scripts", "ops", "wsl-resource-preflight.sh"), f); }],
+    ];
+    for (const [name, spoil] of refusals) {
+      spoil();
+      const r = w.run([], AT);
+      expect(r, `${name}\n${r.stdout}`).toMatchObject({ status: 2, code: "AUTORUN_INSTALL_UNTRUSTED", rc: "untouched" });
+      untouched(w);
+      rmSync(inst, { recursive: true, force: true });
+      install();
+    }
+    // the recorded copy: the run goes through the INSTALLED pilot (and its preflight)
+    const ok = w.run([], AT);
+    expect(ok, ok.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: RID, pilot: "PILOT_DONE" });
+    expect(ok.stdout).toContain(`imagefirst-autorun: the pilot: ${PILOT_AT}`);
+    // the production copy refuses to run from the admin clone (the unit starts the installed copy only)
+    const src = readFileSync(AUTORUN, "utf8");
+    expect(src).toMatch(/if \[ "\$REPO" = "\$PROD_CLONE" \]; then\n[^\n]*\n\s*say "AUTORUN_NOT_INSTALLED_COPY/);
+    expect(src).toContain("INSTALL_DIR=/usr/local/lib/sr-imagefirst");
+  });
+
+  it("HIGH 1: root counts the run's images after the run (as the worker); more than 6: AUTORUN_IMAGE_CAP_EXCEEDED and standing pick-ups frozen until the owner unfreezes", () => {
+    const w = world();
+    w.switchOn();
+    w.standing({ per_day: 4, per_week: 20 });
+    w.request("req-seven", { created_at: "2026-11-01T00:00:00Z" });
+    w.request("req-next", { created_at: "2026-11-02T00:00:00Z" });
+    writeFileSync(join(w.home, "stub-seven"), "");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 1, code: "AUTORUN_IMAGE_CAP_EXCEEDED", approval: "req-seven", pilot: "PILOT_DONE", rc: "restored" });
+    expect(r.stdout).toContain("left 7 images (at most 6)");
+    expect(readFileSync(join(w.state, "standing.frozen"), "utf8")).toMatch(/^frozen_at=\d+\nid=req-seven\nreason=AUTORUN_IMAGE_CAP_EXCEEDED 7 images \(at most 6\)\n$/);
+    // frozen: nothing is read or run, Remote Control untouched, until the owner removes the freeze (setup standing --unfreeze)
+    rmSync(join(w.home, "stub-seven"));
+    expect(w.run()).toMatchObject({ status: 2, code: "AUTORUN_STANDING_FROZEN", rc: "untouched" });
+    expect(existsSync(join(w.state, "requests", "req-next.json"))).toBe(false);
+    rmSync(join(w.state, "standing.frozen"));
+    const ok = w.run();
+    expect(ok, ok.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-next" });
+    expect(ok.stdout).toContain("images of this run: 6 (at most 6)");
+  });
+
+  it("LOW: an attempt record without a readable time counts at its directory's time; rejected/ stops growing at 200 records", () => {
+    const w = world();
+    w.switchOn();
+    w.standing({ per_day: 1, per_week: 8 });
+    w.fastPilot();
+    mkdirSync(join(w.state, "autorun", "old-broken"), { recursive: true, mode: 0o700 });
+    const old = (Date.now() - 2 * 86400_000) / 1000;
+    utimesSync(join(w.state, "autorun", "old-broken"), old, old);
+    w.request("req-after-old");
+    const r = w.run();
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "AUTORUN_DONE", approval: "req-after-old" });
+    expect(r.stdout).toContain("the attempt record old-broken has no readable attempted_at: its directory's time is counted");
+    const v = world();
+    v.switchOn();
+    v.standing({ per_day: 4, per_week: 20 });
+    v.fastPilot();
+    for (let i = 0; i < 200; i++) mkdirSync(join(v.state, "rejected", `req-filler-${i}`), { recursive: true, mode: 0o700 });
+    v.request("req-bad-one", { kind: "nope" });
+    const q = v.run();
+    expect(q, q.stdout).toMatchObject({ status: 10, code: "AUTORUN_IDLE_NO_REQUEST" });
+    expect(q.stdout).toContain("rejected/ holds 200 records already: not recorded (skipped)");
+    expect(existsSync(join(v.state, "rejected", "req-bad-one"))).toBe(false);
+  });
+
+  it("MVP_SPEC §7.1: generation under the owner's one-time standing pre-authorization within root's limits; real-shop images internal only; publishing and sending still need the owner", () => {
+    const spec = readFileSync(join(REPO, "docs", "MVP_SPEC.md"), "utf8");
+    const s71 = spec.slice(spec.indexOf("### 7.1 "), spec.indexOf("\n### ", spec.indexOf("### 7.1 ") + 5));
+    expect(s71).not.toContain("今までどおり 1 回ごとのオーナーの承認が要る");
+    expect(s71).toContain("**オーナーが一度だけ設定する包括的な事前許可**（オーナー決定 2026-11-23、DEV-303）");
+    expect(s71).toContain("**root が守るもの**");
+    expect(s71).toContain("**オーナーが固定した worker の commit だけを動かすこと**");
+    expect(s71).toContain("オーナーが固定した commit の worker のコードが守る");
+    expect(s71).toContain("6 枚を超えたら、オーナーが解除するまで事前許可での実行を止める");
+    expect(s71).toContain("**実店舗の画像は社内のデザインの参考だけ**: 相手（prospect）に見せない・共有しない・版に入れない。");
+    expect(s71).toContain("**本番の公開と営業の送信は、今までどおりオーナーの確認が要る**。自動送信は作らない。");
+    const doc = readFileSync(join(REPO, "docs", "operations", "imagefirst-autorun.md"), "utf8");
+    for (const l of ["check --expect <sha>", "apply --yes --expect <sha>", "standing --yes --expect <sha> --per-day", "enable-timer --yes --expect <sha>", "standing --revoke --yes"]) expect(doc, l).toContain(l);
+  });
+
+  it("the request envelope and limits are pinned: the shared interface (id, size, schema, kinds) and the setup's ceilings", () => {
+    const src = readFileSync(AUTORUN, "utf8");
+    expect(src).toContain("REQ_ID_RE='^req-[a-z0-9][a-z0-9-]{2,58}$'");
+    expect(src).toContain('[[ "$id" =~ $REQ_ID_RE ]] && [[ "$id" != *imagefirst* ]]');
+    // an approval id can never start with req- (every parser of one wants hoshigama-imagefirst-...), and a request id never
+    // has an approval id's form
+    for (const f of [AUTORUN, APPROVE, PILOT, PREFLIGHT]) for (const m of readFileSync(f, "utf8").matchAll(/hoshigama-imagefirst-d\[34\]-\[0-9\]\{8\}-\[0-9\]\{2\}/g)) expect(m[0]).not.toMatch(/^req-/);
+    expect(/^req-[a-z0-9][a-z0-9-]{2,58}$/.test(ID)).toBe(false);
+    expect(/^hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}$/.test("req-hoshigama-001")).toBe(false);
+    expect(src).toMatch(/^REQ_MAX_BYTES=16384$/m);
+    expect(src).toContain('if d.get("schema") != "sr_imagefirst_request_v1": rej("REQ_SCHEMA")');
+    expect(src).toContain('re.fullmatch(r"[a-z0-9_-]{2,41}", s, re.ASCII)');
+    expect(src).toContain('if d.get("kind") not in ("real_shop", "fictional"): rej("REQ_KIND")');
+    const setup = readFileSync(join(SCRIPTS, "imagefirst-autorun-setup.sh"), "utf8");
+    for (const [k, v] of [["MAX_PER_DAY", 4], ["MAX_PER_WEEK", 20], ["MAX_POLICY_DAYS", 90]] as const) {
+      expect(src, k).toMatch(new RegExp(`^${k}=${v}$`, "m"));
+      expect(setup, k).toMatch(new RegExp(`^${k}=${v}$`, "m"));
+    }
+    // root never opens a worker file itself: every read of a request is the worker's (setpriv) into root's work file
+    const code = src.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    expect(code).not.toMatch(/(cat|head|<)\s*"?\$WORKER_HOME\/sr-runs\/requests/);
+    expect(code.match(/sr-runs\/requests\/\$1\.json/g)).toHaveLength(1);
   });
 });
 
@@ -910,7 +1353,7 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
   it("the automatic run starts only admin.sh claude-stop / claude-start and the pilot; never the worker, a model CLI or a unit change", () => {
     const code = src(AUTORUN).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     expect(code.match(/bash "\$ADMIN" [^\n]*/g)).toEqual(['bash "$ADMIN" claude-start 2>&1 7>&- 8>&- 9>&-)" || rc=$?', 'bash "$ADMIN" claude-stop 2>&1 7>&- 8>&- 9>&-)"']);
-    expect(code.match(/bash "\$PILOT" [^\n]*/g)).toEqual(['bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"']);
+    expect(code.match(/bash "\$PILOT" [^\n]*/g)).toEqual(['bash "$PILOT" --autorun-request "$APPROVAL" "$ADMIN_SHA" "$ORIGIN" "$REQ_SHA"', 'bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA" "$ORIGIN"']);
     // PR #325 CI / re-review: after a stop signal the pilot's own exit status is always collected: wait while it runs, then
     // once more (bash returns the saved status on every later wait), never a loop keyed on the status itself
     const step = /\nstep\(\) \{\n[\s\S]*?\n\}\n/.exec(src(AUTORUN))![0].split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
@@ -918,7 +1361,7 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     expect(step).not.toMatch(/STEP_RC" -gt 128/);
     // the pilot's result is its result file, read after the step; never a line taken from its stdout
     expect(code).not.toMatch(/grep -a '\^IMAGEFIRST_PILOT /);
-    expect(code).toMatch(/\nRESULT="\$STATE\/autorun-result"\nrm -f -- "\$RESULT" "\$STATE"\/\.autorun-result\.\* "\$STATE\/autorun-clone"\nstep "\$WORK\/pilot" /);
+    expect(code).toMatch(/\nRESULT="\$STATE\/autorun-result"\nrm -f -- "\$RESULT" "\$STATE"\/\.autorun-result\.\* "\$STATE\/autorun-clone" "\$STATE\/autorun-commit"\nif \[ "\$KIND" = request \]; then\n {2}step "\$WORK\/pilot" /);
     expect(code).not.toMatch(/imagefirst-worker\.ts|imagefirst-audit\.ts|image-first-generate|anthropic|openai/i);
     for (const c of [code, src(APPROVE).split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")]) for (const m of c.matchAll(/systemctl\s+(\S+)/g)) expect(["show", "is-enabled"]).toContain(m[1]);
     // approve starts no pilot, no admin.sh, never the worker run (only its precheck), never claims
@@ -931,9 +1374,11 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const service = src(join(UNIT_DIR, "sr-imagefirst-autorun.service"));
     const timer = src(join(UNIT_DIR, "sr-imagefirst-autorun.timer"));
     for (const unit of [service, timer]) expect(unit.split("\n")[0]).toMatch(/NOT installed or enabled/);
-    expect(service).toMatch(/^ExecStart=\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh$/m);
+    // DEV-303: only the owner's installed copy (never the admin clone)
+    expect(service).toMatch(/^ExecStart=\/usr\/bin\/bash \/usr\/local\/lib\/sr-imagefirst\/scripts\/sales-design-worker\/imagefirst-autorun\.sh$/m);
     // review M2: ExecStopPost without the unit's sandboxing ("+"), still in the unit's cgroup
-    expect(service).toMatch(/^ExecStopPost=\+\/usr\/bin\/bash \/root\/sr-capture-admin\/scripts\/sales-design-worker\/imagefirst-autorun\.sh --restore$/m);
+    expect(service).toMatch(/^ExecStopPost=\+\/usr\/bin\/bash \/usr\/local\/lib\/sr-imagefirst\/scripts\/sales-design-worker\/imagefirst-autorun\.sh --restore$/m);
+    expect(service).not.toMatch(/sr-capture-admin\/scripts/);
     // review L3 / L-a: never together with the old automatic start's timer; never Conflicts= with its service (that would
     // stop a running worker in the middle of a generation)
     expect(service).toMatch(/^Conflicts=sr-imagefirst-autostart\.timer$/m);
@@ -946,7 +1391,9 @@ describe("Issue #302 automatic run: copied primitives, units not installed, noth
     const start = Number(/^TimeoutStartSec=(\d+)$/m.exec(service)![1]);
     const stop = Number(/^TimeoutStopSec=(\d+)$/m.exec(service)![1]);
     const admin = num("ADMIN_TIMEOUT") + num("KILL_AFTER");
-    expect(start).toBeGreaterThan(2 * admin + 2 * (num("ADMIN_FETCH_TIMEOUT") + num("KILL_AFTER")) + num("IDLE_WAIT") + num("PILOT_TIMEOUT") + num("PILOT_KILL_AFTER"));
+    // one ls-remote; the request reads (the names, then per name a read and a notice, each cut at REQ_READ_TIMEOUT + 5 s)
+    const reads = (1 + 2 * num("REQ_MAX_NAMES")) * (num("REQ_READ_TIMEOUT") + 5);
+    expect(start).toBeGreaterThan(2 * admin + (num("ADMIN_FETCH_TIMEOUT") + num("KILL_AFTER")) + reads + num("IDLE_WAIT") + num("PILOT_TIMEOUT") + num("PILOT_KILL_AFTER"));
     expect(stop).toBeGreaterThan(num("PILOT_KILL_AFTER") + admin);
     expect(timer).toMatch(/^OnCalendar=\*-\*-\* \*:00\/10:00$/m);
     expect(timer).toMatch(/^RandomizedDelaySec=\d+$/m);

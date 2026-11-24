@@ -7,6 +7,24 @@
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh apply --yes --expect <sha>
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh enable-timer --yes --expect <sha>
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh rollback --yes --expect <sha>
+#   sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --yes --expect <sha> \
+#        --per-day <N 1-4> --per-week <M 1-20, at least N> --days <D 1-90>
+#   sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --revoke --yes
+#   sudo bash /usr/local/lib/sr-imagefirst/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --unfreeze --yes
+#
+# standing (DEV-303, owner decision 2026-11-23): the owner's ONE-TIME standing pre-authorization of image generation. It
+# writes root's /etc/sr-design-worker/imagefirst-standing.json (0644, root's; a temporary file renamed over the old one) as
+#   {"schema": "sr_imagefirst_standing_v1", "per_day": N, "per_week": M, "not_after": "<now + D days, UTC>",
+#    "created_at": "<now, UTC>", "worker_commit": "<--expect>", "origin_url": "<the admin clone's configured origin URL>"}
+# and nothing else (separate from apply and enable-timer; it neither installs nor enables anything). From then on the
+# automatic run (imagefirst-autorun.sh) picks up Claude's request files one at a time within those limits until not_after,
+# with no per-run command. worker_commit is the commit the owner typed (--expect, verified as the admin clone's clean,
+# detached HEAD and origin's develop at that moment): every run under the policy executes THAT worker code and nothing
+# else (never develop's tip); running standing again with a newer --expect is the only way newer worker code reaches runs.
+# standing --unfreeze --yes removes root's freeze (written by the automatic run when a run broke a per-run limit, e.g.
+# more than 6 images); look at the run first. Anything outside 1 <= N <= 4, 1 <= M <= 20, M >= N, 1 <= D <= 90 is refused (STANDING_INVALID).
+# standing --revoke --yes removes the policy (needs no --expect and no admin clone: it must always work). Both are logged in
+# setup.log. Changing the limits is running standing again (the new file replaces the old one).
 #
 # Run by root, only from the root-only admin clone (/root/sr-capture-admin), by a person. Every mode first checks the admin
 # clone: this script and every file it installs root's and writable by nobody else up to / (trusted_path); the clone clean;
@@ -14,7 +32,7 @@
 # enable-timer) that commit is origin's develop (git ls-remote of the admin clone's own configured URL, nothing written).
 # rollback does not ask for develop (it must work after develop moved on).
 #
-# Steps (check prints one line for each: SETUP_STEP <name> <DONE|TODO|BLOCKED> <reason>):
+# Steps (check prints one line for each: SETUP_STEP <name> <DONE|TODO|BLOCKED> <reason>; scripts is DEV-303's):
 #   cli             claude and codex root-owned under /usr/local, from FOUR registry tarballs pinned by their sha512 integrity
 #                   (the npm registry's dist.integrity): @anthropic-ai/claude-code@2.1.295, its native
 #                   @anthropic-ai/claude-code-linux-x64@2.1.295, @openai/codex@0.159.0 and its native
@@ -41,6 +59,13 @@
 #   codex_config    the repository's codex-config.toml installed root 0644 to /etc/sr-design-worker/ (dir root 0755); its
 #                   SHA-256 must be the pinned CODEX_CONFIG_SHA256 of imagefirst-pilot-preflight.sh and imagefirst-pilot.sh
 #                   (read from those two files, which must agree; setup.test.ts pins all three to the repository's file)
+#   scripts         every script root runs (the automatic run, the pilot, its preflight, the approval command, this setup,
+#                   the re-send wrapper, admin.sh with host-check.sh and its jail files, the memory check) installed from the
+#                   admin clone into /usr/local/lib/sr-imagefirst/<the same path> (files root 0755 / 0644 data, directories
+#                   0755, byte-identical to the admin clone's), and their SHA-256 in /usr/local/lib/sr-imagefirst/SHA256SUMS
+#                   (0644; also in setup.log). The units start ONLY that copy, and the automatic run refuses unless each file
+#                   is root's, writable by nobody else up to /, with the recorded SHA-256. Root never runs the admin clone's
+#                   or develop's scripts; a newer develop reaches root only through check -> apply again
 #   units           the old hourly sr-imagefirst-autostart.timer disabled (if present); sr-imagefirst-autorun.{service,timer}
 #                   installed 0644 (byte-identical to the repository's); daemon-reload; the owner's switch
 #                   /etc/sr-design-worker/imagefirst-autostart.json written as {"enabled": true} ONLY if absent
@@ -48,12 +73,14 @@
 #                   but the lifecycle ones, setup.test.ts pins both directions): systemd-run running admin.sh status must
 #                   print its status table (else SETUP_HARDENING_FAILED: nothing further, the timer stays off, the rollback
 #                   line is printed). A pass is recorded (root's state, bound to the service file's and admin.sh's SHA-256).
-# apply NEVER enables the timer. enable-timer is a separate owner approval and needs all four steps DONE.
+#                   It runs the INSTALLED admin.sh (the one the unit runs).
+# apply NEVER enables the timer. enable-timer is a separate owner approval and needs all five steps DONE.
 # rollback undoes ONLY what setup.log says apply changed (since the last complete rollback): the timer disabled and the two
 # unit files removed (units), daemon-reload, the two npm packages uninstalled and the two old symlinks restored exactly as
 # recorded, only if their targets still exist and the place is free (cli), root's codex-config.toml (codex_config), the
-# recorded hardening pass. The old sr-imagefirst-autostart.timer stays disabled. It NEVER removes used/, autorun/, the
-# worker's claims, the entry's ledgers or the owner's switch.
+# installed copy /usr/local/lib/sr-imagefirst (scripts), the recorded hardening pass. The old sr-imagefirst-autostart.timer
+# stays disabled. It NEVER removes used/, autorun/, rejected/, requests/, the worker's claims, the entry's ledgers, the
+# owner's switch or the standing policy (standing --revoke does that).
 #
 # Every action of apply / enable-timer / rollback is appended to root's /var/lib/sr-imagefirst-autostart/setup.log (0600;
 # the state dir 0700), including what the old symlinks pointed to. check writes nothing anywhere. Sign-in files stay in the
@@ -61,7 +88,8 @@
 #
 # Output: fixed lines; the last line is machine-readable:
 #   IMAGEFIRST_SETUP <CODE> exit=<n>
-# Exit: 0  CHECK_OK (nothing BLOCKED) / APPLY_OK / TIMER_ENABLED / ROLLBACK_DONE
+# Exit: 0  CHECK_OK (nothing BLOCKED) / APPLY_OK / TIMER_ENABLED / ROLLBACK_DONE / STANDING_WRITTEN / STANDING_REVOKED /
+#          STANDING_UNFROZEN
 #       2  refused: usage, no --yes, --expect missing or not 40 hex, not root / a test hook in the production copy / root in
 #          a test copy, the admin clone untrusted, dirty, not detached, not at --expect, or --expect not origin's develop
 #       3  CHECK_BLOCKED / SETUP_BLOCKED: a step is BLOCKED (nothing changed by the mode that found it); rollback during a run
@@ -69,7 +97,8 @@
 #       11 SETUP_LOCKED: another setup run holds the lock
 #       20 SETUP_ORIGIN_UNREACHABLE: origin's develop could not be read
 #       30 SETUP_CLI_FAILED (a download, a sha512, a member, npm, a compared file, a native binary), 31 SETUP_CODEX_CONFIG_FAILED,
-#       32 SETUP_UNITS_FAILED, 33 SETUP_HARDENING_FAILED, 34 TIMER_ENABLE_FAILED, 35 ROLLBACK_INCOMPLETE
+#       32 SETUP_UNITS_FAILED, 33 SETUP_HARDENING_FAILED, 34 TIMER_ENABLE_FAILED, 35 ROLLBACK_INCOMPLETE, 36 SETUP_SCRIPTS_FAILED
+#       (standing) 2 STANDING_INVALID: a limit outside the ceilings
 #       40 / 41 signal / internal error
 #
 # The whole script is one { ... } block, so bash has read all of it before it starts.
@@ -181,20 +210,50 @@ trap on_exit EXIT
 trap on_signal INT TERM HUP
 
 # ---------------------------------------------------------------- arguments
-USAGE="usage: imagefirst-autorun-setup.sh [check|apply|enable-timer|rollback] [--yes] --expect <40-hex commit>"
+USAGE="usage: imagefirst-autorun-setup.sh [check|apply|enable-timer|rollback] [--yes] --expect <40-hex commit> | standing --yes --expect <40-hex commit> --per-day <1-4> --per-week <1-20> --days <1-90> | standing --revoke --yes | standing --unfreeze --yes"
 MODE=check
 YES=0
 EXPECT=""
+REVOKE=0
+UNFREEZE=0
+PER_DAY=""
+PER_WEEK=""
+DAYS=""
 if [ "$#" -gt 0 ] && [[ "$1" != --* ]]; then MODE="$1"; shift; fi
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --yes) YES=1; shift ;;
     --expect) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; EXPECT="$2"; shift 2 ;;
+    --revoke) REVOKE=1; shift ;;
+    --unfreeze) UNFREEZE=1; shift ;;
+    --per-day) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; PER_DAY="$2"; shift 2 ;;
+    --per-week) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; PER_WEEK="$2"; shift 2 ;;
+    --days) [ "$#" -ge 2 ] || { say "$USAGE"; finish SETUP_USAGE 2; }; DAYS="$2"; shift 2 ;;
     *) say "$USAGE"; finish SETUP_USAGE 2 ;;
   esac
 done
-case "$MODE" in check | apply | enable-timer | rollback) ;; *) say "$USAGE"; finish SETUP_USAGE 2 ;; esac
-[[ "$EXPECT" =~ ^[0-9a-f]{40}$ ]] || { say "SETUP_EXPECT_REQUIRED: --expect <the 40-hex commit the admin clone is checked out at> is required in every mode"; finish SETUP_EXPECT_REQUIRED 2; }
+case "$MODE" in check | apply | enable-timer | rollback | standing) ;; *) say "$USAGE"; finish SETUP_USAGE 2 ;; esac
+if [ "$MODE" != standing ] && { [ "$REVOKE" = 1 ] || [ "$UNFREEZE" = 1 ] || [ -n "$PER_DAY$PER_WEEK$DAYS" ]; }; then say "$USAGE"; finish SETUP_USAGE 2; fi
+[ "$REVOKE" = 0 ] || [ "$UNFREEZE" = 0 ] || { say "$USAGE"; finish SETUP_USAGE 2; }
+# --unfreeze is handled as --revoke is (no --expect, no admin clone)
+OWNER_ONLY=0
+if [ "$MODE" = standing ] && { [ "$REVOKE" = 1 ] || [ "$UNFREEZE" = 1 ]; }; then OWNER_ONLY=1; fi
+# the standing policy's ceilings (imagefirst-autorun.sh refuses a policy above them too)
+MAX_PER_DAY=4
+MAX_PER_WEEK=20
+MAX_POLICY_DAYS=90
+if [ "$OWNER_ONLY" = 1 ]; then
+  [ -z "$PER_DAY$PER_WEEK$DAYS$EXPECT" ] || { say "standing --revoke --yes / --unfreeze --yes take nothing else"; finish SETUP_USAGE 2; }
+elif [ "$MODE" = standing ]; then
+  if ! [[ "$PER_DAY" =~ ^[1-9][0-9]{0,2}$ ]] || ! [[ "$PER_WEEK" =~ ^[1-9][0-9]{0,2}$ ]] || ! [[ "$DAYS" =~ ^[1-9][0-9]{0,2}$ ]] ||
+    [ "$PER_DAY" -gt "$MAX_PER_DAY" ] || [ "$PER_WEEK" -gt "$MAX_PER_WEEK" ] || [ "$PER_WEEK" -lt "$PER_DAY" ] || [ "$DAYS" -gt "$MAX_POLICY_DAYS" ]; then
+    say "STANDING_INVALID: --per-day 1-$MAX_PER_DAY, --per-week 1-$MAX_PER_WEEK (at least --per-day), --days 1-$MAX_POLICY_DAYS (whole numbers): nothing written"
+    finish STANDING_INVALID 2
+  fi
+fi
+if [ "$OWNER_ONLY" = 0 ]; then
+  [[ "$EXPECT" =~ ^[0-9a-f]{40}$ ]] || { say "SETUP_EXPECT_REQUIRED: --expect <the 40-hex commit the admin clone is checked out at> is required in every mode"; finish SETUP_EXPECT_REQUIRED 2; }
+fi
 if [ "$MODE" = check ]; then
   [ "$YES" = 0 ] || { say "check is read-only and takes no --yes"; finish SETUP_USAGE 2; }
 else
@@ -204,8 +263,10 @@ fi
 # ---------------------------------------------------------------- where things are
 REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
+# the installed copy of root's scripts (the scripts step): a production copy of this script too
+INSTALL_DIR=/usr/local/lib/sr-imagefirst
 TEST_ROOT="${SR_IMAGEFIRST_SETUP_TEST_ROOT:-}"
-if [ "$REPO" = "$PROD_CLONE" ]; then
+if [ "$REPO" = "$PROD_CLONE" ] || [ "$REPO" = "$INSTALL_DIR" ]; then
   # The production copy never takes a test hook, and runs only as root.
   [ -z "$TEST_ROOT" ] || { say "SETUP_TEST_HOOK_REFUSED: test hooks are refused in $PROD_CLONE"; finish SETUP_USAGE 2; }
   [ "$(id -u)" = 0 ] || { say "run as root: sudo bash $PROD_CLONE/scripts/sales-design-worker/imagefirst-autorun-setup.sh $MODE ..."; finish SETUP_USAGE 2; }
@@ -215,7 +276,7 @@ if [ "$REPO" = "$PROD_CLONE" ]; then
   NPM_PATH=/usr/local/bin:/usr/bin:/bin
   CURL_PATH=/usr/bin:/bin
   INSTALL_OWNER=(-o root -g root)
-  ADMIN_GIT="$REPO"
+  ADMIN_GIT="$PROD_CLONE"
 else
   # Any other copy runs only the unit tests' fake WSL (tests/unit/design-agent/imagefirst-worker/setup.test.ts):
   # every path under the test root, npm / curl / systemctl / systemd-run as the test's stubs, "root" is this user.
@@ -238,6 +299,25 @@ else
     done <"$R/test-pins"
   fi
 fi
+# where the files to install come from: this copy's repository, or (run from the installed copy) root's admin clone
+SRC="$REPO"
+if [ "$REPO" = "$R$INSTALL_DIR" ]; then SRC="$ADMIN_GIT"; fi
+INST="$R$INSTALL_DIR"
+MANIFEST="$INST/SHA256SUMS"
+# every script root runs (and what admin.sh sources or installs from its own directory): installed into INST, same paths
+INSTALL_FILES=(
+  scripts/sales-design-worker/imagefirst-autorun.sh
+  scripts/sales-design-worker/imagefirst-pilot.sh
+  scripts/sales-design-worker/imagefirst-pilot-preflight.sh
+  scripts/sales-design-worker/imagefirst-approve.sh
+  scripts/sales-design-worker/imagefirst-autorun-setup.sh
+  scripts/sales-design-worker/imagefirst-deliver-review.sh
+  scripts/sales-design-capture/admin.sh
+  scripts/sales-design-capture/host-check.sh
+  scripts/sales-design-capture/jail/jail.properties
+  scripts/sales-design-capture/jail/probe.py
+  scripts/ops/wsl-resource-preflight.sh
+)
 WORKER_HOME="$R/home/sr-designgen"
 PREFIX="$R/usr/local"
 NPM="$R/usr/bin/npm"
@@ -245,16 +325,19 @@ NPM_HOME="$R/root"
 ETC="$R/etc/sr-design-worker"
 CODEX_CONFIG="$ETC/codex-config.toml"
 SWITCH="$ETC/imagefirst-autostart.json"
+STANDING="$ETC/imagefirst-standing.json"
+FREEZE="$R/var/lib/sr-imagefirst-autostart/standing.frozen"
 UNIT_DIR="$R/etc/systemd/system"
 STATE="$R/var/lib/sr-imagefirst-autostart"
 LOG="$STATE/setup.log"
 HARDENING_OK="$STATE/setup-hardening.ok"
-SRC_CONFIG="$REPO/scripts/sales-design-worker/codex-config.toml"
-SRC_UNITS="$REPO/scripts/sales-design-worker/systemd"
+SRC_CONFIG="$SRC/scripts/sales-design-worker/codex-config.toml"
+SRC_UNITS="$SRC/scripts/sales-design-worker/systemd"
 UNITS=(sr-imagefirst-autorun.service sr-imagefirst-autorun.timer)
 TIMER=sr-imagefirst-autorun.timer
 LEGACY_TIMER=sr-imagefirst-autostart.timer
-ADMIN_SH="$REPO/scripts/sales-design-capture/admin.sh"
+# check 1 runs the installed admin.sh (the one the unit's script runs)
+ADMIN_SH="$INST/scripts/sales-design-capture/admin.sh"
 PKG_DIR_claude="$PREFIX/lib/node_modules/${CLI_PKG[claude]}"
 PKG_DIR_codex="$PREFIX/lib/node_modules/${CLI_PKG[codex]}"
 CLAUDE_ENTRY="$PKG_DIR_claude/bin/claude.exe"
@@ -320,10 +403,47 @@ unit_off() {
   return 0
 }
 
+# Root's state dir (0700), this script's lock and its log (0600), for every changing mode.
+open_state() {
+  if absent "$STATE"; then install -d "${INSTALL_OWNER[@]}" -m 0700 "$STATE"; fi
+  [ -d "$STATE" ] && [ ! -L "$STATE" ] && root_path "$STATE" || { say "SETUP_STATE_UNSAFE: $STATE is not root's directory"; finish SETUP_STATE_UNSAFE 2; }
+  if [ -L "$LOG" ] || { [ -e "$LOG" ] && ! root_file "$LOG"; }; then say "SETUP_STATE_UNSAFE: $LOG is not root's regular file"; finish SETUP_STATE_UNSAFE 2; fi
+  exec 9>"$STATE/setup.lock"
+  flock -n 9 || { say "another setup run holds the lock"; finish SETUP_LOCKED 11; }
+  touch -- "$LOG" && chmod 0600 -- "$LOG"
+}
+
+# ---------------------------------------------------------------- standing --revoke: always possible (no admin clone, no --expect)
+if [ "$MODE" = standing ] && [ "$REVOKE" = 1 ]; then
+  open_state
+  if absent "$STANDING"; then
+    say "no standing pre-authorization to revoke ($STANDING absent)"
+    log "standing revoke: nothing there"
+  else
+    # removed whatever it is (a link is removed, never followed)
+    rm -f -- "$STANDING"
+    log "standing revoked: rm $STANDING"
+    say "the standing pre-authorization is revoked: the automatic run picks up no request any more (a run already started finishes)"
+  fi
+  finish STANDING_REVOKED 0
+fi
+if [ "$MODE" = standing ] && [ "$UNFREEZE" = 1 ]; then
+  open_state
+  if absent "$FREEZE"; then
+    say "standing pick-ups are not frozen"
+    log "standing unfreeze: nothing there"
+  else
+    log "standing unfrozen: $(head -c 300 -- "$FREEZE" 2>/dev/null | tr '\n' ' ' | tr -d '\000-\037')"
+    rm -f -- "$FREEZE"
+    say "standing pick-ups are unfrozen (the automatic run picks up requests again within the limits)"
+  fi
+  finish STANDING_UNFROZEN 0
+fi
+
 # The pinned SHA-256 of the reviewed Codex config: the very constant the pilot and its preflight check (both must agree).
 PINNED_SHA=""
 for f in imagefirst-pilot-preflight.sh imagefirst-pilot.sh; do
-  v="$(sed -n 's/^CODEX_CONFIG_SHA256=\([0-9a-f]\{64\}\)$/\1/p' "$REPO/scripts/sales-design-worker/$f")"
+  v="$(sed -n 's/^CODEX_CONFIG_SHA256=\([0-9a-f]\{64\}\)$/\1/p' "$SRC/scripts/sales-design-worker/$f")"
   [[ "$v" =~ ^[0-9a-f]{64}$ ]] && { [ -z "$PINNED_SHA" ] || [ "$PINNED_SHA" = "$v" ]; } ||
     { say "SETUP_PIN_UNREADABLE: CODEX_CONFIG_SHA256 is missing, repeated or different in $f"; finish SETUP_STOP_INTERNAL 41; }
   PINNED_SHA="$v"
@@ -331,9 +451,11 @@ done
 
 # ---------------------------------------------------------------- the admin clone: trusted, clean, detached at --expect (= develop)
 if [ -z "$R" ]; then
-  for f in "$SELF" "$SRC_CONFIG" "$SRC_UNITS/${UNITS[0]}" "$SRC_UNITS/${UNITS[1]}" "$ADMIN_SH" \
-    "$REPO/scripts/sales-design-worker/imagefirst-pilot-preflight.sh" "$REPO/scripts/sales-design-worker/imagefirst-pilot.sh"; do
+  for f in "$SELF" "$SRC_CONFIG" "$SRC_UNITS/${UNITS[0]}" "$SRC_UNITS/${UNITS[1]}"; do
     trusted_path "$f" || { say "SETUP_ADMIN_CLONE_UNTRUSTED: $f must be root's and writable by nobody else, up to /"; finish SETUP_ADMIN_CLONE_UNTRUSTED 2; }
+  done
+  for rel in "${INSTALL_FILES[@]}"; do
+    trusted_path "$SRC/$rel" || { say "SETUP_ADMIN_CLONE_UNTRUSTED: $SRC/$rel must be root's and writable by nobody else, up to /"; finish SETUP_ADMIN_CLONE_UNTRUSTED 2; }
   done
 fi
 [ -d "$ADMIN_GIT/.git" ] || { say "SETUP_ADMIN_CLONE_MISSING: $ADMIN_GIT"; finish SETUP_ADMIN_CLONE_MISSING 2; }
@@ -351,7 +473,7 @@ if [ "$admin_head" != "$EXPECT" ]; then
 fi
 if [ "$MODE" != rollback ]; then
   url="$(git -C "$ADMIN_GIT" config --get remote.origin.url 2>/dev/null)" || url=""
-  [[ "$url" =~ ^[A-Za-z0-9._:/@+-]+$ ]] || { say "SETUP_ADMIN_CLONE_UNREADABLE: no plain origin URL in $PROD_CLONE"; finish SETUP_ADMIN_CLONE_UNREADABLE 2; }
+  [[ "$url" =~ ^[A-Za-z0-9._:/@+][A-Za-z0-9._:/@+-]*$ ]] || { say "SETUP_ADMIN_CLONE_UNREADABLE: no plain origin URL in $PROD_CLONE (none, an unusual character, or a leading -)"; finish SETUP_ADMIN_CLONE_UNREADABLE 2; }
   remote="$(timeout --kill-after="$KILL_AFTER" "$LS_REMOTE_TIMEOUT" git -C "$ADMIN_GIT" -c protocol.ext.allow=never ls-remote "$url" refs/heads/develop 2>/dev/null)" || remote=""
   develop="${remote%%[[:space:]]*}"
   [[ "$develop" =~ ^[0-9a-f]{40}$ ]] || { say "origin's develop could not be read from the admin clone's URL: nothing done"; finish SETUP_ORIGIN_UNREACHABLE 20; }
@@ -359,6 +481,32 @@ if [ "$MODE" != rollback ]; then
   say "admin clone $PROD_CLONE at $EXPECT (clean, detached, = origin's develop)"
 else
   say "admin clone $PROD_CLONE at $EXPECT (clean, detached)"
+fi
+
+# ---------------------------------------------------------------- standing: the owner's one-time standing pre-authorization
+if [ "$MODE" = standing ]; then
+  if [ -e "$ETC" ] || [ -L "$ETC" ]; then
+    [ -d "$ETC" ] && [ ! -L "$ETC" ] && root_path "$ETC" || { say "SETUP_STATE_UNSAFE: $ETC is not a root-owned directory nobody else can write"; finish SETUP_STATE_UNSAFE 2; }
+  fi
+  open_state
+  now_s="$(date -u +%s)"
+  created="$(date -u -d "@$now_s" +%Y-%m-%dT%H:%M:%SZ)"
+  until_at="$(date -u -d "@$((now_s + DAYS * 86400))" +%Y-%m-%dT%H:%M:%SZ)"
+  if absent "$ETC"; then install -d "${INSTALL_OWNER[@]}" -m 0755 "$ETC"; log "install -d -m 0755 $ETC"; fi
+  tmp_policy="$(mktemp "$ETC/.imagefirst-standing.json.XXXXXX")"
+  # worker_commit: the commit the owner typed, verified above as the admin clone's clean detached HEAD and origin's develop
+  printf '{"schema": "sr_imagefirst_standing_v1", "per_day": %d, "per_week": %d, "not_after": "%s", "created_at": "%s", "worker_commit": "%s", "origin_url": "%s"}\n' \
+    "$PER_DAY" "$PER_WEEK" "$until_at" "$created" "$EXPECT" "$url" >"$tmp_policy"
+  chmod 0644 -- "$tmp_policy"
+  mv -f -T -- "$tmp_policy" "$STANDING"
+  log "standing written: per_day=$PER_DAY per_week=$PER_WEEK not_after=$until_at created_at=$created worker_commit=$EXPECT origin_url=$url"
+  say "the standing pre-authorization is written: at most $PER_DAY run(s) a day and $PER_WEEK a week (rolling), until $until_at (UTC)"
+  say "every run executes the worker code of commit $EXPECT only (to move it: standing --yes --expect <newer commit> ... again)"
+  say "root enforces the run count, one attempt per request id, the pinned commit, the timeout and (after each run) at most 6 images"
+  say "to revoke it: sudo bash $INSTALL_DIR/scripts/sales-design-worker/imagefirst-autorun-setup.sh standing --revoke --yes"
+  en="$(systemctl is-enabled "$TIMER" 2>/dev/null)" || true
+  [ "$en" = enabled ] || say "note: $TIMER is not enabled (${en:-not installed}): nothing runs until apply and enable-timer"
+  finish STANDING_WRITTEN 0
 fi
 
 # ---------------------------------------------------------------- the steps (read only)
@@ -460,20 +608,51 @@ check_units() {
   else STEP[units]=DONE; WHY[units]="${UNITS[*]} installed and loaded; $LEGACY_TIMER off; the switch present"
   fi
 }
+# The installed copy of root's scripts: what SHA256SUMS must say (the admin clone's files, in INSTALL_FILES order)
+manifest_text() {
+  local rel
+  for rel in "${INSTALL_FILES[@]}"; do printf '%s  %s\n' "$(sha_of "$SRC/$rel")" "$rel"; done
+}
+file_mode() { case "$1" in *.sh) echo 755 ;; *) echo 644 ;; esac; }
+check_scripts() {
+  local rel f todo=""
+  for rel in "${INSTALL_FILES[@]}"; do
+    [ -f "$SRC/$rel" ] && [ ! -L "$SRC/$rel" ] || { STEP[scripts]=BLOCKED; WHY[scripts]="$SRC/$rel is missing in the admin clone"; return; }
+  done
+  if [ -e "$INST" ] || [ -L "$INST" ]; then
+    [ -d "$INST" ] && [ ! -L "$INST" ] && root_path "$INST" || { STEP[scripts]=BLOCKED; WHY[scripts]="$INST is not a root-owned directory nobody else can write: look at it first"; return; }
+  else
+    STEP[scripts]=TODO; WHY[scripts]="$INSTALL_DIR absent (${#INSTALL_FILES[@]} files to install)"; return
+  fi
+  for rel in "${INSTALL_FILES[@]}"; do
+    f="$INST/$rel"
+    if absent "$f"; then todo+="$rel not installed; "; continue; fi
+    root_file "$f" || { STEP[scripts]=BLOCKED; WHY[scripts]="$f is not a root-owned regular file nobody else can write: look at it first"; return; }
+    if ! cmp -s -- "$f" "$SRC/$rel" || [ "$(stat -c %a -- "$f")" != "$(file_mode "$rel")" ]; then todo+="$rel differs from the admin clone's (or its mode); "; fi
+  done
+  if absent "$MANIFEST"; then todo+="SHA256SUMS absent; "
+  elif ! root_file "$MANIFEST"; then STEP[scripts]=BLOCKED; WHY[scripts]="$MANIFEST is not a root-owned regular file nobody else can write"; return
+  elif [ "$(cat -- "$MANIFEST")" != "$(manifest_text)" ]; then todo+="SHA256SUMS is not the admin clone's files; "
+  fi
+  if [ -n "$todo" ]; then STEP[scripts]=TODO; WHY[scripts]="${todo%; }"
+  else STEP[scripts]=DONE; WHY[scripts]="${#INSTALL_FILES[@]} files root-owned in $INSTALL_DIR, SHA256SUMS recorded"
+  fi
+}
 hardening_key() { printf '%s %s\n' "$(sha_of "$UNIT_DIR/${UNITS[0]}")" "$(sha_of "$ADMIN_SH")"; }
 check_hardening() {
-  if [ "${STEP[units]}" != DONE ]; then STEP[hardening_check]=TODO; WHY[hardening_check]="after the units"; return; fi
+  if [ "${STEP[units]}" != DONE ] || [ "${STEP[scripts]}" != DONE ]; then STEP[hardening_check]=TODO; WHY[hardening_check]="after the scripts and the units"; return; fi
   if [ -f "$HARDENING_OK" ] && [ ! -L "$HARDENING_OK" ] && [ "$(cat -- "$HARDENING_OK")" = "$(hardening_key)" ]; then
     STEP[hardening_check]=DONE; WHY[hardening_check]="admin.sh status passed under the unit's hardening (this service file and admin.sh)"
   else
     STEP[hardening_check]=TODO; WHY[hardening_check]="admin.sh status under the unit's hardening not run for this service file and admin.sh"
   fi
 }
-STEP_NAMES=(cli codex_config units hardening_check)
+STEP_NAMES=(cli codex_config scripts units hardening_check)
 run_checks() {
   local s
   check_cli
   check_codex_config
+  check_scripts
   check_units
   check_hardening
   BLOCKED=0; TODO=0
@@ -483,6 +662,10 @@ run_checks() {
   done
   en="$(systemctl is-enabled "$TIMER" 2>/dev/null)" || true
   say "timer $TIMER: ${en:-not installed} (only enable-timer enables it)"
+  if absent "$STANDING"; then say "standing pre-authorization: none (standing --yes writes it; per-run approvals still work)"
+  elif root_file "$STANDING" && [ "$(stat -c %s -- "$STANDING")" -le 4096 ]; then say "standing pre-authorization: $(tr -d '\000-\037' <"$STANDING" | cut -c1-300)"
+  else say "standing pre-authorization: $STANDING is not root's regular file (the automatic run refuses it)"
+  fi
 }
 
 say "pinned: ${CLI_PKG[claude]}@${CLI_VER[claude]} ${CLI_PKG[codex]}@${CLI_VER[codex]} (tarballs by sha512, natives by SHA-256); codex-config.toml SHA-256 $PINNED_SHA"
@@ -495,13 +678,8 @@ fi
 if [ "$MODE" != rollback ] && [ "$BLOCKED" -gt 0 ]; then say "SETUP_BLOCKED: a step is BLOCKED: nothing changed"; finish SETUP_BLOCKED 3; fi
 
 # ---------------------------------------------------------------- the changing modes: root's state dir, the lock, the log
-if absent "$STATE"; then install -d "${INSTALL_OWNER[@]}" -m 0700 "$STATE"; fi
-[ -d "$STATE" ] && [ ! -L "$STATE" ] && root_path "$STATE" || { say "SETUP_STATE_UNSAFE: $STATE is not root's directory"; finish SETUP_STATE_UNSAFE 2; }
-if [ -L "$LOG" ] || { [ -e "$LOG" ] && ! root_file "$LOG"; }; then say "SETUP_STATE_UNSAFE: $LOG is not root's regular file"; finish SETUP_STATE_UNSAFE 2; fi
-exec 9>"$STATE/setup.lock"
-flock -n 9 || { say "another setup run holds the lock"; finish SETUP_LOCKED 11; }
-touch -- "$LOG" && chmod 0600 -- "$LOG"
-log "start expect=$EXPECT steps: cli=${STEP[cli]} codex_config=${STEP[codex_config]} units=${STEP[units]} hardening_check=${STEP[hardening_check]}"
+open_state
+log "start expect=$EXPECT steps: cli=${STEP[cli]} codex_config=${STEP[codex_config]} scripts=${STEP[scripts]} units=${STEP[units]} hardening_check=${STEP[hardening_check]}"
 # npm's whole environment: nothing else (no proxy, CA, npm-config or NODE variable), no user / global npm config
 npm_g() {
   ( umask 022
@@ -528,7 +706,7 @@ if [ "$MODE" = rollback ]; then
   # apply's records since the last complete rollback
   RECORDS="$(awk '/^[0-9TZ:-]+ rollback done ok=1$/ { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$LOG")"
   applied() { grep -qE "^[0-9TZ:-]+ apply APPLIED $1\$" <<<"$RECORDS"; }
-  if ! applied cli && ! applied codex_config && ! applied units && ! applied hardening_check; then say "setup.log records no change by apply: nothing to undo"; fi
+  if ! applied cli && ! applied codex_config && ! applied scripts && ! applied units && ! applied hardening_check; then say "setup.log records no change by apply: nothing to undo"; fi
   if applied units; then
     if [ "$(unit_state LoadState "$TIMER")" != not-found ]; then
       log "systemctl disable --now $TIMER"
@@ -562,7 +740,8 @@ if [ "$MODE" = rollback ]; then
   fi
   if applied codex_config && ! absent "$CODEX_CONFIG"; then log "rm $CODEX_CONFIG"; rm -f -- "$CODEX_CONFIG"; fi
   if applied hardening_check && ! absent "$HARDENING_OK"; then log "rm $HARDENING_OK"; rm -f -- "$HARDENING_OK"; fi
-  say "used/, autorun/, the worker's claims, the ledgers and the switch are kept"
+  if applied scripts && [ -d "$INST" ] && [ ! -L "$INST" ]; then log "rm -r $INST"; rm -rf -- "$INST"; fi
+  say "used/, autorun/, rejected/, requests/, the worker's claims, the ledgers, the switch and the standing policy are kept"
   log "done ok=$ok"
   [ "$ok" = 1 ] || finish ROLLBACK_INCOMPLETE 35
   finish ROLLBACK_DONE 0
@@ -680,6 +859,25 @@ if [ "${STEP[codex_config]}" = TODO ]; then
   check_codex_config
   [ "${STEP[codex_config]}" = DONE ] || { say "SETUP_CODEX_CONFIG_FAILED: ${WHY[codex_config]}; $ROLLBACK_HINT"; log "codex_config not DONE"; finish SETUP_CODEX_CONFIG_FAILED 31; }
   log "codex_config DONE sha256=$PINNED_SHA"
+fi
+
+if [ "${STEP[scripts]}" = TODO ]; then
+  log "APPLIED scripts"
+  scripts_fail() { say "SETUP_SCRIPTS_FAILED: $1; $ROLLBACK_HINT"; log "scripts failed: $1"; finish SETUP_SCRIPTS_FAILED 36; }
+  for rel in "${INSTALL_FILES[@]}"; do
+    ( umask 022
+      install -d "${INSTALL_OWNER[@]}" -m 0755 "$INST" "$(dirname -- "$INST/$rel")"
+      install "${INSTALL_OWNER[@]}" -m "0$(file_mode "$rel")" -- "$SRC/$rel" "$INST/$rel" ) || scripts_fail "$rel could not be installed"
+    log "installed $INSTALL_DIR/$rel sha256=$(sha_of "$INST/$rel")"
+  done
+  tmp_sums="$(mktemp "$INST/.SHA256SUMS.XXXXXX")"
+  manifest_text >"$tmp_sums"
+  chmod 0644 -- "$tmp_sums"
+  mv -f -T -- "$tmp_sums" "$MANIFEST"
+  log "wrote $MANIFEST sha256=$(sha_of "$MANIFEST")"
+  check_scripts
+  [ "${STEP[scripts]}" = DONE ] || scripts_fail "after the install: ${WHY[scripts]}"
+  log "scripts DONE"
 fi
 
 if [ "${STEP[units]}" = TODO ]; then
