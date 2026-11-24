@@ -26,6 +26,7 @@ import {
 import { classifyError, CodexEventTracker, IMAGE_ITEM_TYPES, ITEM_TYPES, MAX_PARTIAL_LINE_CHARS, type EventDiagnostics, type ImageLocationDiagnostics, type PocDiagnostics } from "@/lib/design-agent/design-image/diagnostics";
 import {
   applyModelCatalog,
+  argErrorKindOf,
   classifyAnswerText,
   classifyImageFailureText,
   deriveImageOutcome,
@@ -40,6 +41,7 @@ import {
   readSessionFacts,
   toolModeOf,
 } from "@/lib/design-agent/design-image/capability";
+import { imageStopCode } from "@/lib/design-agent/design-image/image-once";
 import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, pocStopClass, REPORT_NOTES, REPORT_NOTES_V2, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
 import { SandboxError, type CodexSandbox } from "@/lib/design-agent/sandbox";
 
@@ -1712,11 +1714,47 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
         expect(await facts([turn161(), imagegenCell(), ext("failed", null, "ig_1"), cellOutput(), wait, waitOut])).toMatchObject({ image_failure_codes: ["TRANSIENT"], image_failure_reasons: ["HTTP_5XX"], image_failure_sources: ["cell_error"], image_failure_http: [500], other_tool_calls: 1 });
         const argErr = cellError("missing field `prompt`");
         const f = await facts([turn161(), imagegenCell(), argErr]);
-        expect(f).toMatchObject({ image_tool_calls: 0, code_mode_arg_error: true, image_failure_reasons: [] });
-        expect(deriveImageOutcome(f, false)).toBe("TOOL_NOT_SEEN_CODE_MODE");
-        expect(await facts([turn161(), cell("text('hi')"), argErr])).toMatchObject({ code_mode_arg_error: false });
+        expect(f).toMatchObject({ image_tool_calls: 0, code_mode_arg_error: true, code_mode_arg_error_kind: "ARGS_PARSE", image_failure_reasons: [] });
+        // Issue #335: an argument refusal the log shows is named (it was TOOL_NOT_SEEN_CODE_MODE before)
+        expect(deriveImageOutcome(f, false)).toBe("TOOL_REFUSED_ARGS");
+        const unnamed = await facts([turn161(), cell("text('hi')"), argErr]);
+        expect(unnamed).toMatchObject({ code_mode_arg_error: false, code_mode_arg_error_kind: null });
+        expect(deriveImageOutcome(unnamed, false)).toBe("TOOL_NOT_SEEN_CODE_MODE");
         // the model's own words without Codex's prefix are not a reason
         expect(await facts([turn161(), imagegenCell(), ext("failed", null, "ig_1"), cellError(`http 429 rate limit ${CANARY}`)])).toMatchObject({ image_failure_reasons: ["NO_TEXT"], image_failure_codes: ["OTHER"] });
+      });
+
+      it("Issue #335: each argument refusal of the tool (rust-v0.159.0 tool.rs) is one fixed kind and TOOL_REFUSED_ARGS / CODEX_IMAGE_ARGS_REFUSED; no text is kept", async () => {
+        const cases: Array<[string, string]> = [
+          ["`referenced_image_paths` must contain at most 5 paths", "REF_PATHS_TOO_MANY"],
+          ["AbsolutePathBuf deserialized without a base path at line 1 column 80", "REF_PATH_NOT_ABSOLUTE"],
+          ["referenced image paths are unavailable in this session", "REF_UNAVAILABLE"],
+          [`unable to read referenced image at \`/tmp/${CANARY}.png\`: No such file or directory (os error 2)`, "REF_UNREADABLE"],
+          [`unable to process referenced image at \`/tmp/${CANARY}.png\`: unsupported image format`, "REF_UNREADABLE"],
+          ["`num_last_images_to_include` must be between 1 and 5", "NUM_LAST_RANGE"],
+          ["requested the last 3 conversation images, but only 0 were available", "CONV_IMAGES_SHORT"],
+          ["provide only one of `referenced_image_paths` or `num_last_images_to_include`", "BOTH_GIVEN"],
+          ["unknown field `size`, expected one of `prompt`", "ARGS_PARSE"],
+        ];
+        for (const [message, kind] of cases) {
+          expect(argErrorKindOf(message), message).toBe(kind);
+          const f = await facts([turn161(), imagegenCell(), cellError(message)]);
+          expect(f, message).toMatchObject({ image_tool_calls: 0, code_mode_cells: 1, code_mode_imagegen_ref: true, code_mode_arg_error: true, code_mode_arg_error_kind: kind });
+          expect(deriveImageOutcome(f, false)).toBe("TOOL_REFUSED_ARGS");
+          expect(imageStopCode(deriveImageOutcome(f, false))).toBe("CODEX_IMAGE_ARGS_REFUSED");
+          expect(JSON.stringify(f)).not.toContain(CANARY);
+        }
+        // the first refusal's kind is kept when a later cell is refused for another reason
+        const two = await facts([turn161(), imagegenCell(), cellError("`referenced_image_paths` must contain at most 5 paths"), cell("await tools.image_gen__imagegen({prompt:'x'})", "cell_2"), cellError("`num_last_images_to_include` must be between 1 and 5", "cell_2")]);
+        expect(two.code_mode_arg_error_kind).toBe("REF_PATHS_TOO_MANY");
+        expect(argErrorKindOf("some other text")).toBeNull();
+        // a cell that never names the tool stays inconclusive; no cell at all with a model the slug list does not know is TOOL_NOT_CALLED
+        const unnamed = await facts([turn("gpt-6.1-terra"), cell("text('hi')"), cellError("`referenced_image_paths` must contain at most 5 paths")]);
+        expect(unnamed).toMatchObject({ tool_mode: "unknown", code_mode_cells: 1, code_mode_arg_error: false, code_mode_arg_error_kind: null });
+        expect(deriveImageOutcome(unnamed, false)).toBe("TOOL_NOT_SEEN_CODE_MODE");
+        expect(imageStopCode(deriveImageOutcome(unnamed, false))).toBe("CODEX_NO_IMAGE");
+        const none = await facts([turn("gpt-6.1-terra")]);
+        expect(deriveImageOutcome(none, false)).toBe("TOOL_NOT_CALLED");
       });
 
       it("review F1, spoof 1: a cell that completed and PRINTED Codex's prefix with a 503 is advisory (cell_print): the code stays OTHER, never TRANSIENT", async () => {

@@ -218,7 +218,31 @@ const HTTP_STATUS = /\b(?:http|api error) ([45]\d\d)\b/i;
 const API_CODE = /\\?"(?:code|type)\\?"\s*:\s*\\?"([A-Za-z0-9_.-]{1,64})\\?"/g;
 /** Argument errors the tool returns before it starts (no Extension item): tool.rs:439-605, code_mode/mod.rs:419-428. */
 const INVALID_ARGS_SIGN =
-  /`referenced_image_paths` must contain at most|referenced image paths are unavailable|`num_last_images_to_include` must be between|provide only one of `referenced_image_paths`|conversation images, but only \d+ were available|unable to (?:read|process) referenced image|expects a JSON object for arguments|unknown field `|missing field `prompt`|invalid type: [a-z ]+, expected/i;
+  /`referenced_image_paths` must contain at most|referenced image paths are unavailable|`num_last_images_to_include` must be between|provide only one of `referenced_image_paths`|conversation images, but only \d+ were available|unable to (?:read|process) referenced image|expects a JSON object for arguments|unknown field `|missing field `prompt`|invalid type: [a-z ]+, expected|AbsolutePathBuf deserialized without a base path/i;
+
+/**
+ * Issue #335: which argument refusal it was, as one fixed code (the first one seen in a cell that named the tool). Read at
+ * rust-v0.159.0 as data: ext/image-generation/src/tool.rs request_for_call_args (:427-497), image_url (:572-599) and
+ * parse_args (:602-606, serde_json without a base path, so a relative `referenced_image_paths` entry fails as
+ * utils/absolute-path `AbsolutePathBuf deserialized without a base path`).
+ */
+export const CODE_MODE_ARG_ERROR_KINDS = ["REF_PATHS_TOO_MANY", "REF_PATH_NOT_ABSOLUTE", "REF_UNAVAILABLE", "REF_UNREADABLE", "NUM_LAST_RANGE", "CONV_IMAGES_SHORT", "BOTH_GIVEN", "ARGS_PARSE"] as const;
+export type CodeModeArgErrorKind = (typeof CODE_MODE_ARG_ERROR_KINDS)[number];
+const ARG_ERROR_KIND_SIGNS: ReadonlyArray<readonly [CodeModeArgErrorKind, RegExp]> = [
+  ["REF_PATHS_TOO_MANY", /`referenced_image_paths` must contain at most/i],
+  ["REF_PATH_NOT_ABSOLUTE", /AbsolutePathBuf deserialized without a base path/i],
+  ["REF_UNAVAILABLE", /referenced image paths are unavailable/i],
+  ["REF_UNREADABLE", /unable to (?:read|process) referenced image/i],
+  ["NUM_LAST_RANGE", /`num_last_images_to_include` must be between/i],
+  ["CONV_IMAGES_SHORT", /conversation images, but only \d+ were available/i],
+  ["BOTH_GIVEN", /provide only one of `referenced_image_paths`/i],
+];
+/** The fixed kind of an argument-refusal text (matched in memory; ARGS_PARSE for the remaining INVALID_ARGS_SIGN forms). */
+export function argErrorKindOf(text: string): CodeModeArgErrorKind | null {
+  const t = text.slice(0, MAX_MATCH_CHARS);
+  if (!INVALID_ARGS_SIGN.test(t)) return null;
+  return ARG_ERROR_KIND_SIGNS.find(([, re]) => re.test(t))?.[0] ?? "ARGS_PARSE";
+}
 
 const USAGE_CODES: ReadonlySet<string> = new Set(["usage_limit_reached", "insufficient_quota"]);
 const POLICY_CODES: ReadonlySet<string> = new Set(["moderation_blocked", "content_policy_violation", "invalid_prompt"]);
@@ -428,6 +452,8 @@ export interface SessionFacts {
   image_failure_api_codes: ImageApiErrorCode[];
   /** DEV-081: an output of an exec cell that named image_gen__imagegen carries one of the tool's argument errors (a call refused before it started leaves no Extension item). */
   code_mode_arg_error: boolean;
+  /** Issue #335: the first such argument error's fixed kind (null: none). */
+  code_mode_arg_error_kind: CodeModeArgErrorKind | null;
   /**
    * DEV-084: each ended image call's duration in ms (ItemCompleted `completed_at_ms - started_at_ms`), in the order the calls
    * were first seen, at most MAX_IMAGE_CALL_TIMINGS. Only calls with usable timestamps (a paginated log); a legacy
@@ -474,6 +500,7 @@ export const emptySessionFacts = (): SessionFacts => ({
   image_failure_http: [],
   image_failure_api_codes: [],
   code_mode_arg_error: false,
+  code_mode_arg_error_kind: null,
   image_call_ms: [],
   image_fail_timings: [],
   image_call_ids: [],
@@ -829,13 +856,18 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     if (error !== undefined) {
       const at = error.search(FAILED_PREFIX);
       if (at >= 0) cellFailures.push({ src: "cell_error", t: classifyImageFailureText(error.slice(at, at + 4096)) });
-      else if (namedTool && INVALID_ARGS_SIGN.test(error)) f.code_mode_arg_error = true;
+      else if (namedTool && INVALID_ARGS_SIGN.test(error)) argError(error);
       if (at >= 0) return;
     }
     const text = outputText(output).slice(0, MAX_MATCH_CHARS);
     const at = text.search(FAILED_PREFIX);
     if (at >= 0) cellFailures.push({ src: "cell_print", t: classifyImageFailureText(text.slice(at, at + 4096)) });
-    else if (namedTool && INVALID_ARGS_SIGN.test(text)) f.code_mode_arg_error = true;
+    else if (namedTool && INVALID_ARGS_SIGN.test(text)) argError(text);
+  }
+  /** Issue #335: an argument refusal in a cell that named the tool: the flag and the first one's fixed kind only. */
+  function argError(text: string): void {
+    f.code_mode_arg_error = true;
+    f.code_mode_arg_error_kind ??= argErrorKindOf(text);
   }
   // POLICY first: a refusal wins over a usage limit among text-derived codes (review F1)
   const CODE_ORDER: readonly ImageFailureCode[] = ["POLICY", "USAGE_LIMIT", "UNSUPPORTED", "OTHER", "TRANSIENT"];
@@ -890,6 +922,7 @@ export const IMAGE_OUTCOMES = [
   "NO_SESSION_LOG",
   "TOOL_NOT_CALLED",
   "TOOL_NOT_SEEN_CODE_MODE",
+  "TOOL_REFUSED_ARGS",
   "TOOL_FAILED_USAGE_LIMIT",
   "TOOL_FAILED_POLICY",
   "TOOL_FAILED_UNSUPPORTED",
@@ -903,11 +936,15 @@ export type ImageOutcome = (typeof IMAGE_OUTCOMES)[number];
  * No image call seen means "not called" (TOOL_NOT_CALLED) only when imagegen was a direct tool, as far as the
  * log shows: no code-mode cell ran and the model is not a code_mode_only one. Otherwise (DEV-080) a call from
  * inside an exec cell that failed before the tool started leaves no record, so it is TOOL_NOT_SEEN_CODE_MODE:
- * inconclusive, never read as "the model chose text".
+ * inconclusive, never read as "the model chose text". Issue #335: an argument refusal the log does show (a cell that named
+ * the tool got one of the tool's argument errors back, code_mode_arg_error) is TOOL_REFUSED_ARGS; a cell that never named
+ * the tool stays TOOL_NOT_SEEN_CODE_MODE.
  */
 export function deriveImageOutcome(facts: SessionFacts, imageSaved: boolean): ImageOutcome {
   if (imageSaved) return "IMAGE_SAVED";
   if (!facts.log_found || facts.truncated || facts.unreadable) return "NO_SESSION_LOG";
+  // Issue #335: no call started, and a cell that named the tool got one of its argument refusals back (tool.rs:427-606)
+  if (facts.image_tool_calls === 0 && facts.code_mode_arg_error) return "TOOL_REFUSED_ARGS";
   if (facts.image_tool_calls === 0) return facts.code_mode_cells > 0 || facts.tool_mode === "code_mode_only" || facts.tool_mode === "code_mode" ? "TOOL_NOT_SEEN_CODE_MODE" : "TOOL_NOT_CALLED";
   if (facts.image_tool_failed > 0) {
     const codes = facts.image_failure_codes;

@@ -220,6 +220,8 @@ export const CODEX_STOP_CODES = [
   "CODEX_IMAGE_CALLS_EXCEEDED",
   "CODEX_IMAGE_COUNT_MISMATCH",
   "CODEX_SESSION_LOG_UNVERIFIED",
+  // Issue #335: the image tool refused the call's arguments before it started (TOOL_REFUSED_ARGS)
+  "CODEX_IMAGE_ARGS_REFUSED",
 ] as const;
 export type RejectCode = (typeof REJECT_CODES)[number] | (typeof CODEX_STOP_CODES)[number];
 

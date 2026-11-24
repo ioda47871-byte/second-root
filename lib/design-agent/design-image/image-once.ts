@@ -14,7 +14,7 @@ import { lstat, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent, codexLooksRateLimited, codexLooksSignedOut, listDesignAgentSessions, readCodexEvents, removeCodexSession, removeCodexSessionsOf, removeStaleCodexSessions } from "../codex";
 import { SandboxError, stageInputBytes, type CodexSandbox } from "../sandbox";
-import { deriveImageOutcome, parseCodexVersion, readSessionFacts, type ImageOutcome } from "./capability";
+import { classifyAnswerText, deriveImageOutcome, parseCodexVersion, readSessionFacts, type AnswerTextCode, type CodeModeArgErrorKind, type ImageFailureReason, type ImageOutcome, type ToolMode } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
 
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -88,6 +88,8 @@ export async function cleanupActiveImageCalls(): Promise<void> {
 /** The fixed stop code for an image outcome without a saved picture. */
 export function imageStopCode(outcome: ImageOutcome): string {
   if (outcome === "TOOL_FAILED_USAGE_LIMIT") return "CODEX_QUOTA";
+  // Issue #335: the tool refused the call's arguments before it started (no item, no picture)
+  if (outcome === "TOOL_REFUSED_ARGS") return "CODEX_IMAGE_ARGS_REFUSED";
   if (outcome === "TOOL_FAILED" || outcome === "TOOL_FAILED_POLICY" || outcome === "TOOL_FAILED_UNSUPPORTED" || outcome === "TOOL_FAILED_TRANSIENT") return "CODEX_IMAGE_TOOL_FAILED";
   return "CODEX_NO_IMAGE";
 }
@@ -99,6 +101,7 @@ type RunSeen = {
   threadId: string | null;
   codexHome: string;
   base: { threadId: string | null; cliVersion: string | null; model: string | null; codexMs: number };
+  diagnostics: ImageRunDiagnostics;
 };
 /**
  * inputImages (DEV-303, owner decision 2026-11-24; batch only): at most MAX_BATCH_IMAGES PNGs attached to the one exec
@@ -106,6 +109,33 @@ type RunSeen = {
  * PoC's, unchanged.
  */
 type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number; inputImages?: readonly Buffer[] };
+
+/**
+ * Issue #335: the fixed placeholder a prompt with input images uses for this call's temporary work dir. The image tool's
+ * `referenced_image_paths` takes absolute paths only (rust-v0.159.0: ext/image-generation/src/tool.rs ImagegenArgs is
+ * `Vec<AbsolutePathBuf>`, parsed by serde_json without a base path, so a relative entry is refused before the call), and
+ * the work dir is made per call. So the pinned prompt names `{{SR_WORK_DIR}}/inputs/photo-N.png`, and with input images
+ * (only then) every occurrence is replaced by the work dir the `--image` copies were staged in (the same absolute path
+ * `--cd` and `--image` give the jailed CLI). request-prompt.ts carries the same literal (a test keeps them equal).
+ */
+export const WORK_DIR_TOKEN = "{{SR_WORK_DIR}}";
+
+/**
+ * Issue #335: what the session log and the answer already told about a run, as fixed values only (never text). Carried
+ * into the caller's record on every stop of a run that reached Codex.
+ */
+export type ImageRunDiagnostics = {
+  exec_cells: number;
+  cell_named_image_tool: boolean;
+  arg_error: boolean;
+  arg_error_kind: CodeModeArgErrorKind | null;
+  other_tool_calls: number;
+  tool_mode: ToolMode;
+  model: string | null;
+  cli_version: string | null;
+  image_failure_reasons: ImageFailureReason[];
+  answer: AnswerTextCode;
+};
 
 /**
  * The one `codex exec` of an image call, shared by generateImageOnce (one picture) and generateImagesInOneRun (DEV-185,
@@ -149,6 +179,8 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
     const cliVersion = version && version.code === 0 && !version.timedOut ? parseCodexVersion(version.stdout) : null;
     if (signal?.aborted) throw new CodexAbortedError();
     const attached = o.inputImages && o.inputImages.length > 0 ? await stageInputBytes(cwd, o.inputImages) : [];
+    // Issue #335: only with input images, the placeholder becomes the absolute work dir they were staged in
+    const prompt = attached.length > 0 ? o.prompt.split(WORK_DIR_TOKEN).join(cwd) : o.prompt;
     before = await imageThreads(codexHome);
     const started = now();
     let run;
@@ -156,7 +188,7 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
       // the PoC's command line: the image feature pinned on, read-only, the built-in provider only
       run = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, ...attached.map((path) => `--image=${path}`), "-"], {
         workDir: cwd,
-        input: o.prompt,
+        input: prompt,
         timeoutMs: o.timeoutMs,
         ...withSignal,
       });
@@ -172,7 +204,21 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
     const facts = await readSessionFacts(codexHome, threadId ? { threadId } : { cwds: new Set([cwd, await realpath(cwd).catch(() => cwd!)]) }, maxLogBytes === undefined ? {} : { maxLogBytes });
     const model = facts.model !== null && facts.model !== "other" && MODEL.test(facts.model) ? facts.model : null;
     if (run.aborted || signal?.aborted) throw new CodexAbortedError();
-    return await seen({ run, facts, threadId, codexHome, base: { threadId, cliVersion: cliVersion ?? facts.cli_version, model, codexMs } });
+    const base = { threadId, cliVersion: cliVersion ?? facts.cli_version, model, codexMs };
+    const diagnostics: ImageRunDiagnostics = {
+      exec_cells: facts.code_mode_cells,
+      cell_named_image_tool: facts.code_mode_imagegen_ref,
+      arg_error: facts.code_mode_arg_error,
+      arg_error_kind: facts.code_mode_arg_error_kind,
+      other_tool_calls: facts.other_tool_calls,
+      tool_mode: facts.tool_mode,
+      model: base.model,
+      cli_version: base.cliVersion,
+      image_failure_reasons: [...facts.image_failure_reasons],
+      // in memory only: the final answer as one fixed code (as run.ts does); the text is never kept
+      answer: classifyAnswerText(events.lastMessage),
+    };
+    return await seen({ run, facts, threadId, codexHome, base, diagnostics });
   } catch (error) {
     if (error instanceof CodexAbortedError || error instanceof CodexError) throw error;
     if (error instanceof SandboxError) return early(error.started ? "CODEX_RESULT_DISCARDED_DOTENV" : error.code, null);
@@ -225,6 +271,8 @@ export type ImageBatchResult = {
   imageFailed: number;
   /** Issue #293 (additive): the image calls' own ids from the session log (capability.ts image_call_ids), in call order. */
   imageCallIds?: string[];
+  /** Issue #335 (additive): the run's fixed session facts; absent for a stop before Codex ran. */
+  diagnostics?: ImageRunDiagnostics;
   threadId: string | null;
   cliVersion: string | null;
   model: string | null;
@@ -278,8 +326,8 @@ export async function generateImagesInOneRun(o: RunOptions & { maxImages: number
     o,
     BATCH_SESSION_LOG_BYTES,
     (stopCode, cliVersion) => result({ outcome: "not_applicable", stopCode, ...(cliVersion === null ? {} : { cliVersion }) }),
-    async ({ run, facts, threadId, codexHome, base }) => {
-      const counts = { imageCalls: facts.image_tool_calls, imageFailed: facts.image_tool_failed, imageCallIds: [...facts.image_call_ids] };
+    async ({ run, facts, threadId, codexHome, base, diagnostics }) => {
+      const counts = { imageCalls: facts.image_tool_calls, imageFailed: facts.image_tool_failed, imageCallIds: [...facts.image_call_ids], diagnostics };
       const taken = threadId ? await takeImages(join(codexHome, "generated_images", threadId)) : [];
       const outcomeOf = (saved: boolean) => deriveImageOutcome(facts, saved);
       if (!Array.isArray(taken)) return result({ ...base, ...counts, outcome: outcomeOf(false), stopCode: taken.code });

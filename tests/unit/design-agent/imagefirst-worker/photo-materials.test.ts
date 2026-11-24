@@ -3,9 +3,9 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readF
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
-import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
+import { generateImagesInOneRun, WORK_DIR_TOKEN as IMAGE_ONCE_WORK_DIR_TOKEN } from "@/lib/design-agent/design-image/image-once";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
-import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
+import { assignPhotos, buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, PHOTO_TOOL_MAX_REFS, WORK_DIR_TOKEN, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { IMAGE_MATERIAL_LABEL, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
@@ -291,6 +291,81 @@ describe("DEV-303 the prompts of both stages", () => {
   });
 });
 
+describe("Issue #335: the design prompt with photo_inputs fits the image tool (at most 5 referenced paths per call)", () => {
+  const planWith = (n: number) => {
+    const files = Array.from({ length: n }, (_, k) => ({ name: `photo-${k + 1}.png`, sha256: sha(String(k + 1)) }));
+    const obj = designRequest({ photo_inputs: { request_id: PHOTO_ID, files } });
+    const request = parseRequest(bytesOf(obj), sha(bytesOf(obj)), DESIGN_ID).request as DesignRequest;
+    return buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
+  };
+  const named = (prompt: string) => [...new Set([...prompt.matchAll(/photo-(\d)\.png/g)].map((m) => Number(m[1])))].sort();
+
+  it("6 photos: each picture names at most 5 (a fixed rotation), its header lists exactly those absolute staged paths", () => {
+    const a = planWith(6);
+    const parts = [...a.viewports.desktop_1440.parts, ...a.viewports.mobile_390.parts];
+    const expected = assignPhotos(6, 6);
+    expect(expected).toEqual([
+      [1, 2, 3, 4, 5],
+      [2, 3, 4, 5, 6],
+      [3, 4, 5, 6, 1],
+      [4, 5, 6, 1, 2],
+      [5, 6, 1, 2, 3],
+      [6, 1, 2, 3, 4],
+    ]);
+    for (const [i, p] of parts.entries()) {
+      const refs = named(p.prompt);
+      expect(refs.length, p.name).toBeLessThanOrEqual(PHOTO_TOOL_MAX_REFS);
+      expect(refs, p.name).toEqual([...expected[i]!].sort());
+      expect(p.prompt).toContain("参照画像として渡す次の 5 枚の写真");
+      expect(p.prompt).not.toContain(WORK_DIR_TOKEN);
+      const header = `Image ${i + 1} of 6 — ${i < 2 ? "PC 1440" : "SP 390"} — ${p.name} — referenced_image_paths: ${JSON.stringify(expected[i]!.map((k) => `${WORK_DIR_TOKEN}/inputs/photo-${k}.png`))}:\n<<<\n${p.prompt}>>>`;
+      expect(a.batch.prompt).toContain(header);
+    }
+    expect(a.batch.prompt).toContain("6 photographs are attached as input images");
+    expect(a.batch.prompt).toContain(`staged as the files ${WORK_DIR_TOKEN}/inputs/photo-1.png to ${WORK_DIR_TOKEN}/inputs/photo-6.png`);
+    expect(a.batch.prompt).toContain("in the image tool's `referenced_image_paths` argument (never more than 5 paths; do not use `num_last_images_to_include`)");
+    // the image tool may read the attached files; the model itself still reads and writes none
+    expect(a.batch.prompt).not.toContain("do not read or write files");
+    expect(a.batch.prompt).toContain("only the image tool reads the photographs, through `referenced_image_paths`");
+    // no batch line lists more than 5 paths
+    for (const m of a.batch.prompt.matchAll(/referenced_image_paths: (\[[^\]]*\])/g)) expect((JSON.parse(m[1]!) as string[]).length).toBeLessThanOrEqual(5);
+    expect(planWith(6).plan_sha256).toBe(a.plan_sha256);
+  });
+
+  it("up to 5 photos: every picture may use all of them; the token is image-once's", () => {
+    const a = planWith(3);
+    for (const p of [...a.viewports.desktop_1440.parts, ...a.viewports.mobile_390.parts]) expect(named(p.prompt)).toEqual([1, 2, 3]);
+    expect(a.batch.prompt).toContain(`referenced_image_paths: ${JSON.stringify([1, 2, 3].map((k) => `${WORK_DIR_TOKEN}/inputs/photo-${k}.png`))}`);
+    expect(planWith(1).batch.prompt).toContain(`staged as the files ${WORK_DIR_TOKEN}/inputs/photo-1.png (in the order attached)`);
+    expect(WORK_DIR_TOKEN).toBe(IMAGE_ONCE_WORK_DIR_TOKEN);
+  });
+
+  it("more than 5 photos for one picture stops before any call (PHOTO_INPUTS_OVER_TOOL_LIMIT)", () => {
+    const code = (f: () => unknown) => {
+      try {
+        f();
+        return "ok";
+      } catch (error) {
+        return error instanceof PromptStop ? error.code : String(error);
+      }
+    };
+    expect(code(() => assignPhotos(6, 6, 6))).toBe("PHOTO_INPUTS_OVER_TOOL_LIMIT");
+    expect(code(() => assignPhotos(6, 6, 5))).toBe("ok");
+    expect(code(() => assignPhotos(3, 6, 4))).toBe("PHOTO_INPUTS_INVALID");
+  });
+
+  it("without photo_inputs the batch prompt and plan are byte-identical to before (pinned SHA-256)", () => {
+    const obj = designRequest();
+    const request = parseRequest(bytesOf(obj), sha(bytesOf(obj)), DESIGN_ID).request as DesignRequest;
+    const b = buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
+    expect(b.batch.sha256).toBe("61e75a79e31101647392792236145ff5f68796991626963c3f5af264c8b532fe");
+    expect(b.plan_sha256).toBe("f8f33e416a1d0fae0f6ae6cea13d0a3fe298c990eead810576eace226365e775");
+    expect(b.batch.prompt).toContain("- Do not run shell commands, do not read or write files, do not browse.\n");
+    expect(b.batch.prompt).not.toContain("referenced_image_paths");
+    expect(b.batch.prompt).not.toContain(WORK_DIR_TOKEN);
+  });
+});
+
 describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 pictures", () => {
   it("stage 1 makes 6 materials in its own run; stage 2 attaches them with --image and leaves only its own 6 pictures in parts/ and the inbox", async () => {
     const { w, one, files, d1 } = await stageOne();
@@ -467,6 +542,51 @@ describe("DEV-303 image-once: --image only when photo inputs are given", () => {
     await generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6 });
     expect(f.argv[0]).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", f.argv[0]![10]!, "-"]);
     await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: 7 }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 6 input images");
+  });
+});
+
+describe("Issue #335 image-once with 6 photo inputs (fake Codex): staged paths, the work dir in the prompt, a refused call named", () => {
+  it("6 --image args under <cwd>/inputs, the token replaced by the work dir, TOOL_REFUSED_ARGS / CODEX_IMAGE_ARGS_REFUSED and the fixed diagnostics", async () => {
+    const f = fakeCodex("six");
+    const seen: { argv: string[]; stdin: string; staged: string[] }[] = [];
+    const base = f.sandbox.run.bind(f.sandbox);
+    f.sandbox.run = async (a, o) => {
+      if (a[0] !== "exec") return base(a, o);
+      f.execs += 1;
+      seen.push({ argv: [...a], stdin: String(o.input ?? ""), staged: existsSync(join(o.workDir!, "inputs")) ? readdirSync(join(o.workDir!, "inputs")).sort() : [] });
+      // what 0.159.0 leaves for a code-mode cell whose image call was refused before it started: no item, no picture
+      const sessions = join(f.codexHome, "sessions", "2026", "11", "25");
+      mkdirSync(sessions, { recursive: true });
+      const recs = [
+        { type: "session_meta", payload: { id: THREAD, cwd: o.workDir, cli_version: "0.159.0", history_mode: "paginated" } },
+        { type: "turn_context", payload: { cwd: o.workDir, model: "gpt-6.1-terra" } },
+        { type: "response_item", payload: { type: "custom_tool_call", status: "completed", call_id: "cell_1", name: "exec", input: "await tools.image_gen__imagegen({ prompt: 'x', referenced_image_paths: [] })" } },
+        { type: "response_item", payload: { type: "custom_tool_call_output", call_id: "cell_1", output: [{ type: "input_text", text: "Script failed\nWall time 0.4 seconds\nOutput:\n" }, { type: "input_text", text: "Script error:\n`referenced_image_paths` must contain at most 5 paths" }] } },
+      ];
+      writeFileSync(join(sessions, `rollout-2026-11-25T01-00-00-${THREAD}.jsonl`), recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
+      const stdout = [{ type: "thread.started", thread_id: THREAD }, { type: "item.completed", item: { type: "agent_message", text: "I stopped: the image tool refused the call." } }].map((e) => JSON.stringify(e)).join("\n");
+      return { code: 0, signal: null, stdout: `${stdout}\n`, stderr: "", timedOut: false };
+    };
+    const photos = Array.from({ length: 6 }, (_, i) => colourPng(64 + i, 64));
+    const prompt = `use ${WORK_DIR_TOKEN}/inputs/photo-1.png and ${WORK_DIR_TOKEN}/inputs/photo-6.png\n`;
+    const r = await generateImagesInOneRun({ sandbox: f.sandbox, prompt, timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: photos });
+    expect(seen).toHaveLength(1);
+    const argv = seen[0]!.argv;
+    const cwd = argv[argv.indexOf("--cd") + 1]!;
+    expect(argv.filter((x) => x.startsWith("--image="))).toEqual([1, 2, 3, 4, 5, 6].map((k) => `--image=${join(cwd, "inputs", `photo-${k}.png`)}`));
+    expect(seen[0]!.staged).toEqual([1, 2, 3, 4, 5, 6].map((k) => `photo-${k}.png`));
+    // the pinned prompt's placeholder became the absolute work dir the --image copies were staged in
+    expect(seen[0]!.stdin).toBe(`use ${cwd}/inputs/photo-1.png and ${cwd}/inputs/photo-6.png\n`);
+    expect(seen[0]!.stdin).not.toContain(WORK_DIR_TOKEN);
+    expect(r).toMatchObject({ images: [], outcome: "TOOL_REFUSED_ARGS", stopCode: "CODEX_IMAGE_ARGS_REFUSED", imageCalls: 0, imageFailed: 0, threadId: THREAD });
+    expect(r.diagnostics).toEqual({ exec_cells: 1, cell_named_image_tool: true, arg_error: true, arg_error_kind: "REF_PATHS_TOO_MANY", other_tool_calls: 0, tool_mode: "unknown", model: "gpt-6.1-terra", cli_version: "0.163.0", image_failure_reasons: [], answer: "TEXT_REFUSAL" });
+    expect(JSON.stringify(r.diagnostics)).not.toMatch(/stopped|refused the call|must contain/);
+    // without input images the prompt goes as given (the token is never touched)
+    seen.length = 0;
+    expect((await generateImagesInOneRun({ sandbox: f.sandbox, prompt, timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6 })).stopCode).toBe("CODEX_IMAGE_ARGS_REFUSED");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.stdin).toBe(prompt);
+    expect(seen[0]!.argv.some((x) => x.startsWith("--image="))).toBe(false);
   });
 });
 
