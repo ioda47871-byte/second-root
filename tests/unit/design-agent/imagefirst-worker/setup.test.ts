@@ -48,14 +48,37 @@ function world() {
     symlinkSync(target, join(R, "usr", "local", "bin", name));
   }
   // root's node (never executed: a placeholder) and the npm stub: it installs a local tarball as npm does (the package dir
-  // from package/, the bin link from package.json) and records how it was run; npm-tamper changes an installed file
+  // from package/, the bin link from package.json) and records how it was run; npm-tamper changes an installed file.
+  // Two real npm 11 behaviours (seen with npm 11.19.0): one file given as both --userconfig and --globalconfig (/dev/null
+  // twice too) exits 1 before anything ("double-loading config"); and a global install, --omit=optional or not, also nests
+  // the optional native packages unless --os / --cpu exclude this platform (linux / x64). npm-fail: npm's noisy failure
+  // with token-like strings in its output.
   writeFileSync(join(R, "usr", "bin", "node"), "#!/bin/sh\nexit 97\n", { mode: 0o755 });
   exe(
     join(R, "usr", "bin", "npm"),
     `echo "npm $* HOME=$HOME umask=$(umask) env=$(env | cut -d= -f1 | LC_ALL=C sort | tr '\\n' ,)" >> '${sc}/npm.log'
-[ -f '${sc}/npm-fail' ] && exit 1
-cmd="$1"; shift; prefix=""; args=()
-while [ $# -gt 0 ]; do case "$1" in --prefix) prefix="$2"; shift 2 ;; --userconfig|--globalconfig) shift 2 ;; -*) shift ;; *) args+=("$1"); shift ;; esac; done
+cmd="$1"; shift; prefix=""; args=(); ucfg=""; gcfg=""; os=linux; cpu=x64
+while [ $# -gt 0 ]; do case "$1" in --prefix) prefix="$2"; shift 2 ;; --userconfig) ucfg="$2"; shift 2 ;; --globalconfig) gcfg="$2"; shift 2 ;;
+  --os=*) os="\${1#--os=}"; shift ;; --cpu=*) cpu="\${1#--cpu=}"; shift ;; -*) shift ;; *) args+=("$1"); shift ;; esac; done
+if [ -n "$ucfg" ] && [ -n "$gcfg" ] && [ "$(readlink -f -- "$ucfg")" = "$(readlink -f -- "$gcfg")" ]; then
+  printf 'npm error Exit prior to config file resolving\nnpm error cause\nnpm error double-loading config "%s" as "global", previously loaded as "user"\n' "$gcfg" >&2
+  exit 1
+fi
+for c in "$ucfg" "$gcfg"; do
+  [ -n "$c" ] || continue
+  if [ -L "$c" ]; then t=link; elif [ -f "$c" ]; then t=file; else t=other; fi
+  echo "cfg $cmd $c type=$t mode=$(stat -c %a -- "$c") size=$(stat -L -c %s -- "$c") dirmode=$(stat -c %a -- "$(dirname -- "$c")")" >> '${sc}/npm-cfg.log'
+done
+if [ -f '${sc}/npm-fail' ]; then
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do echo "npm http fetch filler line $i"; done
+  echo "npm error code ETARGET" >&2
+  echo "npm error //registry.npmjs.org/:_authToken=npm_SECRETAUTH123" >&2
+  echo "npm error Authorization: Bearer sk-SECRETBEARER456" >&2
+  echo "npm error fetch https://bob:SECRETPASS789@registry.example/x.tgz" >&2
+  echo "npm error token=SECRETTOKEN000 refused" >&2
+  echo "npm error A complete log of this run can be found in: /root/.npm/_logs/x.log" >&2
+  exit 1
+fi
 for a in "\${args[@]}"; do
   if [ "$cmd" = install ]; then
     meta="$(tar -xzOf "$a" package/package.json | python3 -I -c 'import json, sys; d = json.load(sys.stdin); k = list(d["bin"])[0]; print(d["name"], k, d["bin"][k])')"
@@ -66,6 +89,10 @@ for a in "\${args[@]}"; do
     rm -rf "$d"; mkdir -p "$d"; tar -xzf "$a" -C "$d" --strip-components=1; chmod 755 "$d/$rel"; ln -sfn "../lib/node_modules/$name/$rel" "$prefix/bin/$b"
     if [ -f '${sc}/npm-tamper' ]; then echo tampered >> "$d/package.json"; fi
     if [ -f '${sc}/npm-extra' ]; then echo extra > "$d/extra.js"; fi
+    if [ "$os" = linux ] && [ "$cpu" = x64 ]; then
+      case "$name" in @anthropic-ai/claude-code) n=@anthropic-ai/claude-code-linux-x64 ;; *) n=@openai/codex-linux-x64 ;; esac
+      mkdir -p "$d/node_modules/$n"; echo '{"name":"'"$n"'"}' > "$d/node_modules/$n/package.json"
+    fi
   else
     case "$a" in @anthropic-ai/claude-code) b=claude ;; @openai/codex) b=codex ;; *) exit 2 ;; esac
     rm -rf "$prefix/lib/node_modules/$a"; rm -f "$prefix/bin/$b"
@@ -430,7 +457,7 @@ describe("Issue #302 one-time setup: apply", () => {
     // HOME=/root, umask 022, a clean environment
     const npm = w.lines("npm.log");
     expect(npm).toHaveLength(1);
-    expect(npm[0]).toMatch(new RegExp(`^npm install -g --prefix ${w.R}/usr/local --userconfig /dev/null --globalconfig /dev/null --no-audit --no-fund --loglevel=error --ignore-scripts --omit=optional \\S+/setup-download\\.\\w+/claude\\.tgz \\S+/setup-download\\.\\w+/codex\\.tgz HOME=${w.R}/root umask=0022 `));
+    expect(npm[0]).toMatch(new RegExp(`^npm install -g --prefix ${w.R}/usr/local --userconfig ${w.state}/setup-npmrc\\.\\w+/userconfig --globalconfig ${w.state}/setup-npmrc\\.\\w+/globalconfig --no-audit --no-fund --no-update-notifier --loglevel=error --os=sr-none --cpu=sr-none --ignore-scripts --omit=optional \\S+/setup-download\\.\\w+/claude\\.tgz \\S+/setup-download\\.\\w+/codex\\.tgz HOME=${w.R}/root umask=0022 `));
     expect(npm[0]).toMatch(CLEAN_ENV);
     expect(readdirSync(w.state).filter((n) => n.startsWith("setup-download"))).toEqual([]);
     for (const name of ["claude", "codex"] as const) {
@@ -544,6 +571,74 @@ describe("Issue #302 one-time setup: apply", () => {
     expect(log.match(/OLD_LINK claude/g)).toHaveLength(1);
   });
 
+  it("DEV-303 npm 11: two distinct empty root-only config files (never /dev/null twice), the natives excluded by --os/--cpu", () => {
+    const w = world();
+    const r = apply(w);
+    expect(r, r.stdout).toMatchObject({ status: 0, code: "APPLY_OK" });
+    // the stub (as npm 11) refuses one file loaded as user and global config: the script no longer passes that
+    expect(w.lines("npm.log").filter((l) => l.includes("/dev/null"))).toEqual([]);
+    expect(readFileSync(SETUP, "utf8")).not.toMatch(/--(user|global)config \/dev\/null/);
+    const cfg = w.lines("npm-cfg.log");
+    expect(cfg).toHaveLength(2);
+    for (const l of cfg) expect(l).toMatch(new RegExp(`^cfg install ${w.state}/setup-npmrc\\.\\w+/(user|global)config type=file mode=600 size=0 dirmode=700$`));
+    const paths = cfg.map((l) => l.split(" ")[2]!);
+    expect(new Set(paths).size).toBe(2);
+    for (const p of paths) expect(existsSync(p)).toBe(false);
+    expect(readdirSync(w.state).filter((n) => n.startsWith("setup-npmrc") || n === "setup-npm.out")).toEqual([]);
+    // npm's output is not shown on success
+    expect(r.stdout).not.toContain("npm|");
+    // the codex native is the verified one the script placed, and claude's nested native never appeared
+    expect(existsSync(w.nm(PKG.claude, "node_modules"))).toBe(false);
+    expect(readdirSync(w.nm(PKG.codex, "node_modules", "@openai"))).toEqual(["codex-linux-x64"]);
+    expect(readFileSync(w.nm(PKG.codex, "node_modules", "@openai", "codex-linux-x64", "vendor", "x86_64-unknown-linux-musl", "bin", "codex"))).toEqual(w.natives.codex);
+  });
+
+  it("DEV-303 npm 11 stub: /dev/null (or one file) twice exits 1 with the double-loading message; without --os/--cpu the natives nest", () => {
+    const w = world();
+    const npm = join(w.R, "usr", "bin", "npm");
+    const env = { PATH: "/usr/bin:/bin", HOME: w.base } as unknown as NodeJS.ProcessEnv;
+    const one = join(w.base, "one.npmrc");
+    writeFileSync(one, "");
+    for (const [u, g] of [["/dev/null", "/dev/null"], [one, one]] as const) {
+      const r = spawnSync(npm, ["install", "-g", "--prefix", join(w.base, "p0"), "--userconfig", u, "--globalconfig", g, join(w.registry, fileOf("codex"))], { env, encoding: "utf8" });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`double-loading config "${g}" as "global", previously loaded as "user"`);
+    }
+    const install = (prefix: string, extra: string[]) => {
+      const r = spawnSync(npm, ["install", "-g", "--prefix", prefix, "--ignore-scripts", "--omit=optional", ...extra, join(w.registry, fileOf("claude")), join(w.registry, fileOf("codex"))], { env, encoding: "utf8" });
+      expect(r.status, r.stderr).toBe(0);
+    };
+    install(join(w.base, "p1"), []);
+    expect(existsSync(join(w.base, "p1", "lib", "node_modules", PKG.claude, "node_modules", "@anthropic-ai", "claude-code-linux-x64"))).toBe(true);
+    expect(existsSync(join(w.base, "p1", "lib", "node_modules", PKG.codex, "node_modules", "@openai", "codex-linux-x64"))).toBe(true);
+    install(join(w.base, "p2"), ["--os=sr-none", "--cpu=sr-none"]);
+    for (const name of ["claude", "codex"] as const) expect(existsSync(join(w.base, "p2", "lib", "node_modules", PKG[name], "node_modules"))).toBe(false);
+  });
+
+  it("DEV-303 a failing npm: its last lines (token-like strings masked) and the first error line in the output and setup.log", () => {
+    const w = world();
+    writeFileSync(join(w.sc, "npm-fail"), "");
+    const r = apply(w);
+    expect(r).toMatchObject({ status: 30, code: "SETUP_CLI_FAILED" });
+    expect(r.stdout).toContain("SETUP_CLI_FAILED: npm install failed: npm error code ETARGET;");
+    const log = readFileSync(join(w.state, "setup.log"), "utf8");
+    for (const text of [r.stdout, log]) {
+      expect(text).toContain("npm| npm error //registry.npmjs.org/:_authToken=***");
+      expect(text).toContain("npm| npm error Authorization: Bearer ***");
+      expect(text).toContain("npm| npm error fetch https://***@registry.example/x.tgz");
+      expect(text).toContain("npm| npm error token=*** refused");
+      expect(text).toContain("npm| npm error A complete log of this run");
+      expect(text).not.toMatch(/SECRET/);
+      // only the last 20 lines
+      expect(text).not.toMatch(/filler line 8$/m);
+      expect(text).toContain("npm| npm http fetch filler line 22");
+    }
+    expect(log).toContain("cli failed: npm install failed: npm error code ETARGET");
+    // npm's full output stays root-only in the state dir; the config files are gone
+    expect(statSync(join(w.state, "setup-npm.out")).mode & 0o777).toBe(0o600);
+    expect(readdirSync(w.state).filter((n) => n.startsWith("setup-npmrc"))).toEqual([]);
+  });
+
   it("a hardening failure stops before anything further: no recorded pass, the timer off, enable-timer refused", () => {
     const w = world();
     writeFileSync(join(w.sc, "hardening-fail"), "");
@@ -613,7 +708,13 @@ describe("Issue #302 one-time setup: enable-timer and rollback", () => {
     expect(r.stdout).toContain("stays disabled");
     expect(r.stdout).toContain("root must not run claude / codex");
     const un = w.lines("npm.log").pop()!;
-    expect(un).toContain(`npm uninstall -g --prefix ${w.R}/usr/local --userconfig /dev/null --globalconfig /dev/null --no-audit --no-fund --loglevel=error ${PKG.claude} ${PKG.codex} HOME=${w.R}/root umask=0022 `);
+    expect(un).toMatch(new RegExp(`^npm uninstall -g --prefix ${w.R}/usr/local --userconfig ${w.state}/setup-npmrc\\.\\w+/userconfig --globalconfig ${w.state}/setup-npmrc\\.\\w+/globalconfig --no-audit --no-fund --no-update-notifier --loglevel=error --os=sr-none --cpu=sr-none ${PKG.claude} ${PKG.codex} HOME=${w.R}/root umask=0022 `));
+    // the same safe config files as the install: two distinct empty root-only files, gone afterwards
+    const ucfg = w.lines("npm-cfg.log").filter((l) => l.startsWith("cfg uninstall "));
+    expect(ucfg).toHaveLength(2);
+    for (const l of ucfg) expect(l).toMatch(/ type=file mode=600 size=0 dirmode=700$/);
+    expect(new Set(ucfg.map((l) => l.split(" ")[2])).size).toBe(2);
+    expect(readdirSync(w.state).filter((n) => n.startsWith("setup-npmrc") || n === "setup-npm.out")).toEqual([]);
     expect(un).toMatch(CLEAN_ENV);
     expect(readFileSync(join(w.state, "setup.log"), "utf8")).toContain(`rollback restored ${w.R}/usr/local/bin/claude -> ${w.oldTargets.claude}`);
     // a second rollback: nothing recorded since the complete one, nothing done

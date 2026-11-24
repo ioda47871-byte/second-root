@@ -41,8 +41,14 @@
 #                   a root-only directory, verifies every sha512 BEFORE anything changes, checks their members (only plain
 #                   files and directories under package/, no setuid / setgid / sticky bit), then installs the two wrapper
 #                   packages FROM THOSE LOCAL FILES with
-#                   /usr/bin/npm install -g --prefix /usr/local --ignore-scripts --omit=optional (env -i: HOME=/root, a fixed
-#                   PATH, LANG; no proxy, CA or npm-config variable; --userconfig/--globalconfig /dev/null; umask 022) and
+#                   /usr/bin/npm install -g --prefix /usr/local --ignore-scripts --omit=optional --os=sr-none --cpu=sr-none
+#                   --no-update-notifier (env -i: HOME=/root, a fixed PATH, LANG; no proxy, CA or npm-config variable;
+#                   --userconfig / --globalconfig two distinct empty root-only files made fresh in the state dir for each
+#                   npm call and removed after it: npm 11 refuses one file, /dev/null too, loaded as both; umask 022). In
+#                   a global install --omit=optional does not stop npm fetching the optional natives from the registry:
+#                   --os/--cpu name a platform no native matches, so npm skips them and this script places the verified
+#                   natives itself. npm's output goes to a root-only file; on a failure its last lines (token-like
+#                   strings masked) are printed and logged. Then apply
 #                   checks the installed package dirs hold exactly the verified tarballs' files (same bytes, nothing extra);
 #                   after placing the natives, chmod -R u-s,g-s,-t on both packages. No vendor code runs as root: claude-code's only
 #                   lifecycle script (postinstall: node install.cjs, which copies the native binary over the bin/claude.exe
@@ -680,11 +686,41 @@ if [ "$MODE" != rollback ] && [ "$BLOCKED" -gt 0 ]; then say "SETUP_BLOCKED: a s
 # ---------------------------------------------------------------- the changing modes: root's state dir, the lock, the log
 open_state
 log "start expect=$EXPECT steps: cli=${STEP[cli]} codex_config=${STEP[codex_config]} scripts=${STEP[scripts]} units=${STEP[units]} hardening_check=${STEP[hardening_check]}"
-# npm's whole environment: nothing else (no proxy, CA, npm-config or NODE variable), no user / global npm config
+# npm's whole environment: nothing else (no proxy, CA, npm-config or NODE variable), no user / global npm config: two
+# distinct empty files (npm 11 exits "double-loading config" when one file, /dev/null too, is both), 0600 in a fresh 0700
+# dir of the state dir, removed after the call. --os/--cpu: no optional native matches, so npm fetches none (in a global
+# install --omit=optional alone does not stop that); this script places the verified natives itself. npm's stdout and
+# stderr go to NPM_OUT (root-only), never to the terminal; npm_report prints its masked tail after a failure.
+NPM_OUT="$STATE/setup-npm.out"
 npm_g() {
-  ( umask 022
+  local cfg rc=0
+  rm -f -- "$NPM_OUT"
+  cfg="$(mktemp -d "$STATE/setup-npmrc.XXXXXX")" || return 1
+  ( umask 077; set -C; : >"$cfg/userconfig" && : >"$cfg/globalconfig" ) || { rm -rf -- "$cfg"; return 1; }
+  ( umask 077
+    exec >"$NPM_OUT" 2>&1
+    umask 022
     env -i HOME="$NPM_HOME" PATH="$NPM_PATH" LANG=C.UTF-8 timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" \
-      "$NPM" "$1" -g --prefix "$PREFIX" --userconfig /dev/null --globalconfig /dev/null --no-audit --no-fund --loglevel=error "${@:2}" 9>&- )
+      "$NPM" "$1" -g --prefix "$PREFIX" --userconfig "$cfg/userconfig" --globalconfig "$cfg/globalconfig" \
+      --no-audit --no-fund --no-update-notifier --loglevel=error --os=sr-none --cpu=sr-none "${@:2}" 9>&- ) || rc=$?
+  rm -rf -- "$cfg"
+  [ "$rc" != 0 ] || rm -f -- "$NPM_OUT"
+  return "$rc"
+}
+# token-like strings out of npm's output (an auth token, a bearer / basic credential, a user:password@ in a URL)
+npm_mask() {
+  sed -E 's/(_authToken|_auth|_password|password|token)([[:space:]]*[=:][[:space:]]*)[^[:space:]"'"'"',]+/\1\2***/Ig;
+    s/(Bearer|Basic)[[:space:]]+[^[:space:]"'"'"',]+/\1 ***/Ig; s#//[^/@[:space:]]+@#//***@#g'
+}
+# After a failed npm call: its last 20 lines (masked, control characters removed) printed and logged; NPM_FIRST is the
+# first "npm error" / "code E..." line (masked), for the failure's reason.
+NPM_FIRST=""
+npm_report() {
+  local l
+  NPM_FIRST=""
+  [ -f "$NPM_OUT" ] && [ ! -L "$NPM_OUT" ] || return 0
+  NPM_FIRST="$(grep -m 1 -E 'npm (error|ERR!)|code E[A-Z0-9]+' -- "$NPM_OUT" | tr -d '\000-\037' | npm_mask | cut -c1-200)" || NPM_FIRST=""
+  while IFS= read -r l; do say "  npm| $l"; log "npm| $l"; done < <(tail -n 20 -- "$NPM_OUT" | tr -d '\000-\010\013-\037' | npm_mask | cut -c1-300)
 }
 
 # ---------------------------------------------------------------- enable-timer
@@ -724,7 +760,7 @@ if [ "$MODE" = rollback ]; then
     for name in "${CLI_NAMES[@]}"; do if [ -d "$PREFIX/lib/node_modules/${CLI_PKG[$name]}" ]; then pkgs+=("${CLI_PKG[$name]}"); fi; done
     if [ "${#pkgs[@]}" -gt 0 ]; then
       log "npm uninstall -g --prefix /usr/local ${pkgs[*]}"
-      npm_g uninstall "${pkgs[@]}" >/dev/null 2>&1 || { say "npm uninstall failed"; log "npm uninstall failed"; ok=0; }
+      npm_g uninstall "${pkgs[@]}" || { npm_report; say "npm uninstall failed${NPM_FIRST:+: $NPM_FIRST}"; log "npm uninstall failed${NPM_FIRST:+: $NPM_FIRST}"; ok=0; }
     fi
     for name in "${CLI_NAMES[@]}"; do
       target="$(sed -n "s|^[0-9TZ:-]* apply OLD_LINK $name -> \\(.*\\)\$|\\1|p" <<<"$RECORDS" | tail -n 1)"
@@ -813,9 +849,9 @@ if [ "${STEP[cli]}" = TODO ]; then
     say "recorded and removed /usr/local/bin/$name -> $old"
   done
   # 3. the two wrapper packages from the verified local tarballs: no lifecycle script, no optional dependency fetched
-  log "npm install -g --prefix /usr/local --ignore-scripts --omit=optional $WORK/claude.tgz $WORK/codex.tgz"
-  say "npm install -g --prefix /usr/local --ignore-scripts --omit=optional (the verified local tarballs; as root, HOME=/root, no npm config)"
-  npm_g install --ignore-scripts --omit=optional "$WORK/claude.tgz" "$WORK/codex.tgz" >/dev/null 2>&1 || cli_fail "npm install failed"
+  log "npm install -g --prefix /usr/local --ignore-scripts --omit=optional --os=sr-none --cpu=sr-none $WORK/claude.tgz $WORK/codex.tgz"
+  say "npm install -g --prefix /usr/local --ignore-scripts --omit=optional --os=sr-none --cpu=sr-none (the verified local tarballs; as root, HOME=/root, empty npm config files)"
+  npm_g install --ignore-scripts --omit=optional "$WORK/claude.tgz" "$WORK/codex.tgz" || { npm_report; cli_fail "npm install failed${NPM_FIRST:+: $NPM_FIRST}"; }
   # 4. every installed file of the two packages is the verified tarball's
   for name in "${CLI_NAMES[@]}"; do
     pkgdir="$PREFIX/lib/node_modules/${CLI_PKG[$name]}"
