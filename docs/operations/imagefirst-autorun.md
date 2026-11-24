@@ -54,6 +54,8 @@ sudo systemctl daemon-reload
 # enable の前の確認 1（Remote Control は止まらない）: unit と同じ hardening の下で admin.sh status が動くこと
 sudo systemd-run --wait --pipe --collect -p ProtectSystem=strict -p ProtectHome=read-only -p ReadWritePaths=/home/sr-designgen -p PrivateTmp=yes -p NoNewPrivileges=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes -p "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" /usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh status
 sudo install -d -o root -g root -m 0755 /etc/sr-design-worker
+# the reviewed Codex config for the run's own CODEX_HOME (§6 設定の信頼境界; without it every run stops at config_trust)
+sudo install -o root -g root -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/codex-config.toml /etc/sr-design-worker/codex-config.toml
 echo '{"enabled": true}' | sudo tee /etc/sr-design-worker/imagefirst-autostart.json >/dev/null && sudo chmod 0644 /etc/sr-design-worker/imagefirst-autostart.json
 sudo systemctl enable --now sr-imagefirst-autorun.timer
 systemctl list-timers --all | grep -i sr-imagefirst || true
@@ -106,7 +108,9 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
   早送りし、`imagefirst-worker.ts --precheck` を sr-designgen として jail の外で動かす。`{"status":"would_run","code":null,"invoked":false,"approval_id":"<ID>","expires_at":"…Z"}`
   の 1 行・exit 0・期限がパケットの期限と同じ・残り 20 分以上のときだけ受け付け、その期限を印に書く（`APPROVE_RECORDED`）。
 - **Remote Control が動いているとき（普通はこちら）は、sr-designgen として何も動かさない**。印にはパケットの期限を書く
-  （読めない・24 時間より先なら「今 + 24 時間」と注記。`APPROVE_RECORDED_DEFERRED`）。確認はすべて実行時に Remote Control を止めてから行う。
+  （`APPROVE_RECORDED_DEFERRED`）。確認はすべて実行時に Remote Control を止めてから行う。
+- **期限はパケットの §10 だけ**（オーナー方針、Issue #302）: §10 の `期限` が UTC の時刻として読めなければ `APPROVE_PACKET_EXPIRY_UNREADABLE`、
+  24 時間より先なら `APPROVE_EXPIRY_INVALID`（後でもう一度打つ）で断る。「今 + 24 時間」のような推測は書かない。期限を引数で渡す方法も無い。
 - しない: worker・pilot の起動、Remote Control の停止、claim、`used/`・`autorun/` の作成、systemd の変更。
 
 ## 5. 1 回限り・必ず戻す・の守り方
@@ -167,20 +171,90 @@ sudo systemd-run --wait --pipe --collect $H /usr/bin/bash /root/sr-capture-admin
   - 手で動かすパイロットは今まで通り `~/imagefirst/second-root` を使う（変えていない）。
   印の期限（最長 24 時間）は「いつまで拾うか」だけを決め、パケットの期限は worker が守る。
 
-### 引き継いでいる信頼（既知。オーナーが決める）
+### 設定の信頼境界（モデル CLI の設定。Issue #302 オーナー方針 1、OWNER MERGE ONLY の PR）
 
-監査（claude）と Codex は、jail の外で sr-designgen として動くとき、sr-designgen の `~/.claude`（settings の hooks など）と `~/.codex`（config）を読む。
-これらは jail の Claude も書ける場所で、手で動かすパイロットから引き継いだ前提であり、この変更では変えていない。選択肢は次の 2 つ:
-(a) 自動実行のときは `CODEX_HOME` / `CLAUDE_CONFIG_DIR` を root が用意した固定の場所に向ける（サインインの記録の扱いを別に決める必要がある）、
-(b) preflight で、これらの設定ファイルを root が持つ既知の正しい写しとバイト単位で比べ、違えば FAIL にする。
+jail の外で sr-designgen として動くモデル CLI（生成の Codex、監査の Claude CLI、preflight の Codex サインイン確認と claude の auth 確認）は、
+何もしなければ `~/.codex`（`config.toml` の `mcp_servers`・`notify`・`model_providers`・`profiles`、`AGENTS.md`、prompts）と
+`~/.claude`（`CLAUDE.md`、settings の hooks、plugins・agents・commands）・`~/.claude.json` を読む。どれも jail の Claude が書ける。
+
+**選んだ方式 (a)（自動実行だけ）**: 1 回の実行ごとに、pilot が sr-designgen として、新しい clone の隣に root が決めた新しい場所
+`~/imagefirst/autorun-<ID>-<UTC>.cfg/` を作り（既にある場所・symlink は断る）、その中に
+- `codex/`（`CODEX_HOME`）: root の `/etc/sr-design-worker/codex-config.toml`（root 所有・他人が書けない・SHA-256 がリポジトリに固定されたものと同じ）の写しの
+  `config.toml` と、`~/.codex/auth.json`（Codex のサインイン）の写し**だけ**、
+- `claude/`（`CLAUDE_CONFIG_DIR`）: `~/.claude/.credentials.json`（Claude のサインイン）の写し**だけ**
+
+を置き、worker・監査・preflight の worker の行をすべて `CODEX_HOME` / `CLAUDE_CONFIG_DIR` をそこへ向けて動かす（`worker/env.ts` が両方を子へ渡す。
+Codex の sandbox は `CODEX_HOME` だけを読み書きで bind する）。サインインの写しは sr-designgen が作る（root は中身を読まない。本物のファイル・symlink でない・
+1 MiB 以下）。実行の後（成功・失敗・止める合図のどれでも、worker の process が全部終わってから）、CLI が更新したサインインだけを、変わっていれば
+元の場所へ sr-designgen として戻し（同じ dir の一時ファイル → rename。symlink の先・symlink の dir には書かない）、`.cfg` を写しごと消す。
+前の実行が残した `.cfg` は次の実行の始めに消す。監査の既存のフラグ（`--tools ""`・`--strict-mcp-config`・`--setting-sources ""`・`--no-session-persistence`）は変えていない。
+
+**FAIL CLOSED（claim の前）**: preflight の新しい行 `config_trust`（自動実行の中だけ）が、root の config が無い・root だけのものでない（他人が書ける・symlink）・
+SHA-256 が違う、`.cfg` に予定外のもの（`codex/` は `auth.json` と `config.toml` だけ、`claude/` は `.credentials.json` だけ、symlink なし）がある、
+監査の作業 dir（`~/.local/state/...`）の親（`~` を含む）に `CLAUDE.md`・`CLAUDE.local.md`・`.claude/CLAUDE.md`・`.claude/rules` がある
+（Claude は作業 dir の親のこれらを project の memory として読む。だから `~/.claude/CLAUDE.md` も断る）、
+worker の PATH で見た `claude`・`codex`・`node` の実体（symlink をたどった先）が root のもの・他人が書けないもの（`/` まで。`trusted_path`）でない
+（`~/.local/bin`・nvm・npm-global など worker の home の中の CLI は jail の Claude が差し替えられる）、のどれかで FAIL にし、pilot は何も始めない。
+**オーナーの前提**: 自動実行を使うには、`claude`・`codex`・`node` を root 所有の場所（`/usr/local/bin` など）に入れておく必要がある
+（いまの WSL では `claude` は `~/.npm-global`、`codex` は `~/.local/bin` にあり、このままでは `config_trust` が FAIL する）。
+tsx の loader は新しい clone の `node_modules`（固定の lockfile からの `npm ci`）のものを使う。
+
+**途中で殺された run のサインイン**: pilot が SIGKILL などで終わると、その copy-back は走らない。(1) 自動実行は、pilot を回収した後に結果が無い・
+signal で終わったときは、pilot の state ファイルが指す（形を厳密に確かめた）その run の `.cfg` について、sr-designgen の process が無ければ、
+写しが元より新しい（`-nt`）サインインだけを sr-designgen として戻し、`.cfg` を消す。(2) それができなかった `.cfg` は、次の実行の始めに同じ規則
+（新しいものだけ戻す・symlink/大きさ/本物のファイルの確認）で戻してから消す。更新された OAuth の refresh token を失わないため。
+CLI が実行中に `.cfg` へ書くログ・バックアップなどは戻さず、`.cfg` ごと消える（戻すのは 2 つのサインインのファイルだけ）。
+
+**Claude のサインインのファイル（確かめたこと・前提）**: この WSL の sr-designgen では、claude.ai のサインインは `~/.claude/.credentials.json` にある
+（Linux の Claude Code の既定の置き場所。`CLAUDE_CONFIG_DIR` を指定すると `$CLAUDE_CONFIG_DIR/.credentials.json` を読む）。`~/.claude.json`
+（アカウントの表示用の情報のほか、利用者の MCP 設定なども入る）は**写さない**。**前提**: `claude auth status` と `-p` の呼び出しが
+`.credentials.json` だけで claude.ai のサインインとして通ること。もう 1 つの**前提**: `CLAUDE_CONFIG_DIR` を指定すると、CLI は全体の設定を
+`~/.claude.json` ではなく `$CLAUDE_CONFIG_DIR/.claude.json` から読む（無ければ作る。`.cfg` ごと消える）。`~/.claude.json` は読まれない前提。本物の claude はこの開発では動かしていないので未確認。通らなければ preflight の
+`claude_auth` の行が `CLAUDE_NOT_SIGNED_IN` などで FAIL し、claim の前に止まる（その場合の対応は §7）。
+
+**手で動かすパイロットは変えていない**: 承認済みのコミットに固定して run sheet で動かす手順（d4 の実行シート）の見える動きを変えないため、
+(a) は自動実行（`--autorun`）だけに入れた。手動のパイロットは今まで通り `~/.codex` と `~/.claude` を使う（既知の前提として残る）。
+
+**(a) と (b) の比較**
+
+| | (a) 実行ごとの専用の設定 dir（採用） | (b) home の設定を既知の正しい写しとバイト比較 |
+|---|---|---|
+| jail からの書き換え | CLI は home の設定をそもそも読まない。未知のファイルが増えても見えない | 比べたファイルは守れるが、CLI が読む新しい場所（新しい版の設定ファイル・plugins など）が増えると漏れる |
+| 運用 | root の config を一度置くだけ。サインインの更新は写して戻す | 正しい写しを root が持ち、CLI の更新・オーナーの設定変更のたびに写しを更新する必要 |
+| 失敗の形 | 予定外のものがあれば claim の前に FAIL | 差分があれば claim の前に FAIL（正当な変更でも止まる） |
+| 弱点 | サインインの写しと戻しが要る。Claude が `.credentials.json` だけで動くことが前提 | 比べる対象の一覧を正しく保ち続ける必要。比較と実行の間の書き換えは RC 停止で防ぐ |
+
+(a) を選んだ理由: 守る対象を「読ませるものの一覧」（config 1 つ + サインイン 2 つ）に絞れ、CLI の版が上がって読む場所が増えても既定で見えないため。
+
+**オーナーの一度だけの root 操作（承認が要る。まだ誰も行っていない）**: リポジトリの `scripts/sales-design-worker/codex-config.toml` を置く。
+中身はコメントだけ（MCP サーバー・notify・provider・profile なし）。SHA-256 `697ade397a322574f3b9693811ad257e6a6f1bb511bbed37626c849c7a53b9dd`
+（`imagefirst-pilot.sh` と `imagefirst-pilot-preflight.sh` の `CODEX_CONFIG_SHA256`。テストがリポジトリのファイルと一致することを固定）。
+
+```bash
+sudo install -o root -g root -m 0644 /root/sr-capture-admin/scripts/sales-design-worker/codex-config.toml /etc/sr-design-worker/codex-config.toml
+sudo sha256sum /etc/sr-design-worker/codex-config.toml   # 697ade39...b9dd であること
+```
+
+**秘密の扱い**: リポジトリにも Issue にもサインインの中身・トークンを置かない。サインインのファイルは sr-designgen 自身の dir の間で
+（`~/.codex` ↔ `.cfg/codex`、`~/.claude` ↔ `.cfg/claude`）sr-designgen が写すだけで、root は中身を読まず、表示もしない。`.cfg` は 0700、
+ファイルは 0600 で、実行の後に消す。
+
+### 再承認の提案（提案のみ。実装していない）
+
+preflight で止まって何も使っていない（`used/<ID>` も claim も無い）承認 ID でも、自動では再試行しない（`autorun/<ID>` が残る）。
+回復の提案: 使用済みの印・`autorun/`・worker の claim・入口の ledger は**どれも消さず**、新しい承認 ID（新しいパケットの §10 を記入した PR を
+オーナーがマージ）で `imagefirst-approve.sh <新しい ID>` を 1 回打つ。古い ID は延長も流用もしない。これなら「1 つの ID は 1 回だけ」の約束が保たれ、
+台帳を書き換える操作が要らない。
 - review-ready ファイルは root ではなく sr-designgen として、sr-designgen の process が無い間に書く（`setpriv`）。中身は pilot の `share:` の行・
   最後の行・自動実行の結果 1 行だけ（`local-only:` の行・SHA-256・場所・画像・プロンプト・秘密は入らない）。既にあれば上書きしない。
   dir が symlink なら書かない。
 
 ## 7. 未決事項（オーナーに決めてほしいこと）
 
-1. preflight で止まった（何も使っていない）承認 ID を、自動でもう一度試せるようにするか（今は `autorun/<ID>` があると承認コマンドも断る。
-   手で消すのは推奨しない。新しいパケットか、Remote Control を止めて手でパイロット）。
+1. preflight で止まった（何も使っていない）承認 ID は自動では再試行しない（オーナー方針）。回復は §6 の「再承認の提案」（新しい ID）。
+6. Claude CLI が `.credentials.json` だけ（`.claude.json` なし）で claude.ai のサインインとして通るかは未確認（§6）。通らない場合の選択肢:
+   `.claude.json` のうちサインインに要る項目だけを root が決めた形で作る、または監査だけ手動のパイロットに残す。
+7. `codex-config.toml` をコメントだけにした。Codex がサインインの保存先などを設定で求める版では、その 1 行を足して SHA-256 を更新する（別 PR）。
 2. admin clone が origin の develop と違うと（承認の後に develop へ別のマージがあると）、自動実行は Remote Control に触らずに断り続ける
    （`AUTORUN_ADMIN_NOT_DEVELOP`）。そのときは admin clone を更新する 1 行を打つ。承認から実行までの 10 分ほどの間のマージは避ける。
 3. unit の hardening（`ProtectSystem=strict` など）の下で `admin.sh claude-stop / claude-start` が実機で動くかは未確認（§2 の確認 1・2）。

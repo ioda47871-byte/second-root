@@ -92,6 +92,12 @@ WORKER_KILL_AFTER=90
 DRY_RUN_TIMEOUT=600
 # --autorun: the fresh clone of the whole repository (more than a fetch)
 CLONE_TIMEOUT=600
+# --autorun: root's reviewed Codex config (scripts/sales-design-worker/codex-config.toml, installed by the owner); the
+# run's CODEX_HOME holds only a copy of it. Its SHA-256 (the same constant in imagefirst-pilot-preflight.sh; a test pins
+# both to the repository's file)
+CODEX_CONFIG_SHA256=697ade397a322574f3b9693811ad257e6a6f1bb511bbed37626c849c7a53b9dd
+CFG_BUILT=0
+CFG=""
 # the audit: at most 3 calls of 10 min each, plus the checks and the record
 AUDIT_TIMEOUT=2400
 AUDIT_KILL_AFTER=90
@@ -114,6 +120,8 @@ finish() {
   trap - EXIT INT TERM HUP
   [ "$PHASE" != after_claim ] || summary || true
   [ -z "$WORK" ] || rm -rf "$WORK"
+  # --autorun: the refreshed sign-in files back to ~/.codex and ~/.claude, then the run's config dir removed (as the worker)
+  [ "$CFG_BUILT" != 1 ] || copy_back || true
   # --autorun: the same last line, also as root's result file in root's 0700 state (a temporary file, then a rename), which
   # the automatic run reads after it has reaped this process (stdout and the exit status through timeout(1) are not a
   # reliable hand-off: some timeout(1)s exit 143 after passing on a stop, whatever this script returns)
@@ -189,6 +197,7 @@ STATE="$R/var/lib/sr-imagefirst-autostart"
 CYCLE_STATE="$R/var/lib/sr-design-cycle"
 WORKER_HOME="$R/home/sr-designgen"
 CLONE="$WORKER_HOME/imagefirst/second-root"
+CODEX_CONFIG="$R/etc/sr-design-worker/codex-config.toml"
 NPM_HASH_FILE=.local/state/sr-design-worker/imagefirst-autostart.npm-lock.sha256
 
 in_clone() { "${AS_WORKER[@]}" "$@" 8>&- 9>&-; }
@@ -389,6 +398,11 @@ if [ "$MODE" = autorun ]; then
   AS_HOME=("${AS_WORKER[@]}" bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$WORKER_HOME")
   FRESH="$WORKER_HOME/imagefirst/autorun-$APPROVAL-$(date -u +%Y%m%dT%H%M%SZ)"
   CLONE="$FRESH"
+  # the run's own model-CLI config dirs (docs/operations/imagefirst-autorun.md, config trust): CODEX_HOME holds only root's
+  # reviewed config.toml and a copy of the Codex sign-in; CLAUDE_CONFIG_DIR only a copy of the Claude sign-in. Nothing
+  # the jailed Claude can write in ~/.codex or ~/.claude is visible to the CLIs the worker and the audit start
+  CFG="$FRESH.cfg"
+  AS_WORKER+=(CODEX_HOME="$CFG/codex" CLAUDE_CONFIG_DIR="$CFG/claude")
 fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 [ "$MODE" = autorun ] || [ -d "$CLONE" ] || { say "PILOT_STOP_NO_CLONE: $CLONE is missing"; finish PILOT_STOP_NO_CLONE 20; }
@@ -448,6 +462,25 @@ if [ "$MODE" = autorun ]; then
       done' 8>&- 9>&-
   }
   node_paths_clean || { say "a node_modules / .node_modules / .node_libraries / package.json is in the worker's home or ~/imagefirst (Node would load it): stopped"; finish PILOT_AUTORUN_NODE_PATHS 20; }
+  # After the run (from finish, when every worker process has ended): as the worker, each sign-in copy the CLIs may have
+  # refreshed goes back to its own place only when it changed (a temporary file in that directory, then a rename; never
+  # through a link: a linked target or directory is left alone), then the run's config dir is removed with the copies
+  copy_back() {
+    "${AS_HOME[@]}" bash -c 'set -u; umask 077; c="$1"; max=1048576
+      [ -d "$c" ] && [ ! -L "$c" ] || exit 0
+      back() {
+        local s="$c/$1" d="$HOME/$2" dd t
+        dd="$(dirname -- "$d")"
+        [ -f "$s" ] && [ ! -L "$s" ] && [ "$(stat -c %s -- "$s")" -le "$max" ] || return 0
+        [ -d "$dd" ] && [ ! -L "$dd" ] && [ ! -L "$d" ] || return 0
+        if [ -f "$d" ] && cmp -s -- "$s" "$d"; then return 0; fi
+        t="$(mktemp -- "$dd/.sr-copyback.XXXXXX")" || return 0
+        cat -- "$s" >"$t" && chmod 600 -- "$t" && mv -f -T -- "$t" "$d" || rm -f -- "$t"
+      }
+      back codex/auth.json .codex/auth.json
+      back claude/.credentials.json .claude/.credentials.json
+      rm -rf -- "$c"' _ "$CFG" 8>&- 9>&-
+  }
   # old fresh clones, NUL-safe: only real directories directly under ~/imagefirst whose whole name is a fresh clone's
   # (autorun-<id>-<UTC>); the newest of them is kept, the older ones removed. Any other name is never touched
   "${AS_HOME[@]}" bash -c 'base="$HOME/imagefirst"; p="$1"
@@ -464,6 +497,28 @@ if [ "$MODE" = autorun ]; then
         [[ "$n" =~ $re ]] && [ -d "$base/$n" ] && [ ! -L "$base/$n" ] && rm -rf -- "${base:?}/$n"
       done
     fi
+    # a run'"'"'s config dir left by an earlier run that could not end (a SIGKILL skips its copy-back): each sign-in copy that
+    # is newer than its own place goes back first (a refreshed OAuth token must not be lost; the same checks as the
+    # copy-back: regular files, no link, size), then the dir is removed
+    cre="^autorun-hoshigama-imagefirst-d[34]-[0-9]{8}-[0-9]{2}-[0-9]{8}T[0-9]{6}Z\\.cfg$"
+    back_newer() {
+      local s="$1" d="$HOME/$2" dd t
+      dd="$(dirname -- "$d")"
+      [ -f "$s" ] && [ ! -L "$s" ] && [ "$(stat -c %s -- "$s")" -le 1048576 ] || return 0
+      [ -d "$dd" ] && [ ! -L "$dd" ] && [ ! -L "$d" ] || return 0
+      [ "$s" -nt "$d" ] || return 0
+      if [ -f "$d" ] && cmp -s -- "$s" "$d"; then return 0; fi
+      t="$(mktemp -- "$dd/.sr-copyback.XXXXXX")" || return 0
+      cat -- "$s" >"$t" && chmod 600 -- "$t" && mv -f -T -- "$t" "$d" || rm -f -- "$t"
+    }
+    while IFS= read -r -d "" d; do
+      n="${d##*/}"
+      if [ "${d%/*}" = "$base" ] && [[ "$n" =~ $cre ]] && [ -d "$d" ] && [ ! -L "$d" ]; then
+        if [ -d "$d/codex" ] && [ ! -L "$d/codex" ]; then back_newer "$d/codex/auth.json" .codex/auth.json; fi
+        if [ -d "$d/claude" ] && [ ! -L "$d/claude" ]; then back_newer "$d/claude/.credentials.json" .claude/.credentials.json; fi
+        rm -rf -- "${base:?}/$n"
+      fi
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name "autorun-hoshigama-imagefirst-*.cfg" -print0)
     if [ -e "$p" ] || [ -L "$p" ]; then exit 4; fi
     mkdir -m 700 -- "$p"' _ "$FRESH" 8>&- 9>&- ||
     { say "the fresh clone's directory could not be made (no ~/imagefirst directory, a link, or it exists)"; finish PILOT_AUTORUN_CLONE 20; }
@@ -484,6 +539,39 @@ if [ "$MODE" = autorun ]; then
   # where the preflight finds it (root's own file in root's 0700 state; the preflight checks its form)
   printf '%s\n' "$FRESH" >"$STATE/autorun-clone"
   say "a fresh clone at root's verified commit $AUTORUN_SHA (no user git config, status --ignored empty, npm ci)"
+
+  # ---- the run's isolated model-CLI config (docs/operations/imagefirst-autorun.md, config trust). Built only from root's
+  # reviewed config (root-owned, nobody else can write it, its SHA-256 the one pinned here) and copies of the two sign-in
+  # files (regular files, not links, small; copied by the worker, never read by root). When anything is not exactly so,
+  # nothing is built and the preflight's config_trust row fails: the run stops before the claim
+  cfg_sha=""
+  if [ -f "$CODEX_CONFIG" ] && [ ! -L "$CODEX_CONFIG" ] && [ "$(stat -c %s -- "$CODEX_CONFIG")" -le 4096 ]; then
+    if [ -z "$R" ]; then trusted_path "$CODEX_CONFIG" && cfg_sha="$(sha256sum <"$CODEX_CONFIG" | cut -d" " -f1)"
+    elif [ "$(stat -c %U -- "$CODEX_CONFIG")" = "$(id -un)" ] && [ $(( 0$(stat -c %a -- "$CODEX_CONFIG") & 022 )) -eq 0 ]; then cfg_sha="$(sha256sum <"$CODEX_CONFIG" | cut -d" " -f1)"
+    fi
+  fi
+  if [ "$cfg_sha" = "$CODEX_CONFIG_SHA256" ]; then
+    if "${AS_HOME[@]}" bash -c 'set -u; umask 077; c="$1"; max=1048576
+      [ ! -e "$c" ] && [ ! -L "$c" ] || exit 4
+      for d in "$HOME/.codex" "$HOME/.claude"; do [ -d "$d" ] && [ ! -L "$d" ] || exit 6; done
+      for f in "$HOME/.codex/auth.json" "$HOME/.claude/.credentials.json"; do
+        [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %s -- "$f")" -le "$max" ] || exit 6
+      done
+      mkdir -m 700 -- "$c" || exit 3
+      fail() { rm -rf -- "$c"; exit 3; }
+      mkdir -m 700 -- "$c/codex" "$c/claude" || fail
+      cat >"$c/codex/config.toml" || fail
+      cat -- "$HOME/.codex/auth.json" >"$c/codex/auth.json" || fail
+      cat -- "$HOME/.claude/.credentials.json" >"$c/claude/.credentials.json" || fail
+      chmod 600 -- "$c/codex/config.toml" "$c/codex/auth.json" "$c/claude/.credentials.json" || fail' _ "$CFG" <"$CODEX_CONFIG" 8>&- 9>&-; then
+      CFG_BUILT=1
+      say "the run's own CODEX_HOME and CLAUDE_CONFIG_DIR are built (root's reviewed config.toml, sign-in copies only)"
+    else
+      say "the run's own config dirs could not be built (a sign-in file missing, a link, too large, or the path exists): the preflight's config_trust row fails"
+    fi
+  else
+    say "root's Codex config ($CODEX_CONFIG) is missing, not root's only, or not the reviewed one (SHA-256): the preflight's config_trust row fails"
+  fi
 fi
 
 # ---------------------------------------------------------------- 1. the preflight (read only; every row PASS)

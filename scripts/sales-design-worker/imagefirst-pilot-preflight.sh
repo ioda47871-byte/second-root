@@ -28,6 +28,10 @@
 #   approval     the worker's own --precheck (the automatic start's line, with this approval id as the grant): "would_run"
 #                for exactly this id (the packet at HEAD approved for it, inside its window, the pins, never claimed,
 #                unused in the ledger), and at least MIN_LEFT_SECONDS (20 min) before the expiry it reports. It writes nothing
+#   config_trust (inside the automatic run only) root's /etc/sr-design-worker/codex-config.toml root's only with the pinned
+#                SHA-256; the run's own CODEX_HOME holding exactly that config.toml and a copy of auth.json, its own
+#                CLAUDE_CONFIG_DIR exactly a copy of .credentials.json (no other entry, no link); no CLAUDE.md /
+#                CLAUDE.local.md in the audit directory's parents. The codex / claude rows below then run with those dirs
 #   codex        as the worker: the codex binary on its PATH, ~/.codex/auth.json present (never read or printed), no
 #                ~/.codex/.env in any form, then imagefirst-worker.ts --check-codex-auth-only (the generation path's own
 #                sandbox and one sandboxed sign-in status read: an API-key login or a broken sandbox fails here, before
@@ -73,6 +77,8 @@ AUTH_TIMEOUT=120
 MIN_FREE_MIB=4096
 # inside the automatic run: its fresh clone + npm ci (~1 GiB) and the newest earlier one kept: 2 GiB more (6144 in all)
 AUTORUN_EXTRA_MIB=2048
+# inside the automatic run: root's reviewed Codex config, as imagefirst-pilot.sh (the same constant; a test pins both)
+CODEX_CONFIG_SHA256=697ade397a322574f3b9693811ad257e6a6f1bb511bbed37626c849c7a53b9dd
 # the pilot starts only with at least 20 min of the approval left (the worker's own precheck asks for 5)
 MIN_LEFT_SECONDS=1200
 GRANT_ENV=SR_IMAGEFIRST_EXPECT_APPROVAL_ID
@@ -287,6 +293,9 @@ for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE
 done
 # inside the automatic run: no user or system git config for any git of the worker (the pilot's rule)
 if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0=/dev/null); fi
+# inside the automatic run: the run's own model-CLI config dirs (the pilot built them next to the fresh clone)
+CFG="$CLONE.cfg"
+if [ "$IN_AUTORUN" = 1 ]; then AS_WORKER+=(CODEX_HOME="$CFG/codex" CLAUDE_CONFIG_DIR="$CFG/claude"); fi
 AS_WORKER+=(bash -c 'cd -- "$1" || exit 97; shift; exec "$@"' _ "$CLONE")
 CLONE_OK=0
 if [ "$IN_AUTORUN" = 1 ]; then
@@ -380,6 +389,57 @@ if [ "$CLONE_OK" = 1 ]; then
   fi
 else
   row approval FAIL "skipped: the clone is not on origin/develop"
+fi
+
+# ---------------------------------------------------------------- config_trust (inside the automatic run only)
+# The model CLIs started outside the jail must see no config the jailed Claude can write: root's reviewed Codex config
+# (root's only, the pinned SHA-256), and the run's own dirs holding exactly that config and the two sign-in copies (no other
+# entry, no link). The audit's working directory lies under ~/.local/state: no CLAUDE.md / CLAUDE.local.md in its parents.
+if [ "$IN_AUTORUN" = 1 ]; then
+  CODEX_CONFIG="$R/etc/sr-design-worker/codex-config.toml"
+  root_sha=""
+  if [ -f "$CODEX_CONFIG" ] && [ ! -L "$CODEX_CONFIG" ] && [ "$(stat -c %s -- "$CODEX_CONFIG")" -le 4096 ]; then
+    if [ -z "$R" ]; then trusted_path "$CODEX_CONFIG" && root_sha="$(sha256sum <"$CODEX_CONFIG" | cut -d" " -f1)"
+    elif [ "$(stat -c %U -- "$CODEX_CONFIG")" = "$(id -un)" ] && [ $(( 0$(stat -c %a -- "$CODEX_CONFIG") & 022 )) -eq 0 ]; then root_sha="$(sha256sum <"$CODEX_CONFIG" | cut -d" " -f1)"
+    fi
+  fi
+  if [ "$root_sha" != "$CODEX_CONFIG_SHA256" ]; then
+    row config_trust FAIL "root's $CODEX_CONFIG is missing, not root's only (writable by others, a link) or not the reviewed content (SHA-256)"
+  elif ! cfg_out="$(in_clone bash -c 'c="$1"; want="$2"
+      [ -d "$c" ] && [ ! -L "$c" ] || { echo "no config dir"; exit 1; }
+      [ "$(cd "$c" && ls -A | LC_ALL=C sort | tr "\n" " ")" = "claude codex " ] || { echo "unexpected entries in the config dir"; exit 1; }
+      [ "$(cd "$c/codex" && ls -A | LC_ALL=C sort | tr "\n" " ")" = "auth.json config.toml " ] || { echo "CODEX_HOME holds other entries"; exit 1; }
+      [ "$(cd "$c/claude" && ls -A | LC_ALL=C sort | tr "\n" " ")" = ".credentials.json " ] || { echo "CLAUDE_CONFIG_DIR holds other entries"; exit 1; }
+      for f in "$c/codex/auth.json" "$c/codex/config.toml" "$c/claude/.credentials.json"; do
+        [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] || { echo "a config file is not a regular non-empty file"; exit 1; }
+      done
+      [ "$(sha256sum <"$c/codex/config.toml" | cut -d" " -f1)" = "$want" ] || { echo "CODEX_HOME/config.toml is not the reviewed one"; exit 1; }
+      for d in "$HOME" "$HOME/.local" "$HOME/.local/state" "$HOME/.local/state/sr-design-worker" "$HOME/.local/state/sr-design-worker/imagefirst-worker"; do
+        for m in CLAUDE.md CLAUDE.local.md .claude/CLAUDE.md .claude/rules; do if [ -e "$d/$m" ] || [ -L "$d/$m" ]; then echo "a $m in the audit directory'"'"'s parents"; exit 1; fi; done
+      done
+      echo ok' _ "$CFG" "$CODEX_CONFIG_SHA256" 2>/dev/null)"; then
+    row config_trust FAIL "the run's own CODEX_HOME / CLAUDE_CONFIG_DIR are not exactly as built: ${cfg_out:-unreadable}"
+  else
+    # the CLI programs themselves, as the worker's PATH resolves them (links followed): root's and writable by nobody else
+    # up to / (the test world: outside the worker's home). A claude / codex / node in ~/.local, an nvm or npm-global dir of
+    # the worker could be replaced by the jailed Claude. (The tsx loader is the fresh clone's, from npm ci of the pinned lock)
+    bins="$(in_clone bash -c 'for b in claude codex node; do p="$(command -v "$b")" || { echo "missing:$b"; continue; }; readlink -f -- "$p" || echo "missing:$b"; done' 2>/dev/null)" || bins=""
+    bin_why=""
+    n=0
+    while IFS= read -r p; do
+      n=$((n + 1))
+      if ! [[ "$p" =~ ^/[A-Za-z0-9._/@+-]+$ ]]; then bin_why="${p:-?} (not found)"; break; fi
+      if [ -z "$R" ]; then trusted_path "$p" || { bin_why="$p is not root's only up to /"; break; }
+      elif [[ "$p" == "$WORKER_HOME"/* ]]; then bin_why="$p is in the worker's home"; break
+      fi
+    done <<<"$bins"
+    [ "$n" = 3 ] || [ -n "$bin_why" ] || bin_why="claude / codex / node could not be resolved"
+    if [ -n "$bin_why" ]; then
+      row config_trust FAIL "a model CLI program is not root-trusted: $bin_why"
+    else
+      row config_trust PASS "root's reviewed Codex config; the run's CODEX_HOME / CLAUDE_CONFIG_DIR hold only it and the sign-in copies; the model CLI programs (claude / codex / node) root-trusted"
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------- codex: present, no .env, signed in with ChatGPT (checked in the sandbox)

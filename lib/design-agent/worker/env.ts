@@ -7,7 +7,8 @@ import { codexEnvironment } from "../codex";
 const ALLOWED = new Set([
   "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TZ", "TERM", "TMPDIR",
   "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
-  "CODEX_HOME", "PLAYWRIGHT_BROWSERS_PATH", "PLAYWRIGHT_CHROMIUM_EXECUTABLE",
+  // CLAUDE_CONFIG_DIR (DEV-302, the IMAGE_FIRST automatic run): the run's own Claude config dir (only a copy of the sign-in)
+  "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PLAYWRIGHT_BROWSERS_PATH", "PLAYWRIGHT_CHROMIUM_EXECUTABLE",
   "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE",
   // DEV-302 (the IMAGE_FIRST automatic run): set by root so a child git reads no user / system config and no attributes
   // file (GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1, core.attributesFile=/dev/null through GIT_CONFIG_COUNT).

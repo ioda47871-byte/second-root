@@ -279,6 +279,38 @@ write_review() {
   fi
 }
 
+# After a pilot that was killed (its finish, with the copy-back, never ran): the run's config dir, named by the pilot's
+# root-owned state file (checked: exactly ~/imagefirst/autorun-<this id>-<UTC>, plus .cfg), handled AS the worker as the
+# pilot's stale-dir cleanup does: each sign-in copy newer than its own place goes back (regular files, no link, size), then
+# the dir is removed. Only while no process of the worker user runs; otherwise the next run's start does it.
+recover_signins() {
+  local f="$STATE/autorun-clone" fresh="" stamp cfg uid gid
+  [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %s -- "$f")" -le 512 ] || return 0
+  fresh="$(head -n 1 -- "$f" | tr -d '\000-\037')"
+  stamp="${fresh#"$WORKER_HOME/imagefirst/autorun-$APPROVAL-"}"
+  [ -n "$fresh" ] && [ "$stamp" != "$fresh" ] && [[ "$stamp" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || return 0
+  cfg="$fresh.cfg"
+  if busy; then say "the run's sign-in copies are left for the next run's start (busy: $BUSY_WHY)"; return 0; fi
+  uid="$(id -u "$WORKER_USER" 2>/dev/null)" && gid="$(id -g "$WORKER_USER" 2>/dev/null)" || return 0
+  # shellcheck disable=SC2016
+  setpriv --reuid="$uid" --regid="$gid" --init-groups --reset-env --no-new-privs -- env -i HOME="$WORKER_HOME" PATH="$WORKER_PATH" LANG=C.UTF-8 \
+    bash -c 'set -u; umask 077; c="$1"
+    [ -d "$c" ] && [ ! -L "$c" ] && [ "$(dirname -- "$c")" = "$HOME/imagefirst" ] || exit 0
+    back_newer() {
+      local s="$1" d="$HOME/$2" dd t
+      dd="$(dirname -- "$d")"
+      [ -f "$s" ] && [ ! -L "$s" ] && [ "$(stat -c %s -- "$s")" -le 1048576 ] || return 0
+      [ -d "$dd" ] && [ ! -L "$dd" ] && [ ! -L "$d" ] || return 0
+      [ "$s" -nt "$d" ] || return 0
+      if [ -f "$d" ] && cmp -s -- "$s" "$d"; then return 0; fi
+      t="$(mktemp -- "$dd/.sr-copyback.XXXXXX")" || return 0
+      cat -- "$s" >"$t" && chmod 600 -- "$t" && mv -f -T -- "$t" "$d" || rm -f -- "$t"
+    }
+    if [ -d "$c/codex" ] && [ ! -L "$c/codex" ]; then back_newer "$c/codex/auth.json" .codex/auth.json; fi
+    if [ -d "$c/claude" ] && [ ! -L "$c/claude" ]; then back_newer "$c/claude/.credentials.json" .claude/.credentials.json; fi
+    rm -rf -- "$c"' _ "$cfg" 7>&- 8>&- 9>&- && say "the killed pilot's sign-in copies were handled (newer ones copied back; its config dir removed)"
+}
+
 finish() {
   local code="$1" rc="$2"
   FINISHED=1
@@ -554,7 +586,7 @@ if [ -n "$R" ]; then PILOT_ENV+=("SR_IMAGEFIRST_PILOT_TEST_ROOT=$R"); fi
 # temporary file and a rename), read only after the pilot has been reaped. Not its stdout or the exit status that comes
 # back through timeout(1): some timeout(1)s exit 143 after passing on a stop, whatever the pilot returned (PR #325 CI)
 RESULT="$STATE/autorun-result"
-rm -f -- "$RESULT" "$STATE"/.autorun-result.*
+rm -f -- "$RESULT" "$STATE"/.autorun-result.* "$STATE/autorun-clone"
 step "$WORK/pilot" "$PILOT_TIMEOUT" "${PILOT_ENV[@]}" bash "$PILOT" --autorun "$APPROVAL" "$ADMIN_SHA"
 pline=""
 PILOT_RC=none
@@ -566,6 +598,9 @@ if [[ "$pline" =~ ^IMAGEFIRST_PILOT\ ([A-Z_]+)\ phase=(before_claim|after_claim)
 else
   PILOT_CODE=PILOT_NO_RESULT
 fi
+# a pilot that was killed (no result, or the step ended by a signal) never ran its copy-back: the run's sign-in copies the
+# CLIs may have refreshed go back now (before Remote Control returns), else the next run's start does it
+if [ "$PILOT_CODE" = PILOT_NO_RESULT ] || [ "$STEP_RC" -ge 128 ]; then recover_signins || true; fi
 if [ "$INTERRUPTED" = 1 ]; then finish AUTORUN_INTERRUPTED 1; fi
 if [ "$PILOT_RC" = 0 ] && [ "$PILOT_CODE" = PILOT_DONE ]; then finish AUTORUN_DONE 0; fi
 say "the pilot ended $PILOT_CODE (its exit $PILOT_RC; the step returned $STEP_RC): never retried"

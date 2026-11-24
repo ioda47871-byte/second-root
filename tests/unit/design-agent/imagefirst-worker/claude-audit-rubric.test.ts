@@ -220,7 +220,10 @@ describe("Issue #302: the schema and the verdict computed in code", () => {
 describe("Issue #302: the runner (copied from curiosity-media) keeps its guards", () => {
   it("no credential name reaches the child, the allowlist still applies, no model flag", () => {
     const env = claudeEnvironment({ PATH: "/bin", HOME: "/h", ANTHROPIC_API_KEY: "k", ANTHROPIC_X: "x", CLAUDE_CODE_OAUTH_TOKEN: "t", CLAUDE_CODE_OAUTH_SOMETHING: "s", CLAUDE_CONFIG_DIR: "/c", OPENAI_API_KEY: "o", GH_TOKEN: "g" });
-    expect(Object.keys(env).filter((k) => /^(ANTHROPIC_|CLAUDE_|OPENAI_|GH_)/.test(k))).toEqual([]);
+    // DEV-302 config trust (docs/operations/imagefirst-autorun.md): CLAUDE_CONFIG_DIR is the one CLAUDE_* name that passes,
+    // so the automatic run can point the CLI at its own config dir (only a copy of the sign-in); no credential name passes
+    expect(Object.keys(env).filter((k) => /^(ANTHROPIC_|CLAUDE_|OPENAI_|GH_)/.test(k))).toEqual(["CLAUDE_CONFIG_DIR"]);
+    expect(env.CLAUDE_CONFIG_DIR).toBe("/c");
     expect(env.HOME).toBe("/h");
     expect(CLAUDE_BLOCKED_ENV).toEqual(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN"]);
     expect([...CLAUDE_PRINT_ARGS]).toEqual(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", ""]);
