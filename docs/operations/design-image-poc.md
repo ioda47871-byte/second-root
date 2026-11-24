@@ -287,7 +287,7 @@ is still exactly one model call.
 |---|---|---|
 | `approval`, `input` | `POC_NOT_APPROVED`, `POC_INPUT_INVALID`, `POC_DIRECTION_INVALID` | nothing was started; fix the request |
 | `environment` | `CODEX_QUOTA`, `CODEX_NOT_SIGNED_IN`, `CODEX_API_KEY_AUTH`, `CODEX_SANDBOX_*`, `CODEX_NOT_INSTALLED`, `CODEX_DOTENV_PRESENT`, `CODEX_PREFLIGHT_FAILED`, `POC_OUTPUT_UNSAFE` | halt the whole queue and alert a human; no further model call until fixed (quota: after the reset) |
-| `capability` | `CODEX_IMAGE_TOOL_FAILED` (also `outcome=TOOL_FAILED_UNSUPPORTED`, DEV-081); `CODEX_NO_IMAGE` with `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE` | halt and alert; the human runs HUMAN-021a's local checks. The model's words may choose this class only because it halts and never loosens anything |
+| `capability` | `CODEX_IMAGE_TOOL_FAILED` (also `outcome=TOOL_FAILED_UNSUPPORTED`, DEV-081); `CODEX_NO_IMAGE` with `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE`; `CODEX_IMAGE_ARGS_REFUSED` (Issue #335: `outcome=TOOL_REFUSED_ARGS`, the tool refused the call's arguments before it started; read `cm_arg_err_kind`), whatever the answer | halt and alert; the human runs HUMAN-021a's local checks. The model's words may choose this class only because it halts and never loosens anything |
 | `transient` (DEV-081) | `CODEX_IMAGE_TOOL_FAILED` with `outcome=TOOL_FAILED_TRANSIENT` (every failed call was 5xx / timeout / connection, from Codex's own error text) | halt and alert; nothing is retried automatically. A human may approve one new run later; read `img_fail_reason` / `img_http` first |
 | `inconclusive` (DEV-080) | `CODEX_NO_IMAGE` with `outcome=TOOL_NOT_SEEN_CODE_MODE`, whatever the answer | halt and alert; the log cannot say whether the model tried the tool (code mode). Never read as a prompt failure, never retried; a human decides the next step (e.g. the direct-mode proposal below) |
 | `request` | `CODEX_NO_IMAGE` (otherwise), `CODEX_NO_THREAD`, `CODEX_EXEC_FAILED` | a failure of this request with its code; never re-sent unchanged (a changed prompt is a new, reviewed request) |
@@ -479,6 +479,7 @@ Research (openai/codex `rust-v0.159.0`, read as data, never built or run; paths 
 | `img_http` | integers 400–599 | `http NNN` / `api error NNN` in that text |
 | `img_err` | an allowlisted API error code / type (`usage_limit_reached`, `moderation_blocked`, `model_not_found`, `usage_not_included`, `server_is_overloaded`, …) or `other` | `"code"` / `"type"` in the body |
 | `cm_arg_err` | 0/1 | an argument error (above) in the output of an exec cell that named `image_gen__imagegen` (the call then leaves no item) |
+| `cm_arg_err_kind` (Issue #335, last field of the line) | `REF_PATHS_TOO_MANY`, `REF_PATH_NOT_ABSOLUTE`, `REF_UNAVAILABLE`, `REF_UNREADABLE`, `NUM_LAST_RANGE`, `CONV_IMAGES_SHORT`, `BOTH_GIVEN`, `ARGS_PARSE`, `-` | the first refusal's fixed kind (`capability.ts` `CODE_MODE_ARG_ERROR_KINDS`); with no image call it makes the outcome `TOOL_REFUSED_ARGS` and the stop `CODEX_IMAGE_ARGS_REFUSED` |
 | `effort` | `none` … `persistent`, `other` | `turn_context.effort` |
 | `model_cache`, `model_cache_cli`, `model_cache_age_s`, `model_listed`, `model_tool_mode`, `model_image_input`, `tool_mode_src` | fixed | `$CODEX_HOME/models_cache.json` (below) |
 

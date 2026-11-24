@@ -490,6 +490,8 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `image_tool_ms=${n(d.timings_ms.first_image_tool_event)}`,
     `img_call_ms=${list(d.session?.image_call_ms)}`,
     `img_fail_timing=${list(d.session?.image_fail_timings)}`,
+    // Issue #335: the fixed kind of the image tool's argument refusal (CODE_MODE_ARG_ERROR_KINDS), appended last
+    `cm_arg_err_kind=${d.session?.code_mode_arg_error_kind ?? "-"}`,
   ];
   return parts.join(" ");
 }

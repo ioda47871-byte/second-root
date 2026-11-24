@@ -6,12 +6,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { CodexAbortedError } from "@/lib/design-agent/codex";
+import { ANSWER_TEXT_CODES, CODE_MODE_ARG_ERROR_KINDS, IMAGE_FAILURE_REASONS, TOOL_MODES } from "@/lib/design-agent/design-image/capability";
 import { assembleRecord, readImageFirstRun } from "@/lib/design-agent/image-first/builder";
 import { encodePng, type RgbImage } from "@/lib/design-agent/image-first/pixels";
 import { buildPromptPlan, loadPromptInputs, type PromptInputs, type PromptPlan } from "@/lib/design-agent/image-first/prompt";
 import { CODEX_STOP_CODES } from "@/lib/design-agent/image-first/record";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
-import { APPROVAL_PACKET_PATH, D4_PACKET, MAX_APPROVAL_WINDOW_MS, P3_PACKET, PACKET_FIELDS, packetFieldsOf, packetOfDirection, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { APPROVAL_PACKET_PATH, D4_PACKET, DIAGNOSTIC_ANSWERS, DIAGNOSTIC_ARG_ERROR_KINDS, DIAGNOSTIC_FAILURE_REASONS, DIAGNOSTIC_TOOL_MODES, MAX_APPROVAL_WINDOW_MS, P3_PACKET, PACKET_FIELDS, packetFieldsOf, packetOfDirection, parseUtcInstant, readApprovalPacket, runFullPageCall, type FullPageBatch, type FullPageBatchResult, type FullPageCallInput } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { CommitState } from "@/lib/design-agent/phase2f-live/steps";
 import { fileAtCommit } from "@/scripts/design-artifact/phase2f-live-cli";
@@ -508,11 +509,32 @@ describe("IMAGE_FIRST P3 real-call step: the first failure ends the run (no retr
     await runFullPageCall(i2, deps(s2, s2.batchOf(okBatch(0, { stopCode: "CODEX_NO_IMAGE", outcome: "TOOL_NOT_SEEN_CODE_MODE", imageCalls: 0, diagnostics: odd }))));
     const call2 = JSON.parse(readFileSync(join(i2.outDir, "call.json"), "utf8")) as { diagnostics: Record<string, unknown> };
     expect(call2.diagnostics).toMatchObject({ model: null, answer: null, arg_error_kind: null, exec_cells: null, image_failure_reasons: ["OTHER"] });
+    // Issue #335 follow-up: a code-shaped word outside the fixed lists is null too (tool_mode, answer, arg_error_kind, reasons)
+    const s4 = setup();
+    const i4 = await input(s4);
+    const unknownCodes = { ...diagnostics, tool_mode: "turbo_mode", answer: "TEXT_SECRET", arg_error_kind: "REF_SOMETHING_NEW", image_failure_reasons: ["HTTP_5XX", "MADE_UP_REASON", "NO_TEXT"] };
+    await runFullPageCall(i4, deps(s4, s4.batchOf(okBatch(0, { stopCode: "CODEX_IMAGE_ARGS_REFUSED", outcome: "TOOL_REFUSED_ARGS", imageCalls: 0, diagnostics: unknownCodes }))));
+    const call4 = JSON.parse(readFileSync(join(i4.outDir, "call.json"), "utf8")) as { diagnostics: Record<string, unknown> };
+    expect(call4.diagnostics).toMatchObject({ tool_mode: null, answer: null, arg_error_kind: null, image_failure_reasons: ["HTTP_5XX", "NO_TEXT"], exec_cells: 1, model: "gpt-6.1-terra" });
+    // every value of each fixed list passes through unchanged
+    for (const [k, v] of [["tool_mode", "code_mode_only"], ["answer", "TEXT_TOOL_UNAVAILABLE"], ["arg_error_kind", "ARGS_PARSE"]] as const) {
+      const s5 = setup();
+      const i5 = await input(s5);
+      await runFullPageCall(i5, deps(s5, s5.batchOf(okBatch(0, { stopCode: "CODEX_IMAGE_ARGS_REFUSED", outcome: "TOOL_REFUSED_ARGS", imageCalls: 0, diagnostics: { ...diagnostics, [k]: v } }))));
+      expect((JSON.parse(readFileSync(join(i5.outDir, "call.json"), "utf8")) as { diagnostics: Record<string, unknown> }).diagnostics[k]).toBe(v);
+    }
     // a batch result without diagnostics (a stop before Codex ran) records null
     const s3 = setup();
     const i3 = await input(s3);
     await runFullPageCall(i3, deps(s3, s3.batchOf(okBatch(0, { stopCode: "CODEX_DOTENV_PRESENT", outcome: "not_applicable", imageCalls: 0 }))));
     expect((JSON.parse(readFileSync(join(i3.outDir, "call.json"), "utf8")) as { diagnostics: unknown }).diagnostics).toBeNull();
+  });
+
+  it("Issue #335 follow-up: the diagnostics' fixed value lists are capability.ts's own lists (kept in step)", () => {
+    expect([...DIAGNOSTIC_TOOL_MODES]).toEqual([...TOOL_MODES]);
+    expect([...DIAGNOSTIC_ANSWERS]).toEqual([...ANSWER_TEXT_CODES]);
+    expect([...DIAGNOSTIC_ARG_ERROR_KINDS]).toEqual([...CODE_MODE_ARG_ERROR_KINDS]);
+    expect([...DIAGNOSTIC_FAILURE_REASONS]).toEqual([...IMAGE_FAILURE_REASONS]);
   });
 
   it("fewer pictures than planned, with no stop code, is CODEX_IMAGE_COUNT_MISMATCH", async () => {

@@ -45,7 +45,8 @@ const ALLOWED: Record<string, string[]> = {
   // P3 preparation: the deterministic prompt builder (pure apart from an injected reader)
   [`${LIB}/prompt.ts`]: ["../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./record", "node:crypto"],
   // DEV-303: request mode's schema and prompt builder (pure; reuses the pinned builder's split, labels and principles)
-  [`${LIB}/request-prompt.ts`]: ["../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./prompt", "./record", "node:crypto", "zod"],
+  // Issue #335 follow-up: the image tool's reference limit, shared with image-once.ts (lib/design-agent/image-tool-limits.ts: one constant, no imports, outside the image PoC module)
+  [`${LIB}/request-prompt.ts`]: ["../image-tool-limits", "../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./prompt", "./record", "node:crypto", "zod"],
   [PIN_CLI]: ["../../lib/design-agent/image-first/prompt", "node:fs/promises", "node:path"],
   [CLI]: ["../../lib/design-agent/image-first/builder", "../../lib/design-agent/image-first/validate", "../../lib/design-agent/impl-lane/impl-compare", "node:fs/promises", "node:path"],
 };
@@ -60,6 +61,9 @@ describe("isolation of the IMAGE_FIRST contract (offline, read only)", () => {
     const named = (file: string, from: string) =>
       [...readFileSync(resolve(REPO, file), "utf8").matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].filter((m) => m[2] === from).flatMap((m) => m[1]!.split(",").map((s) => s.trim()).filter(Boolean)).sort();
     expect(named(`${LIB}/record.ts`, "../design-image/capability")).toEqual(["IMAGE_OUTCOMES"]);
+    expect(named(`${LIB}/request-prompt.ts`, "../image-tool-limits")).toEqual(["IMAGE_TOOL_MAX_REFS"]);
+    // the shared limit module is a constant only: it imports nothing and can call nothing
+    expect(specifiers(readFileSync(resolve(REPO, "lib/design-agent/image-tool-limits.ts"), "utf8"))).toEqual([]);
     expect(named(`${LIB}/validate.ts`, "../design-image/png")).toEqual(["MOCKUP_PNG_LIMITS", "checkPng"]);
     expect(named(`${LIB}/builder.ts`, "../design-image/png")).toEqual(["MOCKUP_PNG_LIMITS", "checkPng"]);
     expect(named(`${LIB}/builder.ts`, "../impl-lane/impl-compare")).toEqual(["readInside"]);

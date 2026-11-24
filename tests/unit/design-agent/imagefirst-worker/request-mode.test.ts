@@ -378,6 +378,10 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(readFileSync(join(runDir, "facts-pack.json"))).toEqual(FACTS_BYTES);
     const receipt = JSON.parse(readFileSync(report.receipt!, "utf8")) as WorkerReceipt;
     expect(receipt).toMatchObject({ status: "succeeded", mode: "request", kind: "real_shop", request_id: ID, approval_id: ID, plan_id: ID, shop: SHOP, direction: "request", packet_sha256: sha(w.requestBytes), request_sha256: sha(w.requestBytes), facts_sha256: sha(FACTS_BYTES), counts: { pc: 2, sp: 4, total: 6, stopped: 0 }, verified: true, images_total: 6 });
+    // Issue #336 follow-up: the checked case study is bound by its SHA-256 (an allowlisted field; never its path or content)
+    expect(receipt.case_study_sha256).toBe(sha(CASE_STUDY));
+    expect(run!.caseStudySha256).toBe(sha(CASE_STUDY));
+    expect(JSON.stringify(receipt)).not.toContain(CASE_STUDY_FILE);
     // the receipt holds no prompt and no facts value
     expect(JSON.stringify(receipt)).not.toContain("架空喫茶");
     // nothing was written into the clone (git sees a clean tree)
@@ -411,11 +415,12 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     const path = await writeRealShopRecord({
       home: w.home,
       repo: w.repo,
-      record: { schema: REAL_SHOP_RECORD_SCHEMA, request_id: ID, shop_id: SHOP, kind: "real_shop", request_sha256: run!.requestSha256, facts_sha256: run!.factsSha256, plan_sha256: run!.planSha256, commit: run!.commit, run: { status: "succeeded", code: null, invoked: true, receipt_written: true }, review: { status: d.status, code: d.code, bundle_sha256: d.bundle_sha256 }, use: "internal_design_reference_only", recorded_at: "2026-11-20T02:00:00Z" },
+      record: { schema: REAL_SHOP_RECORD_SCHEMA, request_id: ID, shop_id: SHOP, kind: "real_shop", request_sha256: run!.requestSha256, facts_sha256: run!.factsSha256, plan_sha256: run!.planSha256, case_study_sha256: run!.caseStudySha256, commit: run!.commit, run: { status: "succeeded", code: null, invoked: true, receipt_written: true }, review: { status: d.status, code: d.code, bundle_sha256: d.bundle_sha256 }, use: "internal_design_reference_only", recorded_at: "2026-11-20T02:00:00Z" },
     });
     expect(path).toBe(join(w.home, "second-root-shops", SHOP, "runs", `${ID}.json`));
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(readFileSync(path, "utf8")).not.toContain("架空喫茶");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ case_study_sha256: sha(CASE_STUDY), facts_sha256: sha(FACTS_BYTES) });
     expect(await codeOf(writeRealShopRecord({ home: w.home, repo: w.repo, record: JSON.parse(readFileSync(path, "utf8")) }))).toBe("RECORD_EXISTS");
     expect(git(w.repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
   });
@@ -424,8 +429,11 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-1";
     const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
-    const { report } = await w.cycle();
+    const { report, run } = await w.cycle();
     expect(report).toMatchObject({ status: "succeeded", kind: "fictional", approval_id: id });
+    // no case study on this fictional request: nothing to bind
+    expect(run!.caseStudySha256).toBeNull();
+    expect(JSON.parse(readFileSync(report.receipt!, "utf8"))).not.toHaveProperty("case_study_sha256");
     const prompt = readFileSync(join(report.run_dir!, "prompts", "pc-1.txt"), "utf8");
     expect(prompt).toContain("比較研究用の架空の店");
     const d = await deliverReview({ approvalId: id, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
+import { IMAGE_TOOL_MAX_REFS } from "@/lib/design-agent/image-tool-limits";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, PHOTO_TOOL_MAX_REFS, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
@@ -498,11 +499,15 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
 });
 
 describe("DEV-303 image-once: --image only when photo inputs are given", () => {
-  it("no inputs: the PoC's command line unchanged; more than 6 inputs refused", async () => {
+  it("no inputs: the PoC's command line unchanged; more than 5 inputs (the image tool's limit) refused before any exec", async () => {
     const f = recordingFake();
     await generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6 });
     expect(f.argv[0]).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", f.argv[0]![10]!, "-"]);
-    await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: 7 }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 6 input images");
+    // Issue #335 follow-up: the lower-level guard shares the request check's limit (lib/design-agent/image-tool-limits.ts)
+    expect(IMAGE_TOOL_MAX_REFS).toBe(5);
+    expect(PHOTO_TOOL_MAX_REFS).toBe(IMAGE_TOOL_MAX_REFS);
+    for (const n of [6, 7]) await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: n }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 5 input images");
+    expect(f.argv).toHaveLength(1);
   });
 });
 

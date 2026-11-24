@@ -69,29 +69,40 @@ export type FullPageBatchDiagnostics = {
   image_failure_reasons: readonly string[];
   answer: string;
 };
-const CODE_WORD = /^[A-Za-z][A-Za-z0-9_]{0,40}$/;
 const SLUG = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,59}$/;
 /**
+ * Issue #335 follow-up: the fixed value lists of the diagnostics' code fields, kept here because this module never
+ * imports the image PoC's code (tests/unit/design-agent/phase2f-live/isolation.test.ts). They are the image PoC's own
+ * lists (TOOL_MODES, ANSWER_TEXT_CODES, CODE_MODE_ARG_ERROR_KINDS, IMAGE_FAILURE_REASONS); the full-page-call test keeps
+ * them in step with those.
+ */
+export const DIAGNOSTIC_TOOL_MODES = ["direct", "code_mode", "code_mode_only", "unknown"] as const;
+export const DIAGNOSTIC_ANSWERS = ["TEXT_NONE", "TEXT_TOOL_UNAVAILABLE", "TEXT_TOOL_ERROR", "TEXT_USAGE_LIMIT", "TEXT_REFUSAL", "TEXT_OTHER"] as const;
+export const DIAGNOSTIC_ARG_ERROR_KINDS = ["REF_PATHS_TOO_MANY", "REF_PATH_NOT_ABSOLUTE", "REF_UNAVAILABLE", "REF_UNREADABLE", "NUM_LAST_RANGE", "CONV_IMAGES_SHORT", "BOTH_GIVEN", "ARGS_PARSE"] as const;
+export const DIAGNOSTIC_FAILURE_REASONS = ["USAGE_LIMIT", "HTTP_429", "HTTP_5XX", "TIMEOUT", "NETWORK", "AUTH", "NOT_SUPPORTED", "POLICY", "BAD_REQUEST", "INVALID_ARGS", "NO_IMAGE_DATA", "BAD_RESPONSE", "OTHER", "NO_TEXT"] as const;
+/**
  * Issue #335: the diagnostics written into call.json on every stop, re-checked field by field so that only counts,
- * booleans, fixed codes and validated slugs can reach the record (anything else is null; never a text).
+ * booleans, values of the fixed lists above and validated slugs can reach the record (anything else is null, or left
+ * out of the reasons list; never a text).
  */
 function diagnosticsOf(d: FullPageBatchDiagnostics | undefined): Record<string, unknown> | null {
   if (!d || typeof d !== "object") return null;
   const count = (n: unknown) => (Number.isInteger(n) && (n as number) >= 0 ? n : null);
   const bool = (b: unknown) => (typeof b === "boolean" ? b : null);
-  const code = (c: unknown) => (typeof c === "string" && CODE_WORD.test(c) ? c : null);
+  const oneOf = (list: readonly string[]) => (c: unknown) => (typeof c === "string" && list.includes(c) ? c : null);
   const slug = (c: unknown) => (typeof c === "string" && SLUG.test(c) ? c : null);
+  const reason = oneOf(DIAGNOSTIC_FAILURE_REASONS);
   return {
     exec_cells: count(d.exec_cells),
     cell_named_image_tool: bool(d.cell_named_image_tool),
     arg_error: bool(d.arg_error),
-    arg_error_kind: code(d.arg_error_kind),
+    arg_error_kind: oneOf(DIAGNOSTIC_ARG_ERROR_KINDS)(d.arg_error_kind),
     other_tool_calls: count(d.other_tool_calls),
-    tool_mode: code(d.tool_mode),
+    tool_mode: oneOf(DIAGNOSTIC_TOOL_MODES)(d.tool_mode),
     model: slug(d.model),
     cli_version: slug(d.cli_version),
-    image_failure_reasons: Array.isArray(d.image_failure_reasons) ? d.image_failure_reasons.filter((r) => code(r) !== null).slice(0, 20) : [],
-    answer: code(d.answer),
+    image_failure_reasons: Array.isArray(d.image_failure_reasons) ? d.image_failure_reasons.filter((r) => reason(r) !== null).slice(0, 20) : [],
+    answer: oneOf(DIAGNOSTIC_ANSWERS)(d.answer),
   };
 }
 /**

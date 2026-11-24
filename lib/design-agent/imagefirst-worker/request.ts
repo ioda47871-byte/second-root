@@ -309,6 +309,8 @@ export type RealShopRecord = {
   request_sha256: string;
   facts_sha256: string;
   plan_sha256: string | null;
+  /** Issue #336: the SHA-256 of the case study the run was checked against (readRequestCaseStudy); null for a photo-materials run. */
+  case_study_sha256: string | null;
   commit: string | null;
   run: { status: string; code: string | null; invoked: boolean; receipt_written: boolean };
   review: { status: string; code: string | null; bundle_sha256: string | null } | null;

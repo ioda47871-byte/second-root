@@ -142,6 +142,8 @@ export type RequestReceiptFields = {
   request_stage?: "photo_materials";
   /** DEV-303 (owner decision 2026-11-24): a design run's photo inputs (names and SHA-256 only; the pictures stay in their own run). */
   photo_inputs?: { request_id: string; files: { name: string; sha256: string }[] };
+  /** Issue #336: a design run's checked success-case analysis, by its SHA-256 only (request.ts readRequestCaseStudy). */
+  case_study_sha256?: string;
 };
 
 export type CycleOptions = {
