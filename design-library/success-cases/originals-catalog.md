@@ -46,9 +46,9 @@
 | SR-002 | 金時湯（PR #237、未マージ） | [PR #237](https://github.com/ioda47871-byte/second-root/pull/237) | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #237 に記録） |
 | CP-033（= SR-003） | MARTELLI B v4（PR #240、未マージ） | [PR #240](https://github.com/ioda47871-byte/second-root/pull/240) | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #240 に記録） |
 | CP-034（= SR-004） | 中善提灯店 v12-B FULL「折り型」（2026-11-09 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `/セカンドルート/SecondRoot_CP034_v12B_FullWeb_20261109.zip`、SHA-256 `6f4fea138de381b2bca2d0d687f6ac821f897a0ee5e0079ffa97ba61632e51a1`。採用記録 `SecondRoot_CP034_v12B_Approved_Research_Record_20261109.md`。GitHub に研究記録なし |
-| CP-035（= SR-005） | 昭雲堂印店 A-v2 OneSheet（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `SecondRoot_CP035_A_OneSheet_v2_20261110.zip`、SHA-256 `81ad1b3f1351bc843ac97ca6aed761353e00f5ddc25715dc2a46da90051a5382`。GitHub に研究記録なし |
-| CP-036（= SR-006） | 丸五庖丁店 D Photo Polish（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `SecondRoot_CP036_Marugo_D_PhotoPolish_20261110.zip`、SHA-256 `1527f51c1dc3109682e65c4192a46c7c07e02cbe47bea91af321cbeecdd74f61`。GitHub に研究記録なし |
-| CP-037（= SR-007） | 大観堂書店 C×A Message Clarity v2（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `SecondRoot_CP037_CA_MessageClarity_v2_20261110.zip`、SHA-256 `4c4202266eb6b3814b012ea3c237feffc38428327f7fc27d64087b69105260eb`。GitHub に研究記録なし |
+| CP-035（= SR-005） | 昭雲堂印店 A-v2 OneSheet（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `/セカンドルート/SecondRoot_CP035_A_OneSheet_v2_20261110.zip`、SHA-256 `81ad1b3f1351bc843ac97ca6aed761353e00f5ddc25715dc2a46da90051a5382`。採用記録 `SecondRoot_CP035_A_v2_Owner_Approved_20261110.md`。GitHub に研究記録なし |
+| CP-036（= SR-006） | 丸五庖丁店 D Photo Polish（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `/セカンドルート/SecondRoot_CP036_Marugo_D_PhotoPolish_20261110.zip`、SHA-256 `1527f51c1dc3109682e65c4192a46c7c07e02cbe47bea91af321cbeecdd74f61`。採用記録 `CP036_Marugo_D_PhotoPolish_Owner_Approved_20261110.md`。GitHub に研究記録なし |
+| CP-037（= SR-007） | 大観堂書店 C×A Message Clarity v2（2026-11-10 採用） | Issue #193 の採用記録 | ChatGPT ライブラリ `/セカンドルート/SecondRoot_CP037_CA_MessageClarity_v2_20261110.zip`、SHA-256 `4c4202266eb6b3814b012ea3c237feffc38428327f7fc27d64087b69105260eb`。採用記録 `SecondRoot_CP037_Owner_Adoption_20261110.md`。GitHub に研究記録なし |
 
 ## C 所在不明（7 件）
 
