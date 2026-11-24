@@ -118,6 +118,10 @@ function codexProblems(g: ModelFullPageComp["generation"], totalParts: number, a
     case "TOOL_FAILED_USAGE_LIMIT":
       add("CODEX_QUOTA", g.outcome);
       break;
+    case "TOOL_REFUSED_ARGS":
+      // Issue #335: refused before it started (no picture)
+      add("CODEX_IMAGE_ARGS_REFUSED", g.outcome);
+      break;
     default:
       // TOOL_FAILED, _POLICY (owner decision: no fallback), _UNSUPPORTED, _TRANSIENT
       add("CODEX_IMAGE_TOOL_FAILED", g.outcome);

@@ -53,7 +53,47 @@ export type FullPageBatchResult = {
   threadId: string | null;
   cliVersion: string | null;
   model: string | null;
+  /** Issue #335 (additive): the run's fixed session facts (image-once.ts ImageRunDiagnostics); absent before Codex ran. */
+  diagnostics?: FullPageBatchDiagnostics;
 };
+/** Issue #335: image-once.ts ImageRunDiagnostics, by shape (this module never imports the image call). */
+export type FullPageBatchDiagnostics = {
+  exec_cells: number;
+  cell_named_image_tool: boolean;
+  arg_error: boolean;
+  arg_error_kind: string | null;
+  other_tool_calls: number;
+  tool_mode: string;
+  model: string | null;
+  cli_version: string | null;
+  image_failure_reasons: readonly string[];
+  answer: string;
+};
+const CODE_WORD = /^[A-Za-z][A-Za-z0-9_]{0,40}$/;
+const SLUG = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,59}$/;
+/**
+ * Issue #335: the diagnostics written into call.json on every stop, re-checked field by field so that only counts,
+ * booleans, fixed codes and validated slugs can reach the record (anything else is null; never a text).
+ */
+function diagnosticsOf(d: FullPageBatchDiagnostics | undefined): Record<string, unknown> | null {
+  if (!d || typeof d !== "object") return null;
+  const count = (n: unknown) => (Number.isInteger(n) && (n as number) >= 0 ? n : null);
+  const bool = (b: unknown) => (typeof b === "boolean" ? b : null);
+  const code = (c: unknown) => (typeof c === "string" && CODE_WORD.test(c) ? c : null);
+  const slug = (c: unknown) => (typeof c === "string" && SLUG.test(c) ? c : null);
+  return {
+    exec_cells: count(d.exec_cells),
+    cell_named_image_tool: bool(d.cell_named_image_tool),
+    arg_error: bool(d.arg_error),
+    arg_error_kind: code(d.arg_error_kind),
+    other_tool_calls: count(d.other_tool_calls),
+    tool_mode: code(d.tool_mode),
+    model: slug(d.model),
+    cli_version: slug(d.cli_version),
+    image_failure_reasons: Array.isArray(d.image_failure_reasons) ? d.image_failure_reasons.filter((r) => code(r) !== null).slice(0, 20) : [],
+    answer: code(d.answer),
+  };
+}
 /**
  * inputImages (DEV-303, owner decision 2026-11-24): a design request's photo inputs, handed to the ONE Codex run as
  * `--image` attachments (staged in the run's temporary work dir by image-once.ts, never in the private run directory).
@@ -355,7 +395,7 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
     }
     return stopped;
   };
-  const facts = (r: FullPageBatchResult) => ({ outcome: r.outcome, stop_code: r.stopCode, image_calls: r.imageCalls, image_failed: r.imageFailed, images: r.images.length, thread_id: r.threadId });
+  const facts = (r: FullPageBatchResult) => ({ outcome: r.outcome, stop_code: r.stopCode, image_calls: r.imageCalls, image_failed: r.imageFailed, images: r.images.length, thread_id: r.threadId, diagnostics: diagnosticsOf(r.diagnostics) });
 
   let res: FullPageBatchResult;
   try {
@@ -512,7 +552,7 @@ export async function runRequestPhotoCall(i: PhotoCallInput, d: Omit<FullPageCal
     }
     return stopped;
   };
-  const facts = (r: FullPageBatchResult) => ({ outcome: r.outcome, stop_code: r.stopCode, image_calls: r.imageCalls, image_failed: r.imageFailed, images: r.images.length, thread_id: r.threadId });
+  const facts = (r: FullPageBatchResult) => ({ outcome: r.outcome, stop_code: r.stopCode, image_calls: r.imageCalls, image_failed: r.imageFailed, images: r.images.length, thread_id: r.threadId, diagnostics: diagnosticsOf(r.diagnostics) });
   const total = plan.photos.length;
   let res: FullPageBatchResult;
   try {

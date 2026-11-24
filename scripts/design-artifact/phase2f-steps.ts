@@ -53,7 +53,7 @@ const notActivated = (argv: readonly string[]) =>
 const VALUES = new Set(["--route", "--design", "--image", "--facts", "--brief", "--out", "--result", "--results", "--artifact-id", "--shop-id", "--shop-name", "--expected-prompt-sha256", "--prompt-version", "--research", "--direction", "--references", "--tm-brief"]);
 /** Stops that come before the image tool can be called: the call never reached it. */
 const BEFORE_THE_TOOL = new Set(["CODEX_NOT_INSTALLED", "CODEX_NOT_SIGNED_IN", "CODEX_API_KEY_AUTH", "CODEX_DOTENV_PRESENT", "CODEX_SANDBOX_UNAVAILABLE", "CODEX_SANDBOX_LEAK", "CODEX_SANDBOX_CONFIG", "OUT_DIR_UNWRITABLE"]);
-const IMAGE_OUTCOMES = new Set(["IMAGE_SAVED", "NO_SESSION_LOG", "TOOL_NOT_CALLED", "TOOL_NOT_SEEN_CODE_MODE", "TOOL_FAILED_USAGE_LIMIT", "TOOL_FAILED_POLICY", "TOOL_FAILED_UNSUPPORTED", "TOOL_FAILED", "TOOL_FAILED_TRANSIENT", "TOOL_CALLED_NO_FILE"]);
+const IMAGE_OUTCOMES = new Set(["IMAGE_SAVED", "NO_SESSION_LOG", "TOOL_NOT_CALLED", "TOOL_NOT_SEEN_CODE_MODE", "TOOL_REFUSED_ARGS", "TOOL_FAILED_USAGE_LIMIT", "TOOL_FAILED_POLICY", "TOOL_FAILED_UNSUPPORTED", "TOOL_FAILED", "TOOL_FAILED_TRANSIENT", "TOOL_CALLED_NO_FILE"]);
 
 function parseArgs(argv: string[]): Map<string, string> | null {
   const out = new Map<string, string>();

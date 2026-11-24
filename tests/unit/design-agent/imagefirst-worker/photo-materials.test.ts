@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
-import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
+import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, PHOTO_TOOL_MAX_REFS, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { IMAGE_MATERIAL_LABEL, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
@@ -211,9 +211,11 @@ describe("DEV-303 photo_materials request schema (strict; same unsafe-text filte
       expect(parseCode(photoRequest({ photo_brief: { ...BRIEF, mood: bad } })), bad).toBe("REQUEST_PHOTO_BRIEF_UNSAFE");
     }
   });
-  it("design photo_inputs: shape only (1..6 files, photo-N.png, SHA-256, unique, another request id)", () => {
+  it("design photo_inputs: schema 1..6 files, tool limit 5 (photo-N.png, SHA-256, unique, another request id)", () => {
     const f = (n: number) => ({ name: `photo-${n}.png`, sha256: sha(String(n)) });
-    expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [1, 2, 3, 4, 5, 6].map(f) } }))).toBe("ok");
+    expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [1, 2, 3, 4, 5].map(f) } }))).toBe("ok");
+    // Issue #335: 6 fit the schema but not the image tool (at most 5 reference pictures per call)
+    expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [1, 2, 3, 4, 5, 6].map(f) } }))).toBe("PHOTO_INPUTS_OVER_TOOL_LIMIT");
     expect(parseCode(designRequest())).toBe("ok");
     // the original request (no stage) is still the design stage
     const noStage: Record<string, unknown> = designRequest();
@@ -291,6 +293,31 @@ describe("DEV-303 the prompts of both stages", () => {
   });
 });
 
+describe("Issue #335 (production flow §3.5, §6.1 row 1): at most 5 reference pictures per image-tool call, refused at request validation", () => {
+  const filesOf = (n: number) => Array.from({ length: n }, (_, k) => ({ name: `photo-${k + 1}.png`, sha256: sha(String(k + 1)) }));
+  it("a design request naming 6 photo inputs is PHOTO_INPUTS_OVER_TOOL_LIMIT; 5 or fewer pass", () => {
+    expect(PHOTO_TOOL_MAX_REFS).toBe(5);
+    expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: filesOf(6) } }))).toBe("PHOTO_INPUTS_OVER_TOOL_LIMIT");
+    for (const n of [1, 5]) expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: filesOf(n) } }))).toBe("ok");
+    // 7 is outside the schema as before
+    expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [...filesOf(6), { name: "photo-1.png", sha256: sha("x") }] } }))).toBe("REQUEST_INVALID");
+  });
+  it("the plan builder refuses it too (never a plan whose run would hand the tool 6)", () => {
+    const obj = designRequest({ photo_inputs: { request_id: PHOTO_ID, files: filesOf(5) } });
+    const request = parseRequest(bytesOf(obj), sha(bytesOf(obj)), DESIGN_ID).request as DesignRequest;
+    const six = { ...request, photo_inputs: { request_id: PHOTO_ID, files: filesOf(6) } } as DesignRequest;
+    expect(() => buildRequestPlan({ request: six, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS })).toThrow(expect.objectContaining({ code: "PHOTO_INPUTS_OVER_TOOL_LIMIT" }));
+    expect(buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS }).photo_inputs?.files).toHaveLength(5);
+  });
+  it("without photo_inputs the batch prompt and plan are byte-identical to before (pinned SHA-256)", () => {
+    const obj = designRequest();
+    const request = parseRequest(bytesOf(obj), sha(bytesOf(obj)), DESIGN_ID).request as DesignRequest;
+    const b = buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
+    expect(b.batch.sha256).toBe("61e75a79e31101647392792236145ff5f68796991626963c3f5af264c8b532fe");
+    expect(b.plan_sha256).toBe("f8f33e416a1d0fae0f6ae6cea13d0a3fe298c990eead810576eace226365e775");
+  });
+});
+
 describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 pictures", () => {
   it("stage 1 makes 6 materials in its own run; stage 2 attaches them with --image and leaves only its own 6 pictures in parts/ and the inbox", async () => {
     const { w, one, files, d1 } = await stageOne();
@@ -336,12 +363,15 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     writeFileSync(join(fakeInbox, "req-hoshigama-photos-1", "manifest.json"), JSON.stringify({ bundle_id: "req-hoshigama-photos-1", mode: "request", kind: "fictional", shop: "hoshigama", image_material: true }));
     expect(await codeOf(entryFromInbox({ repo: REPO, inbox: fakeInbox, bundleId: "req-hoshigama-photos-1", shop: "hoshigama", direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-24T02:00:00Z" }))).toBe("PHOTO_MATERIALS_NOT_LOGGED");
 
-    // stage 2: the design request naming all 6 pictures
-    const two = await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files } }));
+    // Issue #335: naming all 6 pictures is refused before anything runs (the image tool takes at most 5 per call)
+    expect((await w.cycle(designRequest({ id: "req-test-shop-p-design-6", photo_inputs: { request_id: PHOTO_ID, files } }))).report).toMatchObject({ status: "refused", code: "PHOTO_INPUTS_OVER_TOOL_LIMIT", invoked: false });
+    // stage 2: the design request naming 5 of the pictures
+    const inputs = files.slice(0, 5);
+    const two = await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: inputs } }));
     expect(two.report).toMatchObject({ status: "succeeded", approval_id: DESIGN_ID });
     expect(two.fake.execs).toBe(1);
-    // the one exec got exactly the 6 pictures as --image attachments (copies in the call's temporary work dir)
-    expect(two.fake.attached[0]).toEqual(files.map((f) => f.sha256));
+    // the one exec got exactly the 5 pictures as --image attachments (copies in the call's temporary work dir)
+    expect(two.fake.attached[0]).toEqual(inputs.map((f) => f.sha256));
     const designRun = two.report.run_dir!;
     for (const a of two.fake.argv[0]!.filter((x) => x.startsWith("--image="))) {
       expect(a.startsWith(`--image=${two.fake.tmpBase}`)).toBe(true);
@@ -352,9 +382,9 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     expect(imagesUnder(designRun).sort()).toEqual(["pc-1.png", "pc-2.png", "sp-1.png", "sp-2.png", "sp-3.png", "sp-4.png"].map((n) => `parts/${n}`));
     const inputShas = new Set(files.map((f) => f.sha256));
     for (const n of readdirSync(join(designRun, "parts"))) expect(inputShas.has(sha(readFileSync(join(designRun, "parts", n))))).toBe(false);
-    expect(JSON.parse(readFileSync(join(designRun, "photo-inputs.json"), "utf8"))).toMatchObject({ request_id: PHOTO_ID, files });
+    expect(JSON.parse(readFileSync(join(designRun, "photo-inputs.json"), "utf8"))).toMatchObject({ request_id: PHOTO_ID, files: inputs });
     const r2 = JSON.parse(readFileSync(two.report.receipt!, "utf8")) as WorkerReceipt;
-    expect(r2).toMatchObject({ status: "succeeded", counts: { pc: 2, sp: 4, total: 6, stopped: 0 }, images_total: 6, photo_inputs: { request_id: PHOTO_ID, files } });
+    expect(r2).toMatchObject({ status: "succeeded", counts: { pc: 2, sp: 4, total: 6, stopped: 0 }, images_total: 6, photo_inputs: { request_id: PHOTO_ID, files: inputs } });
     const d = await deliverReview({ approvalId: DESIGN_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
     expect(d.status).toBe("delivered");
     const inboxCopy = join(w.runsDir, "review-inbox", DESIGN_ID);
@@ -366,7 +396,7 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     for (const dir of [join(photoRun, "parts"), photoInbox, join(designRun, "parts"), inboxCopy]) expect(imagesUnder(dir).length, dir).toBeLessThanOrEqual(6);
     // in all: 2 runs, 12 pictures; the design request is used once
     expect(w.fakes.reduce((n, f) => n + f.execs, 0)).toBe(2);
-    expect((await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files } }))).report.code).toBe("REQUEST_ALREADY_CLAIMED");
+    expect((await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: inputs } }))).report.code).toBe("REQUEST_ALREADY_CLAIMED");
     expect(git(w.repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
   });
 
@@ -454,8 +484,11 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     expect((await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: f } }))).report).toMatchObject({ status: "refused", code: "PHOTO_INPUT_RUN_MISSING", invoked: false });
 
     const { w: w2, files } = await stageOne();
-    const good = w2.place(designRequest({ photo_inputs: { request_id: PHOTO_ID, files } }));
+    const good = w2.place(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: files.slice(0, 5) } }));
     expect(await validateRequestFile({ file: good.file, home: w2.h, repo: w2.repo })).toMatchObject({ photo_inputs: "checked" });
+    // Issue #335: --validate-request names a request that would hand the image tool 6 reference pictures
+    const six = w2.place(designRequest({ id: "req-test-shop-p-six-1", photo_inputs: { request_id: PHOTO_ID, files } }));
+    expect(await codeOf(validateRequestFile({ file: six.file, home: w2.h, repo: w2.repo }))).toBe("PHOTO_INPUTS_OVER_TOOL_LIMIT");
     const bad = w2.place(designRequest({ id: "req-test-shop-p-bad-1", photo_inputs: { request_id: PHOTO_ID, files: f } }));
     expect(await codeOf(validateRequestFile({ file: bad.file, home: w2.h, repo: w2.repo }))).toBe("PHOTO_INPUT_SHA_MISMATCH");
   });
@@ -467,6 +500,49 @@ describe("DEV-303 image-once: --image only when photo inputs are given", () => {
     await generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6 });
     expect(f.argv[0]).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", f.argv[0]![10]!, "-"]);
     await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: 7 }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 6 input images");
+  });
+});
+
+describe("Issue #335 image-once with photo inputs (fake Codex): staged paths, a refused call named, the run's fixed facts", () => {
+  it("5 --image args under <cwd>/inputs, TOOL_REFUSED_ARGS / CODEX_IMAGE_ARGS_REFUSED and the fixed diagnostics", async () => {
+    const f = fakeCodex("six");
+    const seen: { argv: string[]; stdin: string; staged: string[] }[] = [];
+    const base = f.sandbox.run.bind(f.sandbox);
+    f.sandbox.run = async (a, o) => {
+      if (a[0] !== "exec") return base(a, o);
+      f.execs += 1;
+      seen.push({ argv: [...a], stdin: String(o.input ?? ""), staged: existsSync(join(o.workDir!, "inputs")) ? readdirSync(join(o.workDir!, "inputs")).sort() : [] });
+      // what 0.159.0 leaves for a code-mode cell whose image call was refused before it started: no item, no picture
+      const sessions = join(f.codexHome, "sessions", "2026", "11", "25");
+      mkdirSync(sessions, { recursive: true });
+      const recs = [
+        { type: "session_meta", payload: { id: THREAD, cwd: o.workDir, cli_version: "0.159.0", history_mode: "paginated" } },
+        { type: "turn_context", payload: { cwd: o.workDir, model: "gpt-6.1-terra" } },
+        { type: "response_item", payload: { type: "custom_tool_call", status: "completed", call_id: "cell_1", name: "exec", input: "await tools.image_gen__imagegen({ prompt: 'x', referenced_image_paths: [] })" } },
+        { type: "response_item", payload: { type: "custom_tool_call_output", call_id: "cell_1", output: [{ type: "input_text", text: "Script failed\nWall time 0.4 seconds\nOutput:\n" }, { type: "input_text", text: "Script error:\n`referenced_image_paths` must contain at most 5 paths" }] } },
+      ];
+      writeFileSync(join(sessions, `rollout-2026-11-25T01-00-00-${THREAD}.jsonl`), recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
+      const stdout = [{ type: "thread.started", thread_id: THREAD }, { type: "item.completed", item: { type: "agent_message", text: "I stopped: the image tool refused the call." } }].map((e) => JSON.stringify(e)).join("\n");
+      return { code: 0, signal: null, stdout: `${stdout}\n`, stderr: "", timedOut: false };
+    };
+    const photos = Array.from({ length: 5 }, (_, i) => colourPng(64 + i, 64));
+    const prompt = "a fictional design batch\n";
+    const r = await generateImagesInOneRun({ sandbox: f.sandbox, prompt, timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: photos });
+    expect(seen).toHaveLength(1);
+    const argv = seen[0]!.argv;
+    const cwd = argv[argv.indexOf("--cd") + 1]!;
+    expect(argv.filter((x) => x.startsWith("--image="))).toEqual([1, 2, 3, 4, 5].map((k) => `--image=${join(cwd, "inputs", `photo-${k}.png`)}`));
+    expect(seen[0]!.staged).toEqual([1, 2, 3, 4, 5].map((k) => `photo-${k}.png`));
+    expect(seen[0]!.stdin).toBe(prompt);
+    expect(r).toMatchObject({ images: [], outcome: "TOOL_REFUSED_ARGS", stopCode: "CODEX_IMAGE_ARGS_REFUSED", imageCalls: 0, imageFailed: 0, threadId: THREAD });
+    expect(r.diagnostics).toEqual({ exec_cells: 1, cell_named_image_tool: true, arg_error: true, arg_error_kind: "REF_PATHS_TOO_MANY", other_tool_calls: 0, tool_mode: "unknown", model: "gpt-6.1-terra", cli_version: "0.163.0", image_failure_reasons: [], answer: "TEXT_REFUSAL" });
+    expect(JSON.stringify(r.diagnostics)).not.toMatch(/stopped|refused the call|must contain/);
+    // without input images: no --image, the same naming of the refusal
+    seen.length = 0;
+    expect((await generateImagesInOneRun({ sandbox: f.sandbox, prompt, timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6 })).stopCode).toBe("CODEX_IMAGE_ARGS_REFUSED");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.stdin).toBe(prompt);
+    expect(seen[0]!.argv.some((x) => x.startsWith("--image="))).toBe(false);
   });
 });
 

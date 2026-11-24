@@ -107,6 +107,14 @@ export const PhotoInputs = z
   })
   .refine((p) => new Set(p.files.map((f) => f.name)).size === p.files.length, "photo_inputs_duplicate");
 export type PhotoInputs = z.infer<typeof PhotoInputs>;
+/**
+ * Issue #335 / docs/design/image-first-production-flow.md §3.5, §6.1 row 1: the image tool takes at most this many
+ * reference pictures per call (rust-v0.159.0 ext/image-generation/src/tool.rs MAX_EDIT_IMAGES: "`referenced_image_paths`
+ * must contain at most 5 paths", refused before the call starts and leaving no record). A request that would hand one run
+ * more is refused at request validation (`--validate-request` and the worker alike) with PHOTO_INPUTS_OVER_TOOL_LIMIT.
+ */
+export const PHOTO_TOOL_MAX_REFS = 5;
+const photoInputsWithinToolLimit = (p: PhotoInputs | undefined) => p === undefined || p.files.length <= PHOTO_TOOL_MAX_REFS;
 
 /** Exactly YYYY-MM-DDTHH:MM:SSZ (root's rule: no fraction, no offset). */
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -178,6 +186,7 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   const r = (photo ? PhotoMaterialsRequest : DesignRequest).safeParse(json);
   if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_PHOTO_BRIEF_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
   if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
+  if (!isPhotoRequest(r.data) && !photoInputsWithinToolLimit(r.data.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
   return { request: r.data, sha256: got };
 }
 
@@ -364,6 +373,8 @@ function partPrompt(o: { inputs: RequestInputs; sections: RequestSection[]; view
  */
 export function buildRequestPlan(inputs: RequestInputs): RequestPlan {
   const { request, facts } = inputs;
+  // Issue #335: never a plan whose one run would need more reference pictures than the image tool takes
+  if (!photoInputsWithinToolLimit(request.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
   // the direction carries no fact: no facts-pack value (but the category code, a generic word) appears in its text
   const dirText = Object.values(request.direction).join("\n").normalize("NFKC").toLowerCase();
   for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && dirText.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_DIRECTION_HAS_FACT");

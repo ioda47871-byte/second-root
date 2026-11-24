@@ -493,6 +493,28 @@ describe("IMAGE_FIRST P3 real-call step: the first failure ends the run (no retr
     expect(s.calls).toHaveLength(1);
   });
 
+  it("Issue #335: a stopped call.json carries the run's fixed diagnostics (counts, booleans, codes, slugs), never a text", async () => {
+    const s = setup();
+    const i = await input(s);
+    const diagnostics = { exec_cells: 1, cell_named_image_tool: true, arg_error: true, arg_error_kind: "REF_PATHS_TOO_MANY", other_tool_calls: 0, tool_mode: "unknown", model: "gpt-6.1-terra", cli_version: "0.159.0", image_failure_reasons: [], answer: "TEXT_OTHER" };
+    const r = await runFullPageCall(i, deps(s, s.batchOf(okBatch(0, { stopCode: "CODEX_IMAGE_ARGS_REFUSED", outcome: "TOOL_REFUSED_ARGS", imageCalls: 0, diagnostics }))));
+    expect(r).toEqual({ status: "stopped", code: "CODEX_IMAGE_ARGS_REFUSED", stage: "call", aborted: false, outcome: "TOOL_REFUSED_ARGS" });
+    const call = JSON.parse(readFileSync(join(i.outDir, "call.json"), "utf8")) as Record<string, unknown>;
+    expect(call).toMatchObject({ status: "failed", code: "CODEX_IMAGE_ARGS_REFUSED", outcome: "TOOL_REFUSED_ARGS", image_calls: 0, diagnostics });
+    // a field that is not a fixed value is dropped to null, never written
+    const s2 = setup();
+    const i2 = await input(s2);
+    const odd = { ...diagnostics, model: "free text with spaces", answer: "a sentence.", arg_error_kind: "x y", exec_cells: -1, image_failure_reasons: ["OTHER", "not a code"] };
+    await runFullPageCall(i2, deps(s2, s2.batchOf(okBatch(0, { stopCode: "CODEX_NO_IMAGE", outcome: "TOOL_NOT_SEEN_CODE_MODE", imageCalls: 0, diagnostics: odd }))));
+    const call2 = JSON.parse(readFileSync(join(i2.outDir, "call.json"), "utf8")) as { diagnostics: Record<string, unknown> };
+    expect(call2.diagnostics).toMatchObject({ model: null, answer: null, arg_error_kind: null, exec_cells: null, image_failure_reasons: ["OTHER"] });
+    // a batch result without diagnostics (a stop before Codex ran) records null
+    const s3 = setup();
+    const i3 = await input(s3);
+    await runFullPageCall(i3, deps(s3, s3.batchOf(okBatch(0, { stopCode: "CODEX_DOTENV_PRESENT", outcome: "not_applicable", imageCalls: 0 }))));
+    expect((JSON.parse(readFileSync(join(i3.outDir, "call.json"), "utf8")) as { diagnostics: unknown }).diagnostics).toBeNull();
+  });
+
   it("fewer pictures than planned, with no stop code, is CODEX_IMAGE_COUNT_MISMATCH", async () => {
     const s = setup();
     const i = await input(s);
