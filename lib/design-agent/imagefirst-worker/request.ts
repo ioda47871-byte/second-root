@@ -14,6 +14,12 @@
  *                    prefix, not a research-log FICTIONAL_SHOPS slug); fictional — the research log's fictional-shop
  *                    check (assertFictionalShop) and the pack is that shop's own (the same fictional shop_id as the
  *                    committed pack).
+ *   the case study:  Issue #336 (docs/design/image-first-production-flow.md §1 stage 1, §6.1 row 2): a design request's
+ *                    case_study.path in the same shop directory as its facts pack (no link, at most
+ *                    CASE_STUDY_MAX_BYTES, SHA-256 = case_study.sha256, the same shop_id), checked in gate mode
+ *                    (case-study/case-study.ts: every viewed file and SHA-256, ≥ 3 counted originals, the owner's
+ *                    confirmation). Required for real_shop (parseRequest refuses CASE_STUDY_REQUIRED); checked when
+ *                    present on a fictional request. Never handed to Codex; the prompts and plan do not change.
  *   the record:      real_shop only, ~/second-root-shops/<shop_id>/runs/<id>.json (metadata: ids, codes, SHA-256s;
  *                    0700 / 0600, written once). A real shop never enters design-library/research-log (public repo).
  *
@@ -23,6 +29,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type RequestPlan } from "../image-first/request-prompt";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
@@ -102,6 +109,32 @@ export async function readRequestFacts(request: ImagefirstRequest, places: { hom
   return { bytes, facts: parseRequestFacts(bytes, request), path };
 }
 
+/**
+ * Issue #336: the design request's success-case analysis record, next to its facts pack (the same root and shop
+ * directory, no link), bound by the request's SHA-256, of the request's shop, and passing the gate (case-study.ts).
+ * null when the request names none (a fictional request; parseRequest already refused a real_shop one).
+ */
+export async function readRequestCaseStudy(request: DesignRequest, places: { home: string; repo: string }): Promise<{ sha256: string; counted: string[] } | null> {
+  const ref = request.case_study;
+  if (!ref) return null;
+  const base = factsBase(request.facts_ref.root, places);
+  const shopDir = join(base, request.facts_ref.shop_id);
+  const path = join(shopDir, ref.path);
+  if (!(await realDir(base)) || !(await realDir(shopDir))) throw new PromptStop("CASE_STUDY_RECORD_MISSING");
+  if ((await realpath(path).catch(() => null)) !== join(await realpath(shopDir), ref.path)) {
+    if (!(await lstat(path).then(() => true, () => false))) throw new PromptStop("CASE_STUDY_RECORD_MISSING");
+    throw new PromptStop("CASE_STUDY_RECORD_UNSAFE");
+  }
+  const bytes = await readChecked(path, CASE_STUDY_MAX_BYTES, { unsafe: "CASE_STUDY_RECORD_UNSAFE", big: "CASE_STUDY_TOO_LARGE", missing: "CASE_STUDY_RECORD_MISSING" });
+  if (createHash("sha256").update(bytes).digest("hex") !== ref.sha256) throw new PromptStop("CASE_STUDY_RECORD_SHA_MISMATCH");
+  const checked = await checkCaseStudy(bytes, { repo: places.repo, mode: "gate" }).catch((error: unknown) => {
+    // the same fixed code, as request mode's own stop (the worker and the entry report PromptStop codes only)
+    throw error instanceof CaseStudyStop ? new PromptStop(error.code) : error;
+  });
+  if (checked.shop_id !== request.shop_id) throw new PromptStop("CASE_STUDY_SHOP_MISMATCH");
+  return { sha256: checked.case_study_sha256, counted: checked.counted };
+}
+
 /** The request's kind against the pack (see the header). Throws PromptStop. */
 export async function checkRequestShop(request: ImagefirstRequest, facts: FactsPack, repo: string): Promise<void> {
   const fictionalSlug = Object.hasOwn(FICTIONAL_SHOPS, request.shop_id);
@@ -137,6 +170,8 @@ export type RequestRunInputs = {
   plan: RequestPlan | PhotoPlan;
   /** The design stage's photo inputs: resolved, "unchecked" (validation only, the photo run not there yet) or null (none). */
   photos: ResolvedPhoto[] | "unchecked" | null;
+  /** Issue #336: the design stage's checked success-case analysis (gate mode), or null (photo materials; fictional without one). */
+  caseStudy: { sha256: string; counted: string[] } | null;
 };
 
 /**
@@ -152,12 +187,13 @@ export async function loadRequestRun(o: { requestFile: string; requestSha256: st
   if (isPhotoRequest(r.request)) {
     const plan = buildPhotoPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
     if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
-    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null };
+    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null, caseStudy: null };
   }
+  const caseStudy = await readRequestCaseStudy(r.request, { home: o.home, repo: o.repo });
   const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
   if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   const photos = r.request.photo_inputs ? await resolvePhotoInputs(r.request, { runsDir: join(o.home, RUNS_DIR), mode: o.photoInputs ?? "required" }) : null;
-  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos };
+  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy };
 }
 
 /** A photo input is at most this large (the Codex input cap, sandbox.ts MAX_INPUT_BYTES). */
@@ -243,10 +279,10 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * `--validate-request <file>`: the whole worker-side check of a request Claude is about to drop into ~/sr-runs/requests/
  * (root's quota counts a refused request too) — the file (named <id>.json, regular, no link, at most 16 KiB, outside the
  * repository), the strict schema, the facts pack (resolution, no link, size, facts_sha256), the shop's kind and the plan
- * (6 pictures). Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
+ * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null }> {
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null }> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
@@ -261,6 +297,7 @@ export async function validateRequestFile(o: { file: string; home: string; repo:
     facts_sha256: run.plan.facts_sha256,
     plan_sha256: run.plan.plan_sha256,
     photo_inputs: run.photos === null ? null : run.photos === "unchecked" ? "unchecked" : "checked",
+    case_study: run.caseStudy,
   };
 }
 

@@ -17,7 +17,7 @@ import type { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
 import { entryFromInbox } from "@/lib/design-agent/research-log/intake";
 import { parseArgs } from "@/scripts/design-artifact/phase2f-live-cli";
 import { colourPng } from "../phase2f/fixtures";
-import { cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, THREAD, tmp, workerRepo, type Fake } from "./support";
+import { CASE_STUDY_FILE, caseStudyBytes, cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, THREAD, tmp, workerRepo, type Fake } from "./support";
 
 // DEV-303 (owner decision 2026-11-24): the two-stage IMAGE_FIRST request flow — stage 1 photo_materials (1..6 picture
 // materials, one Codex run), stage 2 design with photo_inputs (the stage-1 pictures attached to the one Codex run with
@@ -60,7 +60,9 @@ const PHOTO_ID = "req-test-shop-p-photos-1";
 const DESIGN_ID = "req-test-shop-p-design-1";
 const envelope = (id: string) => ({ schema: "sr_imagefirst_request_v1", id, shop_id: SHOP, kind: "real_shop", created_at: "2026-11-24T00:30:00Z", facts_ref: { root: "second-root-shops", shop_id: SHOP }, facts_sha256: sha(FACTS_BYTES), codex_runs: 1 });
 const photoRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(PHOTO_ID), stage: "photo_materials", photo_brief: BRIEF, max_images: 6, ...over });
-const designRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(DESIGN_ID), stage: "design", direction: DIRECTION, max_images: 6, ...over });
+// Issue #336: a real_shop design request names its owner-confirmed case study (invented text, the repository's images)
+const CASE_STUDY = caseStudyBytes(SHOP);
+const designRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(DESIGN_ID), stage: "design", direction: DIRECTION, case_study: { path: CASE_STUDY_FILE, sha256: sha(CASE_STUDY) }, max_images: 6, ...over });
 const bytesOf = (o: unknown) => Buffer.from(`${JSON.stringify(o, null, 2)}\n`);
 const parseCode = (o: Record<string, unknown>) => {
   const b = bytesOf(o);
@@ -121,6 +123,7 @@ function home() {
   const shopDir = join(h, "second-root-shops", SHOP);
   mkdirSync(shopDir, { recursive: true });
   writeFileSync(join(shopDir, "facts-pack.json"), FACTS_BYTES);
+  writeFileSync(join(shopDir, CASE_STUDY_FILE), CASE_STUDY);
   const runsDir = join(h, "sr-runs");
   mkdirSync(runsDir, { mode: 0o700 });
   const stateDir = join(h, "state");

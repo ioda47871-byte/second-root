@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import type { BoundedResult } from "../../../../lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "../../../../lib/design-agent/design-image/image-once";
 import { buildPromptPlan, DIRECTIONS, loadPromptInputs, PROMPT_INPUTS, PromptStop, type DirectionKey } from "../../../../lib/design-agent/image-first/prompt";
+import { viewingPageSha256, type CaseStudy } from "../../../../lib/design-agent/case-study/case-study";
 import { gitCommitState } from "../../../../lib/design-agent/imagefirst-worker/cycle";
 import { APPROVAL_PACKET_PATH, D4_PACKET, PACKET_FIELDS, packetFieldsOf, packetOfDirection, runFullPageCall } from "../../../../lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "../../../../lib/design-agent/phase2f-live/ledger";
@@ -94,11 +95,53 @@ export function commitFiles(repo: string, files: Record<string, Buffer>, msg: st
   git(repo, "commit", "-q", "-m", msg);
   return git(repo, "rev-parse", "HEAD");
 }
+// ---- Issue #336: the success-case analysis a real_shop design request names (fictional content only) --------------
+export const CASE_STUDY_REPO_FILES = [
+  "design-library/success-cases/originals-index.json",
+  "design-library/success-cases/assets/CP-001_Mond.webp",
+  "design-library/success-cases/assets/CP-002_Sissi.webp",
+  "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+  // the recorded SHA-256s of category B (case-study.ts readOriginalsIndex)
+  "design-library/success-cases/manifest.json",
+];
+const caseOf = (id: string, path: string) => ({
+  id,
+  evidence_kind: "image",
+  files: [{ path, sha256: sha(readFileSync(resolve(REPO, path))) }],
+  observations: { composition: "試験用の観察（構図）", information_design: "試験用の観察（情報設計）", shop_character: "試験用の観察（店らしさ）", pc_sp: "試験用の観察（PC/SP）" },
+  principles_to_bring: ["試験用の原理"],
+  do_not_copy: ["試験用の写さないこと"],
+});
+/**
+ * The SHA-256 of the viewing page a record renders to, when every case listed counts and every file is a repository
+ * file (what the checker rebuilds; case-study.ts viewingPageSha256).
+ */
+export function pageShaOf(record: Record<string, unknown>): string {
+  const cases = record.cases as { id: string; files: { path: string; sha256: string }[] }[];
+  const files = cases.flatMap((c) => c.files.map((f) => ({ case_id: c.id, path: f.path, sha256: f.sha256, bytes: readFileSync(resolve(REPO, f.path)) })));
+  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files });
+}
+/** An owner-confirmed case study for `shopId` that counts CP-001..003 (the repository's images; the text is invented). */
+export function caseStudyObject(shopId: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  const record: Record<string, unknown> = {
+    schema: "sr_case_study_v1",
+    shop_id: shopId,
+    cases: [caseOf("CP-001", CASE_STUDY_REPO_FILES[1]!), caseOf("CP-002", CASE_STUDY_REPO_FILES[2]!), caseOf("CP-003", CASE_STUDY_REPO_FILES[3]!)],
+    shop_specific_principles: ["試験用の店固有の原理"],
+    ...over,
+  };
+  if (!("owner_confirmation" in over)) record.owner_confirmation = { confirmed: true, confirmed_at: "2026-11-20T00:00:00Z", selected_ids: ["CP-001", "CP-002", "CP-003"], page_sha256: pageShaOf(record) };
+  return record;
+}
+export const caseStudyBytes = (shopId: string, over: Record<string, unknown> = {}) => Buffer.from(`${JSON.stringify(caseStudyObject(shopId, over), null, 2)}\n`);
+export const CASE_STUDY_FILE = "case-study.json";
+
 /** A temporary worker clone: the prompt inputs (d4's direction file included) and the given packets, committed. */
 export function workerRepo(packet: Buffer = filledPacket(), extra: Record<string, Buffer> = {}): string {
   const repo = tmp("sr-ifw-repo-");
   git(repo, "init", "-q");
-  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path, DIRECTIONS.d4.set];
+  // Issue #336: the originals index and the category-A images a request's case study names (case-study.ts)
+  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path, DIRECTIONS.d4.set, ...CASE_STUDY_REPO_FILES];
   for (const p of inputs) {
     mkdirSync(dirname(join(repo, p)), { recursive: true });
     cpSync(resolve(REPO, p), join(repo, p));
