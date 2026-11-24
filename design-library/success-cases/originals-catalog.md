@@ -4,18 +4,18 @@
 この一覧は所在の記録だけで、件数の台帳（`manifest.json` の 30 件、`second-root-research-successes.json`）は変えない。原本の復元は Issue #336 で続ける。
 
 区分:
-- **A 原本あり**: 画像または頁がこのリポジトリにあり、下のリンクから開ける。段 1 の「原本で確認した成功例」に数えられるのはこの区分だけ。
+- **A 原本あり**: Claude が原本（または登録済みの閲覧用プレビュー・頁）を開け、記録の SHA-256 と照合できる。置き場はこのリポジトリ、またはリポジトリ外の非公開の置き場（リポジトリは公開のため、復元した原本は非公開の置き場に置く）。段 1 の「原本で確認した成功例」に数えられるのはこの区分だけ。ただし SR-001 は除く（下記）。
 - **B 文章のみ（所在は記録済み）**: 研究記録と、原本のファイル名・保管先・SHA-256 の記録がある。原本のバイトはリポジトリに無く（ChatGPT の会話またはライブラリ）、Claude は見られない。取り込んで SHA-256 と目視を確かめるまでは参照に使わない。
 - **C 所在不明**: 原本の候補のファイル名しか無く、SHA-256 も保管の照合も無い。
 
-## A 原本あり（4 件）
+## A 原本あり（4 件。他店の参照に数えられるのは 3 件）
 
 | ID | 事例 | 開く | 注 |
 |---|---|---|---|
 | CP-001 | Mond — The Living Archive | [画像](assets/CP-001_Mond.webp)・[記録](CP-001-Mond.md) | 閲覧用 WebP（元 PNG の SHA-256 は記録のみ）。コンセプト画像 |
 | CP-002 | Sissi — Flower is Art | [画像](assets/CP-002_Sissi.webp)・[記録](CP-002-Sissi.md) | 閲覧用 WebP。コンセプト画像 |
-| CP-003 | なごやビーンズ — Editorial Roast Atlas v4 | [PC](assets/CP-003_NagoyaBeans_v4_desktop.webp)・[SP](assets/CP-003_NagoyaBeans_v4_mobile.webp)・[記録](CP-003-NagoyaBeans-v4.md) | PoC の画面写し。PC と SP がそろう唯一の例 |
-| SR-001 | 輪（架空の自転車修理店）d1-v9 | [頁](../research/quality-pipeline/poc/bicycle/fidelity/d1-v9/index.html)・[README](../research/quality-pipeline/poc/bicycle/fidelity/d1-v9/README.md) | 頁（HTML/CSS）を描画して確認する。写真は仮の板 |
+| CP-003 | なごやビーンズ — Editorial Roast Atlas v4 | [PC](assets/CP-003_NagoyaBeans_v4_desktop.webp)・[SP](assets/CP-003_NagoyaBeans_v4_mobile.webp)・[記録](CP-003-NagoyaBeans-v4.md) | PoC の画面写し。画像で PC と SP がそろう唯一の例 |
+| SR-001 | 輪（架空の自転車修理店）d1-v9 | [頁](../research/quality-pipeline/poc/bicycle/fidelity/d1-v9/index.html)・[README](../research/quality-pipeline/poc/bicycle/fidelity/d1-v9/README.md) | 頁（HTML/CSS）を描画して確認する。写真は仮の板。**閲覧はできるが、他店の参照には数えない**（架空の店の Second Root 自身の頁。`second-root-research-successes.json` の方針「他店の参照ではない」） |
 
 ## B 文章のみ・所在は記録済み（22 件）
 
@@ -41,8 +41,8 @@
 | CP-022 | Harissy | [記録](CP-022-Harissy-CRUMB-FRACTURE-v1.md) | ChatGPT の会話 |
 | CP-023 | BURGERS,INC | [記録](CP-023-BURGERS-INC-NEON-FLIP-v4.md) | ChatGPT の会話 |
 | CP-024 | Boheme. 全ページ v2 | [記録](CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md) | ChatGPT の会話（リポジトリの疑似復元 v3 は採用原本ではない） |
-| SR-002 | 金時湯（PR #237、未マージ） | PR #237 | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #237 に記録） |
-| CP-033 | MARTELLI B v4（PR #240、未マージ） | PR #240 | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #240 に記録） |
+| SR-002 | 金時湯（PR #237、未マージ） | [PR #237](https://github.com/ioda47871-byte/second-root/pull/237) | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #237 に記録） |
+| CP-033 | MARTELLI B v4（PR #240、未マージ） | [PR #240](https://github.com/ioda47871-byte/second-root/pull/240) | ChatGPT ライブラリ `/セカンドルート/` の ZIP（SHA-256 は PR #240 に記録） |
 
 ## C 所在不明（7 件）
 
