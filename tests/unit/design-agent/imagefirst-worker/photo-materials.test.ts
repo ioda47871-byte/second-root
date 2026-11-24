@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -8,7 +9,7 @@ import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABE
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { IMAGE_MATERIAL_LABEL, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
-import { loadRequestRun, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
+import { loadRequestRun, recordUseOf, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
 import { runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
 import { runLoadedRequest } from "@/lib/design-agent/imagefirst-worker/request-run";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
@@ -178,7 +179,9 @@ async function stageOne() {
   const one = await w.cycle(photoRequest());
   expect(one.report).toMatchObject({ status: "succeeded", stage: "photo_materials", approval_id: PHOTO_ID });
   const files = one.report.photo_files!;
-  return { w, one, files };
+  // stage 2 needs the stage-1 run sealed and delivered to the review inbox
+  const d1 = await deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
+  return { w, one, files, d1 };
 }
 
 describe("DEV-303 photo_materials request schema (strict; same unsafe-text filter as direction)", () => {
@@ -290,7 +293,7 @@ describe("DEV-303 the prompts of both stages", () => {
 
 describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 pictures", () => {
   it("stage 1 makes 6 materials in its own run; stage 2 attaches them with --image and leaves only its own 6 pictures in parts/ and the inbox", async () => {
-    const { w, one, files } = await stageOne();
+    const { w, one, files, d1 } = await stageOne();
     expect([one.fake.execs, one.fake.attached[0]]).toEqual([1, []]);
     const photoRun = one.report.run_dir!;
     expect(photoRun.startsWith(w.runsDir)).toBe(true);
@@ -305,7 +308,6 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     expect((await w.cycle(photoRequest())).report).toMatchObject({ status: "refused", code: "REQUEST_ALREADY_CLAIMED", invoked: false });
 
     // stage 1 reaches the review inbox like a design: sealed, verified, marked as image materials, at most 6 pictures
-    const d1 = await deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
     expect(d1).toMatchObject({ status: "delivered", approval_id: PHOTO_ID, bundle: "sealed" });
     const photoInbox = join(w.runsDir, "review-inbox", PHOTO_ID);
     expect(imagesUnder(photoInbox).sort()).toEqual([1, 2, 3, 4, 5, 6].map((n) => `parts/photo-${n}.png`));
@@ -408,7 +410,31 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-8")).code).toBe("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
     rewrite((r) => delete r.request_stage);
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-9")).code).toBe("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
+    rewrite((r) => (r.stop_code = "CODEX_TIMEOUT"));
+    expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-11")).code).toBe("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
+    rewrite((r) => (r.interrupted = true));
+    expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-12")).code).toBe("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
+    // a receipt whose bytes are not the ones sealed into the inbox copy: not delivered
     rewrite(() => undefined);
+    expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-13")).code).toBe("PHOTO_INPUT_NOT_DELIVERED");
+    rmSync(receipt);
+    writeFileSync(receipt, original, { mode: 0o600 });
+    // no inbox copy, or a damaged one: not delivered
+    const inboxCopy = join(w.runsDir, "review-inbox", PHOTO_ID);
+    const aside = join(w.runsDir, "review-inbox", "aside-copy");
+    cpSync(inboxCopy, aside, { recursive: true });
+    rmSync(inboxCopy, { recursive: true });
+    expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-14")).code).toBe("PHOTO_INPUT_NOT_DELIVERED");
+    cpSync(aside, inboxCopy, { recursive: true });
+    chmodSync(inboxCopy, 0o700);
+    const sealed = join(inboxCopy, "parts", "photo-3.png");
+    const keep3 = readFileSync(sealed);
+    rmSync(sealed);
+    writeFileSync(sealed, readFileSync(join(parts, "photo-4.png")), { mode: 0o600 });
+    expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-15")).code).toBe("PHOTO_INPUT_NOT_DELIVERED");
+    rmSync(sealed);
+    writeFileSync(sealed, keep3, { mode: 0o600 });
+    rmSync(aside, { recursive: true });
     expect(execs()).toBe(1);
     // with everything restored, the first picture resolves again
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-10")).status).toBe("succeeded");
@@ -441,5 +467,50 @@ describe("DEV-303 image-once: --image only when photo inputs are given", () => {
     await generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6 });
     expect(f.argv[0]).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", f.argv[0]![10]!, "-"]);
     await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: 7 }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 6 input images");
+  });
+});
+
+describe("DEV-303 the audit CLI skips an image-materials bundle; the private record's use", () => {
+  const ENTRY = join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/audit-cli-entry.ts");
+  /** The real audit CLI function through its test entry, with a fake claude that leaves a mark if it is ever started. */
+  const audit = (h: string, args: string[]) => {
+    const bin = tmp("sr-photo-claude-");
+    const mark = join(bin, "claude-was-started");
+    const claude = join(bin, "claude");
+    writeFileSync(claude, `#!/bin/sh\ntouch '${mark}'\nexit 1\n`, { mode: 0o700 });
+    const r = spawnSync(process.execPath, ["--import", "tsx", ENTRY, claude, "/bin/false", ...args], { cwd: REPO, encoding: "utf8", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: h, XDG_STATE_HOME: join(h, "xdg-state") } as unknown as NodeJS.ProcessEnv, timeout: 120_000 });
+    const line = JSON.parse(r.stdout.trim().split("\n").filter(Boolean).at(-1) ?? "null") as Record<string, unknown> | null;
+    return { status: r.status, line, started: existsSync(mark) };
+  };
+
+  it("photo materials: --dry-run 'planned' and the run 'completed', audit skipped, exit 0, no claude, nothing written; a design run is audited as before", async () => {
+    const { w, d1 } = await stageOne();
+    const inbox = join(w.runsDir, "review-inbox");
+    const before = readdirSync(inbox).sort();
+    for (const [args, status] of [[[PHOTO_ID, "--dry-run"], "planned"], [[PHOTO_ID], "completed"]] as const) {
+      const r = audit(w.h, [...args]);
+      expect([r.status, r.started], args.join(" ")).toEqual([0, false]);
+      expect(r.line).toMatchObject({ status, code: null, approval_id: PHOTO_ID, bundle_sha256: d1.bundle_sha256, image_material: true, audit: "skipped", skipped: "image materials are reviewed by Claude, no audit call", calls: 0, verdict: null });
+    }
+    expect(readdirSync(inbox).sort()).toEqual(before);
+    expect(existsSync(join(inbox, "audits"))).toBe(false);
+    expect(existsSync(join(w.h, "xdg-state"))).toBe(false);
+
+    // a design run goes through the design audit path unchanged (no skip)
+    const two = await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [] } }));
+    expect(two.report.status).toBe("refused");
+    const design = await w.cycle(designRequest({ id: "req-test-shop-p-design-2" }));
+    expect(design.report.status).toBe("succeeded");
+    await deliverReview({ approvalId: "req-test-shop-p-design-2", runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
+    // (the fake systemctl answers nothing, so the design audit's own jail check refuses: the design path, never the skip)
+    const r = audit(w.h, ["req-test-shop-p-design-2", "--dry-run"]);
+    expect([r.started, r.line?.audit, r.line?.image_material, r.line?.code]).toEqual([false, undefined, undefined, "JAIL_STATE_UNKNOWN"]);
+  });
+
+  it("the real shop's private record says what the run is for", () => {
+    const parse = (o: Record<string, unknown>) => parseRequest(bytesOf(o), sha(bytesOf(o)), o.id as string).request;
+    expect(recordUseOf(parse(photoRequest()))).toBe("sales_proposal_image_material");
+    expect(recordUseOf(parse(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [{ name: "photo-1.png", sha256: sha("1") }] } })))).toBe("proposal_demo_design");
+    expect(recordUseOf(parse(designRequest()))).toBe("internal_design_reference_only");
   });
 });

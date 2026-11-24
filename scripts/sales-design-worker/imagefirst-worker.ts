@@ -91,7 +91,7 @@ import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
 import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, GRANT_ENV, gitCommitState, grantFromEnv, isRequestRunId, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
-import { REAL_SHOP_RECORD_SCHEMA, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
+import { REAL_SHOP_RECORD_SCHEMA, recordUseOf, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
 import { precheckRequestCycle, runRequestCycle, type RequestCycleResult } from "../../lib/design-agent/imagefirst-worker/request-cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -282,7 +282,7 @@ async function recordRealShop(result: RequestCycleResult, review: Awaited<Return
         commit: run.commit,
         run: { status: report.status, code: report.code, invoked: report.invoked, receipt_written: report.receipt !== undefined },
         review: review ? { status: review.status, code: review.code, bundle_sha256: review.bundle_sha256 ?? null } : null,
-        use: "internal_design_reference_only",
+        use: recordUseOf(run.request),
         recorded_at: new Date().toISOString(),
       },
     });

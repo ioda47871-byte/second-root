@@ -27,6 +27,7 @@ import { PromptStop } from "../image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type RequestPlan } from "../image-first/request-prompt";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
+import { verifyBundleDir } from "./bundle";
 
 export const SHOPS_DIR = "second-root-shops";
 /** The worker's private runs directory under its home (~/sr-runs; the worker CLI uses the same place). */
@@ -199,19 +200,30 @@ export async function resolvePhotoInputs(request: DesignRequest, o: { runsDir: s
   const receiptBytes = await readChecked(receiptPath, RECEIPT_MAX_BYTES, { unsafe: "PHOTO_INPUT_UNSAFE", big: "PHOTO_INPUT_UNSAFE", missing: "PHOTO_INPUT_RUN_MISSING" });
   const st = await lstat(receiptPath);
   if (st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0) throw new PromptStop("PHOTO_INPUT_UNSAFE");
-  let r: { status?: unknown; verified?: unknown; request_stage?: unknown; mode?: unknown; request_id?: unknown; kind?: unknown; shop?: unknown; run_dir?: unknown; images?: unknown };
+  let r: { status?: unknown; stop_code?: unknown; interrupted?: unknown; verified?: unknown; request_stage?: unknown; mode?: unknown; request_id?: unknown; kind?: unknown; shop?: unknown; run_dir?: unknown; images?: unknown };
   try {
     r = JSON.parse(receiptBytes.toString("utf8")) as typeof r;
   } catch {
     throw new PromptStop("PHOTO_INPUT_RUN_INVALID");
   }
-  if (!r || r.status !== "succeeded" || r.verified !== true || r.request_stage !== "photo_materials" || r.mode !== "request" || r.request_id !== p.request_id) throw new PromptStop("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
+  if (!r || r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || r.request_stage !== "photo_materials" || r.mode !== "request" || r.request_id !== p.request_id) throw new PromptStop("PHOTO_INPUT_RUN_NOT_SUCCEEDED");
   if (r.kind !== request.kind || r.shop !== request.shop_id) throw new PromptStop("PHOTO_INPUT_RUN_MISMATCH");
   const runDir = join(o.runsDir, basename(found[0]!, ".receipt.json"));
   const realRuns = await realpath(o.runsDir);
   if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== join(realRuns, basename(runDir))) throw new PromptStop("PHOTO_INPUT_RUN_INVALID");
   if (!(await ownPrivateDir(runDir)) || !(await realDir(join(runDir, "parts")))) throw new PromptStop("PHOTO_INPUT_UNSAFE");
   const recorded = new Map((Array.isArray(r.images) ? (r.images as { file?: unknown; sha256?: unknown }[]) : []).map((i) => [i.file, i.sha256]));
+  for (const f of p.files) if (!PHOTO_FILE_RE.test(f.name) || recorded.get(`parts/${f.name}`) !== f.sha256) throw new PromptStop("PHOTO_INPUT_SHA_MISMATCH");
+  // sealed and delivered: the review inbox's copy of this run verifies (bundle.ts), is its image-materials bundle sealed
+  // from exactly this receipt, and lists every named file with the same SHA-256
+  let delivered;
+  try {
+    delivered = (await verifyBundleDir(join(o.runsDir, "review-inbox", p.request_id))).manifest;
+  } catch {
+    throw new PromptStop("PHOTO_INPUT_NOT_DELIVERED");
+  }
+  if (delivered.image_material !== true || delivered.bundle_id !== p.request_id || delivered.receipt_original_sha256 !== createHash("sha256").update(receiptBytes).digest("hex")) throw new PromptStop("PHOTO_INPUT_NOT_DELIVERED");
+  if (!p.files.every((f) => delivered.photos?.some((x) => x.file === `parts/${f.name}` && x.sha256 === f.sha256))) throw new PromptStop("PHOTO_INPUT_NOT_DELIVERED");
   const out: ResolvedPhoto[] = [];
   for (const f of p.files) {
     if (!PHOTO_FILE_RE.test(f.name)) throw new PromptStop("PHOTO_INPUT_UNSAFE");
@@ -263,9 +275,14 @@ export type RealShopRecord = {
   commit: string | null;
   run: { status: string; code: string | null; invoked: boolean; receipt_written: boolean };
   review: { status: string; code: string | null; bundle_sha256: string | null } | null;
-  use: "internal_design_reference_only";
+  /** DEV-303 (owner decision 2026-11-24): what the run is for (recordUseOf). */
+  use: RecordUse;
   recorded_at: string;
 };
+export type RecordUse = "internal_design_reference_only" | "sales_proposal_image_material" | "proposal_demo_design";
+/** A photo-materials run: sales proposal image materials; a design with photo inputs: a proposal demo design; else internal reference. */
+export const recordUseOf = (request: ImagefirstRequest): RecordUse =>
+  isPhotoRequest(request) ? "sales_proposal_image_material" : request.photo_inputs ? "proposal_demo_design" : "internal_design_reference_only";
 
 /**
  * The real shop's private run record: ~/second-root-shops/<shop_id>/runs/<request id>.json (metadata only; never a

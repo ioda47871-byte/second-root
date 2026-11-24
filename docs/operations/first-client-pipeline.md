@@ -96,6 +96,22 @@
 3. `--validate-request` は新しい項目も確かめる。`photo_inputs` は形を offline で確かめ、ファイルの検査は素材の段の run があるときだけ
    （結果の `photo_inputs`: `checked` / `unchecked` / `null`）。`unchecked` の依頼は実行では断られる（`PHOTO_INPUT_RUN_MISSING`）。
 
+4. 素材の段の run は inbox に届いたものだけが使える: `photo_inputs` は、その run の receipt が成功（`stop_code` なし・`interrupted: false`・検証済み）で、
+   inbox の写しが封印・検証を通り（`image_material: true`、その receipt から封印、各ファイルの SHA-256 が manifest の `photos` と一致）、
+   はじめて解決される（そうでなければ `PHOTO_INPUT_RUN_NOT_SUCCEEDED` / `PHOTO_INPUT_NOT_DELIVERED`）。
+5. 監査: `imagefirst-audit.ts` は素材の段の bundle（`image_material`）を監査しない（`--dry-run` は `"status":"planned"`、本番は `"status":"completed"`、
+   どちらも `"audit":"skipped"`・`"skipped":"image materials are reviewed by Claude, no audit call"`・`calls: 0`、exit 0。Claude を呼ばず、監査を書かない）。
+   素材は Claude が自分で 1 枚ずつ確かめる。デザインの段は今までどおり監査する。
+6. 実店舗の private な記録の `use`: 素材の段 `sales_proposal_image_material`、写真入りのデザイン `proposal_demo_design`、写真なしのデザインは今までどおり `internal_design_reference_only`。
+
+残る危険（受け入れ済み、オーナー決定 2026-11-24 の review）:
+
+- (a) worker と同じ uid なら、`~/sr-runs` に手作りの素材の run（receipt と inbox の写し）を置けば、uid と mode の検査は通りうる。これは、
+  実装する Claude がもともと HTML に置けるもの以上を足さない。関門は、完成した頁とスクリーンショットのオーナーの最終確認であり、
+  頁に置く素材は、inbox に receipt 付きで届いた run のものに限る。
+- (b) `photo_brief` の被写体が商品らしいものでも、止めるのはプロンプトだけ（brief の検査は URL・数字・facts の値などの形の検査）。
+  依頼を置く前に、Claude が brief を独立に確かめる（商品・店内・建物・人の顔を被写体にしない）。
+
 ## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
 
 1. 候補を選ぶ（営業エージェントの run で登録済みの候補。新しく作らない）。
