@@ -33,7 +33,7 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { BundleStop, packBundle, verifyBundleDir, type ExpectedRecord, type SealedBundle } from "./bundle";
-import { checkRealApprovalId, readApprovalAt, runOfApprovalId, sha256, type CycleDeps, type CycleReport } from "./cycle";
+import { checkRealApprovalId, isRequestRunId, readApprovalAt, runOfApprovalId, sha256, type CycleDeps, type CycleReport } from "./cycle";
 import { handOffToLocalInbox, InboxStop, REVIEW_INBOX } from "./local-inbox";
 import { PreviewStop } from "./preview";
 import { DeliveryStop } from "./transport";
@@ -124,6 +124,11 @@ type Receipt = {
   prompt_sha256?: unknown;
   prompt_chars?: unknown;
   run_dir?: unknown;
+  mode?: unknown;
+  kind?: unknown;
+  request_id?: unknown;
+  request_sha256?: unknown;
+  images_total?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
@@ -202,6 +207,26 @@ async function checkReceipt(r: Receipt, approvalId: string, runDir: string, stat
   return { approval_id: at.approvalId, plan_id: at.planId, commit: r.commit as string };
 }
 
+/**
+ * DEV-303: a request run's receipt. There is no packet: the request (its SHA-256 is the receipt's packet_sha256, which
+ * the worker checked against root's) was the run's approval. The receipt is a finished, verified, complete run of exactly
+ * this request id (PC 2 + SP 4), its commit is on origin/develop and the worker's own claim for the id agrees with it.
+ */
+async function checkRequestReceipt(r: Receipt, id: string, runDir: string, stateDir: string, d: DeliverReviewDeps): Promise<ExpectedRecord> {
+  if (!r || typeof r !== "object" || r.schema !== "imagefirst_worker_receipt_v1" || r.mode !== "request") stop("RECEIPT_INVALID");
+  if (r.approval_id !== id || r.request_id !== id || r.plan_id !== id || typeof r.commit !== "string" || !/^[0-9a-f]{40}$/.test(r.commit)) stop("RECEIPT_INVALID");
+  if (typeof r.request_sha256 !== "string" || r.request_sha256 !== r.packet_sha256 || (r.kind !== "real_shop" && r.kind !== "fictional") || r.direction !== "request") stop("RECEIPT_INVALID");
+  if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== runDir) stop("RECEIPT_INVALID");
+  const c = r.counts;
+  if (r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || !c || c.pc !== 2 || c.sp !== 4 || c.total !== 6 || c.stopped !== 0 || r.images_total !== 6) stop("RECEIPT_NOT_SUCCEEDED");
+  const started = typeof r.timings?.started_at === "string" ? Date.parse(r.timings.started_at) : NaN;
+  const finished = typeof r.timings?.finished_at === "string" ? Date.parse(r.timings.finished_at) : NaN;
+  if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) stop("RECEIPT_INVALID");
+  if (!(await d.onOriginDevelop(r.commit as string).catch(() => false))) stop("COMMIT_NOT_ON_ORIGIN_DEVELOP");
+  await checkClaim(stateDir, id, started, finished);
+  return { approval_id: id, plan_id: id, commit: r.commit as string };
+}
+
 /** A claim is made right after the run's start time is taken and before the entry starts (cycle.ts): it lies in the run. */
 const CLAIM_SLACK_MS = 5 * 60_000;
 /** The worker's claim marker <state>/claims/<id>.used: a regular file of ours, no link, naming this approval, made during this run. */
@@ -262,7 +287,9 @@ async function sealedFor(o: { runDir: string; receiptPath: string; receiptBytes:
 
 /** One review delivery for one finished run (see the header). Takes the worker's lock; never claims, invokes or retries. */
 export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDeps): Promise<DeliverReviewResult> {
-  const idCheck = checkRealApprovalId(o.approvalId);
+  // DEV-303: a request run's id, or a real run's approval id
+  const request = isRequestRunId(o.approvalId);
+  const idCheck = request ? "ok" : checkRealApprovalId(o.approvalId);
   if (idCheck !== "ok") stop(idCheck);
   if (o.signal?.aborted) stop("REVIEW_ABORTED");
   if (o.jailIdle) {
@@ -291,7 +318,7 @@ export async function deliverReview(o: DeliverReviewOptions, d: DeliverReviewDep
     } catch {
       return stop("RECEIPT_INVALID");
     }
-    const expected = await checkReceipt(r, o.approvalId, runDir, o.stateDir, d);
+    const expected = request ? await checkRequestReceipt(r, o.approvalId, runDir, o.stateDir, d) : await checkReceipt(r, o.approvalId, runDir, o.stateDir, d);
     if (o.signal?.aborted) stop("REVIEW_ABORTED");
     const inboxDir = o.inboxDir ?? join(runs, REVIEW_INBOX);
     const { sealed, how } = await sealedFor({ runDir, receiptPath, receiptBytes, bundlesDir: join(runs, BUNDLES), stateDir: o.stateDir, inboxDir, expected, resend: o.resend === true, ...(o.now ? { now: o.now } : {}) });

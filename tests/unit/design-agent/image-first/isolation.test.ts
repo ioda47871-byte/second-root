@@ -19,6 +19,10 @@ const WORKER_IMPORTERS = [
   // Issue #302 (exact path): the manual Claude CLI audit reads the facts pack and the d3 direction text through
   // loadPromptInputs only (every pin applies); it builds no plan and starts nothing (imagefirst-worker/claude-audit-rubric.test.ts)
   "lib/design-agent/imagefirst-worker/claude-audit.ts",
+  // DEV-303 (owner direction 2026-11-23): request mode — the request's files (read only, plus the real shop's private
+  // record outside git) and the request cycle (PromptStop and the request id rule; it starts the entry only)
+  "lib/design-agent/imagefirst-worker/request.ts",
+  "lib/design-agent/imagefirst-worker/request-cycle.ts",
 ];
 
 function specifiers(source: string): string[] {
@@ -38,6 +42,8 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/adapter.ts`]: ["../impl-lane/compare", "../impl-lane/impl-compare", "./record", "./validate", "node:crypto", "playwright"],
   // P3 preparation: the deterministic prompt builder (pure apart from an injected reader)
   [`${LIB}/prompt.ts`]: ["../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./record", "node:crypto"],
+  // DEV-303: request mode's schema and prompt builder (pure; reuses the pinned builder's split, labels and principles)
+  [`${LIB}/request-prompt.ts`]: ["../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "./prompt", "./record", "node:crypto", "zod"],
   [PIN_CLI]: ["../../lib/design-agent/image-first/prompt", "node:fs/promises", "node:path"],
   [CLI]: ["../../lib/design-agent/image-first/builder", "../../lib/design-agent/image-first/validate", "../../lib/design-agent/impl-lane/impl-compare", "node:fs/promises", "node:path"],
 };
@@ -67,7 +73,7 @@ describe("isolation of the IMAGE_FIRST contract (offline, read only)", () => {
   });
 
   it("is imported only by its own check CLI (P3: and the pin printer and the gated real-call entry); no package script, workflow or other script starts that CLI", () => {
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/image-first|image-first/(record|validate|builder|adapter|owner-gate|composition|pixels|prompt)", "--", "lib", "app", "components", "scripts", `:!${LIB}`], { cwd: REPO, encoding: "utf8" });
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/image-first|image-first/(record|validate|builder|adapter|owner-gate|composition|pixels|prompt|request-prompt)", "--", "lib", "app", "components", "scripts", `:!${LIB}`], { cwd: REPO, encoding: "utf8" });
     expect(g.stdout.trim().split("\n").filter(Boolean)).toEqual([...GENERATE_IMPORTERS, ...WORKER_IMPORTERS, CLI, PIN_CLI].sort());
     const starts = spawnSync("git", ["grep", "--untracked", "-lE", "(tsx|node|npx|bun|sh)\\b[^\\n]*image-first-check", "--", ".", ":!tests/**", ":!docs/**", ":!.ai/**", `:!${CLI}`], { cwd: REPO, encoding: "utf8" });
     expect([starts.status, starts.stdout.trim()]).toEqual([1, ""]);

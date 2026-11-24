@@ -3,6 +3,7 @@
  * Claude runs it when the owner says "改善して" / "成功例として保存" / "次の店へ" in the Claude app (.claude/skills/second-root-research-loop/).
  *
  *   node --import tsx scripts/design-research/research.ts status
+ *   node --import tsx scripts/design-research/research.ts inbox-scan      (read-only: delivered runs not recorded yet)
  *   node --import tsx scripts/design-research/research.ts intake <bundle id> --shop <s> --direction <d> --iteration <n> [--parent <entry id>]
  *   node --import tsx scripts/design-research/research.ts review-page <entry id> --out <dir> [--notes <notes.json>]
  *   node --import tsx scripts/design-research/research.ts decide <entry id> --decision adopt|revise|reject --words <owner's words>
@@ -23,7 +24,8 @@ import { entryFromInbox } from "../../lib/design-agent/research-log/intake";
 import { ReviewNotes, reviewPage } from "../../lib/design-agent/research-log/review-page";
 import { DECISIONS, ResearchState } from "../../lib/design-agent/research-log/schema";
 import { assertFictionalShop } from "../../lib/design-agent/research-log/shops";
-import { advanceToNextShop, currentDecision, LogStop, readEntry, readState, resumeSummary, writeDecision, writeEntry, writeState } from "../../lib/design-agent/research-log/store";
+import { unrecordedRuns } from "../../lib/design-agent/research-log/inbox";
+import { advanceToNextShop, currentDecision, listEntries, LogStop, readEntry, readState, resumeSummary, writeDecision, writeEntry, writeState } from "../../lib/design-agent/research-log/store";
 
 const REPO = resolve(__dirname, "../..");
 const LOG = process.env.SR_RESEARCH_LOG_ROOT ?? join(REPO, "design-library/research-log");
@@ -90,6 +92,14 @@ async function main(argv: string[]): Promise<void> {
     case "status":
       process.stdout.write(await resumeSummary(LOG));
       return;
+
+    case "inbox-scan": {
+      // read-only: delivered runs the log has not recorded yet (one JSON line each; nothing when all are recorded)
+      const runs = await unrecordedRuns(INBOX, await listEntries(LOG), await readState(LOG));
+      if (runs === null) refuse("INBOX_UNREADABLE", `${INBOX}/previews is missing or unreadable (nothing can be listed)`);
+      for (const r of runs) process.stdout.write(`${JSON.stringify(r)}\n`);
+      return;
+    }
 
     case "intake": {
       const id = pos[0] ?? refuse("USAGE", "intake <bundle id>");
@@ -191,7 +201,7 @@ async function main(argv: string[]): Promise<void> {
     }
 
     default:
-      refuse("USAGE", "status | intake | review-page | decide | queue-add | next-shop");
+      refuse("USAGE", "status | inbox-scan | intake | review-page | decide | queue-add | next-shop");
   }
 }
 

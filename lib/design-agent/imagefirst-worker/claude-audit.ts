@@ -32,7 +32,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, mkdtemp, open, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, open, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { DIRECTIONS, loadPromptInputs, type Reader } from "../image-first/prompt";
@@ -42,7 +42,7 @@ import { AUDIT_SCHEMA, AuditRecord, deriveViewport, incoherence, overallVerdict,
 import { APPROVAL_ID_RE, BundleStop, verifyBundleDir } from "./bundle";
 import { assertClaudeSignedIn, buildUserMessage, claudeEnvironment, ClaudeCallError, extractJsonObject, runClaudeWithoutTools, type ClaudeImage } from "./claude-cli";
 import { PREVIEW_LIMITS, PreviewStop, verifyPreviewsDetailed, type PreviewEntry } from "./preview";
-import { runOfApprovalId, type RunDirection } from "./run-directions";
+import { isRequestRunId, runOfApprovalId, type RunDirection } from "./run-directions";
 
 const MiB = 1024 * 1024;
 /**
@@ -77,6 +77,8 @@ const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("he
 /** The same rule as the worker's real-run id check (cycle.ts checkRealApprovalId; a test compares them), without importing the cycle. */
 export function auditIdCheck(id: string, dummy: boolean): "ok" | "APPROVAL_ID_INVALID" | "APPROVAL_ID_RESERVED" | "DUMMY_ID_REQUIRED" {
   if (dummy) return id === DUMMY_AUDIT_ID ? "ok" : "DUMMY_ID_REQUIRED";
+  // DEV-303: a request run's id (never an approval id's form); its material comes from its own private run
+  if (isRequestRunId(id)) return "ok";
   if (!APPROVAL_ID_RE.test(id)) return "APPROVAL_ID_INVALID";
   const date = id.split("-")[3]!;
   if (date === RESERVED_DATE) return "APPROVAL_ID_RESERVED";
@@ -98,6 +100,48 @@ export async function loadAuditMaterial(reader: Reader, direction: RunDirection 
   const d = JSON.parse(inputs.directionBytes.toString("utf8")) as { id?: unknown; concept?: unknown; protect?: unknown };
   if (typeof d.id !== "string" || typeof d.concept !== "string" || !Array.isArray(d.protect) || d.protect.some((p) => typeof p !== "string")) throw new AuditStop("MATERIAL_INVALID");
   return { facts: inputs.facts.facts.map((f) => ({ key: f.key, value: f.value })), direction: { id: d.id, concept: d.concept, protect: d.protect as string[] } };
+}
+
+export { isRequestRunId };
+/** DEV-303: the material id a request run's audit quotes (and the audit requires). */
+export const requestMaterialId = (id: string) => `request-${id}`;
+const RECEIPT_STAMP = "\\d{8}T\\d{6}Z";
+
+/**
+ * DEV-303: a request run's material, from its own private run directory (~/sr-runs/<id>-<UTC>/): the facts pack the run
+ * used (its SHA-256 = the receipt's facts_sha256) and the request's direction (concept; palette, typography and what to
+ * avoid as the things to keep). Read only; nothing from the repository (a real shop's facts are never in it).
+ */
+export async function loadRequestAuditMaterial(runsDir: string, id: string): Promise<AuditMaterial> {
+  if (!isRequestRunId(id)) throw new AuditStop("APPROVAL_ID_INVALID");
+  const re = new RegExp(`^${id}-${RECEIPT_STAMP}\\.receipt\\.json$`);
+  const found = (await readdir(runsDir).catch(() => [] as string[])).filter((n) => re.test(n));
+  if (found.length !== 1) throw new AuditStop(found.length === 0 ? "MATERIAL_MISSING" : "MATERIAL_INVALID");
+  const runDir = join(runsDir, found[0]!.slice(0, -".receipt.json".length));
+  const read = async (p: string, max: number) => {
+    const b = await readPrivate(p, max, "MATERIAL_INVALID", process.getuid?.() ?? -1).catch(() => null);
+    if (!b) throw new AuditStop("MATERIAL_MISSING");
+    return b;
+  };
+  let receipt: { mode?: unknown; request_id?: unknown; facts_sha256?: unknown };
+  let facts: { facts?: unknown };
+  let direction: { concept?: unknown; palette?: unknown; typography?: unknown; avoid?: unknown };
+  const factsBytes = await read(join(runDir, "facts-pack.json"), 256 * 1024);
+  try {
+    receipt = JSON.parse((await read(join(runsDir, found[0]!), 256 * 1024)).toString("utf8")) as typeof receipt;
+    facts = JSON.parse(factsBytes.toString("utf8")) as typeof facts;
+    direction = JSON.parse((await read(join(runDir, "direction.json"), 64 * 1024)).toString("utf8")) as typeof direction;
+  } catch {
+    throw new AuditStop("MATERIAL_INVALID");
+  }
+  if (receipt.mode !== "request" || receipt.request_id !== id || receipt.facts_sha256 !== sha256(factsBytes)) throw new AuditStop("MATERIAL_INVALID");
+  const list = Array.isArray(facts.facts) ? (facts.facts as { key?: unknown; value?: unknown }[]) : [];
+  const texts = [direction.concept, direction.palette, direction.typography, direction.avoid];
+  if (list.length === 0 || list.some((f) => typeof f?.key !== "string" || typeof f.value !== "string") || texts.some((t) => typeof t !== "string")) throw new AuditStop("MATERIAL_INVALID");
+  return {
+    facts: list.map((f) => ({ key: f.key as string, value: f.value as string })),
+    direction: { id: requestMaterialId(id), concept: direction.concept as string, protect: [`色: ${direction.palette as string}`, `文字の組み方: ${direction.typography as string}`, `避けること: ${direction.avoid as string}`] },
+  };
 }
 
 /**
@@ -330,7 +374,10 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
     if (dummy && (m.plan_id !== DUMMY_AUDIT_RECORD.plan_id || m.commit !== DUMMY_AUDIT_RECORD.commit)) stop("BUNDLE_UNVERIFIED");
     // the quoted direction is the bundle's own (the id names it; verifyBundleDir tied the manifest's direction to the
     // receipt's and the id's): a d3 material never audits a d4 bundle, nor the other way round
-    if (runOfApprovalId(id)?.direction !== m.direction || o.material.direction.id !== DIRECTIONS[m.direction as RunDirection].id) stop("AUDIT_MATERIAL_MISMATCH");
+    if (isRequestRunId(id)) {
+      // DEV-303: a request run's bundle is audited against its own request's material (loadRequestAuditMaterial)
+      if (m.mode !== "request" || m.direction !== "request" || o.material.direction.id !== requestMaterialId(id)) stop("AUDIT_MATERIAL_MISMATCH");
+    } else if (runOfApprovalId(id)?.direction !== m.direction || o.material.direction.id !== DIRECTIONS[m.direction as RunDirection].id) stop("AUDIT_MATERIAL_MISMATCH");
     // 3. the previews already delivered next to it, for exactly this bundle (INDEX.json hashed as verifyPreviews read it)
     const previewsDir = join(inbox, PREVIEWS, id);
     if (!(await exists(previewsDir))) stop("AUDIT_NOT_DELIVERED");
