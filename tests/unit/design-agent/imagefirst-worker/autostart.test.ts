@@ -52,7 +52,10 @@ if [ "$1" = is-enabled ]; then [ -f '${sc}/isenabled-fail' ] && exit 1; if [ -f 
   exe(join(bin, "setpriv"), `opts=(); while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift; echo "\${opts[*]}" >> '${sc}/setpriv.log'; exec "$@"`);
   // pgrep: sc/pgrep = a process of the worker user; sc/pgrep-error = pgrep cannot tell
   exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep-error' ] && exit 3; [ -f '${sc}/pgrep' ] && exit 0; exit 1`);
-  exe(join(bin, "npm"), `echo "npm $*" >> '${sc}/npm.log'`);
+  // as npm 11: one file as both user and global config (/dev/null twice too) exits 1 (the sync's npm ci passes neither)
+  exe(join(bin, "npm"), `echo "npm $*" >> '${sc}/npm.log'
+u="\${npm_config_userconfig:-}"; g="\${npm_config_globalconfig:-}"
+if [ -n "$u" ] && [ -n "$g" ] && [ "$(readlink -f -- "$u")" = "$(readlink -f -- "$g")" ]; then echo "npm error double-loading config \\"$g\\" as \\"global\\", previously loaded as \\"user\\"" >&2; exit 1; fi`);
   // the approved code at origin/develop: the prompt inputs, the packet, a lockfile, node_modules ignored
   const src = workerRepo(readFileSync(UNAPPROVED_PACKET_FIXTURE));
   // the clone's worker is the fake worker (imported by absolute path), started as the real one: node --import tsx <it>

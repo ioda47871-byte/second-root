@@ -281,7 +281,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-worker/imagefirst-autorun-
      `git init` して root の origin URL からその commit **だけを id で** fetch し（`refs/remotes/origin/develop` へ。objects は git が受け取って確かめたものだけ。
      何も共有しない）、取れなければ止め、`checkout --detach` し、HEAD = その commit、`git status --porcelain --ignored` が空でなければ止める
      （`PILOT_STANDING_COMMIT_UNAVAILABLE` / `PILOT_AUTORUN_TREE_DIRTY`。claim の前。develop の最新や祖先とは比べない）、
-  3. その clone で `npm ci`（利用者・全体の npm の設定は `/dev/null`）、
+  3. その clone で `npm ci --no-audit --no-fund --no-update-notifier --loglevel=error`（利用者・全体の npm の設定 `npm_config_userconfig`・`npm_config_globalconfig` は、clone の隣に `mkdir` で新しく作る sr-designgen だけのディレクトリ `<clone>.npmrc`（0700。symlink・既にあるものは断る）の**別々の空ファイル**（0600）。npm 11 は同じファイル（`/dev/null` を 2 回も）を両方に渡すと `double-loading config` で即 exit 1 する。`--os`/`--cpu` は付けない（project 自身の platform 依存、例えば sharp は本当の platform が要る）。出力はそのディレクトリのファイルに書き、失敗したときだけ最後の 20 行を token らしい文字列を伏せて表示して `PILOT_AUTORUN_NPM`。ディレクトリは成否にかかわらず消す）、
   4. preflight・worker の実行・再送（`--deliver-review`）・監査はすべてその clone で動く（preflight は root の state ファイル `autorun-clone` で場所を知り、
      形を確かめる）。worker が claim の前にもう一度全部を確かめる。
   - worker の git はすべて `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`（node の worker が起動する git にも `worker/env.ts` が渡す）。

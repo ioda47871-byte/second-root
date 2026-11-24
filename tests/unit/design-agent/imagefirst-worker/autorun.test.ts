@@ -28,10 +28,29 @@ const adminClone = (w: ReturnType<typeof wsl>) => {
   const admin = join(w.t, "root", "sr-capture-admin");
   mkdirSync(join(w.t, "root"), { recursive: true });
   git(w.t, "clone", "-q", "--branch", "develop", w.origin, admin);
-  // npm ci's stand-in: records how it was run and, as npm ci would, gives the clone its tsx loader
+  // npm ci's stand-in: records how it was run (and what its config files are) and, as npm ci would, gives the clone its tsx
+  // loader. As npm 11 (11.19.0): one file as both user and global config (/dev/null twice too) exits 1 before anything.
+  // npm-fail: a noisy failure with token-like strings in its output
   exe(
     join(w.bin, "npm"),
     `echo "npm $* userconfig=\${npm_config_userconfig:-} globalconfig=\${npm_config_globalconfig:-} cwd=$PWD" >> '${w.sc}/npm.log'
+u="\${npm_config_userconfig:-}"; g="\${npm_config_globalconfig:-}"
+if [ -n "$u" ] && [ -n "$g" ] && [ "$(readlink -f -- "$u")" = "$(readlink -f -- "$g")" ]; then
+  printf 'npm error Exit prior to config file resolving\\nnpm error cause\\nnpm error double-loading config "%s" as "global", previously loaded as "user"\\n' "$g" >&2; exit 1
+fi
+for c in "$u" "$g"; do [ -n "$c" ] || continue
+  if [ -L "$c" ]; then t=link; elif [ -f "$c" ]; then t=file; else t=other; fi
+  echo "cfg $c type=$t mode=$(stat -c %a -- "$c") size=$(stat -L -c %s -- "$c") dirmode=$(stat -c %a -- "$(dirname -- "$c")")" >> '${w.sc}/npm-cfg.log'
+done
+if [ -f '${w.sc}/npm-fail' ]; then
+  for i in $(seq 1 22); do echo "npm http fetch filler line $i"; done
+  echo "npm error code ETARGET" >&2
+  echo "npm error //registry.npmjs.org/:_authToken=npm_SECRETAUTH123" >&2
+  echo "npm error Authorization: Bearer sk-SECRETBEARER456" >&2
+  echo "npm error fetch https://bob:SECRETPASS789@registry.example/x.tgz" >&2
+  printf 'npm error token=SECRETTOKEN000 \\033[31mrefused\\n' >&2
+  exit 1
+fi
 mkdir -p node_modules && ln -sfn '${join(REPO, "node_modules", "tsx")}' node_modules/tsx`,
   );
   return admin;
@@ -283,7 +302,13 @@ describe("Issue #302 automatic run: claude-stop, the pilot once, ALWAYS claude-s
     for (const s of w.starts().filter((x) => x.cli === "worker")) expect(s.cwd, s.argv.join(" ")).toBe(fc);
     expect(git(w.clone, "rev-parse", "HEAD")).toBe(head0);
     // npm ci always, in the fresh clone, with no user / global npm config
-    expect(readFileSync(join(w.sc, "npm.log"), "utf8").trim().split("\n")).toEqual([`npm ci --no-audit --no-fund --loglevel=error userconfig=/dev/null globalconfig=/dev/null cwd=${fc}`]);
+    // (npm 11: two distinct empty 0600 files in a new 0700 <fresh>.npmrc dir, never /dev/null twice; removed afterwards)
+    expect(readFileSync(join(w.sc, "npm.log"), "utf8").trim().split("\n")).toEqual([`npm ci --no-audit --no-fund --no-update-notifier --loglevel=error userconfig=${fc}.npmrc/userconfig globalconfig=${fc}.npmrc/globalconfig cwd=${fc}`]);
+    expect(readFileSync(join(w.sc, "npm-cfg.log"), "utf8").trim().split("\n")).toEqual([
+      `cfg ${fc}.npmrc/userconfig type=file mode=600 size=0 dirmode=700`,
+      `cfg ${fc}.npmrc/globalconfig type=file mode=600 size=0 dirmode=700`,
+    ]);
+    expect(existsSync(`${fc}.npmrc`)).toBe(false);
     expect(w.events()).toEqual(["admin claude-stop", `worker used=${ID},`, "admin claude-start"]);
     expect(readFileSync(join(w.state, "autorun", ID, "attempt"), "utf8")).toContain(`commit=${sha}\n`);
     expect(w.spent().map((s) => [s.cli, s.argv.join(" ")])).toEqual([["worker", ""], ["audit", ID]]);
@@ -638,6 +663,33 @@ describe("Issue #302 automatic run: the pilot's --autorun mode and the preflight
     expect(pilot).not.toMatch(/merge-base --is-ancestor "\$AUTORUN_SHA"|clone --quiet --no-local/);
     expect(pilot).toContain('fetch --quiet --no-tags origin "+$AUTORUN_SHA:refs/remotes/origin/develop"');
     expect(readFileSync(PREFLIGHT, "utf8")).not.toMatch(/has moved on|merge-base --is-ancestor "\$admin_head"/);
+  });
+
+  it("DEV-303 npm 11: a failing npm ci prints its last lines masked, ends PILOT_AUTORUN_NPM before the claim, and leaves no config dir", () => {
+    const w = wsl();
+    const admin = adminClone(w);
+    insideService(w);
+    writeFileSync(join(w.sc, "sr-imagefirst-autorun.service"), "activating");
+    writeFileSync(join(w.sc, "npm-fail"), "");
+    const r = w.pilot(["--autorun", ID, git(admin, "rev-parse", "HEAD"), w.origin]);
+    expect(r, r.stdout).toMatchObject({ status: 20, code: "PILOT_AUTORUN_NPM", phase: "before_claim" });
+    expect(w.starts()).toEqual([]);
+    expect(r.stdout).toContain("npm| npm error code ETARGET");
+    expect(r.stdout).toContain("npm| npm error //registry.npmjs.org/:_authToken=***");
+    expect(r.stdout).toContain("npm| npm error Authorization: Bearer ***");
+    expect(r.stdout).toContain("npm| npm error fetch https://***@registry.example/x.tgz");
+    expect(r.stdout).toContain("npm| npm error token=*** [31mrefused");
+    expect(r.stdout).toContain("npm| npm http fetch filler line 22");
+    expect(r.stdout).not.toMatch(/filler line 7$/m);
+    expect(r.stdout).toMatch(/filler line 8$/m);
+    expect(r.stdout).not.toMatch(/SECRET|\x1b/);
+    expect(r.stdout).toContain("npm ci failed (exit 1)");
+    expect(readdirSync(join(w.home, "imagefirst")).filter((n) => n.endsWith(".npmrc"))).toEqual([]);
+    // the stand-in refuses the old flags as npm 11 does: the pilot no longer passes them
+    const npm = spawnSync(join(w.bin, "npm"), ["ci"], { env: { PATH: process.env.PATH, npm_config_userconfig: "/dev/null", npm_config_globalconfig: "/dev/null" } as unknown as NodeJS.ProcessEnv, encoding: "utf8", cwd: w.t });
+    expect(npm.status).toBe(1);
+    expect(npm.stderr).toContain('double-loading config "/dev/null" as "global", previously loaded as "user"');
+    expect(readFileSync(PILOT, "utf8")).not.toMatch(/npm_config_(user|global)config=\/dev\/null/);
   });
 
   it("review H1: old fresh clones: the newest kept, older ones removed; links, other names and other places never touched", () => {

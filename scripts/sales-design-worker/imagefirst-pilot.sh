@@ -46,7 +46,8 @@
 #   (no branch tip; the origin no longer having it: PILOT_STANDING_COMMIT_UNAVAILABLE, before the claim);
 #   root's used/<approval id> must not exist (PILOT_MARKER_USED); the reused clone is never used: a fresh clone at a new
 #   root-chosen path, from <origin URL> (root's: the standing policy's or the admin clone's), <commit> checked out, with no
-#   user or system git config, status --ignored empty, then npm ci; the preflight, the worker run, the re-send and the audit
+#   user or system git config, status --ignored empty, then npm ci (two distinct empty npm config files in a private
+#   <fresh>.npmrc dir, removed after it; a failure prints npm's last lines, masked); the preflight, the worker run, the re-send and the audit
 #   use it (the steps below); and right before the worker starts,
 #   used/<approval id> is created (atomic mkdir in root's 0700 state, never
 #   removed, as the automatic start's step 7), so the automatic run never starts the worker twice for one id. The
@@ -121,6 +122,12 @@ DELIVERY="unknown"
 AUDIT_LINE=""
 
 say() { printf 'imagefirst-pilot: %s\n' "$*"; }
+# token-like strings out of npm's output (an auth token, a bearer / basic credential, a user:password@ in a URL); the same
+# as imagefirst-autorun-setup.sh's npm_mask
+npm_mask() {
+  sed -E 's/(_authToken|_auth|_password|password|token)([[:space:]]*[=:][[:space:]]*)[^[:space:]"'"'"',]+/\1\2***/Ig;
+    s/(Bearer|Basic)[[:space:]]+[^[:space:]"'"'"',]+/\1 ***/Ig; s#//[^/@[:space:]]+@#//***@#g'
+}
 finish() {
   local code="$1" rc="$2"
   FINISHED=1
@@ -466,7 +473,7 @@ fi
 # chose (~/imagefirst/autorun-<id>-<UTC>, created with mkdir: never a link, never one that exists), `git clone --no-local
 # --no-checkout` from root's origin URL (every object received and checked by git, nothing shared), origin/develop must be
 # exactly root's commit, `checkout --detach` it, HEAD = it, and `git status --ignored` prints nothing; then npm ci (no user or
-# global npm config). Every git runs with GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 (in AS_WORKER) and the -c settings
+# global npm config: two distinct empty files, as npm 11 refuses /dev/null twice). Every git runs with GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 (in AS_WORKER) and the -c settings
 # below. Old fresh clones: only real directories named autorun-hoshigama-imagefirst-* directly under ~/imagefirst; the
 # newest one is kept (for a look afterwards), the older ones are removed, by the worker, while this run holds the locks
 # with Remote Control stopped (no run can be using them). Nothing else is ever removed. The worker run, the re-send and
@@ -567,8 +574,29 @@ if [ "$MODE" = autorun ]; then
   extra="$(in_clone timeout --kill-after="$KILL_AFTER" "$GIT_TIMEOUT" "${GH[@]}" status --porcelain --ignored --untracked-files=all 2>/dev/null)" ||
     { say "git status failed"; finish PILOT_AUTORUN_CLONE 20; }
   [ -z "$extra" ] || { say "the fresh clone is not exactly the commit (changed, untracked or ignored files): stopped"; finish PILOT_AUTORUN_TREE_DIRTY 20; }
-  in_clone env npm_config_userconfig=/dev/null npm_config_globalconfig=/dev/null timeout --kill-after="$KILL_AFTER" "$NPM_TIMEOUT" npm ci --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ||
-    { say "npm ci failed"; finish PILOT_AUTORUN_NPM 20; }
+  # npm ci without the user's or the global npm config: two distinct empty files (npm 11 exits "double-loading config" when
+  # one file, /dev/null too, is both), 0600 in a new private dir next to the fresh clone (mkdir: never a link, never one
+  # that exists), as the worker. npm's output goes to a file there; after a failure its last 20 lines come back (masked
+  # below, control characters removed). The dir is removed either way. No --os / --cpu: the project's own platform
+  # packages need the real platform.
+  npm_rc=0
+  npm_tail="$(in_clone bash -c 'set -u; d="$1"; ka="$2"; to="$3"; um="$(umask)"
+    if [ -e "$d" ] || [ -L "$d" ]; then echo "$d exists: refused"; exit 3; fi
+    umask 077
+    mkdir -m 700 -- "$d" || exit 3
+    ( set -C; : >"$d/userconfig" && : >"$d/globalconfig" && : >"$d/npm-ci.out" ) || { rm -rf -- "$d"; exit 3; }
+    umask "$um"
+    rc=0
+    env npm_config_userconfig="$d/userconfig" npm_config_globalconfig="$d/globalconfig" timeout --kill-after="$ka" "$to" \
+      npm ci --no-audit --no-fund --no-update-notifier --loglevel=error >>"$d/npm-ci.out" 2>&1 || rc=$?
+    [ "$rc" = 0 ] || tail -n 20 -- "$d/npm-ci.out"
+    rm -rf -- "$d"
+    exit "$rc"' _ "$FRESH.npmrc" "$KILL_AFTER" "$NPM_TIMEOUT")" || npm_rc=$?
+  if [ "$npm_rc" != 0 ]; then
+    while IFS= read -r l; do say "  npm| $l"; done < <(printf '%s\n' "$npm_tail" | tr -d '\000-\010\013-\037' | npm_mask | tail -n 20 | cut -c1-300)
+    say "npm ci failed (exit $npm_rc)"
+    finish PILOT_AUTORUN_NPM 20
+  fi
   node_paths_clean || { say "a node_modules / package.json appeared in the worker's home or ~/imagefirst during npm ci: stopped"; finish PILOT_AUTORUN_NODE_PATHS 20; }
   # where the preflight finds it and the commit it must be at (root's own files in root's 0700 state; the preflight checks
   # their form)
