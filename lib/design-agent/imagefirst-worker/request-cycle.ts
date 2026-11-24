@@ -18,11 +18,11 @@
  * it can never claim, deliver or audit as one. Outputs only under the private runs directory (~/sr-runs, 0700, outside
  * the repository). Root enforces the quota, one attempt per id, the timeout and no retry; this cycle never retries.
  */
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BoundedResult } from "../bounded-process";
 import { PromptStop } from "../image-first/prompt";
-import { isRequestId, REQUEST_IMAGES, type ImagefirstRequest } from "../image-first/request-prompt";
+import { isPhotoRequest, isRequestId, REQUEST_IMAGES, type ImagefirstRequest } from "../image-first/request-prompt";
 import { FULL_PAGE_KIND, FULL_PAGE_ROUTE } from "../phase2f-live/full-page-call";
 import { LedgerStop, type Ledger } from "../phase2f-live/ledger";
 import type { CommitState } from "../phase2f-live/steps";
@@ -56,7 +56,8 @@ export type RequestCycleDeps = {
 };
 /** The report (the CLI's one stdout line) and, once the request was read, what the CLI needs for the hand-off and record. */
 export type RequestCycleResult = {
-  report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"] };
+  /** photo_files: DEV-303 a succeeded photo-materials run's pictures (names and SHA-256), what a design request's photo_inputs names. */
+  report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[] };
   run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string } | null;
 };
 
@@ -72,6 +73,14 @@ export function requestArgv(o: { requestFile: string; requestId: string; request
     "--expected-prompt-sha256", o.plan.batch.sha256,
     "--expected-prompt-chars", String(o.plan.batch.chars),
   ];
+}
+
+/** A succeeded photo-materials run's pictures from its receipt (names and SHA-256 only), for the report line. */
+async function photoFilesOf(report: CycleReport): Promise<{ photo_files?: { name: string; sha256: string }[] }> {
+  if (report.status !== "succeeded" || !report.receipt) return {};
+  const r = await readFile(report.receipt, "utf8").then((t) => JSON.parse(t) as { images?: { file?: unknown; sha256?: unknown }[] }, () => null);
+  const files = (r?.images ?? []).flatMap((i) => (typeof i.file === "string" && /^parts\/photo-[1-6]\.png$/.test(i.file) && typeof i.sha256 === "string" ? [{ name: i.file.slice("parts/".length), sha256: i.sha256 }] : []));
+  return files.length ? { photo_files: files } : {};
 }
 
 export async function runRequestCycle(o: RequestCycleOptions, d: RequestCycleDeps): Promise<RequestCycleResult> {
@@ -125,7 +134,12 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
   }
   const kind = (seen.kind = inputs.request.kind);
   run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit };
-  if (inputs.plan.batch.images !== REQUEST_IMAGES.total || inputs.request.codex_runs !== 1) return refuse("REQUEST_IMAGES_MISMATCH");
+  const photoStage = isPhotoRequest(inputs.request);
+  // one Codex run; a design run makes PC 2 + SP 4, a photo-materials run 1..6 pictures (one per subject)
+  const images = photoStage ? { pc: 0, sp: 0, photo: inputs.request.max_images } : REQUEST_IMAGES;
+  const want = photoStage ? inputs.request.max_images : REQUEST_IMAGES.total;
+  if (inputs.plan.batch.images !== want || want < 1 || want > REQUEST_IMAGES.total || inputs.request.codex_runs !== 1) return refuse("REQUEST_IMAGES_MISMATCH");
+  if (inputs.photos === "unchecked") return refuse("PHOTO_INPUT_RUN_MISSING");
 
   // ---- one use: never claimed here, unused in the entry's ledger (read only) ----
   if (await claimed(o.stateDir, id)) return refuse("REQUEST_ALREADY_CLAIMED");
@@ -155,13 +169,21 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
         receiptName: `${id}-${stamp(started)}`,
         started,
         now,
-        images: REQUEST_IMAGES,
+        images,
         fields: { shop: inputs.request.shop_id, direction: "request", approval_id: id, plan_id: id, commit, packet_sha256: inputs.requestSha256, plan_sha256: plan.plan_sha256, prompt_sha256: plan.batch.sha256, prompt_chars: plan.batch.chars },
-        extra: { mode: "request", kind: inputs.request.kind, request_id: id, request_sha256: inputs.requestSha256, facts_sha256: plan.facts_sha256 },
+        extra: {
+          mode: "request",
+          kind: inputs.request.kind,
+          request_id: id,
+          request_sha256: inputs.requestSha256,
+          facts_sha256: plan.facts_sha256,
+          ...(photoStage ? { request_stage: "photo_materials" as const } : {}),
+          ...(!isPhotoRequest(inputs.request) && inputs.request.photo_inputs ? { photo_inputs: inputs.request.photo_inputs } : {}),
+        },
       },
       res,
       interrupted,
-    ).then((report): RequestCycleResult => ({ report: { ...report, mode: "request", kind: inputs.request.kind }, run }));
+    ).then(async (report): Promise<RequestCycleResult> => ({ report: { ...report, mode: "request", kind: inputs.request.kind, ...(photoStage ? { stage: "photo_materials" as const, ...(await photoFilesOf(report)) } : {}) }, run }));
   let ending: Promise<RequestCycleResult> | null = null;
   const end = (res: BoundedResult | null, interrupted: boolean) => (ending ??= settle(res, interrupted).then(audit));
   const claiming = claimApproval(o.stateDir, id, now(), requestIdCheck);

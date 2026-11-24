@@ -112,6 +112,32 @@ const RECEIPT_STAMP = "\\d{8}T\\d{6}Z";
  * used (its SHA-256 = the receipt's facts_sha256) and the request's direction (concept; palette, typography and what to
  * avoid as the things to keep). Read only; nothing from the repository (a real shop's facts are never in it).
  */
+/** DEV-303 (owner decision 2026-11-24): what the audit CLI says instead of auditing an image-materials bundle. */
+export const IMAGE_MATERIAL_AUDIT_SKIPPED = "image materials are reviewed by Claude, no audit call";
+
+/**
+ * DEV-303: a request run whose inbox bundle (<inbox>/<id>) is a photo-materials bundle (manifest image_material: true) is
+ * not audited (there is no page to audit; Claude reviews each material itself). Returns that bundle's SHA-256 after the
+ * full verifier passed, or null when the bundle is not an image-materials one (the design audit goes on unchanged).
+ * A bundle that says image_material but does not verify throws (BundleStop's fixed code).
+ */
+export async function imageMaterialBundle(runsDir: string, id: string, inboxDir: string = join(runsDir, "review-inbox")): Promise<string | null> {
+  if (!isRequestRunId(id)) return null;
+  const dir = join(inboxDir, id);
+  let m: { image_material?: unknown } | null = null;
+  try {
+    const bytes = await readPrivate(join(dir, "manifest.json"), 64 * 1024, "MATERIAL_INVALID", process.getuid?.() ?? -1);
+    if (!bytes) return null;
+    m = JSON.parse(bytes.toString("utf8")) as { image_material?: unknown };
+  } catch {
+    return null;
+  }
+  if (m?.image_material !== true) return null;
+  const v = await verifyBundleDir(dir);
+  if (v.manifest.image_material !== true || v.manifest.bundle_id !== id) throw new AuditStop("MATERIAL_INVALID");
+  return v.bundle_sha256;
+}
+
 export async function loadRequestAuditMaterial(runsDir: string, id: string): Promise<AuditMaterial> {
   if (!isRequestRunId(id)) throw new AuditStop("APPROVAL_ID_INVALID");
   const re = new RegExp(`^${id}-${RECEIPT_STAMP}\\.receipt\\.json$`);

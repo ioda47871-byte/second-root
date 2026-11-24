@@ -78,7 +78,7 @@ Claude（jail の sr-designgen）が `~/sr-runs/requests/<依頼 ID>.json` を�
   `<clone>.request/<ID>.json`（0600）へ写す。worker は `imagefirst-worker.ts --request <ID> --request-sha256 <hex>` で 1 回だけ動く
   （環境変数 `SR_IMAGEFIRST_REQUEST_FILE` がその写しを指す。承認 ID の grant は渡さない）。その前に preflight が、同じ引数に `--precheck` を付けて
   worker の事前確認を走らせる（exit 0 と `would_run` 以外は FAIL で、何も使わない）。
-- **実店舗の画像は社内のデザインの参考だけ**（相手に見せない・共有しない・版に入れない）。本番の公開と営業の送信は今までどおりオーナーの確認が要る。自動送信は無い。
+- **実店舗の画像は社内のデザインの参考だけ**（相手に見せない・共有しない・版に入れない）。例外は写真素材の段（`stage: "photo_materials"`）の画像素材で、MVP_SPEC §7.1 の「限定の改定」の 5 つの条件をすべて満たすときだけ営業提案デモに使える。本番の公開と営業の送信は今までどおりオーナーの確認が要る。自動送信は無い。
 
 ### 0.4 1 回ごとの承認（手動の代替。下の §1）
 

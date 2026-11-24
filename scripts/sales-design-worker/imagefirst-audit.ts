@@ -18,6 +18,10 @@
  * the private audit.json / AUDIT.md). Exit: 0 completed or planned, 1 stopped after the marker (a code is recorded),
  * 2 refused (nothing spent, nothing written).
  *
+ * DEV-303 (owner decision 2026-11-24): a request run whose inbox bundle is a photo-materials one (image_material) is not
+ * audited (dry run and run alike): one line {"status":"planned"|"completed","audit":"skipped","skipped":"image materials
+ * are reviewed by Claude, no audit call","calls":0,...} and exit 0; no claude process, no marker, nothing written.
+ *
  *   node --import tsx scripts/sales-design-worker/imagefirst-audit.ts --check-auth-only
  *
  * Issue #302 (the owner's one-shot pilot's read-only preflight, scripts/sales-design-worker/imagefirst-pilot-preflight.sh):
@@ -28,7 +32,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { auditDirectionOf, AuditStop, checkAuditAuth, DUMMY_AUDIT_ID, isRequestRunId, loadAuditMaterial, loadRequestAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
+import { auditDirectionOf, AuditStop, checkAuditAuth, DUMMY_AUDIT_ID, IMAGE_MATERIAL_AUDIT_SKIPPED, imageMaterialBundle, isRequestRunId, loadAuditMaterial, loadRequestAuditMaterial, runClaudeAudit } from "../../lib/design-agent/imagefirst-worker/claude-audit";
 import { jailIdle, SYSTEMCTL } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
@@ -79,6 +83,16 @@ export async function auditCli(args: readonly string[], bins: { claudeBin: strin
       }
       say({ status: "auth_ok", code: null });
       return 0;
+    }
+    // DEV-303 (owner decision 2026-11-24): a photo-materials bundle is never audited: no claude process, no marker, no
+    // audit written. The line keeps root's pilot contract ("planned" for --dry-run, "completed" for the run, exit 0) and
+    // says why: audit "skipped", calls 0, no verdict.
+    if (!dummy && isRequestRunId(approvalId)) {
+      const sha = await imageMaterialBundle(runsDir, approvalId);
+      if (sha !== null) {
+        say({ status: dryRun ? "planned" : "completed", code: null, approval_id: approvalId, bundle_sha256: sha, image_material: true, audit: "skipped", skipped: IMAGE_MATERIAL_AUDIT_SKIPPED, verdict: null, calls: 0 });
+        return 0;
+      }
     }
     // the direction the approval id names (a d4 bundle is audited against d4's concept; the audit refuses a mismatch)
     // DEV-303: a request run's id: the material is its own private run's facts pack and direction (never the repository)

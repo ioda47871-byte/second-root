@@ -57,7 +57,7 @@ export type IntakeInput = {
 
 /** A fixed IMAGE_FIRST approval id's form (`<shop>-imagefirst-<direction>-YYYYMMDD-NN`); anything else is a request run. */
 const APPROVAL_RUN_ID = /^[a-z0-9][a-z0-9-]{1,40}-imagefirst-d\d{1,2}-\d{8}-\d{2}$/;
-const RequestManifest = z.object({ bundle_id: Slug, mode: z.literal("request"), kind: z.enum(["real_shop", "fictional"]), shop: z.string() });
+const RequestManifest = z.object({ bundle_id: Slug, mode: z.literal("request"), kind: z.enum(["real_shop", "fictional"]), shop: z.string(), image_material: z.literal(true).optional() });
 
 /**
  * DEV-303: a request-mode run (its bundle id is the request id) is logged only when its sealed bundle in the inbox says it
@@ -72,6 +72,8 @@ async function assertLoggableRun(o: IntakeInput): Promise<void> {
   const m = RequestManifest.safeParse(parseJson(bytes, "INTAKE_MANIFEST_INVALID", "manifest.json"));
   if (!m.success || m.data.bundle_id !== o.bundleId) throw new LogStop("INTAKE_MANIFEST_INVALID", "manifest.json is not this request run's bundle");
   if (m.data.kind !== "fictional") throw new LogStop("REAL_SHOP_NOT_LOGGED", "a real shop's run is recorded privately, never in the research log");
+  // DEV-303 (owner decision 2026-11-24): photo materials are not a design comp; they are never logged as one
+  if (m.data.image_material === true) throw new LogStop("PHOTO_MATERIALS_NOT_LOGGED", "a photo-materials bundle is not a design comp");
   if (m.data.shop !== o.shop) throw new LogStop("INTAKE_SHOP_MISMATCH", `the bundle is ${m.data.shop}'s, not ${o.shop}'s`);
 }
 

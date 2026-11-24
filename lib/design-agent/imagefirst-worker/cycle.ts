@@ -121,7 +121,8 @@ export type WorkerReceipt = {
   run_dir: string;
   images: ReceiptImage[];
   stopped_images: ReceiptImage[];
-  counts: { pc: number; sp: number; total: number; stopped: number };
+  /** photo: DEV-303 a photo-materials run's pictures (parts/photo-N.png), only on such a run. */
+  counts: { pc: number; sp: number; total: number; stopped: number; photo?: number };
   /** Every picture's SHA-256 on disk equals the one the entry recorded in call.json. */
   verified: boolean;
   timings: { started_at: string; finished_at: string; elapsed_ms: number };
@@ -130,7 +131,18 @@ export type WorkerReceipt = {
  * DEV-303: what a request run's receipt adds (request-cycle.ts). shop is the request's shop_id, direction "request",
  * approval_id and plan_id the request id, packet_sha256 the request bytes' SHA-256 (the request is the run's approval).
  */
-export type RequestReceiptFields = { mode: "request"; kind: "real_shop" | "fictional"; request_id: string; request_sha256: string; facts_sha256: string; images_total?: number };
+export type RequestReceiptFields = {
+  mode: "request";
+  kind: "real_shop" | "fictional";
+  request_id: string;
+  request_sha256: string;
+  facts_sha256: string;
+  images_total?: number;
+  /** DEV-303 (owner decision 2026-11-24): only on a photo-materials run. */
+  request_stage?: "photo_materials";
+  /** DEV-303 (owner decision 2026-11-24): a design run's photo inputs (names and SHA-256 only; the pictures stay in their own run). */
+  photo_inputs?: { request_id: string; files: { name: string; sha256: string }[] };
+};
 
 export type CycleOptions = {
   /** The worker's clone (its real path). */
@@ -455,7 +467,8 @@ export type SettleSpec = {
   receiptName: string;
   started: number;
   now: () => number;
-  images: { readonly pc: number; readonly sp: number };
+  /** photo: DEV-303 a photo-materials run's count of parts/photo-N.png (absent: none expected). */
+  images: { readonly pc: number; readonly sp: number; readonly photo?: number };
   fields: Pick<WorkerReceipt, "shop" | "direction" | "approval_id" | "plan_id" | "commit" | "packet_sha256" | "plan_sha256" | "prompt_sha256" | "prompt_chars">;
   /** DEV-303: a request run's own fields, appended after the common ones. */
   extra?: RequestReceiptFields;
@@ -478,8 +491,10 @@ export async function settleRun(s: SettleSpec, res: BoundedResult | null, interr
   const verified = images.length > 0 && images.length === recorded.size && images.every((i) => recorded.get(i.file) === i.sha256);
   const pc = images.filter((i) => i.file.startsWith("parts/pc-")).length;
   const sp = images.filter((i) => i.file.startsWith("parts/sp-")).length;
+  const photo = images.filter((i) => /^parts\/photo-[1-6]\.png$/.test(i.file)).length;
   const cliOk = res?.code === 0 && !res.timedOut && out?.status === "succeeded" && call?.status === "succeeded";
-  const complete = cliOk && verified && pc === a.pc && sp === a.sp;
+  // DEV-303: parts/ holds exactly the run's own planned pictures (a design run never holds a photo input)
+  const complete = cliOk && verified && pc === a.pc && sp === a.sp && photo === (a.photo ?? 0) && images.length === pc + sp + photo;
   let stopCode: string | null = null;
   let stage: WorkerReceipt["stage"] = null;
   if (!complete) {
@@ -504,7 +519,7 @@ export async function settleRun(s: SettleSpec, res: BoundedResult | null, interr
     run_dir: runDir,
     images,
     stopped_images: stopped,
-    counts: { pc, sp, total: images.length, stopped: stopped.length },
+    counts: { pc, sp, total: images.length, stopped: stopped.length, ...(a.photo !== undefined ? { photo } : {}) },
     verified,
     timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
     // DEV-303: a request run reports its picture count (parts + stopped) for root's after-run check (<= 6)

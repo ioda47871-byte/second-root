@@ -23,6 +23,8 @@ const WORKER_IMPORTERS = [
   // record outside git) and the request cycle (PromptStop and the request id rule; it starts the entry only)
   "lib/design-agent/imagefirst-worker/request.ts",
   "lib/design-agent/imagefirst-worker/request-cycle.ts",
+  // DEV-303 (owner decision 2026-11-24): the entry's stage dispatch (types and isPhotoRequest only; it starts nothing)
+  "lib/design-agent/imagefirst-worker/request-run.ts",
 ];
 
 function specifiers(source: string): string[] {

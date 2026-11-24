@@ -77,6 +77,12 @@
  * check of a request before Claude drops it into ~/sr-runs/requests/ (request.ts validateRequestFile). One JSON line:
  * {"status":"valid","code":null,"request_id","kind","request_sha256","facts_sha256","plan_sha256"} exit 0, or
  * {"status":"refused","code":<fixed code>} exit 2. No claim, no ledger, no write, no network, no Codex.
+ *
+ * DEV-303 (owner decision 2026-11-24), two stages: a request with stage "photo_materials" makes 1..6 picture materials
+ * in ONE Codex run (its line adds "stage" and, succeeded, "photo_files": [{name, sha256}]); they are sealed and handed to
+ * the review inbox like a design (~/sr-runs/review-inbox/<id>, marked image_material / イメージ素材, at most 6 pictures).
+ * A design request may name them (photo_inputs, resolved from the photo run's private output); they are attached to its one
+ * Codex run and never copied into it. --validate-request adds "stage" and "photo_inputs": "checked" | "unchecked" | null.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -85,7 +91,7 @@ import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
 import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, GRANT_ENV, gitCommitState, grantFromEnv, isRequestRunId, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
-import { REAL_SHOP_RECORD_SCHEMA, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
+import { REAL_SHOP_RECORD_SCHEMA, recordUseOf, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
 import { precheckRequestCycle, runRequestCycle, type RequestCycleResult } from "../../lib/design-agent/imagefirst-worker/request-cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -276,7 +282,7 @@ async function recordRealShop(result: RequestCycleResult, review: Awaited<Return
         commit: run.commit,
         run: { status: report.status, code: report.code, invoked: report.invoked, receipt_written: report.receipt !== undefined },
         review: review ? { status: review.status, code: review.code, bundle_sha256: review.bundle_sha256 ?? null } : null,
-        use: "internal_design_reference_only",
+        use: recordUseOf(run.request),
         recorded_at: new Date().toISOString(),
       },
     });

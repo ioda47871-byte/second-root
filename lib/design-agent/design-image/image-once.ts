@@ -13,7 +13,7 @@
 import { lstat, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent, codexLooksRateLimited, codexLooksSignedOut, listDesignAgentSessions, readCodexEvents, removeCodexSession, removeCodexSessionsOf, removeStaleCodexSessions } from "../codex";
-import { SandboxError, type CodexSandbox } from "../sandbox";
+import { SandboxError, stageInputBytes, type CodexSandbox } from "../sandbox";
 import { deriveImageOutcome, parseCodexVersion, readSessionFacts, type ImageOutcome } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
 
@@ -100,7 +100,12 @@ type RunSeen = {
   codexHome: string;
   base: { threadId: string | null; cliVersion: string | null; model: string | null; codexMs: number };
 };
-type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number };
+/**
+ * inputImages (DEV-303, owner decision 2026-11-24; batch only): at most MAX_BATCH_IMAGES PNGs attached to the one exec
+ * with `--image`, staged as copies in this call's temporary work dir (removed with it). None: the command line is the
+ * PoC's, unchanged.
+ */
+type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number; inputImages?: readonly Buffer[] };
 
 /**
  * The one `codex exec` of an image call, shared by generateImageOnce (one picture) and generateImagesInOneRun (DEV-185,
@@ -143,12 +148,13 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
     const version = await sandbox.run(["--version"], { workDir: cwd, timeoutMs: 30_000, ...withSignal }).catch(() => null);
     const cliVersion = version && version.code === 0 && !version.timedOut ? parseCodexVersion(version.stdout) : null;
     if (signal?.aborted) throw new CodexAbortedError();
+    const attached = o.inputImages && o.inputImages.length > 0 ? await stageInputBytes(cwd, o.inputImages) : [];
     before = await imageThreads(codexHome);
     const started = now();
     let run;
     try {
       // the PoC's command line: the image feature pinned on, read-only, the built-in provider only
-      run = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, "-"], {
+      run = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, ...attached.map((path) => `--image=${path}`), "-"], {
         workDir: cwd,
         input: o.prompt,
         timeoutMs: o.timeoutMs,
@@ -266,6 +272,7 @@ async function takeImages(dir: string): Promise<Array<{ bytes: Buffer; width: nu
  */
 export async function generateImagesInOneRun(o: RunOptions & { maxImages: number }): Promise<ImageBatchResult> {
   if (!Number.isInteger(o.maxImages) || o.maxImages < 1 || o.maxImages > MAX_BATCH_IMAGES) throw new Error("generateImagesInOneRun: maxImages must be 1..6");
+  if ((o.inputImages?.length ?? 0) > MAX_BATCH_IMAGES) throw new Error("generateImagesInOneRun: at most 6 input images");
   const result = (r: Partial<ImageBatchResult> & Pick<ImageBatchResult, "outcome" | "stopCode">): ImageBatchResult => ({ images: [], imageCalls: 0, imageFailed: 0, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
   return imageRun(
     o,
