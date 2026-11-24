@@ -6,7 +6,8 @@
  * The request (authored by Claude per shop, validated by root only as an envelope, strictly here):
  *   { schema, id, shop_id, kind: real_shop | fictional, created_at (UTC),
  *     direction: { name, concept, palette, typography, layout_pc, layout_sp, avoid }   plain text, no URL, no HTML, no fact
- *     facts_ref: { root: second-root-shops | local-shops, shop_id },  facts_sha256,  max_images: 6,  codex_runs: 1 }
+ *     facts_ref: { root: second-root-shops | local-shops, shop_id },  facts_sha256,  max_images: 6,  codex_runs: 1,
+ *     case_study?: { path, sha256 } }   required for a real_shop design request (Issue #336; CaseStudyRef below)
  * Nothing else is accepted (strict). The request bytes are bound by the SHA-256 root passes (`--request-sha256`).
  *
  * The prompts: the same split as the pinned fictional prompts (prompt.ts splitSections / boxesFor: PC 2 + SP 4 = 6
@@ -116,6 +117,20 @@ export type PhotoInputs = z.infer<typeof PhotoInputs>;
 export const PHOTO_TOOL_MAX_REFS = 5;
 const photoInputsWithinToolLimit = (p: PhotoInputs | undefined) => p === undefined || p.files.length <= PHOTO_TOOL_MAX_REFS;
 
+/**
+ * Issue #336 / docs/design/image-first-production-flow.md §1 stage 1, §6.1 row 2: the design stage's success-case
+ * analysis record (case-study.ts `sr_case_study_v1`). `path` is a file name inside the shop's own private directory next
+ * to its facts pack (facts_ref: ~/second-root-shops/<shop_id>/ or, fictional only, <clone>/.local-shops/<shop_id>/);
+ * `sha256` binds its bytes. A real_shop design request must carry it (CASE_STUDY_REQUIRED); the worker and
+ * --validate-request run the gate check on it (≥ 3 originals viewed, owner-confirmed). It is never given to Codex.
+ */
+export const CASE_STUDY_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}\.json$/;
+export const CaseStudyRef = z.strictObject({
+  path: z.string().regex(CASE_STUDY_NAME_RE).refine((p) => p !== "facts-pack.json", "case_study_is_facts"),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type CaseStudyRef = z.infer<typeof CaseStudyRef>;
+
 /** Exactly YYYY-MM-DDTHH:MM:SSZ (root's rule: no fraction, no offset). */
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const ENVELOPE = {
@@ -140,6 +155,7 @@ export const DesignRequest = z
     stage: z.literal("design").optional(),
     direction: RequestDirection,
     photo_inputs: PhotoInputs.optional(),
+    case_study: CaseStudyRef.optional(),
     max_images: z.literal(REQUEST_IMAGES.total),
   })
   .refine(factsRefOk, "facts_ref_shop_mismatch")
@@ -187,6 +203,8 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_PHOTO_BRIEF_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
   if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
   if (!isPhotoRequest(r.data) && !photoInputsWithinToolLimit(r.data.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
+  // Issue #336: a real shop's design starts only from an owner-confirmed success-case analysis (§1 stage 1)
+  if (!isPhotoRequest(r.data) && r.data.kind === "real_shop" && !r.data.case_study) throw new PromptStop("CASE_STUDY_REQUIRED");
   return { request: r.data, sha256: got };
 }
 

@@ -83,6 +83,11 @@
  * the review inbox like a design (~/sr-runs/review-inbox/<id>, marked image_material / イメージ素材, at most 6 pictures).
  * A design request may name them (photo_inputs, resolved from the photo run's private output); they are attached to its one
  * Codex run and never copied into it. --validate-request adds "stage" and "photo_inputs": "checked" | "unchecked" | null.
+ *
+ * Issue #336 (docs/design/image-first-production-flow.md §1 stage 1, §6.1 row 2): a real_shop design request must name
+ * its success-case analysis (case_study: {path, sha256}, next to the facts pack). --validate-request and the worker run
+ * its gate check (every viewed original's SHA-256, ≥ 3 counted, owner-confirmed; image-first/case-study.ts) and refuse
+ * with a CASE_STUDY_* code. The line adds "case_study": {sha256, counted} | null.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";

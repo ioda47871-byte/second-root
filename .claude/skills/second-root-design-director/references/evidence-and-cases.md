@@ -64,3 +64,43 @@
    (例: 道具や台がある店 → CP-016、CP-021、CP-031。工程や時間がある店 → CP-003、CP-019)
 2. 同じ業種の例を選ぶときは、写す危険が高いことを自覚する。翻訳の型が違う例も1件入れる
 3. 各例の `known_failure_modes` と `not_to_copy` を読み、方向案に持ち込まない
+
+## デザイン着手前の分析の記録と確認ページ (必須、Issue #336)
+
+正式な制作フロー (`docs/design/image-first-production-flow.md` 段 1、§3.1) では、店のデザイン
+(方向案・指示文・依頼・実装) に入る前に、**原本を実際に見た成功例を 3 件以上**記録し、
+**オーナーが原本の選定と採用する原理を確認**していなければならない。見ていない例を「参照した」と書けないよう、
+記録と検査で止める。
+
+1. **原本を開く。**原本を開ける成功例 (区分 A) は `design-library/success-cases/originals-index.json` にある
+   (id・パス・SHA-256・`counts_as_reference`)。他店の参照に数えられるのは CP-001・CP-002・CP-003 だけで、
+   SR-001 は頁を描画して見てよいが**数えない** (台帳の方針)。区分 B・C の原本は、オーナーから受け取り
+   非公開の置き場 (リポジトリの外) に置いて SHA-256 を確かめたときだけ使える
+2. **記録を書く。**店ごとの `case-study.json` (`sr_case_study_v1`) を、リポジトリの外の非公開の置き場
+   (例: `~/second-root-shops/<shop_id>/case-study.json`、事実パックの隣) に書く。各例に
+   - `id`、`evidence_kind` (`image` 画像で確認 / `page_render` 頁を描画して確認 / `text_only` 文章だけ)
+   - `files` — **実際に開いた**ファイルの `path` と `sha256` (リポジトリの原本はリポジトリからの相対パス、
+     非公開の原本は絶対パスで `private_verified: true` を付ける)
+   - `observations` — 構図 (`composition`)・情報設計 (`information_design`)・店らしさ (`shop_character`)・
+     PC/SP (`pc_sp`)
+   - `principles_to_bring` (持ち込む原理。構図そのものではない) と `do_not_copy` (写さないこと)
+
+   と、その店の事実から導いた `shop_specific_principles` (成功例の足し合わせではない) を書く。文はすべて
+   1 行の平文 (HTML・URL・改行なし、長さの上限あり)。`text_only` は記録に残してよいが**参照の 3 件に数えない**
+3. **検査する。**`npx tsx scripts/design-artifact/case-study-check.ts --check <case-study.json> --draft`。
+   ファイルが無い・SHA-256 が違う・数える原本が 3 件未満なら止まる (`CASE_STUDY_FILE_MISSING`、
+   `CASE_STUDY_SHA_MISMATCH`、`CASE_STUDY_TOO_FEW_ORIGINALS` など)。足りなければ足りないと報告して止まる。
+   別の例で数を埋めない
+4. **確認ページを作り、オーナーに見せる。**
+   `npx tsx scripts/design-artifact/case-study-check.ts --page <case-study.json> --out <非公開の空の出力先>`。
+   原本の画像を隣に写した静的な HTML (スクリプト・通信・外部の書体なし) ができる。リポジトリの中には書かない。
+   オーナーが選定と原理を確認し、違えば選び直す
+5. **オーナーの確認を記録する。**オーナーが確認したら `owner_confirmation`
+   (`confirmed: true`、`confirmed_at`、`selected_ids` = 数えた例の id と完全に一致、`note` は任意) を記録し、
+   `--check` (ゲートの検査。`--draft` なし) が通ることを確かめる
+6. **依頼に結びつける。**実店舗のデザインの依頼 (IMAGE_FIRST の依頼モード、`kind: "real_shop"`) には
+   `case_study: { "path": "case-study.json", "sha256": "<記録の SHA-256>" }` を入れる (path は事実パックと
+   同じ店の置き場の中のファイル名)。`--validate-request` と worker が同じゲートの検査を行い、無い・未確認・
+   3 件未満なら `CASE_STUDY_REQUIRED` や `CASE_STUDY_NOT_OWNER_CONFIRMED` などで拒否する。記録は Codex に渡さない
+
+この記録の文面 (店の事実を含みうる) と確認ページは、リポジトリ・試験・Issue に入れない。

@@ -94,11 +94,41 @@ export function commitFiles(repo: string, files: Record<string, Buffer>, msg: st
   git(repo, "commit", "-q", "-m", msg);
   return git(repo, "rev-parse", "HEAD");
 }
+// ---- Issue #336: the success-case analysis a real_shop design request names (fictional content only) --------------
+export const CASE_STUDY_REPO_FILES = [
+  "design-library/success-cases/originals-index.json",
+  "design-library/success-cases/assets/CP-001_Mond.webp",
+  "design-library/success-cases/assets/CP-002_Sissi.webp",
+  "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+];
+const caseOf = (id: string, path: string) => ({
+  id,
+  evidence_kind: "image",
+  files: [{ path, sha256: sha(readFileSync(resolve(REPO, path))) }],
+  observations: { composition: "試験用の観察（構図）", information_design: "試験用の観察（情報設計）", shop_character: "試験用の観察（店らしさ）", pc_sp: "試験用の観察（PC/SP）" },
+  principles_to_bring: ["試験用の原理"],
+  do_not_copy: ["試験用の写さないこと"],
+});
+/** An owner-confirmed case study for `shopId` that counts CP-001..003 (the repository's images; the text is invented). */
+export function caseStudyObject(shopId: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema: "sr_case_study_v1",
+    shop_id: shopId,
+    cases: [caseOf("CP-001", CASE_STUDY_REPO_FILES[1]!), caseOf("CP-002", CASE_STUDY_REPO_FILES[2]!), caseOf("CP-003", CASE_STUDY_REPO_FILES[3]!)],
+    shop_specific_principles: ["試験用の店固有の原理"],
+    owner_confirmation: { confirmed: true, confirmed_at: "2026-11-20T00:00:00Z", selected_ids: ["CP-001", "CP-002", "CP-003"] },
+    ...over,
+  };
+}
+export const caseStudyBytes = (shopId: string, over: Record<string, unknown> = {}) => Buffer.from(`${JSON.stringify(caseStudyObject(shopId, over), null, 2)}\n`);
+export const CASE_STUDY_FILE = "case-study.json";
+
 /** A temporary worker clone: the prompt inputs (d4's direction file included) and the given packets, committed. */
 export function workerRepo(packet: Buffer = filledPacket(), extra: Record<string, Buffer> = {}): string {
   const repo = tmp("sr-ifw-repo-");
   git(repo, "init", "-q");
-  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path, DIRECTIONS.d4.set];
+  // Issue #336: the originals index and the category-A images a request's case study names (case-study.ts)
+  const inputs = [PROMPT_INPUTS.factsPack.path, PROMPT_INPUTS.directionSet.path, PROMPT_INPUTS.principles.path, DIRECTIONS.d4.set, ...CASE_STUDY_REPO_FILES];
   for (const p of inputs) {
     mkdirSync(dirname(join(repo, p)), { recursive: true });
     cpSync(resolve(REPO, p), join(repo, p));

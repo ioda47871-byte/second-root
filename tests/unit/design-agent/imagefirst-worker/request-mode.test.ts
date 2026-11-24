@@ -18,7 +18,7 @@ import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
 import { entryFromInbox } from "@/lib/design-agent/research-log/intake";
 import { parseArgs } from "@/scripts/design-artifact/phase2f-live-cli";
-import { cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, tmp, workerRepo, type Fake } from "./support";
+import { CASE_STUDY_FILE, caseStudyBytes, cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, tmp, workerRepo, type Fake } from "./support";
 
 // DEV-303 (owner direction 2026-11-23, docs/operations/first-client-pipeline.md §2 B): IMAGE_FIRST request mode, worker
 // side, end to end against a FAKE Codex. FICTIONAL fixtures only: the "real_shop" pack below is invented for the test
@@ -57,6 +57,8 @@ const DIRECTION = {
   avoid: "派手なグラデーションや写真風の表現。",
 };
 const BAKERY = "design-library/research/quality-pipeline/poc/bakery/facts-pack.json";
+/** Issue #336: the shop's owner-confirmed case study (invented text; it counts the repository's CP-001..003). */
+const CASE_STUDY = caseStudyBytes(SHOP);
 
 function requestObject(over: Record<string, unknown> = {}, facts: Buffer = FACTS_BYTES): Record<string, unknown> {
   return {
@@ -66,6 +68,7 @@ function requestObject(over: Record<string, unknown> = {}, facts: Buffer = FACTS
     kind: "real_shop",
     created_at: "2026-11-20T00:30:00Z",
     direction: DIRECTION,
+    case_study: { path: CASE_STUDY_FILE, sha256: sha(CASE_STUDY) },
     facts_ref: { root: "second-root-shops", shop_id: SHOP },
     facts_sha256: sha(facts),
     max_images: 6,
@@ -124,12 +127,13 @@ async function requestEntry(argv: string[], w: { repo: string; home: string; led
 }
 
 /** One worker world: a clone, a home with ~/second-root-shops, the runs / state / ledger dirs, root's request copy. */
-function world(o: { request?: Record<string, unknown>; facts?: Buffer; shopDir?: string; id?: string } = {}) {
+function world(o: { request?: Record<string, unknown>; facts?: Buffer; shopDir?: string; id?: string; caseStudy?: Buffer | null } = {}) {
   const home = tmp("sr-req-home-");
   const repo = workerRepo(undefined, { ".gitignore": Buffer.from("/.local-shops/\n") });
   const shopDir = join(home, "second-root-shops", o.shopDir ?? SHOP);
   mkdirSync(shopDir, { recursive: true });
   writeFileSync(join(shopDir, "facts-pack.json"), o.facts ?? FACTS_BYTES);
+  if (o.caseStudy !== null) writeFileSync(join(shopDir, CASE_STUDY_FILE), o.caseStudy ?? CASE_STUDY);
   const runsDir = join(home, "sr-runs");
   mkdirSync(runsDir, { mode: 0o700 });
   const stateDir = join(home, "state");
@@ -261,6 +265,53 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
     expect(readdirSync(w.home).sort()).toEqual(before);
     expect(existsSync(w.stateDir) || existsSync(w.ledgerDir) || w.invoked.length > 0).toBe(false);
   });
+
+  it("Issue #336: a real_shop design request needs an owner-confirmed case study of ≥ 3 viewed originals (validate and worker alike)", async () => {
+    const w = world();
+    expect((await validateRequestFile({ file: w.requestFile, home: w.home, repo: w.repo })).case_study).toEqual({ sha256: sha(CASE_STUDY), counted: ["CP-001", "CP-002", "CP-003"] });
+    const dir = tmp("sr-req-cs-");
+    const check = async (request: Record<string, unknown>, caseStudy?: Buffer) => {
+      if (caseStudy) writeFileSync(join(w.home, "second-root-shops", SHOP, "case-study-2.json"), caseStudy);
+      const file = join(dir, `${ID}.json`);
+      writeFileSync(file, bytesOf(request));
+      return codeOf(validateRequestFile({ file, home: w.home, repo: w.repo }));
+    };
+    const named = (b: Buffer) => requestObject({ case_study: { path: "case-study-2.json", sha256: sha(b) } });
+    // no case study at all
+    expect(await check(requestObject({ case_study: undefined }))).toBe("CASE_STUDY_REQUIRED");
+    expect(syncCode(() => parseRequest(bytesOf(requestObject({ case_study: undefined })), sha(bytesOf(requestObject({ case_study: undefined }))), ID))).toBe("CASE_STUDY_REQUIRED");
+    // a path that is not a plain file name, or the facts pack itself
+    expect(await check(requestObject({ case_study: { path: "../case-study.json", sha256: sha(CASE_STUDY) } }))).toBe("REQUEST_INVALID");
+    expect(await check(requestObject({ case_study: { path: "facts-pack.json", sha256: sha(FACTS_BYTES) } }))).toBe("REQUEST_INVALID");
+    // missing, or bytes other than the request names
+    expect(await check(requestObject({ case_study: { path: "absent.json", sha256: sha(CASE_STUDY) } }))).toBe("CASE_STUDY_RECORD_MISSING");
+    expect(await check(requestObject({ case_study: { path: CASE_STUDY_FILE, sha256: sha("other") } }))).toBe("CASE_STUDY_RECORD_SHA_MISMATCH");
+    // a draft (no owner confirmation), too few originals, another shop's record
+    const draft = caseStudyBytes(SHOP, { owner_confirmation: undefined });
+    expect(await check(named(draft), draft)).toBe("CASE_STUDY_NOT_OWNER_CONFIRMED");
+    const two = Buffer.from(JSON.stringify({ ...JSON.parse(CASE_STUDY.toString()), cases: JSON.parse(CASE_STUDY.toString()).cases.slice(0, 2), owner_confirmation: { confirmed: true, confirmed_at: "2026-11-20T00:00:00Z", selected_ids: ["CP-001", "CP-002"] } }));
+    expect(await check(named(two), two)).toBe("CASE_STUDY_TOO_FEW_ORIGINALS");
+    const other = caseStudyBytes("test-shop-b");
+    expect(await check(named(other), other)).toBe("CASE_STUDY_SHOP_MISMATCH");
+    // a linked record is refused
+    symlinkSync(join(w.home, "second-root-shops", SHOP, CASE_STUDY_FILE), join(w.home, "second-root-shops", SHOP, "linked.json"));
+    expect(await check(requestObject({ case_study: { path: "linked.json", sha256: sha(CASE_STUDY) } }))).toBe("CASE_STUDY_RECORD_UNSAFE");
+    // the worker's own load refuses the same way (nothing invoked)
+    const noCase = world({ caseStudy: null });
+    expect((await noCase.cycle()).report.status).toBe("refused");
+    expect(noCase.invoked).toEqual([]);
+    expect(await codeOf(loadRequestRun({ requestFile: noCase.requestFile, requestSha256: sha(noCase.requestBytes), requestId: ID, home: noCase.home, repo: noCase.repo }))).toBe("CASE_STUDY_RECORD_MISSING");
+  });
+
+  it("Issue #336: a fictional design request works without a case study, and one it names is checked", async () => {
+    const bakery = readFileSync(resolve(REPO, BAKERY));
+    const id = "req-hoshigama-cs-1";
+    const cs = caseStudyBytes("hoshigama");
+    const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: { path: CASE_STUDY_FILE, sha256: sha(cs) }, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama", caseStudy: cs });
+    expect((await validateRequestFile({ file: w.requestFile, home: w.home, repo: w.repo })).case_study?.counted).toEqual(["CP-001", "CP-002", "CP-003"]);
+    const without = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama", caseStudy: null });
+    expect((await validateRequestFile({ file: without.requestFile, home: without.home, repo: without.repo })).case_study).toBeNull();
+  });
 });
 
 describe("DEV-303 request prompts: text from the facts pack only; the pinned prompts unchanged", () => {
@@ -369,7 +420,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
   it("fictional: the fictional-shop check passes, the bundle is delivered and the research log intake accepts it", async () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-1";
-    const w = world({ id, request: requestObject({ id, kind: "fictional", shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
+    const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
     const { report } = await w.cycle();
     expect(report).toMatchObject({ status: "succeeded", kind: "fictional", approval_id: id });
     const prompt = readFileSync(join(report.run_dir!, "prompts", "pc-1.txt"), "utf8");
@@ -385,7 +436,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
   it("local-shops root (the clone's gitignored .local-shops; fictional only) works and leaves the tree clean", async () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-local-1";
-    const w = world({ id, request: requestObject({ id, kind: "fictional", shop_id: "hoshigama", facts_ref: { root: "local-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
+    const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "local-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
     mkdirSync(join(w.repo, ".local-shops", "hoshigama"), { recursive: true });
     writeFileSync(join(w.repo, ".local-shops", "hoshigama", "facts-pack.json"), bakery);
     expect((await w.cycle()).report.status).toBe("succeeded");
