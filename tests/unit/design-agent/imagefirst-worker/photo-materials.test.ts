@@ -211,7 +211,7 @@ describe("DEV-303 photo_materials request schema (strict; same unsafe-text filte
       expect(parseCode(photoRequest({ photo_brief: { ...BRIEF, mood: bad } })), bad).toBe("REQUEST_PHOTO_BRIEF_UNSAFE");
     }
   });
-  it("design photo_inputs: shape only (1..6 files, photo-N.png, SHA-256, unique, another request id)", () => {
+  it("design photo_inputs: schema 1..6 files, tool limit 5 (photo-N.png, SHA-256, unique, another request id)", () => {
     const f = (n: number) => ({ name: `photo-${n}.png`, sha256: sha(String(n)) });
     expect(parseCode(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [1, 2, 3, 4, 5].map(f) } }))).toBe("ok");
     // Issue #335: 6 fit the schema but not the image tool (at most 5 reference pictures per call)
