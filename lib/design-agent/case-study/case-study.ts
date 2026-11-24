@@ -21,14 +21,13 @@
  * The viewing page (writeViewingPage): a static local HTML (no script, no network, no external font) in a directory the
  * caller names (never inside the repository), with the viewed image files copied next to it. Every text is escaped.
  *
- * Failures throw PromptStop with a fixed code (no path, no content).
+ * Failures throw CaseStudyStop with a fixed code (no path, no content).
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { PromptStop } from "./prompt";
 
 export const CASE_STUDY_SCHEMA = "sr_case_study_v1";
 export const ORIGINALS_INDEX_SCHEMA = "sr_success_originals_index_v1";
@@ -57,6 +56,14 @@ export const CASE_STUDY_CODES = [
   "CASE_STUDY_PAGE_IN_REPO",
   "CASE_STUDY_PAGE_DIR_NOT_EMPTY",
 ] as const;
+export type CaseStudyCode = (typeof CASE_STUDY_CODES)[number];
+/** A refusal with a fixed CASE_STUDY_* code (request mode rethrows it as its PromptStop with the same code). */
+export class CaseStudyStop extends Error {
+  constructor(readonly code: CaseStudyCode) {
+    super(code);
+    this.name = "CaseStudyStop";
+  }
+}
 
 const SHA = z.string().regex(/^[0-9a-f]{64}$/);
 const CASE_ID = z.string().regex(/^(?:CP|SR)-\d{3}$/);
@@ -146,16 +153,16 @@ const within = (child: string, parent: string) => {
 
 /** The record's bytes: within the cap, strict JSON of the shape above. */
 export function parseCaseStudy(bytes: Buffer): CaseStudy {
-  if (bytes.length > CASE_STUDY_MAX_BYTES) throw new PromptStop("CASE_STUDY_TOO_LARGE");
+  if (bytes.length > CASE_STUDY_MAX_BYTES) throw new CaseStudyStop("CASE_STUDY_TOO_LARGE");
   let json: unknown;
   try {
     json = JSON.parse(bytes.toString("utf8"));
   } catch {
-    throw new PromptStop("CASE_STUDY_INVALID");
+    throw new CaseStudyStop("CASE_STUDY_INVALID");
   }
   const r = CaseStudy.safeParse(json);
-  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "case_study_text_unsafe") ? "CASE_STUDY_TEXT_UNSAFE" : "CASE_STUDY_INVALID");
-  if (new Set(r.data.cases.map((c) => c.id)).size !== r.data.cases.length) throw new PromptStop("CASE_STUDY_DUPLICATE_CASE");
+  if (!r.success) throw new CaseStudyStop(r.error.issues.some((i) => i.message === "case_study_text_unsafe") ? "CASE_STUDY_TEXT_UNSAFE" : "CASE_STUDY_INVALID");
+  if (new Set(r.data.cases.map((c) => c.id)).size !== r.data.cases.length) throw new CaseStudyStop("CASE_STUDY_DUPLICATE_CASE");
   return r.data;
 }
 
@@ -167,7 +174,7 @@ export async function readOriginalsIndex(repo: string): Promise<OriginalsIndex> 
   } catch {
     // fall through
   }
-  throw new PromptStop("CASE_STUDY_INDEX_INVALID");
+  throw new CaseStudyStop("CASE_STUDY_INDEX_INVALID");
 }
 
 /** A regular file read on one checked handle: no link at the last step, one name, at most CASE_FILE_MAX_BYTES. */
@@ -176,14 +183,14 @@ async function readViewedFile(path: string): Promise<Buffer> {
   try {
     h = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch (error) {
-    throw new PromptStop((error as { code?: string }).code === "ENOENT" ? "CASE_STUDY_FILE_MISSING" : "CASE_STUDY_FILE_UNSAFE");
+    throw new CaseStudyStop((error as { code?: string }).code === "ENOENT" ? "CASE_STUDY_FILE_MISSING" : "CASE_STUDY_FILE_UNSAFE");
   }
   try {
     const st = await h.stat();
-    if (!st.isFile() || st.nlink !== 1) throw new PromptStop("CASE_STUDY_FILE_UNSAFE");
-    if (st.size > CASE_FILE_MAX_BYTES) throw new PromptStop("CASE_STUDY_FILE_TOO_LARGE");
+    if (!st.isFile() || st.nlink !== 1) throw new CaseStudyStop("CASE_STUDY_FILE_UNSAFE");
+    if (st.size > CASE_FILE_MAX_BYTES) throw new CaseStudyStop("CASE_STUDY_FILE_TOO_LARGE");
     const bytes = await h.readFile();
-    if (bytes.length > CASE_FILE_MAX_BYTES) throw new PromptStop("CASE_STUDY_FILE_TOO_LARGE");
+    if (bytes.length > CASE_FILE_MAX_BYTES) throw new CaseStudyStop("CASE_STUDY_FILE_TOO_LARGE");
     return bytes;
   } finally {
     await h.close();
@@ -197,14 +204,14 @@ async function readViewedFile(path: string): Promise<Buffer> {
 async function locate(path: string, repo: string): Promise<string> {
   const realRepo = await realpath(repo).catch(() => resolve(repo));
   const full = isAbsolute(path) ? resolve(path) : resolve(realRepo, path);
-  if (isAbsolute(path) && (within(full, realRepo) || within(full, resolve(repo)))) throw new PromptStop("CASE_STUDY_PRIVATE_IN_REPO");
+  if (isAbsolute(path) && (within(full, realRepo) || within(full, resolve(repo)))) throw new CaseStudyStop("CASE_STUDY_PRIVATE_IN_REPO");
   const real = await realpath(full).catch(() => null);
   if (real === null) {
-    if (!(await lstat(full).then(() => true, () => false))) throw new PromptStop("CASE_STUDY_FILE_MISSING");
-    throw new PromptStop("CASE_STUDY_FILE_UNSAFE");
+    if (!(await lstat(full).then(() => true, () => false))) throw new CaseStudyStop("CASE_STUDY_FILE_MISSING");
+    throw new CaseStudyStop("CASE_STUDY_FILE_UNSAFE");
   }
-  if (real !== full) throw new PromptStop(isAbsolute(path) && within(real, realRepo) ? "CASE_STUDY_PRIVATE_IN_REPO" : "CASE_STUDY_FILE_UNSAFE");
-  if (!isAbsolute(path) && !within(real, realRepo)) throw new PromptStop("CASE_STUDY_FILE_UNSAFE");
+  if (real !== full) throw new CaseStudyStop(isAbsolute(path) && within(real, realRepo) ? "CASE_STUDY_PRIVATE_IN_REPO" : "CASE_STUDY_FILE_UNSAFE");
+  if (!isAbsolute(path) && !within(real, realRepo)) throw new CaseStudyStop("CASE_STUDY_FILE_UNSAFE");
   return full;
 }
 
@@ -235,7 +242,7 @@ function countReason(c: CaseEntry, index: OriginalsIndex): NotCountedReason | nu
 
 /**
  * The record checked against the files and the repository's index: schema, every listed file (exists, no link, its
- * SHA-256), and which cases count. Throws PromptStop on any fatal problem; the count itself is judged by
+ * SHA-256), and which cases count. Throws CaseStudyStop on any fatal problem; the count itself is judged by
  * assertCaseStudyGate (so a draft can be shown with what is still missing).
  */
 export async function inspectCaseStudy(bytes: Buffer, o: { repo: string; index?: OriginalsIndex }): Promise<CaseStudyInspection> {
@@ -246,7 +253,7 @@ export async function inspectCaseStudy(bytes: Buffer, o: { repo: string; index?:
     for (const f of c.files) {
       const full = await locate(f.path, o.repo);
       const b = await readViewedFile(full);
-      if (sha256(b) !== f.sha256) throw new PromptStop("CASE_STUDY_SHA_MISMATCH");
+      if (sha256(b) !== f.sha256) throw new CaseStudyStop("CASE_STUDY_SHA_MISMATCH");
       files.push({ case_id: c.id, path: f.path, sha256: f.sha256, bytes: b });
     }
   }
@@ -265,12 +272,12 @@ export async function inspectCaseStudy(bytes: Buffer, o: { repo: string; index?:
  * selected_ids are exactly the counted ids (the owner confirmed what is counted, nothing more or less).
  */
 export function assertCaseStudyGate(i: CaseStudyInspection, mode: "draft" | "gate"): void {
-  if (i.counted.length < MIN_COUNTED_ORIGINALS) throw new PromptStop("CASE_STUDY_TOO_FEW_ORIGINALS");
+  if (i.counted.length < MIN_COUNTED_ORIGINALS) throw new CaseStudyStop("CASE_STUDY_TOO_FEW_ORIGINALS");
   if (mode === "draft") return;
   const oc = i.record.owner_confirmation;
-  if (!oc || oc.confirmed !== true) throw new PromptStop("CASE_STUDY_NOT_OWNER_CONFIRMED");
+  if (!oc || oc.confirmed !== true) throw new CaseStudyStop("CASE_STUDY_NOT_OWNER_CONFIRMED");
   const selected = new Set(oc.selected_ids);
-  if (selected.size !== oc.selected_ids.length || selected.size !== i.counted.length || !i.counted.every((id) => selected.has(id))) throw new PromptStop("CASE_STUDY_SELECTION_MISMATCH");
+  if (selected.size !== oc.selected_ids.length || selected.size !== i.counted.length || !i.counted.every((id) => selected.has(id))) throw new CaseStudyStop("CASE_STUDY_SELECTION_MISMATCH");
 }
 
 /** inspectCaseStudy + assertCaseStudyGate. */
@@ -388,11 +395,11 @@ export async function writeViewingPage(i: CaseStudyInspection, o: { outDir: stri
   const realRepo = await realpath(o.repo).catch(() => resolve(o.repo));
   const existing = await lstat(out).catch(() => null);
   if (existing) {
-    if (!existing.isDirectory() || existing.isSymbolicLink()) throw new PromptStop("CASE_STUDY_PAGE_DIR_NOT_EMPTY");
-    if ((await readdir(out)).length > 0) throw new PromptStop("CASE_STUDY_PAGE_DIR_NOT_EMPTY");
+    if (!existing.isDirectory() || existing.isSymbolicLink()) throw new CaseStudyStop("CASE_STUDY_PAGE_DIR_NOT_EMPTY");
+    if ((await readdir(out)).length > 0) throw new CaseStudyStop("CASE_STUDY_PAGE_DIR_NOT_EMPTY");
   }
   const realParent = await realpath(resolve(out, "..")).catch(() => null);
-  if (within(out, resolve(o.repo)) || within(out, realRepo) || (realParent !== null && within(join(realParent, basename(out)), realRepo))) throw new PromptStop("CASE_STUDY_PAGE_IN_REPO");
+  if (within(out, resolve(o.repo)) || within(out, realRepo) || (realParent !== null && within(join(realParent, basename(out)), realRepo))) throw new CaseStudyStop("CASE_STUDY_PAGE_IN_REPO");
   await mkdir(join(out, "images"), { recursive: true, mode: 0o700 });
   const names = new Map<ViewedFile, string>();
   const counters = new Map<string, number>();

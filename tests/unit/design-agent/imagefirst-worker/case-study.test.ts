@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   assertCaseStudyGate,
+  CaseStudyStop,
   checkCaseStudy,
   inspectCaseStudy,
   OriginalsIndex,
@@ -11,8 +12,7 @@ import {
   writeViewingPage,
   type CaseStudyInspection,
   type ViewedFile,
-} from "@/lib/design-agent/image-first/case-study";
-import { PromptStop } from "@/lib/design-agent/image-first/prompt";
+} from "@/lib/design-agent/case-study/case-study";
 import { caseStudyMain, parseCaseStudyArgs } from "@/scripts/design-artifact/case-study-check";
 import { caseStudyObject, cleanupTemps, REPO, sha, tmp } from "./support";
 
@@ -25,7 +25,7 @@ afterAll(cleanupTemps);
 
 const SHOP = "test-shop-a";
 const bytesOf = (o: unknown) => Buffer.from(`${JSON.stringify(o, null, 2)}\n`);
-const codeOf = async (p: Promise<unknown>) => p.then(() => "resolved", (e: unknown) => (e instanceof PromptStop ? e.code : String(e)));
+const codeOf = async (p: Promise<unknown>) => p.then(() => "resolved", (e: unknown) => (e instanceof CaseStudyStop ? e.code : String(e)));
 type Obj = Record<string, unknown>;
 const base = (over: Obj = {}) => caseStudyObject(SHOP, over) as Obj & { cases: Obj[] };
 const withCases = (cases: Obj[], over: Obj = {}) => base({ cases, ...over });

@@ -22,8 +22,7 @@
 import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import { assertCaseStudyGate, CASE_STUDY_MAX_BYTES, inspectCaseStudy, writeViewingPage, type CaseStudyInspection } from "../../lib/design-agent/image-first/case-study";
-import { PromptStop } from "../../lib/design-agent/image-first/prompt";
+import { assertCaseStudyGate, CASE_STUDY_MAX_BYTES, CaseStudyStop, inspectCaseStudy, writeViewingPage, type CaseStudyInspection } from "../../lib/design-agent/case-study/case-study";
 
 const REPO = resolve(__dirname, "../..");
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
@@ -90,7 +89,7 @@ export async function caseStudyMain(argv: string[], repoRoot: string = REPO): Pr
     say({ status: "page_written", page: written.page, images: written.images.length, ...summary(inspection) });
     return 0;
   } catch (error) {
-    if (!(error instanceof PromptStop)) throw error;
+    if (!(error instanceof CaseStudyStop)) throw error;
     say({ status: "stopped", code: error.code, ...(inspection ? summary(inspection) : {}) });
     return 1;
   }

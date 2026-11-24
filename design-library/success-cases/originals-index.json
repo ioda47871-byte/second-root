@@ -1,7 +1,7 @@
 {
   "schema": "sr_success_originals_index_v1",
   "as_of": "2026-11-25",
-  "scope": "Category A of originals-catalog.md: success cases whose original (or registered viewing preview / page) Claude can open in this repository, with the SHA-256 of each file computed from the committed bytes. Read by scripts/design-artifact/case-study-check.ts (lib/design-agent/image-first/case-study.ts). Does not change manifest.json or second-root-research-successes.json (the ledgers stay the source of truth for counts and policy).",
+  "scope": "Category A of originals-catalog.md: success cases whose original (or registered viewing preview / page) Claude can open in this repository, with the SHA-256 of each file computed from the committed bytes. Read by scripts/design-artifact/case-study-check.ts (lib/design-agent/case-study/case-study.ts). Does not change manifest.json or second-root-research-successes.json (the ledgers stay the source of truth for counts and policy).",
   "rules": {
     "counts_as_reference": "Only an original with counts_as_reference true counts toward the 3 originals a shop's case study needs (docs/design/image-first-production-flow.md §1 stage 1, §3.1). SR-001 is viewable but never counts: second-root-research-successes.json policy, a fictional shop's own page is not a reference for other shops.",
     "private_original_ids": "Catalog ids (B / C) whose original is not in this repository. A case study may count one only when it marks the case private_verified and lists the private file(s) outside the repository by absolute path and SHA-256, the checker finds each file with that SHA-256, and the owner confirms the selection on the viewing page."

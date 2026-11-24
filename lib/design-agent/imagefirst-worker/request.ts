@@ -17,7 +17,7 @@
  *   the case study:  Issue #336 (docs/design/image-first-production-flow.md §1 stage 1, §6.1 row 2): a design request's
  *                    case_study.path in the same shop directory as its facts pack (no link, at most
  *                    CASE_STUDY_MAX_BYTES, SHA-256 = case_study.sha256, the same shop_id), checked in gate mode
- *                    (image-first/case-study.ts: every viewed file and SHA-256, ≥ 3 counted originals, the owner's
+ *                    (case-study/case-study.ts: every viewed file and SHA-256, ≥ 3 counted originals, the owner's
  *                    confirmation). Required for real_shop (parseRequest refuses CASE_STUDY_REQUIRED); checked when
  *                    present on a fictional request. Never handed to Codex; the prompts and plan do not change.
  *   the record:      real_shop only, ~/second-root-shops/<shop_id>/runs/<id>.json (metadata: ids, codes, SHA-256s;
@@ -29,7 +29,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
-import { CASE_STUDY_MAX_BYTES, checkCaseStudy } from "../image-first/case-study";
+import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type RequestPlan } from "../image-first/request-prompt";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
@@ -127,7 +127,10 @@ export async function readRequestCaseStudy(request: DesignRequest, places: { hom
   }
   const bytes = await readChecked(path, CASE_STUDY_MAX_BYTES, { unsafe: "CASE_STUDY_RECORD_UNSAFE", big: "CASE_STUDY_TOO_LARGE", missing: "CASE_STUDY_RECORD_MISSING" });
   if (createHash("sha256").update(bytes).digest("hex") !== ref.sha256) throw new PromptStop("CASE_STUDY_RECORD_SHA_MISMATCH");
-  const checked = await checkCaseStudy(bytes, { repo: places.repo, mode: "gate" });
+  const checked = await checkCaseStudy(bytes, { repo: places.repo, mode: "gate" }).catch((error: unknown) => {
+    // the same fixed code, as request mode's own stop (the worker and the entry report PromptStop codes only)
+    throw error instanceof CaseStudyStop ? new PromptStop(error.code) : error;
+  });
   if (checked.shop_id !== request.shop_id) throw new PromptStop("CASE_STUDY_SHOP_MISMATCH");
   return { sha256: checked.case_study_sha256, counted: checked.counted };
 }
