@@ -51,7 +51,12 @@
 
 ### C. 画像を参考にしたサイトの実装の手順（Claude のセッション）
 
-- 生成が届いたら、Claude が画像を参考に、写真なしの B 方式の頁（`comp/`）を書く。画像そのものは頁に入れない。
+- 生成が届いたら、Claude がデザインの段の画像（PC/SP）を**参考に**、B 方式の頁（`comp/`）を書く。デザインの段の画像そのものは頁に入れない。
+- 写真の枠には、素材の段（§2 D）の画像素材だけを置いてよい。Claude は inbox の `~/sr-runs/review-inbox/<素材の依頼 ID>/` で 1 枚ずつ自分で確かめ
+  （文字・ロゴ・顔・店の物に見えるもの・値段やメニューが無いか）、通ったものだけを、manifest の SHA-256 と一致するファイルのまま頁の素材に置く。
+  条件は MVP_SPEC §7.1 の限定の改定のとおり、すべて守る: (1) 写真の枠ごとに「イメージ」と表示する、(2) 実在しない店内・商品・建物を店の物として見せない、
+  (3) AI の素材を確認済みの事実（facts pack の値）と別の枠に分ける、(4) 頁に「提案用デモ」と表示し公式サイトと取り違えさせない、
+  (5) 写真の枠は単純な長方形・角丸にし、店の本物の写真や許可された素材に差し替えられるようにする。素材を使わない頁は今までどおり写真なし。
 - `comp-lane.ts` で PC/SP を検査し、`comp-copy.ts` で文章を監査し、`package-local.ts` → `import-local.ts`。
 - 管理画面で品質承認（オーナー）→ 営業文の下書き → 送信承認（オーナー）→ 手で送る。
 
@@ -72,15 +77,18 @@
    ```
 
    brief は direction と同じ検査（URL・HTML・引用符・3 桁以上の数字・通貨記号・facts の値を含めない）。結果は private の
-   `~/sr-runs/<依頼 ID>-<UTC>/parts/photo-N.png` に残り、**review inbox には渡さない**（inbox の bundle はデザインの PC 2 + SP 4 だけ）。
-   worker の結果の 1 行と receipt（`request_stage: "photo_materials"`）に、各画像の名前と SHA-256（`photo_files`）が出る。
+   `~/sr-runs/<依頼 ID>-<UTC>/parts/photo-N.png` に入り、デザインと同じ封印・検証で **review inbox `~/sr-runs/review-inbox/<依頼 ID>/`** に届く
+   （`parts/photo-N.png`、receipt の `request_stage: "photo_materials"`・`images_total` = 枚数、manifest の `image_material: true`・
+   `image_material_label: "イメージ素材"`・`photos: [{file, sha256, frame: "3:2"|"1:1"|"2:3"}]`、previews も同じ）。どちらの置き場も 6 枚まで
+   （root の実行後の数え方と同じ）。研究ログには入れない（`PHOTO_MATERIALS_NOT_LOGGED`）。worker の結果の 1 行にも `photo_files` が出る。
 2. **デザインの段**（今の依頼、`stage: "design"` または省略）に、任意で `photo_inputs` を足す:
 
    ```json
    "photo_inputs": { "request_id": "req-<shop>-photos-1", "files": [ { "name": "photo-1.png", "sha256": "<sha256>" } ] }
    ```
 
-   files は 1〜6 個。worker は、その素材の段の run の private な置き場（`~/sr-runs` の中だけ。link なし・通常のファイル・20 MiB まで・
+   files は 1〜6 個（名前と SHA-256 は inbox の manifest の `photos` か結果の `photo_files` から写す）。worker は、その素材の段の run の
+   private な出力（inbox の写しではなく、`~/sr-runs/<依頼 ID>-<UTC>/` の中だけ。link なし・通常のファイル・20 MiB まで・
    SHA-256 一致・成功した receipt で kind と shop_id が同じ）からだけ読み、1 回の Codex 実行に `--image` で添付する（Codex の一時作業 dir に写すだけ）。
    **添付した画像をデザインの run の `parts/` や inbox の bundle に写さない**（root は実行後に両方の画像を数え、6 枚を超えると止める）。
    プロンプト: 添付の写真だけをページの写真に使う。写真の枠ごとに小さく「イメージ」、ヘッダーとフッターの隅に小さく「提案用デモ」。
@@ -97,13 +105,13 @@
    方向性、`facts_ref.root: second-root-shops` と facts の SHA-256、`max_images: 6`、`codex_runs: 1`）。置く前に
    `node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --validate-request <file>` で確かめる（root は拾った依頼を断られても回数に数える）。
    依頼 ID は二度と使えない。あとは root の timer が上限の中で動かす（A）。
-4. 届いたら `~/sr-runs/review-inbox/<依頼 ID>` を見る（実店舗の記録は `~/second-root-shops/<shop_id>/runs/` に入り、研究ログには書かない）。PC と SP の画像を**参考として**見て、写真なしの頁 `comp/` を書く（workflow §3。
-   画像そのものを頁に入れない。画像に描かれた商品・店内・人を事実として書かない。文字は facts pack の値だけ）。
+4. 届いたら `~/sr-runs/review-inbox/<依頼 ID>` を見る（実店舗の記録は `~/second-root-shops/<shop_id>/runs/` に入り、研究ログには書かない）。PC と SP の画像を**参考として**見て、頁 `comp/` を書く（workflow §3。
+   写真の枠に置けるのは §C の条件を満たす素材の段の画像だけ。デザインの段の画像そのものを頁に入れない。画像に描かれた商品・店内・人を事実として書かない。文字は facts pack の値だけ）。
 5. `comp-lane.ts` で PC1440 / SP390 を描画し、全頁を最後まで見る。`comp-copy.ts --audit` が `owner_review` に届くまで直す。
 6. `package-local.ts` → 事実の登録（workflow §5）→ `import-local.ts --facts-from-store`（ローカル）。hosted は runbook B-5a の後だけ。
 7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
 8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
-9. 写真素材を使う場合（§2 D）: 3 の前に素材の段の依頼を置き、結果の `photo_files` をデザインの段の `photo_inputs` に写す。
+9. 写真素材を使う場合（§2 D）: 3 の前に素材の段の依頼を置き、inbox に届いた素材を確かめてから、manifest の `photos`（または結果の `photo_files`）をデザインの段の `photo_inputs` に写す。
    素材を頁に使うときは MVP_SPEC §7.1 の限定の改定の 5 条件（「イメージ」の表示・店の物として見せない・事実と分ける・「提案用デモ」の表示・差し替えられる）をすべて守る。
 
 ## 3. オーナーの判断・承認が要るもの

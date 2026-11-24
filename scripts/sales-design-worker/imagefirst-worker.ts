@@ -79,8 +79,9 @@
  * {"status":"refused","code":<fixed code>} exit 2. No claim, no ledger, no write, no network, no Codex.
  *
  * DEV-303 (owner decision 2026-11-24), two stages: a request with stage "photo_materials" makes 1..6 picture materials
- * in ONE Codex run (its line adds "stage" and, succeeded, "photo_files": [{name, sha256}]); they stay in that private run
- * and are not handed to the review inbox. A design request may name them (photo_inputs); they are attached to its one
+ * in ONE Codex run (its line adds "stage" and, succeeded, "photo_files": [{name, sha256}]); they are sealed and handed to
+ * the review inbox like a design (~/sr-runs/review-inbox/<id>, marked image_material / イメージ素材, at most 6 pictures).
+ * A design request may name them (photo_inputs, resolved from the photo run's private output); they are attached to its one
  * Codex run and never copied into it. --validate-request adds "stage" and "photo_inputs": "checked" | "unchecked" | null.
  */
 import { homedir } from "node:os";

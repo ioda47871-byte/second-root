@@ -129,7 +129,8 @@ type Receipt = {
   request_id?: unknown;
   request_sha256?: unknown;
   images_total?: unknown;
-  counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown } | null;
+  request_stage?: unknown;
+  counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown; photo?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
 
@@ -218,7 +219,12 @@ async function checkRequestReceipt(r: Receipt, id: string, runDir: string, state
   if (typeof r.request_sha256 !== "string" || r.request_sha256 !== r.packet_sha256 || (r.kind !== "real_shop" && r.kind !== "fictional") || r.direction !== "request") stop("RECEIPT_INVALID");
   if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== runDir) stop("RECEIPT_INVALID");
   const c = r.counts;
-  if (r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || !c || c.pc !== 2 || c.sp !== 4 || c.total !== 6 || c.stopped !== 0 || r.images_total !== 6) stop("RECEIPT_NOT_SUCCEEDED");
+  if (!c || r.status !== "succeeded" || r.stop_code !== null || r.interrupted !== false || r.verified !== true || c.stopped !== 0) return stop("RECEIPT_NOT_SUCCEEDED");
+  if (r.request_stage === "photo_materials") {
+    // DEV-303 (owner decision 2026-11-24): a photo-materials run: 1..6 pictures, no PC / SP part (bundle.ts checks each file)
+    const n = c.photo;
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 6 || c.pc !== 0 || c.sp !== 0 || c.total !== n || r.images_total !== n) stop("RECEIPT_NOT_SUCCEEDED");
+  } else if (r.request_stage !== undefined || c.pc !== 2 || c.sp !== 4 || c.total !== 6 || r.images_total !== 6) stop("RECEIPT_NOT_SUCCEEDED");
   const started = typeof r.timings?.started_at === "string" ? Date.parse(r.timings.started_at) : NaN;
   const finished = typeof r.timings?.finished_at === "string" ? Date.parse(r.timings.finished_at) : NaN;
   if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) stop("RECEIPT_INVALID");
@@ -342,9 +348,6 @@ export type ReviewSummary = { status: DeliverReviewResult["status"] | "refused" 
  */
 export async function deliverAfterRun(report: CycleReport, o: Omit<DeliverReviewOptions, "approvalId" | "receiptPath" | "jailIdle" | "resend">, d: DeliverReviewDeps): Promise<ReviewSummary | null> {
   if (report.status !== "succeeded" || !report.receipt || !report.approval_id) return null;
-  // DEV-303 (owner decision 2026-11-24): photo materials stay in their private run (~/sr-runs/<id>-<UTC>/parts); a
-  // bundle holds a design's PC 2 + SP 4 only. A design request names them by the run line's photo_files.
-  if ((report as { stage?: unknown }).stage === "photo_materials") return { status: "refused", code: "PHOTO_MATERIALS_STAY_PRIVATE" };
   // a stop was requested: no hand-off at all (the sealed-or-not run is recovered later by the root wrapper's re-send)
   if (o.signal?.aborted) return { status: "refused", code: "REVIEW_ABORTED" };
   try {

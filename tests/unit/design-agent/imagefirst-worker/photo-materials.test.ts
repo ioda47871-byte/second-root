@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
@@ -6,15 +6,17 @@ import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-on
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
+import { IMAGE_MATERIAL_LABEL, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
 import { loadRequestRun, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
 import { runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
 import { runLoadedRequest } from "@/lib/design-agent/imagefirst-worker/request-run";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
+import { entryFromInbox } from "@/lib/design-agent/research-log/intake";
 import { parseArgs } from "@/scripts/design-artifact/phase2f-live-cli";
 import { colourPng } from "../phase2f/fixtures";
-import { cleanupTemps, ENV, fakeCodex, git, NOW, sha, THREAD, tmp, workerRepo, type Fake } from "./support";
+import { cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, THREAD, tmp, workerRepo, type Fake } from "./support";
 
 // DEV-303 (owner decision 2026-11-24): the two-stage IMAGE_FIRST request flow — stage 1 photo_materials (1..6 picture
 // materials, one Codex run), stage 2 design with photo_inputs (the stage-1 pictures attached to the one Codex run with
@@ -302,6 +304,36 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     // one use per request id
     expect((await w.cycle(photoRequest())).report).toMatchObject({ status: "refused", code: "REQUEST_ALREADY_CLAIMED", invoked: false });
 
+    // stage 1 reaches the review inbox like a design: sealed, verified, marked as image materials, at most 6 pictures
+    const d1 = await deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
+    expect(d1).toMatchObject({ status: "delivered", approval_id: PHOTO_ID, bundle: "sealed" });
+    const photoInbox = join(w.runsDir, "review-inbox", PHOTO_ID);
+    expect(imagesUnder(photoInbox).sort()).toEqual([1, 2, 3, 4, 5, 6].map((n) => `parts/photo-${n}.png`));
+    const pm = JSON.parse(readFileSync(join(photoInbox, "manifest.json"), "utf8")) as Record<string, unknown>;
+    expect(pm).toMatchObject({ bundle_id: PHOTO_ID, mode: "request", kind: "real_shop", image_material: true, image_material_label: IMAGE_MATERIAL_LABEL, counts: { pc: 0, sp: 0, photo: 6, composites: 0 } });
+    expect(pm.photos).toEqual(files.map((f, n) => ({ file: `parts/${f.name}`, sha256: f.sha256, frame: ["3:2", "3:2", "1:1", "1:1", "2:3", "2:3"][n] })));
+    expect(JSON.parse(readFileSync(join(photoInbox, "receipt.json"), "utf8"))).toMatchObject({ request_stage: "photo_materials", images_total: 6 });
+    expect((await verifyBundleDir(photoInbox)).manifest.image_material).toBe(true);
+    expect(existsSync(join(w.runsDir, "review-inbox", "previews", PHOTO_ID, "INDEX.json"))).toBe(true);
+    // a copy whose manifest drops the marker is refused by the verifier
+    const forged = join(tmp("sr-photo-forged-"), PHOTO_ID);
+    cpSync(photoInbox, forged, { recursive: true });
+    chmodSync(forged, 0o700);
+    const fm = JSON.parse(readFileSync(join(forged, "manifest.json"), "utf8")) as Record<string, unknown>;
+    delete fm.image_material;
+    rmSync(join(forged, "manifest.json"));
+    writeFileSync(join(forged, "manifest.json"), `${JSON.stringify(fm, null, 2)}\n`, { mode: 0o600 });
+    expect(await codeOf(verifyBundleDir(forged))).toBe("BUNDLE_MANIFEST_INVALID");
+    // never logged in the research log (a real shop's, and a photo-materials bundle in any case)
+    expect(await codeOf(entryFromInbox({ repo: w.repo, inbox: join(w.runsDir, "review-inbox"), bundleId: PHOTO_ID, shop: SHOP, direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-24T02:00:00Z" }))).not.toBe("resolved");
+    const fakeInbox = tmp("sr-photo-intake-");
+    mkdirSync(join(fakeInbox, "req-hoshigama-photos-1"));
+    mkdirSync(join(fakeInbox, "previews", "req-hoshigama-photos-1"), { recursive: true });
+    const idx = JSON.parse(readFileSync(join(w.runsDir, "review-inbox", "previews", PHOTO_ID, "INDEX.json"), "utf8")) as Record<string, unknown>;
+    writeFileSync(join(fakeInbox, "previews", "req-hoshigama-photos-1", "INDEX.json"), JSON.stringify({ ...idx, bundle_id: "req-hoshigama-photos-1", approval_id: "req-hoshigama-photos-1", plan_id: "req-hoshigama-photos-1" }));
+    writeFileSync(join(fakeInbox, "req-hoshigama-photos-1", "manifest.json"), JSON.stringify({ bundle_id: "req-hoshigama-photos-1", mode: "request", kind: "fictional", shop: "hoshigama", image_material: true }));
+    expect(await codeOf(entryFromInbox({ repo: REPO, inbox: fakeInbox, bundleId: "req-hoshigama-photos-1", shop: "hoshigama", direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-24T02:00:00Z" }))).toBe("PHOTO_MATERIALS_NOT_LOGGED");
+
     // stage 2: the design request naming all 6 pictures
     const two = await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files } }));
     expect(two.report).toMatchObject({ status: "succeeded", approval_id: DESIGN_ID });
@@ -326,8 +358,10 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     const inboxCopy = join(w.runsDir, "review-inbox", DESIGN_ID);
     expect(imagesUnder(inboxCopy).length).toBe(6);
     for (const n of imagesUnder(inboxCopy)) expect(inputShas.has(sha(readFileSync(join(inboxCopy, n))))).toBe(false);
-    // the stage-1 run is untouched: still its 6 pictures
-    expect(imagesUnder(photoRun).length).toBe(6);
+    // the stage-1 run and its inbox copy are untouched: still 6 pictures each (root's per-directory count, at most 6)
+    expect(imagesUnder(join(photoRun, "parts")).length).toBe(6);
+    expect(imagesUnder(photoInbox).length).toBe(6);
+    for (const dir of [join(photoRun, "parts"), photoInbox, join(designRun, "parts"), inboxCopy]) expect(imagesUnder(dir).length, dir).toBeLessThanOrEqual(6);
     // in all: 2 runs, 12 pictures; the design request is used once
     expect(w.fakes.reduce((n, f) => n + f.execs, 0)).toBe(2);
     expect((await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files } }))).report.code).toBe("REQUEST_ALREADY_CLAIMED");
