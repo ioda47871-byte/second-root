@@ -23,6 +23,7 @@ design-library/research-log/
 
 `node --import tsx scripts/design-research/research.ts <cmd>`
 
+- `inbox-scan` — 届いたのに未記録の run を 1 行ずつ出す（読み取りのみ）。`intake` に渡す値の提案つき（改善版なら今の entry を親に）。新しい session は `status` の次にこれを読み、あれば skill §0 のとおり照合 → intake → 非公開のレビュー画面まで進める。
 - `status` — 再開用の要約。読み取りのみ（テストでファイルが変わらないことを確認）。新しい session は最初にこれを読む（CLAUDE.md）。
 - `intake <bundle id> --shop --direction --iteration [--parent]` — inbox の INDEX.json・プレビュー・audit.json を互いに照合してから記録。
 - `review-page <entry> --out <dir> [--notes notes.json]` — レビュー画面（HTML + img/）。リポジトリの中には書けない。

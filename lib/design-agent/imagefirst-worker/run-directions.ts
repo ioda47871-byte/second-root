@@ -68,6 +68,15 @@ export const RUN_DIRECTIONS = Object.keys(IMAGEFIRST_RUNS) as RunDirection[];
 /** Any run's approval ID (the hand-off, the inbox and the transport accept these; each still names one direction). */
 export const RUN_APPROVAL_ID_RE = new RegExp(`^hoshigama-imagefirst-(?:${RUN_DIRECTIONS.join("|")})-\\d{8}-\\d{2}$`);
 
+/**
+ * DEV-303: a request run's id (the IMAGE_FIRST request schema's REQUEST_ID_RE without its reserved ids: anything with
+ * "imagefirst", and the names of the directories next to bundles in the inbox, runs and state; a test compares the two). Disjoint from RUN_APPROVAL_ID_RE: a request id never names, claims or delivers as an approval id.
+ */
+export const REQUEST_RUN_ID_RE = /^(?!.*imagefirst)req-[a-z0-9][a-z0-9-]{2,58}$/;
+/** What a sealed bundle, the review inbox and the transport accept as a bundle id: an approval id or a request id. */
+export const BUNDLE_ID_RE = new RegExp(`(?:${RUN_APPROVAL_ID_RE.source})|(?:${REQUEST_RUN_ID_RE.source})`);
+export const isRequestRunId = (id: string) => REQUEST_RUN_ID_RE.test(id);
+
 /** The one row whose approval ID form `id` has, or null. At most one row matches (the direction is in the ID). */
 export function runOfApprovalId(id: string): ImagefirstRun | null {
   const hits = RUN_DIRECTIONS.map((k) => IMAGEFIRST_RUNS[k]).filter((r) => r.approvalId.test(id));
