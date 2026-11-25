@@ -27,7 +27,7 @@ describe("demo fonts, self-hosted with next/font/local (DEV-303)", () => {
     for (const f of manifest.families) for (const x of f.faces) expect(x.source.startsWith("https://fonts.gstatic.com/"), x.file).toBe(true);
   });
 
-  it("keeps the families, weights, styles, axes and preloads next/font/google had", () => {
+  it("the families, weights, styles, axes and preloads equal fixed expected values (those next/font/google had)", () => {
     const shape = (v: string) => {
       const f = byVar.get(v)!;
       return { family: f.family, faces: [...new Set(f.faces.map((x) => `${x.weight}/${x.style}/${x.stretch ?? "-"}`))], preloaded: f.faces.filter((x) => x.preload).map((x) => `${x.subset}/${x.style}`) };
@@ -39,7 +39,7 @@ describe("demo fonts, self-hosted with next/font/local (DEV-303)", () => {
     expect(shape("--font-ja-light")).toEqual({ family: "M PLUS 1", faces: ["100 900/normal/-"], preloaded: [] });
   });
 
-  it("splits by unicode range like Google Fonts: every subset is its own face, Japanese covered", () => {
+  it("one face per unicode-range subset (counts as Google served them); the manifest's ranges cover sample kana and kanji (ranges only, not glyph presence)", () => {
     const counts = Object.fromEntries(manifest.families.map((f) => [f.family, f.faces.length]));
     expect(counts).toEqual({ "Playfair Display": 8, Archivo: 3, "Zen Old Mincho": 244, "Zen Kaku Gothic New": 242, "M PLUS 1": 119 });
     for (const f of manifest.families) for (const x of f.faces) expect(x.file.endsWith(".woff2") && x.unicodeRange.startsWith("U+"), x.file).toBe(true);

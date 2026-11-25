@@ -246,7 +246,7 @@
   - `<img src>`・`srcset`・`<source srcset>`・CSS の `url()` は承認した素材の `assets/` のファイルだけ（`MATERIALS_IMPL_IMAGE_REF_NOT_APPROVED`）。外部の URL は `MATERIALS_IMPL_EXTERNAL_IMAGE`。
     それ以外の属性の `url()`（SVG の `mask`・`fill` など）は `MATERIALS_IMPL_IMAGE_IN_ATTRIBUTE`（使った素材を数え漏らさないため）。
   - 店舗の版のデモの HTML/CSS の検査（`checkArtifactHtml`）も通す。どれか 1 つでも見つかれば `MATERIALS_IMPL_HTML_UNSAFE`（安全側。`<style>` や script で画像を持ち込めないように）。
-  - 「イメージ」の表示: 承認した素材を出す `<img>` は、`<figcaption>` に「イメージ」を含む `<figure>` の中に置く（`MATERIALS_IMPL_LABEL_MISSING`）。`figcaption`・`figure`・その祖先に `hidden` か `aria-hidden="true"` があれば表示なしとみなす（CSS で隠すことは確かめない）。
+  - 「イメージ」の表示: 承認した素材を出す `<img>` は、`<figcaption>` に「イメージ」を含む `<figure>` の中に置く（`MATERIALS_IMPL_LABEL_MISSING`）。`figcaption`・`figure`・その祖先に `hidden` か `aria-hidden="true"` があれば表示なしとみなし、`figcaption` の中の隠した要素の文字も数えない（CSS で隠すことは確かめない）。
     **確かめないもの**: CSS の背景・装飾として使った素材の表示（結果に `label: "not_checked"`。写真の枠なら審査で見る）、枠が差し替えられる単純な長方形か（§7.1 の 5）、
     「提案用デモ」の表示（§7.1 の 4）、画像に何が写っているか（素材の審査）。
   - 結果は使った素材（`used`: どのファイルを `img` か `css` で）と使わなかった素材、見つかった問題の一覧。問題が 1 つでもあれば `refused`（終了コード 1）。

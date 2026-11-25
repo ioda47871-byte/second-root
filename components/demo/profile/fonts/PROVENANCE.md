@@ -13,8 +13,8 @@ Display and Archivo) are the same as before.
 
 The files were fetched from the Google Fonts CSS2 API with the request
 `next/font/google` makes for the old options: the same URL, and its
-User-Agent, which selects woff2. They are the woff2 subsets the API lists,
-unmodified. `manifest.json` records each file's source URL, size and sha256.
+User-Agent, which selects woff2. They are the woff2 subsets exactly as Google
+Fonts served them; nothing here subsets, converts or otherwise modifies them. `manifest.json` records each file's source URL, size and sha256.
 When this was committed (2026-11-26), every file was byte-identical to the one
 `next/font/google` emitted in a build of `develop`. A build from 2026-10-21 had
 the same bytes too.

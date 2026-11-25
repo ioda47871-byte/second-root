@@ -215,6 +215,10 @@ describe("DEV-303 §6.1 change 7: the implemented site shows only approved mater
     expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption hidden>イメージ</figcaption></figure>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
     expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption aria-hidden="true">イメージ</figcaption></figure>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
     expect(await codes(site({ html: '<div aria-hidden="TRUE"><figure><img src="assets/counter.png" alt=""><figcaption>イメージ</figcaption></figure></div>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
+    // #350 review Low: the label only inside a hidden descendant of the caption is no label; a visible one beside it is
+    expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption><span hidden>イメージ</span>カウンター</figcaption></figure>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
+    expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption><span aria-hidden="true">イメージ</span></figcaption></figure>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
+    expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption><span hidden>説明</span><span>イメージ</span></figcaption></figure>' }))).toEqual([]);
     // review M1: an approved material from an SVG attribute (the demo check allows it as a declared picture) is refused,
     // so no use escapes the count and the label rule; an in-page #id reference stays allowed
     const svg = await check(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption>イメージ</figcaption></figure><svg width="10" height="10"><defs><lineargradient id="g"><stop offset="0"></stop></lineargradient></defs><rect width="10" height="10" mask="url(assets/linen.png)" fill="url(#g)"></rect></svg>', css: "body{font-family:sans-serif}" }));
