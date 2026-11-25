@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -146,6 +146,8 @@ describe("DEV-303 §6.1 change 7: the materials review and the owner's approval 
     expect(await go(partial, approvalOf(m, partial), "partial")).toBe("MATERIALS_REVIEW_MATERIALS_MISMATCH");
     expect(await go(reviewOf(m, ["pass", "pass"], { reviewer: "see https://example.invalid" }), null, "url")).toBe("MATERIALS_REVIEW_TEXT_UNSAFE");
     expect(await go(ok, null, "noapproval")).toBe("MATERIALS_RECORD_MISSING");
+    // review L4: the gate without an approval path at all is named
+    expect(await codeOf(checkMaterialsApproval({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, "gate.r.json", ok), repo: REPO, mode: "gate" }))).toBe("MATERIALS_APPROVAL_MISSING");
     expect(await codeOf(approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath: resolve(REPO, "package.json"), approvalPath: join(m.recs, "a.json"), repo: REPO }))).toBe("MATERIALS_RECORD_IN_REPO");
   });
 
@@ -209,6 +211,14 @@ describe("DEV-303 §6.1 change 7: the implemented site shows only approved mater
     expect(await codes(site({ html: '<img src="assets/counter.png" alt="">' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
     const r = await check(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption>カウンター</figcaption></figure>' }));
     expect([r.problems.map((p) => p.code), r.used[0]!.label]).toEqual([["MATERIALS_IMPL_LABEL_MISSING"], "missing"]);
+    // review L1: a hidden caption, or a hidden figure or ancestor, shows no label
+    expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption hidden>イメージ</figcaption></figure>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
+    expect(await codes(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption aria-hidden="true">イメージ</figcaption></figure>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
+    expect(await codes(site({ html: '<div aria-hidden="TRUE"><figure><img src="assets/counter.png" alt=""><figcaption>イメージ</figcaption></figure></div>' }))).toEqual(["MATERIALS_IMPL_LABEL_MISSING"]);
+    // review M1: an approved material from an SVG attribute (the demo check allows it as a declared picture) is refused,
+    // so no use escapes the count and the label rule; an in-page #id reference stays allowed
+    const svg = await check(site({ html: '<figure><img src="assets/counter.png" alt=""><figcaption>イメージ</figcaption></figure><svg width="10" height="10"><defs><lineargradient id="g"><stop offset="0"></stop></lineargradient></defs><rect width="10" height="10" mask="url(assets/linen.png)" fill="url(#g)"></rect></svg>', css: "body{font-family:sans-serif}" }));
+    expect(svg.problems).toEqual([{ code: "MATERIALS_IMPL_IMAGE_IN_ATTRIBUTE", detail: "rect mask: assets/linen.png" }]);
     // the demo version's own check, fail closed (a style element could carry a picture)
     const styled = await check(site({ html: '<style>.x{background:url("assets/other.png")}</style><figure><img src="assets/counter.png" alt=""><figcaption>イメージ</figcaption></figure>' }));
     expect(styled.problems).toContainEqual({ code: "MATERIALS_IMPL_HTML_UNSAFE", detail: "HTML_STYLE_ELEMENT" });
@@ -220,6 +230,11 @@ describe("DEV-303 §6.1 change 7: the implemented site shows only approved mater
     rmSync(join(linked, "assets", "linen.png"));
     symlinkSync(join(site(), "assets", "linen.png"), join(linked, "assets", "linen.png"));
     expect(await codeOf(check(linked))).toBe("MATERIALS_IMPL_SITE_UNSAFE");
+    // review L3: a hard link (a file shared with somewhere else) is refused as well
+    const hard = site();
+    rmSync(join(hard, "assets", "linen.png"));
+    linkSync(join(site(), "assets", "linen.png"), join(hard, "assets", "linen.png"));
+    expect(await codeOf(check(hard))).toBe("MATERIALS_IMPL_SITE_UNSAFE");
     const linkedSite = join(tmp(), "linked-site");
     symlinkSync(site(), linkedSite);
     expect(await codeOf(check(linkedSite))).toBe("MATERIALS_IMPL_SITE_UNSAFE");

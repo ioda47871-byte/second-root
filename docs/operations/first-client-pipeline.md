@@ -231,6 +231,7 @@
   `request_id`、`bundle_sha256`、`materials`（bundle の全部の画像を順に: `id`（素材の一覧の ID）・`file`（`parts/photo-N.png`）・`sha256`（bundle のもの）・
   `verdict`（`pass` / `revise` / `fail`）・`note`（1 行、300 字まで））、`reviewer`（Claude の別の文脈）、`reviewed_at`。**審査は助言**。
   見る観点は §2a の 9 と MVP_SPEC §7.1 の 5 条件（文字・ロゴ・人の顔・店の物に見える物が無いか、承認したデザインから写した文字や構図が無いか）。
+  審査の `id` は素材の依頼の一覧の ID と**照合しない**（bundle には一覧の SHA-256 `materials_sha256` しか無いため）。審査する Claude が依頼の一覧を見て正しく書く。
 - **承認の記録** `sr_materials_approval_v1`（同じ置き場の `.materials-approval.json`）: `request_id`、`bundle_sha256`、`review_sha256`（審査の記録のファイルの SHA-256）、
   `approved_materials`（使ってよい画像の `file` と `sha256`。審査した画像だけ、審査の順で 1〜6 枚。外した画像は使えない）、`decision`（`approve` / `revise` / `reject`）、
   `decided_at`（審査より前にできない）、`note`（任意）。**承認の記録を書くのは Claude で、オーナーが決めたと言ったときだけ**。これは記録であって**オーナー本人の署名ではない**。
@@ -243,8 +244,9 @@
   - 頁の中の画像のファイル（拡張子か先頭のバイトで判定）は `assets/` の直下だけ（`MATERIALS_IMPL_IMAGE_OUTSIDE_ASSETS`）で、SHA-256 が承認した素材のものだけ（`MATERIALS_IMPL_IMAGE_NOT_APPROVED`）。
     縮小・変換・再圧縮したものは別の画像として断られるので、**承認したファイルをそのまま使う**（大きさは CSS で合わせる）。
   - `<img src>`・`srcset`・`<source srcset>`・CSS の `url()` は承認した素材の `assets/` のファイルだけ（`MATERIALS_IMPL_IMAGE_REF_NOT_APPROVED`）。外部の URL は `MATERIALS_IMPL_EXTERNAL_IMAGE`。
+    それ以外の属性の `url()`（SVG の `mask`・`fill` など）は `MATERIALS_IMPL_IMAGE_IN_ATTRIBUTE`（使った素材を数え漏らさないため）。
   - 店舗の版のデモの HTML/CSS の検査（`checkArtifactHtml`）も通す。どれか 1 つでも見つかれば `MATERIALS_IMPL_HTML_UNSAFE`（安全側。`<style>` や script で画像を持ち込めないように）。
-  - 「イメージ」の表示: 承認した素材を出す `<img>` は、`<figcaption>` に「イメージ」を含む `<figure>` の中に置く（`MATERIALS_IMPL_LABEL_MISSING`）。
+  - 「イメージ」の表示: 承認した素材を出す `<img>` は、`<figcaption>` に「イメージ」を含む `<figure>` の中に置く（`MATERIALS_IMPL_LABEL_MISSING`）。`figcaption`・`figure`・その祖先に `hidden` か `aria-hidden="true"` があれば表示なしとみなす（CSS で隠すことは確かめない）。
     **確かめないもの**: CSS の背景・装飾として使った素材の表示（結果に `label: "not_checked"`。写真の枠なら審査で見る）、枠が差し替えられる単純な長方形か（§7.1 の 5）、
     「提案用デモ」の表示（§7.1 の 4）、画像に何が写っているか（素材の審査）。
   - 結果は使った素材（`used`: どのファイルを `img` か `css` で）と使わなかった素材、見つかった問題の一覧。問題が 1 つでもあれば `refused`（終了コード 1）。

@@ -48,6 +48,7 @@ export const MATERIALS_APPROVAL_CODES = [
   "MATERIALS_DESIGN_MISMATCH",
   "MATERIALS_RUN_MISMATCH",
   "MATERIALS_REVIEW_MATERIALS_MISMATCH",
+  "MATERIALS_APPROVAL_MISSING",
   "MATERIALS_APPROVAL_INVALID",
   "MATERIALS_APPROVAL_REVIEW_MISMATCH",
   "MATERIALS_APPROVAL_BEFORE_REVIEW",
@@ -219,7 +220,7 @@ export async function checkMaterialsApproval(o: {
   const verdicts = review.materials.map((m) => ({ id: m.id, file: m.file, verdict: m.verdict }));
   const base = { request_id: run.request_id, bundle_sha256: run.bundle_sha256, review_sha256: reviewSha, verdicts, design, run, review };
   if (o.mode === "draft" && !o.approvalPath) return { ...base, approval: null, approved: null };
-  if (!o.approvalPath) return stop("MATERIALS_APPROVAL_INVALID");
+  if (!o.approvalPath) return stop("MATERIALS_APPROVAL_MISSING");
   const approvalBytes = await readMaterialsRecord(o.approvalPath, o.repo);
   const ap = parseMaterialsApproval(approvalBytes);
   if (ap.request_id !== run.request_id || ap.bundle_sha256 !== run.bundle_sha256) stop("MATERIALS_RUN_MISMATCH");
