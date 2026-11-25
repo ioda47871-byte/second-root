@@ -40,7 +40,8 @@ function specifiers(source: string): string[] {
 
 const ALLOWED: Record<string, string[]> = {
   [`${LIB}/prototype-safety.ts`]: ["playwright"],
-  [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render", "./mobile-quality"],
+  // DEV-098 frame wait before the capture (owner approval 2026-11-25): "../frame-ready"
+  [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render", "../frame-ready", "./mobile-quality"],
   // DEV-134: the phone checks (report-only) reuse the shop-CSS render check's text measure, unchanged
   [`${LIB}/mobile-quality.ts`]: ["playwright", "../shop-css/render-check", "../shop-css/page-scripts"],
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
