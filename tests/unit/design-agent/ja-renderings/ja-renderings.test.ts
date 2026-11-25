@@ -140,6 +140,16 @@ describe("a rendering never adds a fact (category, field and key reported; never
     }
     expect(addedFactCategory(DESC, "川辺の茶房（カワセミ）です。々ー")).toBeNull();
   });
+  it("re-review: other numerals (Arabic-Indic, Devanagari, 〇), formal kanji numerals, and a non-ASCII word only when the source has it", () => {
+    const BAKERY = "A small bakery making sourdough bread every morning.";
+    for (const ja of ["パンは٣種類あります。", "パンは३種類あります。", "〇のパン屋です。", "参種のパンを焼いています。", "弐拾席の小さな店です。", "廿席の小さな店です。"]) expect(addedFactCategory(BAKERY, ja), ja).toBe("number");
+    expect(addedFactCategory("Café by the river.", "川辺の Café です。")).toBeNull();
+    expect(addedFactCategory(BAKERY, "川辺の Café です。")).toBe("script");
+    expect(addedFactCategory("Café by the river.", "川辺の Cafée です。")).toBe("script");
+    // strict on purpose: everyday words with a numeral are refused, and a number spelled in words stays words
+    for (const ja of ["一つずつ焼きます。", "一番人気のパンです。", "一人で営む店です。", "十分に休ませた生地です。", "八百屋の隣の店です。"]) expect(addedFactCategory(BAKERY, ja), ja).toBe("number");
+    expect(addedFactCategory("Twelve seats by the window.", "窓辺に12席あります。")).toBe("number");
+  });
   it("review L2: Latin words are compared as whole words of the source", () => {
     expect(addedFactCategory("A sourdough bakery.", "sour なパン屋です。")).toBe("proper_noun");
     expect(addedFactCategory("Start early.", "art のある店です。")).toBe("proper_noun");

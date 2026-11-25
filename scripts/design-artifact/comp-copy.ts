@@ -29,9 +29,8 @@
  */
 import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { JA_RENDERINGS_MAX_BYTES } from "../../lib/design-agent/ja-renderings/ja-renderings";
 import { compCopyGate, type CompCopyGate } from "../../lib/design-agent/quality-pipeline/comp-copy-gate";
-import { CopyQualityReview, MAX_COPY_REVISION_ROUNDS, reviewCopyQuality, type CopyQualityFiles, type PriorRound } from "../../lib/design-agent/quality-pipeline/copy-quality-review";
+import { CopyQualityReview, JA_RENDERINGS_MAX_BYTES, MAX_COPY_REVISION_ROUNDS, reviewCopyQuality, type CopyQualityFiles, type PriorRound } from "../../lib/design-agent/quality-pipeline/copy-quality-review";
 
 export const COPY_REVIEW_FILE = "copy-review.json";
 export const COPY_ROUNDS_DIR = "copy-rounds";

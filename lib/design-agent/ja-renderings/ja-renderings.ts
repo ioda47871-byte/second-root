@@ -95,19 +95,27 @@ const nfkc = (s: string) => s.normalize("NFKC");
 /** The units a number may carry in a rendering when its digits are the source's (1987 → 1987年). */
 const NUMBER_UNIT = /^[0-9]+[年時月日]?$/;
 
-/** Kanji numerals; a run of two or more (or one with 数: 十数) is a number. */
-const KANJI_NUMBER_RUN = /[〇零一二三四五六七八九十百千万億]{2,}|[〇零一二三四五六七八九十百千万億]数/gu;
+/** Kanji numerals (common and formal); a run of two or more (or one with 数: 十数) is a number. */
+const KANJI_NUMERALS = "〇零一二三四五六七八九十百千万億壱弐参肆伍陸漆捌玖拾廿卅";
+const KANJI_NUMBER_RUN = new RegExp(`[${KANJI_NUMERALS}]{2,}|[${KANJI_NUMERALS}]数`, "gu");
 /** One kanji numeral followed by a counter (三種, 七時, 二十席 is caught as a run) is a number too. */
-const KANJI_NUMBER_COUNTED = /[〇零一二三四五六七八九十百千万億](?=[種席名個品時分日週月回杯店階号番人冊枚本台軒年歳才円割度件皿つ])/gu;
+const KANJI_NUMBER_COUNTED = new RegExp(`[${KANJI_NUMERALS}](?=[種席名個品時分日週月回杯店階号番人冊枚本台軒年歳才円割度件皿つ])`, "gu");
+/** Any numeral that is not an ASCII digit after NFKC (Arabic-Indic, Devanagari, ①-like signs, Roman numerals …). */
+const OTHER_NUMERAL = /(?![0-9])\p{N}/u;
 /** Letters a Japanese rendering may use: Han, Hiragana, Katakana (with ー), ASCII Latin. Any other letter is another script. */
-const OTHER_SCRIPT_LETTER = /(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ーA-Za-z])\p{L}/u;
+const OTHER_SCRIPT_LETTER = /(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ーA-Za-z])\p{L}/gu;
+/** A word of letters that is not all Han / kana (it holds a Latin or other-script letter, e.g. Café). */
+const NON_JAPANESE_WORD = /(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー])[\p{L}\p{M}](?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー])[\p{L}\p{M}'&.-])*/gu;
 const latinWords = (s: string) => s.match(/[a-z][a-z'&.-]*[a-z]|[a-z]/g) ?? [];
 
 /**
  * The first fact a rendering adds to its source, as a category (never the text). A tripwire for numbers, fact markers,
  * other scripts and Latin words only (names, places and wording without a marker are the owner's review):
- *   - `script`: a letter outside Han, Hiragana, Katakana and ASCII Latin (Мария, ΑΒΓ);
- *   - `number`: a digit run, a kanji-numeral run (三十, 十数, 〇三) or a kanji numeral with a counter (七時) the source lacks;
+ *   - `script`: a letter outside Han, Hiragana, Katakana and ASCII Latin (Мария, ΑΒΓ), unless its whole word is one of
+ *     the source's words (Café);
+ *   - `number`: any numeral but an ASCII digit (Arabic-Indic, Devanagari …) the source lacks, a digit run, a kanji-numeral
+ *     run (三十, 十数, 〇三, formal 弐拾) or a kanji numeral with a counter (七時) the source lacks. Strict: everyday words
+ *     (一つ, 一番, 一人, 十分, 八百屋) are refused too, and a number the source spells in words cannot become a numeral;
  *   - an invented-fact sign (copy-record INVENTED_FACT_SIGNS) whose matched words the source lacks (a number with a unit
  *     is allowed when its digits are the source's);
  *   - `proper_noun`: a Latin word that is not one of the source's words (whole words: "sour" is not "sourdough").
@@ -116,7 +124,13 @@ const latinWords = (s: string) => s.match(/[a-z][a-z'&.-]*[a-z]|[a-z]/g) ?? [];
 export function addedFactCategory(source: string, ja: string): string | null {
   const src = nfkc(source).toLowerCase();
   const t = nfkc(ja);
-  if (OTHER_SCRIPT_LETTER.test(t)) return "script";
+  // a letter of another script is allowed only inside a word the source holds whole (Café); Latin words are checked below
+  const sourceWordsAll = new Set((src.match(NON_JAPANESE_WORD) ?? []).map((w) => w.toLowerCase()));
+  for (const m of t.matchAll(NON_JAPANESE_WORD)) {
+    const word = m[0];
+    if (word.match(OTHER_SCRIPT_LETTER) && !sourceWordsAll.has(word.toLowerCase())) return "script";
+  }
+  for (const m of t.matchAll(new RegExp(OTHER_NUMERAL.source, "gu"))) if (!src.includes(m[0])) return "number";
   const sourceRuns: string[] = src.match(/[0-9]+/g) ?? [];
   for (const run of t.match(/[0-9]+/g) ?? []) if (!sourceRuns.includes(run)) return "number";
   for (const m of [...t.matchAll(KANJI_NUMBER_RUN), ...t.matchAll(KANJI_NUMBER_COUNTED)]) if (!src.includes(m[0])) return "number";

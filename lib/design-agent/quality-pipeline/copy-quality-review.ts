@@ -68,7 +68,13 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
 import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
-import { checkJaRenderings, JaRenderingsStop } from "../ja-renderings/ja-renderings";
+import { checkJaRenderings, JA_RENDERINGS_MAX_BYTES, JaRenderingsStop } from "../ja-renderings/ja-renderings";
+
+/**
+ * Re-exported for the comp lane's copy steps (scripts/design-artifact/comp-copy.ts), whose imports are pinned to this
+ * module and the gate (Issue #193): the renderings record's size cap, so the CLI reads it with the checker's limit.
+ */
+export { JA_RENDERINGS_MAX_BYTES };
 import { CopyRecord, factParts, INVENTED_FACT_SIGNS, type CopyItem } from "./copy-record";
 import { FactsPack } from "./facts-pack";
 import { OUTSIDE_SECTIONS, pageSkeleton, pageText, type EntryRole, type PageSection } from "./copy-quality-page";
