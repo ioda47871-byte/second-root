@@ -232,3 +232,61 @@ describe("the CLI (offline)", () => {
     expect((await run1(["--page", "--bundle", run.dir, "--review", r.reviewPath])).code).toBe(2);
   });
 });
+
+describe("review Lows (PR #345): the bundle after approval, the decision time, the page directory", () => {
+  it("L7: a bundle changed after the approval stops the gate and approvedDesignRun (DESIGN_BUNDLE_INVALID)", async () => {
+    const run = await sealedRun();
+    const r = await records(run, reviewObj(run), (rs, ps) => approvalObj(run, rs, ps));
+    expect((await checkDesignApproval({ bundleDir: run.dir, reviewPath: r.reviewPath, approvalPath: r.approvalPath!, repo: REPO, mode: "gate" })).approval?.decision).toBe("approve");
+    const sp = join(run.dir, "parts", "sp-1.png");
+    rmSync(sp);
+    writeFileSync(sp, colourPng(700, 700), { mode: 0o600 });
+    expect(await codeOf(checkDesignApproval({ bundleDir: run.dir, reviewPath: r.reviewPath, approvalPath: r.approvalPath!, repo: REPO, mode: "gate" }))).toBe("DESIGN_BUNDLE_INVALID");
+    expect(await codeOf(approvedDesignRun({ bundleDir: run.dir, reviewPath: r.reviewPath, approvalPath: r.approvalPath!, repo: REPO }))).toBe("DESIGN_BUNDLE_INVALID");
+  });
+
+  it("L5: an approval decided before the review is refused (DESIGN_APPROVAL_BEFORE_REVIEW); the same instant is fine", async () => {
+    const run = await sealedRun();
+    const at = async (decided_at: string) => codeOf(records(run, reviewObj(run), (rs, ps) => approvalObj(run, rs, ps, { decided_at })).then((r) => checkDesignApproval({ bundleDir: run.dir, reviewPath: r.reviewPath, approvalPath: r.approvalPath!, repo: REPO, mode: "gate" })));
+    expect(await at("2026-11-25T02:59:59Z")).toBe("DESIGN_APPROVAL_BEFORE_REVIEW");
+    expect(await at("2026-11-25T03:00:00Z")).toBe("ok");
+  });
+
+  it("L2 / L7: an existing empty page directory must be private (0700) and ours; a fresh one is created 0700", async () => {
+    const run = await sealedRun();
+    const review = parseDesignReview(bytesOf(reviewObj(run)));
+    const dr = await readDeliveredRun(run.dir);
+    const open = join(tmp(), "open");
+    mkdirSync(open, { mode: 0o755 });
+    chmodSync(open, 0o755);
+    expect(await codeOf(writeDesignReviewPage(review, dr, { outDir: open, repo: REPO }))).toBe("DESIGN_PAGE_DIR_UNSAFE");
+    expect(readdirSync(open)).toEqual([]);
+    const priv = join(tmp(), "private");
+    mkdirSync(priv, { mode: 0o700 });
+    expect(await codeOf(writeDesignReviewPage(review, dr, { outDir: priv, repo: REPO }))).toBe("ok");
+    const fresh = join(tmp(), "fresh");
+    await writeDesignReviewPage(review, dr, { outDir: fresh, repo: REPO });
+    expect(statSync(fresh).mode & 0o777).toBe(0o700);
+    expect(statSync(join(fresh, "images")).isDirectory()).toBe(true);
+    // a link in place of the directory is refused
+    const link = join(tmp(), "link");
+    symlinkSync(priv, link);
+    expect(await codeOf(writeDesignReviewPage(review, dr, { outDir: link, repo: REPO }))).toBe("DESIGN_PAGE_DIR_NOT_EMPTY");
+  });
+
+  it("L1: --page renders the page from the same review bytes whose SHA-256 it prints", async () => {
+    const run = await sealedRun();
+    const r = await records(run, reviewObj(run));
+    const out: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((x) => (out.push(String(x)), true));
+    try {
+      expect(await designApprovalMain(["--page", "--bundle", run.dir, "--review", r.reviewPath, "--out", join(tmp(), "page")])).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+    const printed = JSON.parse(out.join("")) as { review_sha256: string; page_sha256: string; page: string };
+    expect(printed.review_sha256).toBe(sha(r.reviewBytes));
+    expect(printed.page_sha256).toBe(designReviewPageSha256(parseDesignReview(r.reviewBytes), await readDeliveredRun(run.dir)));
+    expect(sha(readFileSync(printed.page))).toBe(printed.page_sha256);
+  });
+});

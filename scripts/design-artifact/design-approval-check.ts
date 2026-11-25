@@ -19,7 +19,7 @@
  * Exit: 0 passed / page written, 1 stopped (a named DESIGN_* code), 2 refused (bad arguments).
  */
 import { resolve } from "node:path";
-import { checkDesignApproval, DesignApprovalStop, parseDesignReview, readDeliveredRun, readRecord, writeDesignReviewPage } from "../../lib/design-agent/imagefirst-worker/design-approval";
+import { checkDesignApproval, DesignApprovalStop, writeDesignReviewPage } from "../../lib/design-agent/imagefirst-worker/design-approval";
 
 const REPO = resolve(__dirname, "../..");
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
@@ -50,11 +50,10 @@ export async function designApprovalMain(argv: string[], repoRoot: string = REPO
   if (!args) return (say({ status: "refused", code: "ARGS_INVALID" }), 2);
   try {
     if (args.mode === "page") {
-      const review = parseDesignReview(await readRecord(args.review, repoRoot));
-      const run = await readDeliveredRun(args.bundle);
-      // the same checks as --check --draft before anything is written
+      // review L1: one read of the review and the bundle: the same checks as --check --draft, and the page rendered from
+      // exactly the bytes whose SHA-256 is printed as review_sha256
       const c = await checkDesignApproval({ bundleDir: args.bundle, reviewPath: args.review, repo: repoRoot, mode: "draft" });
-      const w = await writeDesignReviewPage(review, run, { outDir: args.out, repo: repoRoot });
+      const w = await writeDesignReviewPage(c.review, c.run, { outDir: args.out, repo: repoRoot });
       say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, request_id: c.request_id, bundle_sha256: c.bundle_sha256, verdicts: c.verdicts });
       return 0;
     }

@@ -21,8 +21,10 @@
  *
  * Gate (what later stages depend on, approvedDesignRun): the bundle verifies; the review's images are exactly the
  * bundle's design parts with their SHA-256s; all five axes carry evidence on images that exist; the approval binds this
- * review, this page and these images; the decision is approve; and no axis is `fail` (the simplest safe rule: a `fail`
- * is not overridden by an approval; the owner asks for a new review or a new design instead).
+ * review, this page and these images and is decided at or after the review; the decision is approve; and no axis is
+ * `fail` (the simplest safe rule: a `fail` is not overridden by an approval; the owner asks for a new review or a new
+ * design instead). page_sha256 is recomputed by re-rendering the page from the review and the run: a change to the page
+ * template or its escaping invalidates earlier approvals (fail safe; the owner looks at the new page again).
  *
  * The viewing page (writeDesignReviewPage): static local HTML (no script, no network, no external font; the case-study
  * page's CSP), the images copied next to it, every text escaped, never the approval (so recording the approval does not
@@ -54,7 +56,6 @@ export const DESIGN_APPROVAL_CODES = [
   "DESIGN_REVIEW_TEXT_UNSAFE",
   "DESIGN_REVIEW_AXIS_MISSING",
   "DESIGN_REVIEW_EVIDENCE_MISSING",
-  "DESIGN_REVIEW_EVIDENCE_IMAGE_UNKNOWN",
   "DESIGN_BUNDLE_INVALID",
   "DESIGN_BUNDLE_NOT_A_DESIGN",
   "DESIGN_RUN_MISMATCH",
@@ -68,6 +69,8 @@ export const DESIGN_APPROVAL_CODES = [
   "DESIGN_REVIEW_HAS_FAIL",
   "DESIGN_PAGE_IN_REPO",
   "DESIGN_PAGE_DIR_NOT_EMPTY",
+  "DESIGN_PAGE_DIR_UNSAFE",
+  "DESIGN_APPROVAL_BEFORE_REVIEW",
 ] as const;
 export type DesignApprovalCode = (typeof DESIGN_APPROVAL_CODES)[number];
 export class DesignApprovalStop extends Error {
@@ -298,8 +301,13 @@ export async function writeDesignReviewPage(review: DesignReview, run: Delivered
   if (inRepo(out) || inRepo(await realPlace(out))) stop("DESIGN_PAGE_IN_REPO");
   const existing = await lstat(out).catch(() => null);
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink() || (await readdir(out)).length > 0)) stop("DESIGN_PAGE_DIR_NOT_EMPTY");
+  // review L2: an existing (empty) directory is ours and private, as one this call creates (0700)
+  if (existing && (existing.uid !== process.getuid?.() || (existing.mode & 0o077) !== 0)) stop("DESIGN_PAGE_DIR_UNSAFE");
   await mkdir(join(out, "images"), { recursive: true, mode: 0o700 });
   if (inRepo(await realpath(out).catch(() => null))) stop("DESIGN_PAGE_IN_REPO");
+  // and images/ is a real directory of ours (never a link planted in between)
+  const images = await lstat(join(out, "images")).catch(() => null);
+  if (!images || !images.isDirectory() || images.isSymbolicLink() || images.uid !== process.getuid?.()) stop("DESIGN_PAGE_DIR_UNSAFE");
   const write = async (rel: string, bytes: Buffer | string) => {
     const h = await open(join(out, rel), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     try {
@@ -330,17 +338,16 @@ export type DesignApprovalCheck = {
  * about to see). Gate: also the approval, bound to this review's bytes, this page and these images, with decision
  * approve and no axis `fail`. Throws DesignApprovalStop.
  */
-export async function checkDesignApproval(o: { bundleDir: string; reviewPath: string; approvalPath?: string; repo: string; mode: "draft" | "gate" }): Promise<DesignApprovalCheck & { run: DeliveredRun }> {
+export async function checkDesignApproval(o: { bundleDir: string; reviewPath: string; approvalPath?: string; repo: string; mode: "draft" | "gate" }): Promise<DesignApprovalCheck & { run: DeliveredRun; review: DesignReview }> {
   const reviewBytes = await readRecord(o.reviewPath, o.repo);
   const review = parseDesignReview(reviewBytes);
   const run = await readDeliveredRun(o.bundleDir);
   if (review.request_id !== run.request_id || review.bundle_sha256 !== run.bundle_sha256) stop("DESIGN_RUN_MISMATCH");
   if (!sameImages(review.images, run.images)) stop("DESIGN_IMAGES_MISMATCH");
-  for (const a of DESIGN_AXES) if (review.axes[a].evidence.some((ev) => run.images[ev.image].length === 0)) stop("DESIGN_REVIEW_EVIDENCE_IMAGE_UNKNOWN");
   const reviewSha = sha256(reviewBytes);
   const pageSha = designReviewPageSha256(review, run);
   const verdicts = Object.fromEntries(DESIGN_AXES.map((a) => [a, review.axes[a].verdict])) as DesignApprovalCheck["verdicts"];
-  const base = { request_id: run.request_id, bundle_sha256: run.bundle_sha256, review_sha256: reviewSha, page_sha256: pageSha, verdicts, run };
+  const base = { request_id: run.request_id, bundle_sha256: run.bundle_sha256, review_sha256: reviewSha, page_sha256: pageSha, verdicts, run, review };
   if (o.mode === "draft" && !o.approvalPath) return { ...base, approval: null };
   if (!o.approvalPath) return stop("DESIGN_APPROVAL_MISSING");
   const approvalBytes = await readRecord(o.approvalPath, o.repo);
@@ -348,6 +355,8 @@ export async function checkDesignApproval(o: { bundleDir: string; reviewPath: st
   if (a.request_id !== run.request_id || a.bundle_sha256 !== run.bundle_sha256) stop("DESIGN_RUN_MISMATCH");
   if (a.review_sha256 !== reviewSha) stop("DESIGN_APPROVAL_REVIEW_MISMATCH");
   if (a.page_sha256 !== pageSha) stop("DESIGN_APPROVAL_PAGE_MISMATCH");
+  // review L5: a decision is made after the review it decides on
+  if (Date.parse(a.decided_at) < Date.parse(review.reviewed_at)) stop("DESIGN_APPROVAL_BEFORE_REVIEW");
   if (!sameImages(a.approved_images, run.images)) stop("DESIGN_APPROVAL_IMAGES_MISMATCH");
   const approval = { sha256: sha256(approvalBytes), decision: a.decision };
   if (o.mode === "gate") {

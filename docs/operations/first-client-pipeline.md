@@ -172,7 +172,8 @@
 - **検査**: `design-approval-check.ts --check --bundle <dir> --review <review.json> --approval <approval.json>`（既定はゲート）。bundle の検証、画像と SHA-256 の一致、
   5 観点と根拠、承認が同じ審査・ページ・画像に結びつくこと、`decision: approve` を確かめる。**どれか 1 つの観点が `fail` なら承認は通らない**
   （`DESIGN_REVIEW_HAS_FAIL`。オーナーが通したいときは、新しい審査か新しいデザインにする）。`revise` は助言なので、オーナーは承認できる。
-  `--draft` は承認の前（審査だけ）。止まったときは `DESIGN_*` の決まった名前だけを出す。
+  `--draft` は承認の前（審査だけ）。止まったときは `DESIGN_*` の決まった名前だけを出す。承認の `decided_at` は審査の `reviewed_at` より前にできない（`DESIGN_APPROVAL_BEFORE_REVIEW`）。
+  `page_sha256` は検査のたびに審査と run からページを描き直して計算するので、ページのひな形や escape の仕方が変われば、それより前の承認は通らなくなる（安全側。オーナーは新しいページを見直す）。
 - **後の段**: 素材の段（§6.1 の 6）はこの承認を前提にする（`lib/design-agent/imagefirst-worker/design-approval.ts` の `approvedDesignRun` が、
   承認された run の画像と SHA-256 を返すか止まる）。今の素材の段は、まだ変えていない。
 
