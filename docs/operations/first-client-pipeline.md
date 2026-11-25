@@ -220,6 +220,37 @@
 - **後の段**: 素材の段（§D、§6.1 の 6）はこの承認を前提にする（`lib/design-agent/imagefirst-worker/design-approval.ts` の `approvedDesignRun` が、
   承認された run の画像と SHA-256 を返すか止まる）。素材の依頼の `approved_design` が、この審査と承認の記録のファイル名を名指しする。
 
+### H. 素材の審査とオーナーの承認、実装で使える素材の検査（段 4 → 段 5。DEV-303 §6.1 の 7）
+
+**段 5 の実装で頁に置ける画像は、オーナーが承認した素材のファイルそのもの（SHA-256 で照合）だけ。** 素材の生成の成功だけでは使えない。
+
+- **前提**: 素材の run（`~/sr-runs/review-inbox/<素材の依頼 ID>/`、`image_material` の封印された bundle）は、承認したデザイン（§G）のために作ったもの。
+  bundle の receipt の `approved_design`（デザインの run の ID と bundle・審査・承認の SHA-256、§D）が、検査で渡すデザインの記録と一致し、
+  そのデザインが §G のゲートを今も通ること（同じ店・同じ種類）。違えば `MATERIALS_DESIGN_MISMATCH`、デザインのゲートの停止は `DESIGN_*` のまま出す。
+- **審査の記録** `sr_materials_review_v1`（`~/second-root-shops/<shop_id>/design-reviews/<素材の依頼 ID>.materials-review.json`。リポジトリの外）:
+  `request_id`、`bundle_sha256`、`materials`（bundle の全部の画像を順に: `id`（素材の一覧の ID）・`file`（`parts/photo-N.png`）・`sha256`（bundle のもの）・
+  `verdict`（`pass` / `revise` / `fail`）・`note`（1 行、300 字まで））、`reviewer`（Claude の別の文脈）、`reviewed_at`。**審査は助言**。
+  見る観点は §2a の 9 と MVP_SPEC §7.1 の 5 条件（文字・ロゴ・人の顔・店の物に見える物が無いか、承認したデザインから写した文字や構図が無いか）。
+  審査の `id` は素材の依頼の一覧の ID と**照合しない**（bundle には一覧の SHA-256 `materials_sha256` しか無いため）。審査する Claude が依頼の一覧を見て正しく書く。
+- **承認の記録** `sr_materials_approval_v1`（同じ置き場の `.materials-approval.json`）: `request_id`、`bundle_sha256`、`review_sha256`（審査の記録のファイルの SHA-256）、
+  `approved_materials`（使ってよい画像の `file` と `sha256`。審査した画像だけ、審査の順で 1〜6 枚。外した画像は使えない）、`decision`（`approve` / `revise` / `reject`）、
+  `decided_at`（審査より前にできない）、`note`（任意）。**承認の記録を書くのは Claude で、オーナーが決めたと言ったときだけ**。これは記録であって**オーナー本人の署名ではない**。
+  `fail` の画像は承認できない（`MATERIALS_APPROVAL_HAS_FAIL`。新しい審査か新しい素材にする）。`revise` はオーナーが決めれば承認できる。
+  確認ページはまだ無い（オーナーは review inbox の画像と審査の記録を見る）。
+- **検査（ゲート）**: `npx tsx scripts/design-artifact/materials-impl-check.ts --design-bundle <dir> --design-review <file> --design-approval <file> --materials-bundle <dir> --materials-review <file> --materials-approval <file>`。
+  `--materials-approval` を省くと審査だけの確認（承認の前）。`lib/design-agent/imagefirst-worker/materials-approval.ts` の `approvedMaterials` が、承認された画像と SHA-256 を返すか、
+  `MATERIALS_*` の決まった名前で止まる。
+- **段 5 の実装の検査**: 上に `--site <頁の置き場>` を足す（頁はリポジトリの外。例 `~/second-root-shops/<shop_id>/site-<n>/`。何も書かない・ブラウザも通信も使わない）。
+  - 頁の中の画像のファイル（拡張子か先頭のバイトで判定）は `assets/` の直下だけ（`MATERIALS_IMPL_IMAGE_OUTSIDE_ASSETS`）で、SHA-256 が承認した素材のものだけ（`MATERIALS_IMPL_IMAGE_NOT_APPROVED`）。
+    縮小・変換・再圧縮したものは別の画像として断られるので、**承認したファイルをそのまま使う**（大きさは CSS で合わせる）。
+  - `<img src>`・`srcset`・`<source srcset>`・CSS の `url()` は承認した素材の `assets/` のファイルだけ（`MATERIALS_IMPL_IMAGE_REF_NOT_APPROVED`）。外部の URL は `MATERIALS_IMPL_EXTERNAL_IMAGE`。
+    それ以外の属性の `url()`（SVG の `mask`・`fill` など）は `MATERIALS_IMPL_IMAGE_IN_ATTRIBUTE`（使った素材を数え漏らさないため）。
+  - 店舗の版のデモの HTML/CSS の検査（`checkArtifactHtml`）も通す。どれか 1 つでも見つかれば `MATERIALS_IMPL_HTML_UNSAFE`（安全側。`<style>` や script で画像を持ち込めないように）。
+  - 「イメージ」の表示: 承認した素材を出す `<img>` は、`<figcaption>` に「イメージ」を含む `<figure>` の中に置く（`MATERIALS_IMPL_LABEL_MISSING`）。`figcaption`・`figure`・その祖先に `hidden` か `aria-hidden="true"` があれば表示なしとみなす（CSS で隠すことは確かめない）。
+    **確かめないもの**: CSS の背景・装飾として使った素材の表示（結果に `label: "not_checked"`。写真の枠なら審査で見る）、枠が差し替えられる単純な長方形か（§7.1 の 5）、
+    「提案用デモ」の表示（§7.1 の 4）、画像に何が写っているか（素材の審査）。
+  - 結果は使った素材（`used`: どのファイルを `img` か `css` で）と使わなかった素材、見つかった問題の一覧。問題が 1 つでもあれば `refused`（終了コード 1）。
+
 ## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
 
 1. 候補を選ぶ（営業エージェントの run で登録済みの候補。新しく作らない）。
@@ -237,7 +268,7 @@
 7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
 8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
 9. 写真素材を使う場合（§2 D）: デザインが届いたら §G の審査とオーナーの承認を記録し、**その後で**、承認したデザインから決めた `materials` と `approved_design` を持つ素材の段の依頼を置く。
-   inbox に届いた素材は Claude が 1 枚ずつ確かめ（§C の項目に加えて、参照に渡した承認済みのデザインから写した文字・店名・構図が入っていないか）、本実装（§C）に使う。（架空・研究の依頼だけは、届いた素材を節ごとの分割のデザインの `photo_inputs` に写してもよい。実店舗の whole_page のデザインには付けられない。）
+   inbox に届いた素材は Claude が 1 枚ずつ確かめ（§C の項目に加えて、参照に渡した承認済みのデザインから写した文字・店名・構図が入っていないか）、§H の審査とオーナーの承認の後、承認した素材だけを本実装（§C）に使い、§H の `--site` の検査を通す。（架空・研究の依頼だけは、届いた素材を節ごとの分割のデザインの `photo_inputs` に写してもよい。実店舗の whole_page のデザインには付けられない。）
    素材を頁に使うときは MVP_SPEC §7.1 の限定の改定の 5 条件（「イメージ」の表示・店の物として見せない・事実と分ける・「提案用デモ」の表示・差し替えられる）をすべて守る。
 
 ## 3. オーナーの判断・承認が要るもの
