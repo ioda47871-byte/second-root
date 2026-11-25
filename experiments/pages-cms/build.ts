@@ -9,9 +9,10 @@
  */
 import { copyFile, lstat, mkdir, readdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { renderBakery } from "./bakery-site";
+import { BAKERY_PROFILE, renderBakery } from "./bakery-site";
 import { loadContent } from "./content-model";
 import { pagesYaml } from "./pages-config";
+import { priceDisplayReport, type PriceReport } from "./price-display";
 
 export class BuildError extends Error {
   constructor(
@@ -23,11 +24,15 @@ export class BuildError extends Error {
   }
 }
 
-export type BuildResult = { html: string; css: string; media: string[] };
+export type BuildResult = { html: string; css: string; media: string[]; price_report: PriceReport };
 
-/** Builds <repo>/content + media into <outDir> (absent or empty). `today` decides which closures are still ahead. */
+/**
+ * Builds <repo>/content + media into <outDir> (absent or empty), with the bakery's profile (fixed name, its trade
+ * extensions). `today` decides which closures are still ahead. The 総額表示 report rides along: advice only, it never
+ * stops the build and never changes a price.
+ */
 export async function buildSite(o: { repo: string; outDir: string; today: string }): Promise<BuildResult> {
-  const content = await loadContent(o.repo);
+  const content = await loadContent(o.repo, BAKERY_PROFILE);
   const existing = await lstat(o.outDir).catch(() => null);
   if (existing && (!existing.isDirectory() || (await readdir(o.outDir)).length > 0)) throw new BuildError("BUILD_OUT_NOT_EMPTY", basename(o.outDir));
   const { html, css } = renderBakery(content, o.today);
@@ -40,12 +45,12 @@ export async function buildSite(o: { repo: string; outDir: string; today: string
   for (const n of named) await copyFile(join(o.repo, "media", n), join(o.outDir, "media", n));
   await writeFile(join(o.outDir, "index.html"), html);
   await writeFile(join(o.outDir, "style.css"), css);
-  return { html, css, media: named };
+  return { html, css, media: named, price_report: priceDisplayReport(content.menu) };
 }
 
 /** Writes the generated .pages.yml at the repository root (the CMS configuration, derived from the content model). */
 export async function writePagesYaml(repo: string): Promise<string> {
-  const text = pagesYaml();
+  const text = pagesYaml({ extensions: BAKERY_PROFILE.extensions });
   await writeFile(join(repo, ".pages.yml"), text);
   return text;
 }

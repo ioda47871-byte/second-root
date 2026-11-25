@@ -34,7 +34,36 @@ const Id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 const MediaPath = z.union([z.literal(""), z.string().regex(/^\/media\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(png|jpe?g|webp)$/)]);
 const Hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const Day = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
-const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** A real calendar date (2026-02-30 is refused). */
+const IsoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, "date_invalid");
+/** Text the customer types that the page shows: no markup and no link (the page escapes anyway; links are not content). */
+const NO_LINK_OR_MARKUP = /[<>]|https?:|www\.|:\/\//i;
+
+/**
+ * A Japanese phone number as shops write it: digits with optional hyphens, spaces or parentheses, 10 or 11 digits
+ * starting with 0 (or +81 and 9–10 digits). Owner decision 2026-11-26: editable, with input validation.
+ */
+export function phoneOk(s: string): boolean {
+  if (s === "") return true;
+  if (!/^\+?[0-9()\- ]{10,20}$/.test(s) || /[()\- ]{2,}/.test(s.replace(/\) /g, ")"))) return false;
+  const digits = s.replace(/[^0-9]/g, "");
+  return s.startsWith("+81") ? /^81[1-9]\d{8,9}$/.test(digits) : /^0\d{9,10}$/.test(digits);
+}
+/** An address line: at most 120 characters, not only spaces, no link or markup. */
+export const addressOk = (s: string) => s === "" || (s.trim().length > 0 && s === s.trim() && !NO_LINK_OR_MARKUP.test(s));
+
+/**
+ * Trade-specific data (owner decision 2026-11-26: optional extensions, not part of the minimal shared model). A shop
+ * turns on only what its trade needs; a field of an extension the shop has not turned on is refused at build.
+ */
+export const TRADE_EXTENSIONS = ["sizes", "allergens", "shelfLife"] as const;
+export type TradeExtension = (typeof TRADE_EXTENSIONS)[number];
 
 export const MenuItem = z.strictObject({
   id: Id,
@@ -48,6 +77,19 @@ export const MenuItem = z.strictObject({
   visible: z.boolean().default(true),
   soldOut: z.boolean().default(false),
   displayOrder: z.number().int().min(0).max(9999).default(0),
+  // ---- optional trade extensions (absent unless the shop turns them on) ----
+  /** sizes: e.g. a cafe's S / M / L, each with its own price text (free text, never computed). */
+  sizes: z
+    .array(z.strictObject({ label: Line(20).refine((s) => s.trim().length > 0, "empty"), priceDisplay: Line(40).default("") }))
+    .max(6)
+    .optional(),
+  /** allergens: the words the shop confirmed (free text, up to 10). */
+  allergens: z
+    .array(Line(20).refine((s) => s.trim().length > 0, "empty"))
+    .max(10)
+    .optional(),
+  /** shelfLife: e.g. a bakery's 「当日中」 (free text). */
+  shelfLife: Line(40).optional(),
 });
 export type MenuItem = z.infer<typeof MenuItem>;
 
@@ -68,14 +110,21 @@ export const Announcement = z.strictObject({
 });
 export type Announcement = z.infer<typeof Announcement>;
 
+const Hours = z
+  .strictObject({ day: Day, closed: z.boolean().default(false), open: z.union([z.literal(""), Hhmm]).default(""), close: z.union([z.literal(""), Hhmm]).default("") })
+  // an open day has both times, opening before closing (a shop open past midnight writes it in hoursNote)
+  .refine((h) => h.closed || (h.open === "" && h.close === "") || (h.open !== "" && h.close !== "" && h.open < h.close), "hours_invalid");
+
 export const ShopInfo = z.strictObject({
-  /** Set at delivery from the facts the customer confirmed; shown read-only in the CMS (open question for the owner). */
+  /** Owner decision 2026-11-26: the shop name (and the brand expression, which is the page code) stays fixed. */
   name: Line(60),
-  address: Line(120).default(""),
-  phone: Line(30).default(""),
+  /** Owner decision 2026-11-26: editable, with input validation. */
+  address: Line(120).refine(addressOk, "address_invalid").default(""),
+  phone: Line(20).refine(phoneOk, "phone_invalid").default(""),
   hours: z
-    .array(z.strictObject({ day: Day, closed: z.boolean().default(false), open: z.union([z.literal(""), Hhmm]).default(""), close: z.union([z.literal(""), Hhmm]).default("") }))
+    .array(Hours)
     .max(7)
+    .refine((list) => new Set(list.map((h) => h.day)).size === list.length, "hours_day_twice")
     .default([]),
   hoursNote: Line(120).default(""),
   specialClosures: z.array(z.strictObject({ date: IsoDate, note: Line(80).default("") })).max(60).default([]),
@@ -86,7 +135,7 @@ export type ShopContent = { shop: ShopInfo; categories: Category[]; menu: MenuIt
 
 export class ContentError extends Error {
   constructor(
-    readonly code: "CONTENT_INVALID" | "CONTENT_DUPLICATE_ID" | "CONTENT_UNKNOWN_CATEGORY" | "CONTENT_TOO_MANY",
+    readonly code: "CONTENT_INVALID" | "CONTENT_DUPLICATE_ID" | "CONTENT_UNKNOWN_CATEGORY" | "CONTENT_TOO_MANY" | "CONTENT_FIXED_CHANGED" | "CONTENT_EXTENSION_OFF",
     readonly file: string,
   ) {
     super(`${code} ${file}`);
@@ -118,8 +167,15 @@ async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T> {
   return r.data;
 }
 
-/** Reads and checks the content folder of a shop repository (content/ next to media/). */
-export async function loadContent(root: string): Promise<ShopContent> {
+/** What one shop's page code declares about its content: its fixed name, and the trade extensions it turns on. */
+export type ShopProfile = { fixedName: string; extensions: readonly TradeExtension[] };
+
+/**
+ * Reads and checks the content folder of a shop repository (content/ next to media/). With a profile: the shop name
+ * must be the shop's fixed name (CONTENT_FIXED_CHANGED; the CMS shows it read-only, and this also catches an edit
+ * made outside the CMS), and no item may carry an extension the shop has not turned on (CONTENT_EXTENSION_OFF).
+ */
+export async function loadContent(root: string, profile?: ShopProfile): Promise<ShopContent> {
   const shop = await readJson(join(root, "content", "shop.json"), ShopInfo);
   const categories = await readJsonDir(join(root, "content", "categories"), Category, CONTENT_LIMITS.categories);
   const menu = await readJsonDir(join(root, "content", "menu"), MenuItem, CONTENT_LIMITS.menu);
@@ -133,6 +189,10 @@ export async function loadContent(root: string): Promise<ShopContent> {
   }
   const known = new Set(categories.map((c) => c.id));
   for (const m of menu) if (!known.has(m.category)) throw new ContentError("CONTENT_UNKNOWN_CATEGORY", `menu/${m.id}`);
+  if (profile) {
+    if (shop.name !== profile.fixedName) throw new ContentError("CONTENT_FIXED_CHANGED", "shop.json name");
+    for (const m of menu) for (const x of TRADE_EXTENSIONS) if (m[x] !== undefined && !profile.extensions.includes(x)) throw new ContentError("CONTENT_EXTENSION_OFF", `menu/${m.id} ${x}`);
+  }
   return { shop, categories, menu, news };
 }
 
