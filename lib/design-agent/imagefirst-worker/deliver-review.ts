@@ -32,7 +32,7 @@
 import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { BundleStop, packBundle, verifyBundleDir, type ExpectedRecord, type SealedBundle } from "./bundle";
+import { BundleStop, checkReferenceInputs, packBundle, verifyBundleDir, type ExpectedRecord, type SealedBundle } from "./bundle";
 import { checkRealApprovalId, isRequestRunId, readApprovalAt, runOfApprovalId, sha256, type CycleDeps, type CycleReport } from "./cycle";
 import { handOffToLocalInbox, InboxStop, REVIEW_INBOX } from "./local-inbox";
 import { PreviewStop } from "./preview";
@@ -131,6 +131,7 @@ type Receipt = {
   images_total?: unknown;
   request_stage?: unknown;
   design_layout?: unknown;
+  reference_images?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown; photo?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
@@ -231,6 +232,8 @@ async function checkRequestReceipt(r: Receipt, id: string, runDir: string, state
     if (r.design_layout !== undefined && !whole) stop("RECEIPT_INVALID");
     const want = whole ? { pc: 1, sp: 1, total: 2 } : { pc: 2, sp: 4, total: 6 };
     if (r.request_stage !== undefined || c.pc !== want.pc || c.sp !== want.sp || c.total !== want.total || r.images_total !== want.total) stop("RECEIPT_NOT_SUCCEEDED");
+    // review L4: the receipt's reference list is the run's own reference-inputs.json (ids, cases, SHA-256, order)
+    await checkReferenceInputs(runDir, r.reference_images).catch(asReviewStop);
   }
   const started = typeof r.timings?.started_at === "string" ? Date.parse(r.timings.started_at) : NaN;
   const finished = typeof r.timings?.finished_at === "string" ? Date.parse(r.timings.finished_at) : NaN;

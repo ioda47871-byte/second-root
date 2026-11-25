@@ -49,9 +49,12 @@ r.pids = fs.readdirSync("/proc").filter((n) => /^\\d+$/.test(n)).length;
 r.envHasSecret = Object.entries(process.env).some(([k, v]) => /CANARY|sk-|ghp_|TOKEN|SECRET|PASSWORD|SUPABASE|OPENAI_API_KEY|ANTHROPIC/i.test(k + "=" + v));
 r.envKeys = Object.keys(process.env).sort();
 r.homeEntries = (() => { try { return fs.readdirSync(process.env.HOME); } catch { return null; } })();
-// every open descriptor: only stdio pipes, node's own anonymous handles, /dev and the work dir
+// every open descriptor: only stdio pipes, node's own anonymous handles, /dev and the work dir. Exactly one other path is
+// left out: /sys/devices/system/cpu/online, which this probe's own runtime (Node / libuv / glibc counting CPUs) may hold
+// open for an instant while the list is read (seen once in CI); it is never a descriptor handed in from the host. Only
+// that exact path: every other /sys path, and any inherited host file (see the control test), is still reported.
 r.foreignFds = fs.readdirSync("/proc/self/fd").map((fd) => { try { return fs.readlinkSync("/proc/self/fd/" + fd); } catch { return ""; } })
-  .filter((l) => l && !/^(pipe|socket|anon_inode):/.test(l) && !l.startsWith("/dev/") && !l.startsWith(process.cwd()) && !l.startsWith("/proc/"));
+  .filter((l) => l && !/^(pipe|socket|anon_inode):/.test(l) && !l.startsWith("/dev/") && !l.startsWith(process.cwd()) && !l.startsWith("/proc/") && l !== "/sys/devices/system/cpu/online");
 // a full walk of everything user data could live in, looking for the canaries in any file
 let found = false, files = 0;
 const walk = (d, depth) => { if (depth > 12 || found || files > 20000 || d === process.cwd()) return; let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
@@ -129,8 +132,8 @@ describe.skipIf(!bwrapWorks)("the Codex sandbox (real bubblewrap)", () => {
     spawnSync("rm", ["-rf", root, ...(extraRoot ? [extraRoot] : [])]);
   });
 
-  async function attack(unconfined = false): Promise<Attack> {
-    const sandbox = unconfined ? passthroughSandbox(codexBin, env()) : await prepareCodexSandbox({ env: env(), codexBin, protectedPaths: protectedPaths() });
+  async function attack(unconfined = false, bin: string = codexBin): Promise<Attack> {
+    const sandbox = unconfined ? passthroughSandbox(bin, env()) : await prepareCodexSandbox({ env: env(), codexBin: bin, protectedPaths: protectedPaths() });
     const image = join(root, "ref.png");
     writeFileSync(image, PNG);
     // the unconfined control looks only where the canaries are (the whole host would take too long)
@@ -179,6 +182,19 @@ describe.skipIf(!bwrapWorks)("the Codex sandbox (real bubblewrap)", () => {
     for (const key of r.envKeys) expect(["PATH", "HOME", "TMPDIR", "CODEX_HOME", "LANG", "PWD", "SHLVL", "_"]).toContain(key);
     // nothing open on a file of the host (an inherited descriptor would show here)
     expect(r.foreignFds).toEqual([]);
+  });
+
+  it("control: a host file descriptor inherited by the sandboxed process IS reported in foreignFds (so the probe is real)", async () => {
+    // a launcher inside the same sandbox opens a host file the jail shows read-only and hands the descriptor down to the
+    // attacker it execs (fd 7 inherited), as a leaked descriptor from outside would be
+    const launcher = join(root, "codex-install", "bin", "codex-with-fd");
+    writeFileSync(launcher, `#!/bin/sh\nexec 7</etc/passwd\nexec node "${codexBin}" "$@"\n`, { mode: 0o755 });
+    const r = await attack(false, launcher);
+    expect(r.foreignFds).toContain("/etc/passwd");
+    // and the exclusion is that one exact path: another /sys file held open is still reported
+    const sysLauncher = join(root, "codex-install", "bin", "codex-with-sysfd");
+    writeFileSync(sysLauncher, `#!/bin/sh\nexec 7</sys/devices/system/cpu/possible\nexec node "${codexBin}" "$@"\n`, { mode: 0o755 });
+    expect((await attack(false, sysLauncher)).foreignFds).toContain("/sys/devices/system/cpu/possible");
   });
 
   it("reads the copied reference image, writes only to its work directory, and cannot remount or unshare", async () => {

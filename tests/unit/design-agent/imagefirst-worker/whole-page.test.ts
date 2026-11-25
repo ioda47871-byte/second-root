@@ -4,13 +4,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { inspectCaseStudy, type CaseStudyInspection } from "@/lib/design-agent/case-study/case-study";
 import { checkRunAttachments, generateImageOnce, generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
 import { readImageFirstRun } from "@/lib/design-agent/image-first/builder";
-import { assertCaseStudyTextHasNoFact, buildRequestPlan, parseRequest, PHOTO_LABEL, WHOLE_PAGE_IMAGES, WHOLE_PAGE_PROMPT_VERSION, wholePageInventory, type DesignRequest, type RequestCaseStudyUse, type RequestPlan } from "@/lib/design-agent/image-first/request-prompt";
+import { assertCaseStudyTextHasNoFact, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, CaseStudyTextStop, parseRequest, PHOTO_LABEL, WHOLE_PAGE_IMAGES, WHOLE_PAGE_PROMPT_VERSION, wholePageInventory, type DesignRequest, type RequestCaseStudyUse, type RequestPlan } from "@/lib/design-agent/image-first/request-prompt";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
 import { IMAGE_TOOL_MAX_REFS, isReferenceName, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
-import { BUNDLE_MAX_REFERENCES, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
+import { BUNDLE_MAX_REFERENCES, checkReferenceInputs, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { SandboxError, stageReferenceBytes } from "@/lib/design-agent/sandbox";
-import { assertRealShopReferences, caseStudyUseOf, referenceRecordOf, selectReferenceImages, selectReferences } from "@/lib/design-agent/imagefirst-worker/request";
+import { assertRealShopReferences, caseStudyUseOf, referenceRecordOf, refusalDetailOf, selectReferenceImages, selectReferences } from "@/lib/design-agent/imagefirst-worker/request";
 import { FULL_PAGE_MAX_REFERENCES, runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
@@ -453,16 +453,53 @@ describe("review M1 (integration): inspectCaseStudy names the files that made a 
 });
 
 describe("review Q5: a real shop's case-study texts in the prompt carry no fact signs", () => {
-  it("digits, prices, years, history, people, awards, reservations or a facts value: CASE_STUDY_TEXT_HAS_FACT (real_shop only)", () => {
-    for (const bad of ["余白を3段で取る", "価格を大きく見せない", "創業の歴史を語る", "職人の顔を写さない", "受賞の印を写さない", "予約の導線を写さない", "500円の札", "$ の記号", "架空書店 しおり堂 の名前を大きく", "昭和の看板"]) {
-      const cs = { ...CS_USE, cases: [{ ...CS_USE.cases[0]!, do_not_copy: [bad] }, CS_USE.cases[1]!] };
-      expect(() => assertCaseStudyTextHasNoFact(cs, FACTS), bad).toThrow(expect.objectContaining({ code: "CASE_STUDY_TEXT_HAS_FACT" }));
-      expect(planCode(() => plan({ caseStudy: cs })), bad).toBe("CASE_STUDY_TEXT_HAS_FACT");
-      expect(planCode(() => plan({ caseStudy: { ...CS_USE, shop_specific_principles: [bad] } })), bad).toBe("CASE_STUDY_TEXT_HAS_FACT");
+  const withDoNotCopy = (t: string) => ({ ...CS_USE, cases: [{ ...CS_USE.cases[0]!, do_not_copy: [t] }, CS_USE.cases[1]!] });
+  const withPrinciple = (t: string) => ({ ...CS_USE, cases: [{ ...CS_USE.cases[0]!, principles_to_bring: [t] }, CS_USE.cases[1]!] });
+  const stopOf = (f: () => unknown) => {
+    try {
+      f();
+      return null;
+    } catch (error) {
+      return error instanceof CaseStudyTextStop ? { code: error.code, category: error.category, field: error.field, case_id: error.caseId } : String(error);
+    }
+  };
+
+  it("principles get the full check (every invented-fact category, a currency sign, a facts value), with the category and field named", () => {
+    for (const [bad, category] of [["余白を3段で取る", "number"], ["価格を大きく見せない", "money_or_menu"], ["創業の歴史を語る", "history"], ["職人の手仕事を主役にする", "people"], ["受賞の印を見せる", "award_or_certification"], ["予約の導線を太くする", "reservation_or_stock"], ["$ の記号", "currency_sign"], ["架空書店 しおり堂 の名前を大きく", "facts_value"], ["昭和の看板の雰囲気", "history"]] as const) {
+      expect(stopOf(() => assertCaseStudyTextHasNoFact({ ...CS_USE, shop_specific_principles: [bad] }, FACTS)), bad).toEqual({ code: "CASE_STUDY_TEXT_HAS_FACT", category, field: "shop_specific_principles", case_id: null });
+      expect(stopOf(() => assertCaseStudyTextHasNoFact(withPrinciple(bad), FACTS)), bad).toEqual({ code: "CASE_STUDY_TEXT_HAS_FACT", category, field: "principles_to_bring", case_id: "CP-002" });
+      expect(planCode(() => plan({ caseStudy: withPrinciple(bad) })), bad).toBe("CASE_STUDY_TEXT_HAS_FACT");
       // a fictional (research) request is not held to it
-      expect(planCode(() => plan({ request: { ...REQUEST, kind: "fictional" } as DesignRequest, caseStudy: cs })), bad).toBe("ok");
+      expect(planCode(() => plan({ request: { ...REQUEST, kind: "fictional" } as DesignRequest, caseStudy: withPrinciple(bad) })), bad).toBe("ok");
+    }
+    expect(CASE_STUDY_TEXT_CATEGORIES).toEqual(expect.arrayContaining(["number", "money_or_menu", "history", "people", "award_or_certification", "currency_sign", "money", "year", "facts_value"]));
+  });
+
+  it("do_not_copy (negative wording) is checked only for numbers, money, years, awards and facts values", () => {
+    for (const ok of ["職人の顔を写さない", "写真素材をそのまま使わない", "メニュー表の形を写さない", "創業の物語を語る構成を写さない", "予約の導線を写さない", "人気店らしい演出を写さない"]) {
+      expect(stopOf(() => assertCaseStudyTextHasNoFact(withDoNotCopy(ok), FACTS)), ok).toBeNull();
+      expect(planCode(() => plan({ caseStudy: withDoNotCopy(ok) })), ok).toBe("ok");
+    }
+    for (const [bad, category] of [["3段の帯を写さない", "number"], ["円の札を写さない", "money"], ["価格の表を写さない", "money"], ["昭和の看板を写さない", "year"], ["百年の老舗の表示を写さない", "number"], ["受賞の印を写さない", "award_or_certification"], ["架空の古書の並びを写さない", "facts_value"]] as const) {
+      expect(stopOf(() => assertCaseStudyTextHasNoFact(withDoNotCopy(bad), FACTS)), bad).toEqual({ code: "CASE_STUDY_TEXT_HAS_FACT", category, field: "do_not_copy", case_id: "CP-002" });
     }
     expect(() => assertCaseStudyTextHasNoFact(CS_USE, FACTS)).not.toThrow();
+  });
+
+  it("--validate-request's detail: the category, field and case id only (allowlisted), never the text", () => {
+    const err = (() => {
+      try {
+        assertCaseStudyTextHasNoFact(withDoNotCopy("円の札を写さない"), FACTS);
+      } catch (e) {
+        return e;
+      }
+      return null;
+    })();
+    expect(refusalDetailOf(err)).toEqual({ category: "money", field: "do_not_copy", case_id: "CP-002" });
+    expect(JSON.stringify(refusalDetailOf(err))).not.toContain("円");
+    expect(refusalDetailOf(new PromptStop("CASE_STUDY_TEXT_HAS_FACT"))).toBeNull();
+    expect(refusalDetailOf(new CaseStudyTextStop("free text", "do_not_copy", "CP-001"))).toBeNull();
+    expect(refusalDetailOf(new CaseStudyTextStop("money", "do_not_copy", "../x"))).toBeNull();
   });
 });
 
@@ -492,7 +529,8 @@ describe("review L5: stageReferenceBytes and the bundle's whole_page receipt che
 
   const RID = "req-test-shop-w-1";
   /** A finished whole_page request run (PC 1 + SP 1) and its receipt, as request-cycle.ts / cycle.ts write them. */
-  function wholeRun(edit: (r: Record<string, unknown>) => void = () => undefined) {
+  /** `inputs`: the run's reference-inputs.json content (default: the receipt's own list; null: no file). */
+  function wholeRun(edit: (r: Record<string, unknown>) => void = () => undefined, inputs?: unknown) {
     const runs = tmp("sr-wp-runs-");
     chmodSync(runs, 0o700);
     const runDir = join(runs, `${RID}-20261125T010000Z`);
@@ -511,12 +549,21 @@ describe("review L5: stageReferenceBytes and the bundle's whole_page receipt che
       mode: "request", kind: "real_shop", request_id: RID, request_sha256: "a".repeat(64), facts_sha256: "e".repeat(64), images_total: 2,
       design_layout: "whole_page", reference_images: [{ id: "ref-1", case_id: "CP-001", sha256: "f".repeat(64) }],
     };
+    const own = receipt.reference_images;
     edit(receipt);
+    const file = inputs === undefined ? { schema: "image_first_reference_inputs_v0", layout: "whole_page", references: own } : inputs;
+    if (file !== null) writeFileSync(join(runDir, "reference-inputs.json"), `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
     const receiptPath = join(runs, `${RID}-20261125T010000Z.receipt.json`);
     writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
     return packBundle({ runDir, receiptPath, bundlesDir: join(tmp("sr-wp-bundles-"), "bundles"), now: () => Date.parse("2026-11-25T02:00:00Z") });
   }
   const codeOf = (p: Promise<unknown>) => p.then(() => "sealed", (e: { code?: string }) => e.code ?? String(e));
+
+  it("review L4: sealing refuses a run whose reference-inputs.json is not the receipt's list (or is missing)", async () => {
+    const ref = { id: "ref-1", case_id: "CP-001", sha256: "f".repeat(64) };
+    expect(await codeOf(wholeRun(undefined, { schema: "image_first_reference_inputs_v0", layout: "whole_page", references: [{ ...ref, case_id: "CP-002" }] }))).toBe("REFERENCE_INPUTS_MISMATCH");
+    expect(await codeOf(wholeRun(undefined, null))).toBe("REFERENCE_INPUTS_MISMATCH");
+  });
 
   it("a whole_page receipt seals as PC 1 + SP 1; a malformed reference list or misplaced layout field is RECEIPT_INVALID", async () => {
     expect((await wholeRun()).manifest.counts).toMatchObject({ pc: 1, sp: 1 });
@@ -539,5 +586,34 @@ describe("review L5: stageReferenceBytes and the bundle's whole_page receipt che
     expect(pinned).toBe("RECEIPT_INVALID");
     // the counts must be the layout's
     expect(await codeOf(wholeRun((r) => delete r.design_layout && delete r.reference_images))).toBe("RECEIPT_NOT_SUCCEEDED");
+  });
+});
+
+describe("review L4: the receipt's reference list is the run's own reference-inputs.json (at sealing and delivery)", () => {
+  const ref = (n: number, case_id = "CP-001") => ({ id: `ref-${n}`, case_id, sha256: sha(`r${n}`) });
+  const runDirWith = (file: unknown) => {
+    const dir = tmp("sr-wp-l4-");
+    if (file !== null) writeFileSync(join(dir, "reference-inputs.json"), typeof file === "string" ? file : JSON.stringify(file), { mode: 0o600 });
+    return dir;
+  };
+  const doc = (references: unknown) => ({ schema: "image_first_reference_inputs_v0", layout: "whole_page", references });
+  const codeOf = (p: Promise<unknown>) => p.then(() => "ok", (e: { code?: string }) => e.code ?? String(e));
+  it("equal lists pass; another order, id, case, SHA-256, a missing or extra entry or file is REFERENCE_INPUTS_MISMATCH", async () => {
+    const two = [ref(1), ref(2, "CP-002")];
+    expect(await codeOf(checkReferenceInputs(runDirWith(doc(two)), two))).toBe("ok");
+    expect(await codeOf(checkReferenceInputs(runDirWith(null), undefined))).toBe("ok");
+    for (const [why, file, receipt] of [
+      ["order", doc([two[1], two[0]]), two],
+      ["case id", doc([ref(1, "CP-003"), two[1]]), two],
+      ["SHA-256", doc([{ ...two[0]!, sha256: sha("other") }, two[1]]), two],
+      ["one fewer", doc([two[0]]), two],
+      ["one more", doc([...two, ref(3)]), two],
+      ["an extra field", doc([{ ...two[0]!, path: "/x" }, two[1]]), two],
+      ["another schema", { ...doc(two), schema: "x" }, two],
+      ["another layout", { ...doc(two), layout: "section_sequence" }, two],
+      ["not JSON", "{", two],
+      ["no file", null, two],
+      ["a file without a receipt list", doc(two), undefined],
+    ] as const) expect(await codeOf(checkReferenceInputs(runDirWith(file), receipt)), why).toBe("REFERENCE_INPUTS_MISMATCH");
   });
 });

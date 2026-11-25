@@ -550,18 +550,51 @@ function checkCaseStudyUse(request: DesignRequest, cs: RequestCaseStudyUse | nul
   return cs;
 }
 
+/** The case-study fields whose text enters a whole-page prompt. */
+export const CASE_STUDY_TEXT_FIELDS = ["shop_specific_principles", "principles_to_bring", "do_not_copy"] as const;
+export type CaseStudyTextField = (typeof CASE_STUDY_TEXT_FIELDS)[number];
+const SIGN = (name: string) => INVENTED_FACT_SIGNS.find(([n]) => n === name)![1];
+/**
+ * Review Q5 follow-up: the fact signs each field is checked for. Principles get the full list (copy-record
+ * INVENTED_FACT_SIGNS, a currency sign, a facts-pack value). do_not_copy is negative wording (「職人の顔を写さない」
+ * 「写真素材をそのまま使わない」), so it is checked only for numbers, money, years and awards (and a facts-pack value).
+ */
+export const PRINCIPLE_TEXT_SIGNS: readonly (readonly [string, RegExp])[] = [...INVENTED_FACT_SIGNS, ["currency_sign", /[$€]/]];
+export const DO_NOT_COPY_TEXT_SIGNS: readonly (readonly [string, RegExp])[] = [
+  ["number", SIGN("number")],
+  ["money", /[¥￥円$€]|価格|値段|料金|税込|税別|無料|割引|半額/],
+  ["year", /[0-9０-９一二三四五六七八九十百千]+年|明治|大正|昭和|平成|令和|西暦/],
+  ["award_or_certification", SIGN("award_or_certification")],
+];
+/** Every category CASE_STUDY_TEXT_HAS_FACT may report (never the text). */
+export const CASE_STUDY_TEXT_CATEGORIES: readonly string[] = [...new Set([...PRINCIPLE_TEXT_SIGNS, ...DO_NOT_COPY_TEXT_SIGNS].map(([n]) => n).concat("facts_value"))];
+
+/** CASE_STUDY_TEXT_HAS_FACT with what matched: the category, the field and the case id (never the text). */
+export class CaseStudyTextStop extends PromptStop {
+  constructor(
+    readonly category: string,
+    readonly field: CaseStudyTextField,
+    readonly caseId: string | null,
+  ) {
+    super("CASE_STUDY_TEXT_HAS_FACT");
+  }
+}
+
 /**
  * Review Q5: a real shop's whole-page prompt carries the case study's principle and do-not-copy texts, so (like the
- * direction, REQUEST_DIRECTION_HAS_FACT) none may look like a fact: no digit, currency sign, price, year, history,
- * person, award, reputation, reservation or other invented-fact sign (copy-record INVENTED_FACT_SIGNS), and no
- * facts-pack value (but the category code). CASE_STUDY_TEXT_HAS_FACT.
+ * direction, REQUEST_DIRECTION_HAS_FACT) none may look like a fact: principles by PRINCIPLE_TEXT_SIGNS, do_not_copy by
+ * DO_NOT_COPY_TEXT_SIGNS, both by any facts-pack value (but the category code). Throws CaseStudyTextStop
+ * (CASE_STUDY_TEXT_HAS_FACT) naming the first match's category and field.
  */
 export function assertCaseStudyTextHasNoFact(cs: Pick<RequestCaseStudyUse, "shop_specific_principles" | "cases">, facts: FactsPack): void {
-  const texts = [...cs.shop_specific_principles, ...cs.cases.flatMap((c) => [...c.principles_to_bring, ...c.do_not_copy])];
-  for (const t of texts) {
-    const n = t.normalize("NFKC");
-    if (/[$€]/.test(n) || INVENTED_FACT_SIGNS.some(([, re]) => re.test(n))) throw new PromptStop("CASE_STUDY_TEXT_HAS_FACT");
-    for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && n.toLowerCase().includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("CASE_STUDY_TEXT_HAS_FACT");
+  const texts: { field: CaseStudyTextField; caseId: string | null; text: string }[] = [
+    ...cs.shop_specific_principles.map((text) => ({ field: "shop_specific_principles" as const, caseId: null, text })),
+    ...cs.cases.flatMap((c) => [...c.principles_to_bring.map((text) => ({ field: "principles_to_bring" as const, caseId: c.id, text })), ...c.do_not_copy.map((text) => ({ field: "do_not_copy" as const, caseId: c.id, text }))]),
+  ];
+  for (const { field, caseId, text } of texts) {
+    const n = text.normalize("NFKC");
+    for (const [category, re] of field === "do_not_copy" ? DO_NOT_COPY_TEXT_SIGNS : PRINCIPLE_TEXT_SIGNS) if (re.test(n)) throw new CaseStudyTextStop(category, field, caseId);
+    for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && n.toLowerCase().includes(f.value.normalize("NFKC").toLowerCase())) throw new CaseStudyTextStop("facts_value", field, caseId);
   }
 }
 

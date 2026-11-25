@@ -35,7 +35,7 @@ import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promise
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy, type CaseStudyInspection, type ViewedFile } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
-import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, layoutOf, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
+import { buildPhotoPlan, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, CASE_STUDY_TEXT_FIELDS, CaseStudyTextStop, FACTS_MAX_BYTES, type CaseStudyTextField, isPhotoRequest, layoutOf, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
 import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
@@ -372,6 +372,17 @@ export async function resolvePhotoInputs(request: DesignRequest, o: { runsDir: s
  */
 export type ReferenceRecord = { id: string; case_id: string; sha256: string };
 export const referenceRecordOf = (refs: readonly Pick<PlanReference, "id" | "case_id" | "sha256">[]): ReferenceRecord[] => refs.map((r) => ({ id: r.id, case_id: r.case_id, sha256: r.sha256 }));
+
+/**
+ * Review Q5 follow-up: what `--validate-request` may add to a CASE_STUDY_TEXT_HAS_FACT refusal: the matched category
+ * (a fixed list), the field and the case id, each re-checked against its allowlist (never the text). null otherwise.
+ */
+export function refusalDetailOf(error: unknown): { category: string; field: CaseStudyTextField; case_id: string | null } | null {
+  if (!(error instanceof CaseStudyTextStop)) return null;
+  if (!CASE_STUDY_TEXT_CATEGORIES.includes(error.category) || !(CASE_STUDY_TEXT_FIELDS as readonly string[]).includes(error.field)) return null;
+  if (error.caseId !== null && !/^(?:CP|SR)-\d{3}$/.test(error.caseId)) return null;
+  return { category: error.category, field: error.field, case_id: error.caseId };
+}
 
 /** Where root's pilot puts the run's private copy of the request (an absolute path to <dir>/<request id>.json). */
 export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
