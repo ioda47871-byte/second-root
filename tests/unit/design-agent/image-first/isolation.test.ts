@@ -25,6 +25,9 @@ const WORKER_IMPORTERS = [
   "lib/design-agent/imagefirst-worker/request-cycle.ts",
   // DEV-303 (owner decision 2026-11-24): the entry's stage dispatch (types and isPhotoRequest only; it starts nothing)
   "lib/design-agent/imagefirst-worker/request-run.ts",
+  // DEV-303 §6.1 change 8 (owner approval 2026-11-25): stage 6, the implementation against the approved whole-page
+  // design — toApprovedImplInput and compareApprovedDesign (and their types) from the adapter only (audited below)
+  "lib/design-agent/imagefirst-worker/impl-compare-approved.ts",
 ];
 
 function specifiers(source: string): string[] {
@@ -68,6 +71,20 @@ describe("isolation of the IMAGE_FIRST contract (offline, read only)", () => {
     expect(named(`${LIB}/builder.ts`, "../design-image/png")).toEqual(["MOCKUP_PNG_LIMITS", "checkPng"]);
     expect(named(`${LIB}/builder.ts`, "../impl-lane/impl-compare")).toEqual(["readInside"]);
     expect(named(`${LIB}/adapter.ts`, "../impl-lane/impl-compare")).toEqual(["SECTION_ATTRIBUTES", "renderImplementation", "type Implementation", "type SectionAttribute"]);
+  });
+
+  it("stage 6 takes only toApprovedImplInput and compareApprovedDesign (and their types) from the adapter; request-run relays nothing", () => {
+    const file = "lib/design-agent/imagefirst-worker/impl-compare-approved.ts";
+    const source = readFileSync(resolve(REPO, file), "utf8");
+    const named = [...source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].filter((m) => m[2] === "../image-first/adapter").flatMap((m) => m[1]!.split(",").map((s) => s.trim()).filter(Boolean)).sort();
+    expect(named).toEqual(["compareApprovedDesign", "toApprovedImplInput", "type ApprovedCompareReport"]);
+    expect(specifiers(source).filter((s) => s.includes("image-first"))).toEqual(["../image-first/adapter"]);
+    // DEV-303 (owner approval 2026-11-25): the stage dispatch re-exports nothing of the IMAGE_FIRST contract
+    const run = readFileSync(resolve(REPO, "lib/design-agent/imagefirst-worker/request-run.ts"), "utf8");
+    expect(run).not.toMatch(/export\s*(?:type\s*)?(?:\*|\{[^}]*\})\s*from/);
+    const adapterExports = [...readFileSync(resolve(REPO, `${LIB}/adapter.ts`), "utf8").matchAll(/^export\s+(?:async\s+)?(?:function|const|type|class)\s+(\w+)/gm)].map((m) => m[1]!);
+    expect(adapterExports).toEqual(expect.arrayContaining(["toApprovedImplInput", "compareApprovedDesign", "ApprovedCompareReport", "compareImageFirst"]));
+    expect(adapterExports.filter((name) => new RegExp(`\\b${name}\\b`).test(run))).toEqual([]);
   });
 
   it("never calls a model, Codex, the image tool, the network or a process, and never writes, removes or renames a file", () => {

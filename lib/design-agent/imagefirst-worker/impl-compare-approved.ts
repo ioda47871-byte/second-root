@@ -9,7 +9,7 @@
  *   site             a private folder OUTSIDE the repository (e.g. ~/second-root-shops/<shop_id>/site-<n>/): index.html,
  *                    style.css and assets/*.png only are served (the existing renderer's rule); no link anywhere, size
  *                    caps; anything else in the folder is never read or served.
- *   capture          the IMAGE_FIRST adapter (via request-run.ts): Chromium, JS off, network blocked, PC 1440 and SP 390
+ *   capture          the IMAGE_FIRST adapter (imported directly; owner approval 2026-11-25): Chromium, JS off, network blocked, PC 1440 and SP 390
  *                    full pages; the approved picture drawn at the same width; page-level comparison with the existing
  *                    impl-lane machinery (grid SSIM, colour blocks, edge IoU, height ratio; DEV-131 cause codes) plus
  *                    what the capture shows (horizontal overflow, requests not served such as a missing picture). A
@@ -30,7 +30,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import type { Browser } from "playwright";
 import { escapeHtml, VIEWING_PAGE_CSP } from "../case-study/case-study";
 import { approvedDesignRun, DesignApprovalStop } from "./design-approval";
-import { compareApprovedDesign, toApprovedImplInput, type ApprovedCompareReport } from "./request-run";
+import { compareApprovedDesign, toApprovedImplInput, type ApprovedCompareReport } from "../image-first/adapter";
 
 export const IMPL_COMPARE_SCHEMA = "sr_impl_compare_v1";
 /** The site files the renderer serves, and their caps (the implementation lane comparison's IMPL_COMPARE_LIMITS, restated). */

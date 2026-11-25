@@ -9,13 +9,6 @@ import { isPhotoRequest, type PhotoPlan, type RequestPlan } from "../image-first
 import { runRequestFullPageCall, runRequestPhotoCall, type FullPageCallDeps, type FullPageCallResult } from "../phase2f-live/full-page-call";
 import type { RequestRunInputs } from "./request";
 
-/**
- * DEV-303 §6.1 change 8 (stage 6): the IMAGE_FIRST adapter's comparison of an approved request-mode run with its
- * implementation, re-exported for imagefirst-worker/impl-compare-approved.ts (the IMAGE_FIRST contract may be imported only by
- * the listed worker files; this module is one of them, and it still starts nothing).
- */
-export { compareApprovedDesign, toApprovedImplInput, type ApprovedCompareReport, type ApprovedImplInput } from "../image-first/adapter";
-
 export type LoadedRequestOptions = {
   run: RequestRunInputs;
   expected: { promptSha256: string; promptChars: number; commit: string; planSha256: string };
