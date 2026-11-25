@@ -2,6 +2,8 @@
 
 更新日：2026-11-17。調査基準：`develop` の `e5b4e0dda5899331c94e564e7345ea100a5fcf4a`。
 
+> **2026-11-26 追記（DEV-303 §6.1 の 9）**: 実店舗のデモの正式な制作フローは [`image-first-production-flow.md`](../design/image-first-production-flow.md)。写真なしの B-route は、オーナーが明示的に指示したときだけの研究・暫定の成果で、実店舗の通常の道ではなく、IMAGE_FIRST の成功には数えない。
+
 ## 何を実装したか
 
 `scripts/sales/demo-version/prepare-offline.mjs` は、**すでに制作済みの写真なしB-route全ページカンプ**を受け取り、既存の品質審査・v2パッケージ化を順番につなぐ最小のオフラインadapterである。候補収集・アートディレクション・HTML生成・DB import・管理画面表示は行わない。これだけで自動営業が完成したとは見なさない。

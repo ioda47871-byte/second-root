@@ -8,6 +8,7 @@
 
 E2E で同じ流れを通すテストは `tests/e2e/sales-mvp-flow.spec.ts` (DEV-263e)。
 実店舗のデモ (事実 → 頁 → 包み → 登録 → 取り込み) を repo に店のデータを入れずに作る手順は [`real-shop-demo-workflow.md`](real-shop-demo-workflow.md) (DEV-263h)。
+頁の制作の正式な流れは [`image-first-production-flow.md`](../design/image-first-production-flow.md) で、写真なしの B 方式・Claude の直接の設計は、オーナーが明示的に指示したときだけの研究・暫定 (IMAGE_FIRST の成功には数えない)。
 
 ---
 
