@@ -37,16 +37,16 @@ jobs:
       - run: npm run typecheck
       - run: npm run check:secrets
 
-  # DEV-085: unit runs in two halves (vitest --shard), in parallel, so each stays well
+  # DEV-085: unit runs in three shards (vitest --shard), in parallel, so each stays well
   # inside its time limit. Every test still runs on every PR, exactly once.
   unit-shard:
-    name: unit (${{ matrix.shard }}/2)
+    name: unit (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,7 +63,7 @@ jobs:
       # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; WSL does not.
       - run: sudo apt-get install -y bubblewrap && sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # The shop-CSS guard's render checks (Chromium, many widths) run in their own job below.
-      - run: npx vitest run --exclude "tests/unit/design-agent/shop-css/**" --shard=${{ matrix.shard }}/2
+      - run: npx vitest run --exclude "tests/unit/design-agent/shop-css/**" --shard=${{ matrix.shard }}/3
         env:
           SR_REQUIRE_BWRAP: "1"
       # The capture helper's Unix boundary with real users (needs root to create them).
