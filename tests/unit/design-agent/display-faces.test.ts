@@ -11,6 +11,10 @@ import { DISPLAY_FACES } from "@/lib/design-agent/profile";
 
 const css = readFileSync(join(process.cwd(), "components/demo/profile/profile.module.css"), "utf8");
 const fonts = readFileSync(join(process.cwd(), "components/demo/profile/fonts.ts"), "utf8");
+const generated = readFileSync(join(process.cwd(), "components/demo/profile/fonts.generated.ts"), "utf8");
+const manifest = JSON.parse(readFileSync(join(process.cwd(), "components/demo/profile/fonts/manifest.json"), "utf8")) as {
+  families: { variable: string; faces: { weight: string; preload: boolean }[] }[];
+};
 
 function stack(face: string): string[] {
   const m = css.match(new RegExp(`\\.canvas\\[data-display="${face}"\\]\\s*\\{[^}]*--display:\\s*([^;]+);`));
@@ -35,15 +39,20 @@ describe("Japanese display faces (DEV-068)", () => {
     expect(new Set(ja.values()).size).toBe(DISPLAY_FACES.length);
   });
 
-  it("the variables are defined in fonts.ts, not preloaded, with only the weights needed", () => {
-    for (const v of ["--font-ja-editorial", "--font-ja-condensed", "--font-ja-light"]) expect(fonts).toContain(`variable: "${v}"`);
-    expect(fonts).not.toContain("--font-ja-mincho");
-    expect(fonts.match(/preload: false/g)).toHaveLength(3);
+  it("the variables are defined for the fonts, not preloaded, with only the weights needed", () => {
+    // DEV-303: the faces are declared in fonts.generated.ts from fonts/manifest.json (next/font/local).
+    const ja = new Map(manifest.families.map((f) => [f.variable, f]));
+    for (const v of ["--font-ja-editorial", "--font-ja-condensed", "--font-ja-light"]) {
+      expect(ja.has(v), v).toBe(true);
+      expect(generated).toContain(`variable: "${v}"`);
+      expect(ja.get(v)!.faces.every((f) => !f.preload), `${v} is not preloaded`).toBe(true);
+    }
+    expect(fonts + generated).not.toContain("--font-ja-mincho");
     // a static Japanese face loads two weights (a lighter and a heavier one); M PLUS 1 is variable
-    const weights = [...fonts.matchAll(/weight: \[([^\]]*)\]/g)];
-    expect(weights).toHaveLength(2);
-    for (const w of weights) expect(w[1]!.split(",").length).toBe(2);
-    expect(fonts).toContain('weight: "variable"');
+    const weights = (v: string) => [...new Set(ja.get(v)!.faces.map((f) => f.weight))];
+    expect(weights("--font-ja-editorial")).toEqual(["400", "900"]);
+    expect(weights("--font-ja-condensed")).toEqual(["400", "900"]);
+    expect(weights("--font-ja-light")).toEqual(["100 900"]);
   });
 
   it("the address never asks a two-weight face for a weight it lacks (editorial_serif keeps the site's Mincho)", () => {
