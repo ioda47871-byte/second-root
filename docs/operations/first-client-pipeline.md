@@ -179,6 +179,31 @@
   `claim_type: "approved_rendering"`（`source_fact_ids` はその事実 1 つ）は、文がその key の承認済みの `ja_text` と同じときだけ通る（`RENDERING_NOT_APPROVED` / `RENDERING_WITHOUT_ONE_FACT`）。
   それ以外の文は今までどおりの検査。監査の記録は訳の記録の SHA-256（`ja_renderings_sha256`）に結びつき、訳が変われば古くなる（`REVIEW_STALE_JA_RENDERINGS`）。
 
+### G. デザイン審査とオーナーの承認（段 3。DEV-303 §6.1 の 5）
+
+**生成の成功（画像が保存された）だけでは次の段（素材の生成・本実装）へ進まない。** review inbox に届いたデザインの run
+（`~/sr-runs/review-inbox/<依頼 ID>/`、封印された bundle。中にファイルを足さない）ごとに、審査の記録とオーナーの承認の記録を、
+リポジトリの外の非公開の置き場（実店舗は `~/second-root-shops/<shop_id>/design-reviews/<依頼 ID>.review.json` と `.approval.json`）に置く。
+
+- **審査の記録** `sr_design_review_v1`: `request_id`、`bundle_sha256`（bundle の SHA-256）、`images`（bundle の `parts/pc-*.png`・`parts/sp-*.png` と SHA-256。
+  bundle の manifest と完全に同じ）、5 つの観点（§3.3）`originality`（独自性）・`shop_specificity`（店舗固有性）・`information_design`（情報設計）・
+  `japanese`（日本語）・`pc_sp_completeness`（PC/SP の完成度）。各観点は `verdict`（`pass` 合格 / `revise` 要修正 / `fail` 不合格）と、
+  1 件以上の根拠 `evidence: [{ image: "pc" | "sp", region（画像のどこか、80 字まで）, note（1 行、300 字まで） }]`。`reviewer`（例 `independent-subagent`。
+  Claude の別の文脈）、`reviewed_at`。**審査は助言**で、判定はオーナーが下す。
+- **確認ページ**: `npx tsx scripts/design-artifact/design-approval-check.ts --page --bundle <review-inbox/<依頼 ID>> --review <review.json> --out <非公開の空の出力先>`。
+  静的な HTML（script なし・通信なし・CSP。画像は横に写す。文はすべて escape）。表示される `page_sha256` と `review_sha256` を承認の記録に使う。
+- **承認の記録** `sr_design_approval_v1`: `request_id`、`bundle_sha256`、`approved_images`（審査と同じ画像と SHA-256）、`review_sha256`（審査の記録のファイルの SHA-256）、
+  `page_sha256`（オーナーが見たページ）、`decision`（`approve` / `revise` / `reject`）、`decided_at`、`note`（任意）。
+  **承認の記録を書くのは Claude で、オーナーが決めたと言ったときだけ**。これは「Claude が、オーナーがこの審査とページを見てこう決めたと記録した」証拠であって、
+  **オーナー本人の署名ではない**。審査を後で直せば `review_sha256` が合わなくなり、承認はやり直し。
+- **検査**: `design-approval-check.ts --check --bundle <dir> --review <review.json> --approval <approval.json>`（既定はゲート）。bundle の検証、画像と SHA-256 の一致、
+  5 観点と根拠、承認が同じ審査・ページ・画像に結びつくこと、`decision: approve` を確かめる。**どれか 1 つの観点が `fail` なら承認は通らない**
+  （`DESIGN_REVIEW_HAS_FAIL`。オーナーが通したいときは、新しい審査か新しいデザインにする）。`revise` は助言なので、オーナーは承認できる。
+  `--draft` は承認の前（審査だけ）。止まったときは `DESIGN_*` の決まった名前だけを出す。承認の `decided_at` は審査の `reviewed_at` より前にできない（`DESIGN_APPROVAL_BEFORE_REVIEW`）。
+  `page_sha256` は検査のたびに審査と run からページを描き直して計算するので、ページのひな形や escape の仕方が変われば、それより前の承認は通らなくなる（安全側。オーナーは新しいページを見直す）。
+- **後の段**: 素材の段（§6.1 の 6）はこの承認を前提にする（`lib/design-agent/imagefirst-worker/design-approval.ts` の `approvedDesignRun` が、
+  承認された run の画像と SHA-256 を返すか止まる）。今の素材の段は、まだ変えていない。
+
 ## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
 
 1. 候補を選ぶ（営業エージェントの run で登録済みの候補。新しく作らない）。
