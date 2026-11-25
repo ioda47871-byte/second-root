@@ -560,6 +560,11 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     const badEntries = [{ ...entries[0]!, ja_text: "職人の焙煎所から豆が届きます" }];
     const bad = jaRecord({ entries: badEntries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(badEntries) } });
     expect(await check(bad, sha(bad))).toEqual({ code: "JA_RENDERING_ADDS_FACT", detail: { category: "people", field: "ja_text", fact_key: "statement_1" } });
+    // the worker refuses the added fact too (its queued request now names the bad record); nothing invoked
+    const badRequest = bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(bad) } }));
+    writeFileSync(v.requestFile, badRequest);
+    expect((await runRequestCycle({ ...v.opts, requestSha256: sha(badRequest) }, v.deps)).report.code).toBe("JA_RENDERING_ADDS_FACT");
+    expect(v.invoked).toEqual([]);
     const wrongSource = [{ ...entries[0]!, source_text: "豆は届きます" }];
     const wrong = jaRecord({ entries: wrongSource, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(wrongSource) } });
     expect((await check(wrong, sha(wrong))).code).toBe("JA_RENDERINGS_SOURCE_MISMATCH");

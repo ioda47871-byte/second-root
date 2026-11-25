@@ -67,7 +67,7 @@
 
 1. **素材の段** `stage: "photo_materials"`: **承認したデザインが必要とする**写真・背景・装飾の**画像素材**を 1〜6 枚（店の記録ではない）。
    依頼には `approved_design`（承認したデザインの run の bundle の ID と SHA-256、店の非公開の `design-reviews/` にある審査と承認の記録のファイル名）が必須
-   （無ければ実店舗も架空・研究の依頼も `APPROVED_DESIGN_REQUIRED`）。worker と `--validate-request` は `approvedDesignRun`（§G）でゲートの検査をし、
+   （無ければ実店舗も架空・研究の依頼も `APPROVED_DESIGN_REQUIRED`）（オーナー決定 2026-11-25: 古い `photo_brief` の依頼は、すでに置いたものも `APPROVED_DESIGN_REQUIRED`。互換の道は作らない）。worker と `--validate-request` は `approvedDesignRun`（§G）でゲートの検査をし、
    どれかの `DESIGN_*` の停止・記録の欠け（`APPROVED_DESIGN_MISSING`）・link（`APPROVED_DESIGN_UNSAFE`）・別の run や店（`APPROVED_DESIGN_MISMATCH`）なら止まる。
    架空の店の依頼も同じ（記録はリポジトリの外に置くので、`facts_ref.root` は `second-root-shops`）。
    素材は自由な題材ではなく、**承認したデザインから決めた一覧** `materials`: 各素材 `{ id, kind: photo | background | decoration, aspect: landscape_3x2 |

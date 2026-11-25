@@ -240,6 +240,8 @@ async function stageOne() {
  * One stage-one world shared by the tests that only read it, or change a file and restore it before they end (test
  * time: each stage one is a design run, its delivery and a materials run). The end-to-end test keeps its own world
  * (it counts every run of its home).
+ * The tests that use it share ONE world and run in file order, one after another: do not reorder them or make them
+ * concurrent (each restores what it changes only for the tests after it).
  */
 let sharedWorld: ReturnType<typeof stageOne> | undefined;
 const sharedStageOne = () => (sharedWorld ??= stageOne());
