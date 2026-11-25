@@ -20,6 +20,7 @@
 import type { Browser } from "playwright";
 import type { PageAsset } from "../comp-impl/page";
 import { MAX_PAGE_HEIGHT, openCompPage, type Viewport } from "../comp-impl/render";
+import { waitForFrame } from "../frame-ready";
 import { measureMobileQuality, type MobileFindings } from "./mobile-quality";
 
 /**
@@ -182,6 +183,8 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
     if (!(height > 0 && height <= MAX_PAGE_HEIGHT)) throw new RenderError("RENDER_PAGE_TOO_TALL");
     let png: Buffer;
     try {
+      // DEV-098: the page's first frames are drawn before the capture (Chromium refused it under load on CI). No retry.
+      await waitForFrame(opened.page);
       png = await opened.page.screenshot({ fullPage: true, clip: { x: 0, y: 0, width, height }, animations: "disabled", caret: "hide" });
     } catch (e) {
       throw new RenderError("RENDER_FAILED", e);
