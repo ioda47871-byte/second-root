@@ -25,7 +25,8 @@
 - **代替案**: mirror の順番を archive.ubuntu.com（https）先にする（1 行、効果は未計測）。
 - **8 分の timeout**: 第一案と一緒に 8 分のまま維持し、検証（V-2）の後に見直す。
   単に延ばすと、unit (2/2)・shop-css (1/2)（test 約 7 分、job 20 分）では job の timeout に
-  なるだけ。
+  なるだけ。（2026-11-26 追記: PR #348 で unit は `unit (1/3)`〜`unit (3/3)` の 3 つに分かれた。
+  必須の検査は今も集約の `unit`。この節の数値は 2 分割の時点のもの。）
 - 具体的な実装案（file ごとの diff、contract test）と検証方法・成功の基準・戻し方は
   **§6「実装案と検証方法（承認判断用、日本語の要約付き）」**。
 - test・セキュリティ検査は一つも省かない。失敗は今と同じく job を失敗させる。
@@ -41,6 +42,10 @@ with `timeout-minutes: 8` in six jobs: `unit (1/2)`, `unit (2/2)`, `shop-css (1/
 `shop-css (2/2)`, `e2e`, `e2e-sales`. Before DEV-085 (PR #99 `feature/ci-unit-split`, first run
 2026-10-22 19:35 UTC) unit was one job and **no job** had a step timeout on the install (only the
 job timeouts: 20 min for unit, shop-css and e2e, 25 min for e2e-sales).
+
+(Update 2026-11-26: since PR #348 the unit tests run in three parts, `unit (1/3)`, `unit (2/3)` and
+`unit (3/3)`; the required check is still the aggregate `unit`, green only when all three pass. The
+figures in this document were taken with two parts.)
 
 The unit shards also run `sudo apt-get install -y bubblewrap` (50 kB) in a separate step with
 no step timeout; it uses the same mirror.

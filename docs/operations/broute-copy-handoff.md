@@ -1,5 +1,7 @@
 # DEV-139 P0-2b — 店舗固有のB-route生成結果を営業用文章・デモ審査につなぐ
 
+> **2026-11-26 追記（DEV-303 §6.1 の 9）**: 実店舗のデモの正式な制作フローは [`image-first-production-flow.md`](../design/image-first-production-flow.md)。B-route の HTML/CSS は、オーナーが明示的に指示したときだけの研究・暫定の成果で、実店舗の通常の道ではなく、IMAGE_FIRST の成功には数えない。
+
 **状態**: コード実装（ローカル／オフライン）。**実Codex/Claudeによる新規デザイン制作、候補DB接続、承認済みプレビューの管理画面表示は未完成。** 関連: Issue #139 / #263、前工程のDraft PR #278。
 
 ## 追加した接続
