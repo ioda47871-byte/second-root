@@ -125,7 +125,15 @@
    数えた例ごとの `principles_to_bring` / `do_not_copy` (オーナーが選んだ順)。観察の文・ファイルのパスは入らない。
    さらに、数えた例の原本の画像 (各例の最初の PNG / JPEG / WebP。頁の HTML・GIF・ZIP は使わない。合わせて 5 枚まで)
    を参照画像として 1 回の Codex 実行に添付する (記録は SHA-256 と id だけ)。だから原理と写さないことには、
-   店の未確認の事実・数字・人名を書かない (プロンプトに入る)。whole_page の依頼に `photo_inputs` は付けられない
+   店の未確認の事実・数字・人名を書かない (プロンプトに入る)。実店舗の whole_page の依頼では、次に当たる文を
+   `CASE_STUDY_TEXT_HAS_FACT` で拒否する (`--validate-request` の結果の `detail` に区分・項目・例の id が出る。文は出ない):
+   - `shop_specific_principles` と `principles_to_bring`: 数字 (`number`)、値段・メニュー (`money_or_menu`)、営業時間・日付
+     (`hours_or_date`)、歴史 (`history`)、人物 (`people`)、素材・産地 (`ingredients`)、受賞・掲載 (`award_or_certification`)、
+     評判・最上級 (`superlative_or_reputation`)、お客様の声 (`customer_voice`)、効能・保証 (`health_or_safety_or_guarantee`)、
+     予約・在庫・限定 (`reservation_or_stock`)、`$`・`€` (`currency_sign`)、事実パックの値 (`facts_value`)
+   - `do_not_copy` (否定の文。「職人の顔を写さない」「写真素材をそのまま使わない」は通る): 数字 (`number`)、
+     お金 (`money`: 通貨記号・価格・値段・料金・税込・税別・無料・割引・半額)、年 (`year`: 〜年・明治〜令和・西暦)、
+     受賞・掲載 (`award_or_certification`)、事実パックの値 (`facts_value`)whole_page の依頼に `photo_inputs` は付けられない
    (`WHOLE_PAGE_PHOTO_INPUTS_REFUSED`。順番はデザイン → 承認 → 素材)
 
 この記録の文面 (店の事実を含みうる) と確認ページは、リポジトリ・試験・Issue に入れない。

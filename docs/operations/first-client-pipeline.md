@@ -142,7 +142,7 @@
   前の例で選んだ画像と同じ SHA-256 は飛ばし、その例の次の原本にする）を最大 5 枚（画像ツールの上限 `IMAGE_TOOL_MAX_REFS`）。
   実店舗では、添付できる原本のある数えた例の数を n として、min(3, n) 枚以上が要る（0 枚は `REFERENCE_IMAGES_MISSING`、足りなければ
   `REFERENCE_IMAGES_TOO_FEW`）。実店舗では、プロンプトに入る原理・写さないことの文に、数字・通貨・値段・年・歴史・人物・受賞・予約などの
-  事実らしい印や facts pack の値があれば止まる（`CASE_STUDY_TEXT_HAS_FACT`）。Codex の一時作業 dir の `inputs/ref-N.<ext>` に写し、`--image` で添付する。
+  事実らしい印や facts pack の値があれば止まる（`CASE_STUDY_TEXT_HAS_FACT`。写さないことは否定の文なので数字・お金・年・受賞と facts の値だけを見る。区分の一覧は design-director スキルの `references/evidence-and-cases.md`、`--validate-request` は `detail` に区分・項目・例の id を出す）。Codex の一時作業 dir の `inputs/ref-N.<ext>` に写し、`--image` で添付する。
   ツールの `referenced_image_paths` は**絶対パスだけ**を受けるので、計画のプロンプトは各参照を `@@SR_REFERENCE_DIR@@/ref-N.<ext>` と書き、
   実行の直前に image-once.ts がこの印を写した先の絶対パスに置き換える（置き換えるのは Codex に渡す文だけ。計画・その SHA-256・run の
   `prompts/batch.txt` は印のまま。パスはどの記録にも残らない）。印と参照画像が一致しない、または合わせて 6 枚以上の実行は、写す前に止まる。
