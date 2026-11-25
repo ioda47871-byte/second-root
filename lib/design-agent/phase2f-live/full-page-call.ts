@@ -37,7 +37,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { CodexAbortedError, CodexError } from "../codex";
 import { REQUIRED_GENERATION, REQUIRED_RIGHTS, REQUIRED_STORAGE, OUTPUT_KIND, RECORD_SCHEMA, ROUTE, VIEWPORTS } from "../image-first/record";
 import type { PromptInputs, PromptPlan } from "../image-first/prompt";
-import { isRequestId, type PhotoInputs, type PhotoPlan, type PlanReference } from "../image-first/request-prompt";
+import { isRequestId, type DesignReference, type PhotoInputs, type PhotoPlan, type PlanReference } from "../image-first/request-prompt";
 import { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec } from "./approval-packets";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, sha256, writeOnce, type CommitState } from "./steps";
@@ -530,7 +530,14 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
   return { status: "succeeded", outDir: i.outDir, receipt, runId, images: parts.length, warnings };
 }
 
-export type PhotoCallInput = Omit<RequestCallInput, "plan" | "photos"> & { plan: PhotoPlan };
+/** references (DEV-303 §6.1 change 6): the approved design's PC / SP pictures, exactly the plan's references, with bytes. */
+export type PhotoCallInput = Omit<RequestCallInput, "plan" | "photos" | "references"> & { plan: PhotoPlan; references?: readonly (DesignReference & { bytes: Buffer })[] };
+
+/** The approved design pictures handed to a materials run are exactly the plan's (ids, names, images, order, bytes). */
+function designReferencesMatch(planned: readonly DesignReference[], refs: PhotoCallInput["references"]): boolean {
+  if (!refs || refs.length !== planned.length || refs.length === 0 || refs.length > FULL_PAGE_MAX_REFERENCES) return false;
+  return planned.every((p, n) => refs[n]!.id === p.id && refs[n]!.name === p.name && refs[n]!.image === p.image && refs[n]!.sha256 === p.sha256 && sha256(refs[n]!.bytes) === p.sha256);
+}
 
 /**
  * DEV-303 (owner decision 2026-11-24): ONE photo-materials batch for a request root (stage photo_materials): the same
@@ -554,6 +561,9 @@ export async function runRequestPhotoCall(i: PhotoCallInput, d: Omit<FullPageCal
   if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
   if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
   if (plan.photos.length !== plan.batch.images || plan.photos.length < 1 || plan.photos.length > 6) return refuse("PLAN_PIN_MISMATCH");
+  // DEV-303 §6.1 change 6: materials only for an approved design, with exactly its pictures as references
+  if (!plan.approved_design || plan.materials_sha256 !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
+  if (!designReferencesMatch(plan.references, i.references)) return refuse("REFERENCE_IMAGES_MISMATCH");
   const checked = await checkBeforeApproval(
     { humanApprovalConfirmed: true, prompt: plan.batch.prompt, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit }, outDir: i.outDir, approvalId: i.requestId, planId: i.requestId, route: FULL_PAGE_ROUTE, retryOf: null, ...(i.signal === undefined ? {} : { signal: i.signal }) },
     FULL_PAGE_KIND,
@@ -578,7 +588,9 @@ export async function runRequestPhotoCall(i: PhotoCallInput, d: Omit<FullPageCal
     await mkdir(i.outDir, { mode: 0o700 });
     for (const sub of ["parts", "prompts"]) await mkdir(out(sub), { mode: 0o700 });
     await writeOnce(out("facts-pack.json"), i.inputs.factsBytes);
-    await writeOnce(out("photo-brief.json"), i.inputs.directionBytes);
+    await writeOnce(out("materials.json"), i.inputs.directionBytes);
+    // DEV-303 §6.1 change 6: the approved design and the materials list, by id and SHA-256 only (sealing compares them)
+    await writeOnce(out("approved-design-input.json"), { schema: "image_first_approved_design_input_v0", ...plan.approved_design, materials_sha256: plan.materials_sha256 });
     for (const p of plan.photos) await writeOnce(out(p.prompt_file), Buffer.from(p.prompt, "utf8"));
     await writeOnce(out("prompts/batch.txt"), Buffer.from(plan.batch.prompt, "utf8"));
   } catch {
@@ -598,7 +610,7 @@ export async function runRequestPhotoCall(i: PhotoCallInput, d: Omit<FullPageCal
   const total = plan.photos.length;
   let res: FullPageBatchResult;
   try {
-    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: total, ...(i.signal === undefined ? {} : { signal: i.signal }) });
+    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: total, referenceImages: i.references!.map((r) => ({ name: r.name, bytes: r.bytes })), ...(i.signal === undefined ? {} : { signal: i.signal }) });
   } catch (error) {
     const aborted = error instanceof CodexAbortedError;
     const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";

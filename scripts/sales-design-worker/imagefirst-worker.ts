@@ -289,6 +289,7 @@ async function recordRealShop(result: RequestCycleResult, review: Awaited<Return
         plan_sha256: run.planSha256,
         case_study_sha256: run.caseStudySha256,
         ...(run.referenceImages ? { design_layout: "whole_page" as const, reference_images: run.referenceImages } : {}),
+        ...(run.approvedDesign && run.materialsSha256 ? { approved_design: run.approvedDesign, materials_sha256: run.materialsSha256 } : {}),
         commit: run.commit,
         run: { status: report.status, code: report.code, invoked: report.invoked, receipt_written: report.receipt !== undefined },
         review: review ? { status: review.status, code: review.code, bundle_sha256: review.bundle_sha256 ?? null } : null,

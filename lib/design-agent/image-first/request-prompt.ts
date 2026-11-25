@@ -17,9 +17,10 @@
  * person drawn (a picture is a design reference only, never a fact source); no price, award, history, person, review,
  * menu detail, reservation or limited offer is made up. The pinned d1 / d3 / d4 prompts (prompt.ts) are not touched.
  *
- * DEV-303 (owner decision 2026-11-24, MVP_SPEC §7.1 limited amendment): two stages. `stage: "photo_materials"` carries a
- * `photo_brief` instead of a direction and makes 1..6 photographic image MATERIALS for a sales proposal demo (buildPhotoPlan;
- * no text, logo, face, storefront, interior, building, product shown as the shop's, price or menu). The design stage
+ * DEV-303 (owner decision 2026-11-24, MVP_SPEC §7.1 limited amendment; §6.1 change 6): `stage: "photo_materials"` comes
+ * only after the owner-approved design (`approved_design`) and carries the `materials` that design needs instead of a
+ * direction; it makes 1..6 image MATERIALS for a sales proposal demo (buildPhotoPlan; the approved PC / SP pictures as
+ * references; no text, logo, face, storefront, interior, building, product shown as the shop's, price or menu). The design stage
  * (`stage: "design"` or none) may name a photo_materials run's pictures (`photo_inputs`): they are attached to its one
  * Codex run, every photo frame is labelled 「イメージ」, the page shows 「提案用デモ」, and the page text is still only facts
  * values and the fixed labels. Without photo_inputs a design request's prompts and plan are byte-identical to before.
@@ -100,17 +101,37 @@ export const RequestDirection = z.strictObject({
 export type RequestDirection = z.infer<typeof RequestDirection>;
 
 /**
- * DEV-303 (owner decision 2026-11-24): the photo-materials stage's brief. Plain text under the same tripwire as the
- * direction (no URL, HTML, quote, digit run, currency sign; buildPhotoPlan also refuses a facts-pack value). One picture
- * per subject (1..6). Subjects are materials for a sales proposal (textures, tools, hands without faces, light), never a
- * record of the shop.
+ * DEV-303 §6.1 change 6 (production flow §1 stage 4, §3.4): materials only after the owner-approved design. The
+ * photo-materials stage names the approved design run (`approved_design`: the delivered bundle's id and SHA-256 and the
+ * review / approval record files in the shop's private design-reviews folder, imagefirst-worker/design-approval.ts) and
+ * lists what that design needs (`materials`, 1..6, from the design, not a free subject): each { id, kind: photo |
+ * background | decoration, aspect (PHOTO_ASPECTS), placement (where in the approved PC / SP design), note }. Plain text
+ * under the same tripwire as the direction (no URL, HTML, quote, digit run, currency sign; buildPhotoPlan also refuses a
+ * facts-pack value). Materials for a sales proposal (textures, tools, hands without faces, light, patterns), never a
+ * record of the shop. Every request of this stage needs it, real shop or fictional (APPROVED_DESIGN_REQUIRED).
  */
-export const PhotoBrief = z.strictObject({
-  subjects: z.array(DirText(200)).min(1).max(REQUEST_IMAGES.total),
-  mood: DirText(300),
-  avoid: DirText(300),
+export const MATERIAL_KINDS = ["photo", "background", "decoration"] as const;
+export type MaterialKind = (typeof MATERIAL_KINDS)[number];
+export const MATERIAL_ASPECTS = ["landscape_3x2", "square_1x1", "portrait_2x3"] as const;
+export const Material = z.strictObject({
+  id: z.string().regex(/^[a-z][a-z0-9-]{1,30}$/),
+  kind: z.enum(MATERIAL_KINDS),
+  aspect: z.enum(MATERIAL_ASPECTS),
+  placement: DirText(120),
+  note: DirText(200),
 });
-export type PhotoBrief = z.infer<typeof PhotoBrief>;
+export type Material = z.infer<typeof Material>;
+/** A record file name in the shop's private design-reviews folder (no path). */
+export const DESIGN_RECORD_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}\.json$/;
+export const ApprovedDesignRef = z
+  .strictObject({
+    bundle_id: z.string().regex(REQUEST_ID_RE),
+    bundle_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    review_file: z.string().regex(DESIGN_RECORD_NAME_RE),
+    approval_file: z.string().regex(DESIGN_RECORD_NAME_RE),
+  })
+  .refine((a) => a.review_file !== a.approval_file, "approved_design_same_file");
+export type ApprovedDesignRef = z.infer<typeof ApprovedDesignRef>;
 
 /** The only names a photo material has in its run's parts/ (photo-1.png .. photo-6.png). */
 export const PHOTO_FILE_RE = /^photo-[1-6]\.png$/;
@@ -191,17 +212,25 @@ export type DesignRequest = z.infer<typeof DesignRequest>;
 /** The design request's layout (none = the section split, as before). */
 export const layoutOf = (r: Pick<DesignRequest, "layout">): DesignLayout => r.layout ?? "section_sequence";
 
-/** DEV-303 (owner decision 2026-11-24): the photo-materials stage. One picture per subject; max_images = that count. */
+/**
+ * The photo-materials stage (DEV-303 §6.1 change 6): after the approved design only. One picture per listed material;
+ * max_images = that count. Its approved design is never its own id.
+ */
 export const PhotoMaterialsRequest = z
   .strictObject({
     ...ENVELOPE,
     stage: z.literal("photo_materials"),
-    photo_brief: PhotoBrief,
+    approved_design: ApprovedDesignRef,
+    materials: z.array(Material).min(1).max(REQUEST_IMAGES.total),
+    mood: DirText(300),
+    avoid: DirText(300),
     max_images: z.number().int().min(1).max(REQUEST_IMAGES.total),
   })
   .refine(factsRefOk, "facts_ref_shop_mismatch")
   .refine(realShopRootOk, "real_shop_facts_root")
-  .refine((r) => r.max_images === r.photo_brief.subjects.length, "photo_count_mismatch");
+  .refine((r) => r.max_images === r.materials.length, "photo_count_mismatch")
+  .refine((r) => new Set(r.materials.map((m) => m.id)).size === r.materials.length, "materials_duplicate")
+  .refine((r) => r.approved_design.bundle_id !== r.id, "approved_design_self");
 export type PhotoMaterialsRequest = z.infer<typeof PhotoMaterialsRequest>;
 
 export type ImagefirstRequest = DesignRequest | PhotoMaterialsRequest;
@@ -227,8 +256,11 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   }
   // the stage picks the schema (no stage: the design stage); each schema is strict
   const photo = !!json && typeof json === "object" && (json as { stage?: unknown }).stage === "photo_materials";
+  // DEV-303 §6.1 change 6: materials come only after the owner-approved design (the old order, materials first, is gone)
+  if (photo && !Object.hasOwn(json as object, "approved_design")) throw new PromptStop("APPROVED_DESIGN_REQUIRED");
   const r = (photo ? PhotoMaterialsRequest : DesignRequest).safeParse(json);
-  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_PHOTO_BRIEF_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
+  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_MATERIALS_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
+  if (isPhotoRequest(r.data)) materialSlots(r.data.materials);
   if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
   if (!isPhotoRequest(r.data) && !photoInputsWithinToolLimit(r.data.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
   if (!isPhotoRequest(r.data)) {
@@ -728,17 +760,19 @@ ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.n
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// DEV-303 (owner decision 2026-11-24): stage 1, photo materials. Up to 6 standalone photographic image MATERIALS for a
-// sales proposal demo (never a record of the shop): no text, logo, face, storefront, interior, building, product
-// presented as the shop's own, price or menu display. No facts-pack value enters a photo prompt (the facts pack only
-// binds the request to its shop and is checked against the brief). One Codex run, one picture per subject.
+// DEV-303 (owner decision 2026-11-24; §6.1 change 6): the materials stage, after the owner-approved design. Up to 6
+// standalone image MATERIALS (photo, background, decoration) for a sales proposal demo (never a record of the shop): no
+// text, logo, face, storefront, interior, building, product presented as the shop's own, price or menu display. No
+// facts-pack value enters a material prompt (the facts pack only binds the request to its shop and is checked against
+// the list). One Codex run, one picture per listed material, the approved design's pictures as references.
 // ---------------------------------------------------------------------------------------------------------------------
 
 export const PHOTO_PLAN_SCHEMA = "image_first_photo_plan_v0";
-export const PHOTO_PROMPT_VERSION = "if-photo-v0";
+export const PHOTO_PROMPT_VERSION = "if-materials-v1";
 /**
- * Web-friendly frames the image tool already makes (its 1536x1024, 1024x1024 and 1024x1536 sizes), by position:
- * subjects 1-2 a wide 3:2 (a hero or band), 3-4 a square, 5-6 a tall 2:3 (a side or SP slot).
+ * Web-friendly frames the image tool already makes (its 1536x1024, 1024x1024 and 1024x1536 sizes). Each frame has two
+ * file slots (photo-1/2 landscape, photo-3/4 square, photo-5/6 portrait; the bundle reads the frame from the slot), so a
+ * materials list holds at most two materials per aspect (MATERIALS_ASPECT_FULL).
  */
 export const PHOTO_ASPECTS = [
   { key: "landscape_3x2", size: "1536x1024", words: "横長（横:縦 = 3:2）", en: "landscape 3:2 (1536x1024)" },
@@ -746,8 +780,17 @@ export const PHOTO_ASPECTS = [
   { key: "portrait_2x3", size: "1024x1536", words: "縦長（横:縦 = 2:3）", en: "portrait 2:3 (1024x1536)" },
 ] as const;
 export const photoAspectOf = (index: number) => PHOTO_ASPECTS[Math.min(2, Math.floor((index - 1) / 2))]!;
+const KIND_WORDS: Record<MaterialKind, { ja: string; frame: string }> = {
+  photo: { ja: "写真", frame: "Web ページの枠にそのまま置ける、自然な光の落ち着いた写真の質感" },
+  background: { ja: "背景の質感", frame: "文字を重ねても読みやすい、落ち着いた質感の面（写真か淡い模様）" },
+  decoration: { ja: "装飾", frame: "線・図形・模様の装飾（写真でなくてよい）" },
+};
 
-export type PlannedPhoto = { index: number; name: string; file: string; prompt_file: string; aspect: (typeof PHOTO_ASPECTS)[number]["key"]; prompt: string; prompt_sha256: string; prompt_chars: number };
+export type PlannedPhoto = { index: number; name: string; file: string; prompt_file: string; aspect: (typeof PHOTO_ASPECTS)[number]["key"]; material_id: string; kind: MaterialKind; prompt: string; prompt_sha256: string; prompt_chars: number };
+/** DEV-303 §6.1 change 6: one approved design picture attached as a reference (ref-N.png; no path). */
+export type DesignReference = { id: string; image: string; name: string; sha256: string };
+/** What a materials plan takes from the approved design (imagefirst-worker/design-approval.ts approvedDesignRun). */
+export type ApprovedDesignUse = { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string; references: readonly DesignReference[] };
 export type PhotoPlan = {
   schema: typeof PHOTO_PLAN_SCHEMA;
   prompt_version: typeof PHOTO_PROMPT_VERSION;
@@ -756,30 +799,49 @@ export type PhotoPlan = {
   kind: ImagefirstRequest["kind"];
   direction_key: "request";
   direction_id: string;
-  /** SHA-256 of photo-brief.json (the brief, canonical JSON; written into the private run directory). */
+  /** SHA-256 of materials.json (the materials list, mood and avoid as canonical JSON; written into the private run). */
   direction_sha256: string;
   direction_set_sha256: string;
   request_sha256: string;
   facts_sha256: string;
   shop: { shop_id: string; display_name: string; category_code: string };
   photos: PlannedPhoto[];
+  /** DEV-303 §6.1 change 6: the approved design these materials are for, and the list's SHA-256 (= direction_sha256). */
+  approved_design: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
+  materials_sha256: string;
+  references: DesignReference[];
   batch: { prompt: string; sha256: string; chars: number; images: number };
   plan_sha256: string;
 };
-export type PhotoInputsOfPlan = { request: PhotoMaterialsRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
+export type PhotoInputsOfPlan = { request: PhotoMaterialsRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack; approvedDesign: ApprovedDesignUse | null };
 
-/** photo-brief.json for a photo-materials request (the brief as canonical JSON). */
-export const photoBriefBytes = (request: PhotoMaterialsRequest) => Buffer.from(`${JSON.stringify(request.photo_brief, null, 2)}\n`, "utf8");
+/** materials.json for a photo-materials request: the list, mood and avoid as canonical JSON (its SHA-256 is materials_sha256). */
+export const materialsBytes = (request: PhotoMaterialsRequest) => Buffer.from(`${canonical({ materials: request.materials, mood: request.mood, avoid: request.avoid })}\n`, "utf8");
 
-function photoPrompt(brief: PhotoBrief, index: number, total: number): string {
-  const aspect = photoAspectOf(index);
+/** The file slot of each material: landscape photo-1/2, square photo-3/4, portrait photo-5/6, in list order within an aspect. */
+export function materialSlots(materials: readonly Material[]): number[] {
+  const used = new Map<string, number>();
+  return materials.map((m) => {
+    const base = PHOTO_ASPECTS.findIndex((a) => a.key === m.aspect) * 2 + 1;
+    const n = used.get(m.aspect) ?? 0;
+    if (n >= 2) throw new PromptStop("MATERIALS_ASPECT_FULL");
+    used.set(m.aspect, n + 1);
+    return base + n;
+  });
+}
+
+function materialPrompt(request: PhotoMaterialsRequest, m: Material, k: number, total: number, refs: number): string {
+  const aspect = PHOTO_ASPECTS.find((a) => a.key === m.aspect)!;
+  const kind = KIND_WORDS[m.kind];
   const lines = [
-    "これは営業提案用のデモページに置く画像素材（イメージ写真）1枚です。特定の店の記録写真ではなく、どの店の実物でもありません。",
-    `この画像の役割: ${total} 枚の画像素材のうちの ${index} 枚目。`,
-    `被写体: ${brief.subjects[index - 1]}`,
-    `雰囲気: ${brief.mood}`,
-    `避けること: ${brief.avoid}`,
-    `枠: ${aspect.words}の写真。Web ページの枠にそのまま置ける、自然な光の落ち着いた写真の質感。`,
+    `これは営業提案用のデモページに置く画像素材（イメージ）1枚です。特定の店の記録写真ではなく、どの店の実物でもありません。頁では「${PHOTO_LABEL}」と表示し、後で本物の写真や許可された素材と差し替えられる枠に置きます。`,
+    `この画像の役割: ${total} 枚の素材のうちの ${k} 枚目（${m.id}）。種類: ${kind.ja}。`,
+    `置く場所（承認したデザインの中）: ${m.placement}`,
+    `内容: ${m.note}`,
+    `雰囲気: ${request.mood}`,
+    `避けること: ${request.avoid}`,
+    `枠: ${aspect.words}。${kind.frame}。`,
+    `参照: 承認したデザイン画像 ${refs} 枚を参照画像として渡す。色・光・質感・余白の感じをデザインに合わせる。デザイン画像の文字・構図・図形・写真の枠そのものを写さない。`,
     "",
     "必ず守ること:",
     "- 文字・数字・記号・看板・ロゴ・透かし・ラベルを一切入れない。",
@@ -792,35 +854,51 @@ function photoPrompt(brief: PhotoBrief, index: number, total: number): string {
 }
 
 /**
- * The photo-materials plan: one prompt per subject (no facts value, no shop name), the ONE batch prompt and the plan
- * SHA (the same canonical form as buildRequestPlan). Pure. Refuses a brief that quotes a facts-pack value
- * (REQUEST_PHOTO_BRIEF_HAS_FACT).
+ * The materials plan (DEV-303 §6.1 change 6): one prompt per listed material (no facts value, no shop name), in its
+ * aspect's file slot, the approved design's PC / SP pictures named as references (REFERENCE_DIR_TOKEN/ref-N.png; the
+ * worker stages them), the ONE batch prompt and the plan SHA (the same canonical form as buildRequestPlan). Pure.
+ * Refuses: no approved design or another one than the request names (APPROVED_DESIGN_REQUIRED / _MISMATCH), 1..5
+ * well-formed references (REFERENCE_IMAGES_*), a list text quoting a facts-pack value (REQUEST_MATERIALS_HAS_FACT), more
+ * than two materials of one aspect (MATERIALS_ASPECT_FULL).
  */
 export function buildPhotoPlan(inputs: PhotoInputsOfPlan): PhotoPlan {
   const { request, facts } = inputs;
-  const brief = request.photo_brief;
-  const text = [...brief.subjects, brief.mood, brief.avoid].join("\n").normalize("NFKC").toLowerCase();
-  for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && text.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_PHOTO_BRIEF_HAS_FACT");
-  const total = brief.subjects.length;
+  const ad = inputs.approvedDesign;
+  if (!ad) throw new PromptStop("APPROVED_DESIGN_REQUIRED");
+  if (ad.bundle_id !== request.approved_design.bundle_id || ad.bundle_sha256 !== request.approved_design.bundle_sha256) throw new PromptStop("APPROVED_DESIGN_MISMATCH");
+  if (ad.references.length === 0) throw new PromptStop("REFERENCE_IMAGES_MISSING");
+  if (ad.references.length > IMAGE_TOOL_MAX_REFS) throw new PromptStop("REFERENCE_IMAGES_OVER_TOOL_LIMIT");
+  if (!ad.references.every((r, n) => r.id === `ref-${n + 1}` && r.name === `${r.id}.png` && /^(?:pc|sp)-[a-z0-9-]{1,36}$/.test(r.image) && /^[0-9a-f]{64}$/.test(r.sha256))) throw new PromptStop("REFERENCE_IMAGES_INVALID");
+  const text = [...request.materials.flatMap((m) => [m.placement, m.note]), request.mood, request.avoid].join("\n").normalize("NFKC").toLowerCase();
+  for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && text.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_MATERIALS_HAS_FACT");
+  const total = request.materials.length;
   if (total < 1 || total > REQUEST_IMAGES.total || request.max_images !== total) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
-  const photos = brief.subjects.map((_, i): PlannedPhoto => {
-    const prompt = photoPrompt(brief, i + 1, total);
-    return { index: i + 1, name: `photo-${i + 1}`, file: `parts/photo-${i + 1}.png`, prompt_file: `prompts/photo-${i + 1}.txt`, aspect: photoAspectOf(i + 1).key, prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
+  const slots = materialSlots(request.materials);
+  const order = request.materials.map((m, i) => ({ m, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
+  const photos = order.map(({ m, slot }, k): PlannedPhoto => {
+    const prompt = materialPrompt(request, m, k + 1, total, ad.references.length);
+    if (prompt.includes(REFERENCE_DIR_TOKEN)) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
+    return { index: k + 1, name: `photo-${slot}`, file: `parts/photo-${slot}.png`, prompt_file: `prompts/photo-${slot}.txt`, aspect: m.aspect, material_id: m.id, kind: m.kind, prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
   });
-  const batchPrompt = `Make ${total} standalone photographic image materials for a sales proposal demo with the image generation tool. They are not photographs of any real shop and must never show text, logos, faces, storefronts, interiors, buildings, products on display, prices or menus.
+  const refPaths = `[${ad.references.map((r) => `"${REFERENCE_DIR_TOKEN}/${r.name}"`).join(", ")}]`;
+  const batchPrompt = `Make ${total} standalone image materials (photographs, background textures or decorations) for a sales proposal demo with the image generation tool, for the owner-approved website design given as reference images. They are not photographs of any real shop and must never show text, logos, faces, storefronts, interiors, buildings, products on display, prices or menus.
 
 Rules for this run:
 - Call the image generation tool exactly ${total} times, once per image below, in the order given (Image 1 first, Image ${total} last). Never more than ${total} calls in all.
 - For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
+- For each call, set referenced_image_paths to exactly ${refPaths} (${ad.references.length} pictures of the approved design, absolute paths, also attached as input images; never another path, never more than ${IMAGE_TOOL_MAX_REFS}). Match their colours, light and texture; never copy their text, layout or frames.
 - Make each image in the size given for it.
 - If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
-- Do not run shell commands, do not read or write files, do not browse.
+- Do not run shell commands, do not read or write files yourself, do not browse (the image tool reads the referenced images itself).
 - When you have finished, reply with one line only: DONE followed by the number of images saved.
 
-${photos.map((p) => `Image ${p.index} of ${total} — ${photoAspectOf(p.index).en} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
+${photos.map((p) => `Image ${p.index} of ${total} — ${PHOTO_ASPECTS.find((a) => a.key === p.aspect)!.en} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
 `;
+  if (batchPrompt.split(REFERENCE_DIR_TOKEN).length - 1 !== ad.references.length) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
   const value = (key: string) => facts.facts.find((f) => f.key === key)?.value ?? "";
   const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: total };
+  const materialsSha = sha256(materialsBytes(request));
+  const references = ad.references.map((r) => ({ id: r.id, image: r.image, name: r.name, sha256: r.sha256 }));
   const body = {
     schema: PHOTO_PLAN_SCHEMA,
     prompt_version: PHOTO_PROMPT_VERSION,
@@ -829,14 +907,17 @@ ${photos.map((p) => `Image ${p.index} of ${total} — ${photoAspectOf(p.index).e
     kind: request.kind,
     direction_key: "request",
     direction_id: `photo-${request.id}`.slice(0, 41),
-    direction_sha256: sha256(photoBriefBytes(request)),
+    direction_sha256: materialsSha,
     direction_set_sha256: inputs.requestSha256,
     request_sha256: inputs.requestSha256,
     facts_sha256: sha256(inputs.factsBytes),
     shop: { shop_id: facts.shop_id, display_name: value("name"), category_code: value("category") || "unknown" },
     photos,
+    approved_design: { bundle_id: ad.bundle_id, bundle_sha256: ad.bundle_sha256, review_sha256: ad.review_sha256, approval_sha256: ad.approval_sha256 },
+    materials_sha256: materialsSha,
+    references,
     batch,
   } as const;
   const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, photos: photos.map((p) => ({ ...p, prompt: undefined })) };
-  return { ...body, photos, plan_sha256: sha256(canonical(stripped)) };
+  return { ...body, photos, references, plan_sha256: sha256(canonical(stripped)) };
 }

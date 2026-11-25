@@ -141,7 +141,8 @@ export type BundleCode =
   | "BUNDLE_SHA_MISMATCH"
   | "BUNDLE_RECORD_MISMATCH"
   | "BUNDLE_TERMS_INVALID"
-  | "REFERENCE_INPUTS_MISMATCH";
+  | "REFERENCE_INPUTS_MISMATCH"
+  | "APPROVED_DESIGN_INPUT_MISMATCH";
 
 export class BundleStop extends Error {
   constructor(readonly code: BundleCode) {
@@ -218,6 +219,8 @@ type Receipt = {
   request_stage?: unknown;
   design_layout?: unknown;
   reference_images?: unknown;
+  approved_design?: unknown;
+  materials_sha256?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -313,6 +316,45 @@ const REFERENCE_INPUTS_MAX_BYTES = 16 * 1024;
  * sha256), in the same order, nothing else. A receipt without a reference list needs a run without that file.
  * REFERENCE_INPUTS_MISMATCH otherwise (no path, no content in the code).
  */
+/** DEV-303 §6.1 change 6: a materials receipt's approved_design (bundle id and three SHA-256s, nothing else) and materials_sha256. */
+function approvedDesignShapeOk(r: Receipt): boolean {
+  const a = r.approved_design as Record<string, unknown> | null | undefined;
+  return (
+    !!a &&
+    typeof a === "object" &&
+    Object.keys(a).sort().join(",") === "approval_sha256,bundle_id,bundle_sha256,review_sha256" &&
+    typeof a.bundle_id === "string" &&
+    isRequestRunId(a.bundle_id) &&
+    a.bundle_id !== r.request_id &&
+    [a.bundle_sha256, a.review_sha256, a.approval_sha256, r.materials_sha256].every((x) => typeof x === "string" && SHA_RE.test(x))
+  );
+}
+
+/**
+ * DEV-303 §6.1 change 6: a materials receipt's approved_design and materials_sha256 must equal the run directory's own
+ * approved-design-input.json (schema image_first_approved_design_input_v0, those five values, nothing else); any other
+ * receipt needs a run without that file. APPROVED_DESIGN_INPUT_MISMATCH otherwise.
+ */
+export async function checkApprovedDesignInput(runDir: string, receipt: { approved_design?: unknown; materials_sha256?: unknown }): Promise<void> {
+  const bytes = await readNoFollow(join(runDir, "approved-design-input.json"), 4 * 1024, { link: "APPROVED_DESIGN_INPUT_MISMATCH", big: "APPROVED_DESIGN_INPUT_MISMATCH" }, true);
+  if (receipt.approved_design === undefined) {
+    if (bytes !== null) stop("APPROVED_DESIGN_INPUT_MISMATCH");
+    return;
+  }
+  if (bytes === null) return stop("APPROVED_DESIGN_INPUT_MISMATCH");
+  let f: Record<string, unknown>;
+  try {
+    f = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return stop("APPROVED_DESIGN_INPUT_MISMATCH");
+  }
+  const a = receipt.approved_design as Record<string, unknown>;
+  const ok =
+    !!f && typeof f === "object" && Object.keys(f).sort().join(",") === "approval_sha256,bundle_id,bundle_sha256,materials_sha256,review_sha256,schema" && f.schema === "image_first_approved_design_input_v0" &&
+    (["bundle_id", "bundle_sha256", "review_sha256", "approval_sha256"] as const).every((k) => f[k] === a[k]) && f.materials_sha256 === receipt.materials_sha256;
+  if (!ok) stop("APPROVED_DESIGN_INPUT_MISMATCH");
+}
+
 export async function checkReferenceInputs(runDir: string, receiptRefs: unknown): Promise<void> {
   const bytes = await readNoFollow(join(runDir, "reference-inputs.json"), REFERENCE_INPUTS_MAX_BYTES, { link: "REFERENCE_INPUTS_MISMATCH", big: "REFERENCE_INPUTS_MISMATCH" }, true);
   if (receiptRefs === undefined) {
@@ -370,6 +412,9 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; phot
   const photo = r.mode === "request" && r.request_stage === "photo_materials";
   if (r.request_stage !== undefined && !photo) stop("RECEIPT_INVALID");
   const design = designImagesOf(r);
+  // DEV-303 §6.1 change 6: a materials receipt names its approved design (bundle id, SHA-256s) and its materials list's
+  // SHA-256; no other receipt carries them
+  if (photo ? !approvedDesignShapeOk(r) : r.approved_design !== undefined || r.materials_sha256 !== undefined) stop("RECEIPT_INVALID");
   if (photo) {
     if (pc !== 0 || sp !== 0 || photos < 1 || photos > 6 || photos !== images.length || !c || c.pc !== 0 || c.sp !== 0 || c.photo !== photos || c.total !== images.length || c.stopped !== 0) stop("RECEIPT_NOT_SUCCEEDED");
   } else if (photos !== 0 || pc !== design.pc || sp !== design.sp || !c || c.pc !== pc || c.sp !== sp || c.total !== images.length || c.stopped !== 0 || c.photo !== undefined) stop("RECEIPT_NOT_SUCCEEDED");
@@ -408,6 +453,7 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
   if (named !== root) stop("RECEIPT_RUN_DIR_MISMATCH");
   // review L4: the receipt's reference list is the run's own reference-inputs.json (or neither has one)
   await checkReferenceInputs(root, r.reference_images);
+  await checkApprovedDesignInput(root, r);
 
   // ---- what may be there: exactly the receipt's parts, and the composites the caller named ----
   const composites: [string, string][] = [];

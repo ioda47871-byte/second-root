@@ -32,7 +32,7 @@
 import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { BundleStop, checkReferenceInputs, packBundle, verifyBundleDir, type ExpectedRecord, type SealedBundle } from "./bundle";
+import { BundleStop, checkApprovedDesignInput, checkReferenceInputs, packBundle, verifyBundleDir, type ExpectedRecord, type SealedBundle } from "./bundle";
 import { checkRealApprovalId, isRequestRunId, readApprovalAt, runOfApprovalId, sha256, type CycleDeps, type CycleReport } from "./cycle";
 import { handOffToLocalInbox, InboxStop, REVIEW_INBOX } from "./local-inbox";
 import { PreviewStop } from "./preview";
@@ -132,6 +132,8 @@ type Receipt = {
   request_stage?: unknown;
   design_layout?: unknown;
   reference_images?: unknown;
+  approved_design?: unknown;
+  materials_sha256?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown; photo?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
@@ -226,6 +228,9 @@ async function checkRequestReceipt(r: Receipt, id: string, runDir: string, state
     // DEV-303 (owner decision 2026-11-24): a photo-materials run: 1..6 pictures, no PC / SP part (bundle.ts checks each file)
     const n = c.photo;
     if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 6 || c.pc !== 0 || c.sp !== 0 || c.total !== n || r.images_total !== n) stop("RECEIPT_NOT_SUCCEEDED");
+    // DEV-303 §6.1 change 6: materials only for an approved design: the receipt's record of it is the run's own
+    if (r.approved_design === undefined) stop("RECEIPT_INVALID");
+    await checkApprovedDesignInput(runDir, r).catch(asReviewStop);
   } else {
     // DEV-303 §6.1 row 3: a whole_page design run makes PC 1 + SP 1 (bundle.ts checks its reference list); others PC 2 + SP 4
     const whole = r.design_layout === "whole_page";

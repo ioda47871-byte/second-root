@@ -147,6 +147,9 @@ export type RequestReceiptFields = {
   /** DEV-303 §6.1 row 3: only on a whole_page design run (PC 1 + SP 1): the layout, and its reference pictures by id, case and SHA-256 only. */
   design_layout?: "whole_page";
   reference_images?: { id: string; case_id: string; sha256: string }[];
+  /** DEV-303 §6.1 change 6: only on a photo-materials run — its approved design (bundle id and SHA-256s) and the materials list's SHA-256. */
+  approved_design?: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
+  materials_sha256?: string;
 };
 
 export type CycleOptions = {

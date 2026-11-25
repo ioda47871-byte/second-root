@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
-import { IMAGE_TOOL_MAX_REFS } from "@/lib/design-agent/image-tool-limits";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABEL, PHOTO_TOOL_MAX_REFS, type DesignRequest, type PhotoMaterialsRequest } from "@/lib/design-agent/image-first/request-prompt";
+import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
+import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { IMAGE_MATERIAL_LABEL, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
@@ -59,15 +60,32 @@ const DIRECTION = {
   layout_sp: "一段。店名を最初の画面いっぱいに置く。",
   avoid: "派手なグラデーション。",
 };
-const BRIEF = {
-  subjects: ["焼き色のついたパンの皮の質感の接写", "台に広がった小麦粉と木の麺棒", "生地をこねる手元（顔は写さない）", "朝の窓から差す斜めの光と粉の舞い", "使い込んだ焼き型と布", "割ったパンの断面の気泡"],
-  mood: "朝の静かな光、自然な色、やわらかい影。",
-  avoid: "文字、看板、ロゴ、人の顔、店の外観や店内。",
-};
+/**
+ * DEV-303 §6.1 change 6: the materials an approved design needs (two per aspect, so the files are photo-1..6 in the
+ * aspect slots: 1-2 landscape, 3-4 square, 5-6 portrait).
+ */
+const MATERIALS = [
+  { id: "hero-texture", kind: "photo", aspect: "landscape_3x2", placement: "PC の最初の画面の右の写真の枠", note: "焼き色のついたパンの皮の質感の接写" },
+  { id: "flour-band", kind: "background", aspect: "landscape_3x2", placement: "PC の紹介の帯の背景", note: "台に広がった小麦粉の淡い面" },
+  { id: "hands", kind: "photo", aspect: "square_1x1", placement: "SP の紹介の写真の枠", note: "生地をこねる手元（顔は写さない）" },
+  { id: "light", kind: "photo", aspect: "square_1x1", placement: "PC の言葉の区画の小さな写真の枠", note: "朝の窓から差す斜めの光と粉の舞い" },
+  { id: "tins", kind: "photo", aspect: "portrait_2x3", placement: "SP の最初の画面の写真の枠", note: "使い込んだ焼き型と布" },
+  { id: "crumb-line", kind: "decoration", aspect: "portrait_2x3", placement: "PC の情報の区画の左の飾り", note: "割ったパンの断面の気泡を思わせる点の模様" },
+];
+const MOOD = "朝の静かな光、自然な色、やわらかい影。";
+const AVOID = "文字、看板、ロゴ、人の顔、店の外観や店内。";
 const PHOTO_ID = "req-test-shop-p-photos-1";
+/** The design run the materials are for (approved by the owner before any material is made). */
+const BASE_ID = "req-test-shop-p-base-1";
+const REVIEW_FILE = `${BASE_ID}.review.json`;
+const APPROVAL_FILE = `${BASE_ID}.approval.json`;
 const DESIGN_ID = "req-test-shop-p-design-1";
 const envelope = (id: string) => ({ schema: "sr_imagefirst_request_v1", id, shop_id: SHOP, kind: "fictional", created_at: "2026-11-24T00:30:00Z", facts_ref: { root: "second-root-shops", shop_id: SHOP }, facts_sha256: sha(FACTS_BYTES), codex_runs: 1 });
-const photoRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(PHOTO_ID), stage: "photo_materials", photo_brief: BRIEF, max_images: 6, ...over });
+/** approved: the base run's bundle SHA-256 once it is delivered (a placeholder for the schema-only tests). */
+let approvedBundleSha = "b".repeat(64);
+const photoRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(PHOTO_ID), stage: "photo_materials", approved_design: { bundle_id: BASE_ID, bundle_sha256: approvedBundleSha, review_file: REVIEW_FILE, approval_file: APPROVAL_FILE }, materials: MATERIALS, mood: MOOD, avoid: AVOID, max_images: 6, ...over });
+/** A synthetic approved design for the pure plan tests (the worker resolves the real one). */
+const AD = { bundle_id: BASE_ID, bundle_sha256: "b".repeat(64), review_sha256: sha("review"), approval_sha256: sha("approval"), references: [{ id: "ref-1", image: "pc-1", name: "ref-1.png", sha256: sha("pc") }, { id: "ref-2", image: "sp-1", name: "ref-2.png", sha256: sha("sp") }] };
 // Issue #336: a design request may name its owner-confirmed case study (invented text, the repository's images; checked when named)
 const CASE_STUDY = caseStudyBytes(SHOP);
 const designRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(DESIGN_ID), stage: "design", direction: DIRECTION, case_study: { path: CASE_STUDY_FILE, sha256: sha(CASE_STUDY) }, max_images: 6, ...over });
@@ -165,7 +183,7 @@ function home() {
         preflight: async () => null,
         now: () => NOW,
         batch: async (o) => {
-          const r = await generateImagesInOneRun({ sandbox: fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: fake.tmpBase, maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}) });
+          const r = await generateImagesInOneRun({ sandbox: fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: fake.tmpBase, maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.referenceImages ? { referenceImages: o.referenceImages } : {}) });
           return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
         },
       },
@@ -184,42 +202,91 @@ function home() {
   return { h, repo, runsDir, stateDir, ledgerDir, place, cycle, fakes };
 }
 
-/** Stage 1 in a fresh home: 6 photo materials; returns the home, the report and the files as photo_inputs names them. */
+/**
+ * DEV-303 §6.1 change 6: the order design → review / approval → materials. A design run delivered to the review inbox,
+ * its five-axis review and the owner's approval (as Claude records it, fictional) in the shop's design-reviews folder.
+ */
+async function approvedBase(w: ReturnType<typeof home>, o: { decision?: "approve" | "revise" | "reject"; fail?: boolean } = {}) {
+  const base = await w.cycle(designRequest({ id: BASE_ID }));
+  expect(base.report.status).toBe("succeeded");
+  await deliverReview({ approvalId: BASE_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
+  const bundleDir = join(w.runsDir, "review-inbox", BASE_ID);
+  const v = await verifyBundleDir(bundleDir);
+  const parts = v.manifest.files.filter((f) => f.role === "part");
+  const images = { pc: parts.filter((f) => f.path.startsWith("parts/pc-")).map((f) => ({ file: f.path, sha256: f.sha256 })), sp: parts.filter((f) => f.path.startsWith("parts/sp-")).map((f) => ({ file: f.path, sha256: f.sha256 })) };
+  const axis = (verdict: string) => ({ verdict, evidence: [{ image: "pc", region: "最初の画面", note: "試験用の根拠（架空）" }] });
+  const review = { schema: "sr_design_review_v1", request_id: BASE_ID, bundle_sha256: v.bundle_sha256, images, axes: Object.fromEntries(DESIGN_AXES.map((a, n) => [a, axis(o.fail && n === 0 ? "fail" : "pass")])), reviewer: "independent-subagent", reviewed_at: "2026-11-24T01:00:00Z" };
+  const dir = join(w.h, "second-root-shops", SHOP, "design-reviews");
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  writeFileSync(join(dir, REVIEW_FILE), bytesOf(review));
+  const c = await checkDesignApproval({ bundleDir, reviewPath: join(dir, REVIEW_FILE), repo: w.repo, mode: "draft" });
+  writeFileSync(join(dir, APPROVAL_FILE), bytesOf({ schema: "sr_design_approval_v1", request_id: BASE_ID, bundle_sha256: v.bundle_sha256, approved_images: images, review_sha256: c.review_sha256, page_sha256: c.page_sha256, decision: o.decision ?? "approve", decided_at: "2026-11-24T02:00:00Z" }));
+  approvedBundleSha = v.bundle_sha256;
+  return { bundleDir, bundleSha: v.bundle_sha256, images, dir };
+}
+
+/** Stage 1 in a fresh home: the approved design, then 6 materials for it; the files as photo_inputs names them. */
 async function stageOne() {
   const w = home();
+  const approved = await approvedBase(w);
   const one = await w.cycle(photoRequest());
   expect(one.report).toMatchObject({ status: "succeeded", stage: "photo_materials", approval_id: PHOTO_ID });
   const files = one.report.photo_files!;
   // stage 2 needs the stage-1 run sealed and delivered to the review inbox
   const d1 = await deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
-  return { w, one, files, d1 };
+  return { w, one, files, d1, approved };
 }
 
 describe("DEV-303 photo_materials request schema (strict; same unsafe-text filter as direction)", () => {
-  it("accepts the documented photo request; one picture per subject (max_images = subjects)", () => {
+  it("accepts the documented materials request; one picture per listed material (max_images = materials)", () => {
     expect(parseCode(photoRequest())).toBe("ok");
-    expect(parseCode(photoRequest({ photo_brief: { ...BRIEF, subjects: BRIEF.subjects.slice(0, 2) }, max_images: 2 }))).toBe("ok");
+    expect(parseCode(photoRequest({ materials: MATERIALS.slice(0, 2), max_images: 2 }))).toBe("ok");
+  });
+  it("DEV-303 §6.1 change 6: no approved design (the old photo_brief order included) is APPROVED_DESIGN_REQUIRED; two of one aspect at most", () => {
+    const old: Record<string, unknown> = { ...photoRequest(), photo_brief: { subjects: ["質感"], mood: MOOD, avoid: AVOID }, max_images: 1 };
+    delete old.approved_design;
+    delete old.materials;
+    expect(parseCode(old)).toBe("APPROVED_DESIGN_REQUIRED");
+    const noRef: Record<string, unknown> = photoRequest();
+    delete noRef.approved_design;
+    expect(parseCode(noRef)).toBe("APPROVED_DESIGN_REQUIRED");
+    expect(parseCode({ ...noRef, kind: "real_shop" })).toBe("APPROVED_DESIGN_REQUIRED");
+    const threeWide = [MATERIALS[0], MATERIALS[1], { ...MATERIALS[2], aspect: "landscape_3x2" }];
+    expect(parseCode(photoRequest({ materials: threeWide, max_images: 3 }))).toBe("MATERIALS_ASPECT_FULL");
+    for (const approved_design of [
+      { bundle_id: BASE_ID, bundle_sha256: "x", review_file: REVIEW_FILE, approval_file: APPROVAL_FILE },
+      { bundle_id: BASE_ID, bundle_sha256: "b".repeat(64), review_file: "../r.json", approval_file: APPROVAL_FILE },
+      { bundle_id: BASE_ID, bundle_sha256: "b".repeat(64), review_file: REVIEW_FILE, approval_file: REVIEW_FILE },
+      { bundle_id: PHOTO_ID, bundle_sha256: "b".repeat(64), review_file: REVIEW_FILE, approval_file: APPROVAL_FILE },
+      { bundle_id: "hoshigama-imagefirst-d3-20261120-01", bundle_sha256: "b".repeat(64), review_file: REVIEW_FILE, approval_file: APPROVAL_FILE },
+      { bundle_id: BASE_ID, bundle_sha256: "b".repeat(64), review_file: REVIEW_FILE, approval_file: APPROVAL_FILE, path: "/x" },
+    ]) expect(parseCode(photoRequest({ approved_design })), JSON.stringify(approved_design).slice(0, 80)).toBe("REQUEST_INVALID");
   });
   it("refuses wrong counts, lengths, extra fields and a mixed stage", () => {
     for (const over of [
       { max_images: 5 },
-      { photo_brief: { ...BRIEF, subjects: [] }, max_images: 1 },
-      { photo_brief: { ...BRIEF, subjects: [...BRIEF.subjects, "七つ目"] }, max_images: 7 },
-      { photo_brief: { ...BRIEF, subjects: ["あ".repeat(201)] }, max_images: 1 },
-      { photo_brief: { ...BRIEF, mood: "あ".repeat(301) } },
-      { photo_brief: { ...BRIEF, avoid: "あ".repeat(301) } },
-      { photo_brief: { ...BRIEF, extra: "x" } },
+      { materials: [], max_images: 1 },
+      { materials: [...MATERIALS, { ...MATERIALS[0], id: "seventh" }], max_images: 7 },
+      { materials: [{ ...MATERIALS[0], note: "あ".repeat(201) }], max_images: 1 },
+      { materials: [{ ...MATERIALS[0], kind: "logo" }], max_images: 1 },
+      { materials: [{ ...MATERIALS[0], aspect: "panorama" }], max_images: 1 },
+      { materials: [MATERIALS[0], MATERIALS[0]], max_images: 2 },
+      { materials: [{ ...MATERIALS[0], extra: "x" }], max_images: 1 },
+      { mood: "あ".repeat(301) },
+      { avoid: "あ".repeat(301) },
+      { photo_brief: { subjects: ["x"], mood: MOOD, avoid: AVOID } },
       { direction: DIRECTION },
       { photo_inputs: { request_id: "req-other-1", files: [{ name: "photo-1.png", sha256: "a".repeat(64) }] } },
       { codex_runs: 2 },
       { stage: "photos" },
     ]) expect(parseCode(photoRequest(over)), JSON.stringify(over).slice(0, 80)).toBe("REQUEST_INVALID");
-    expect(parseCode(designRequest({ photo_brief: BRIEF }))).toBe("REQUEST_INVALID");
+    expect(parseCode(designRequest({ materials: MATERIALS }))).toBe("REQUEST_INVALID");
   });
-  it("refuses URLs, HTML, quotes, digit runs, currency and control characters in the brief", () => {
+  it("refuses URLs, HTML, quotes, digit runs, currency and control characters in the materials list", () => {
     for (const bad of ["https://example.com の写真", "<b>パン</b>", "「新作」の札", "\"Fresh\"", "2026 年の朝", "500円のパン", "改行\nあり", "www.example.jp 風"]) {
-      expect(parseCode(photoRequest({ photo_brief: { ...BRIEF, subjects: [bad] }, max_images: 1 })), bad).toBe("REQUEST_PHOTO_BRIEF_UNSAFE");
-      expect(parseCode(photoRequest({ photo_brief: { ...BRIEF, mood: bad } })), bad).toBe("REQUEST_PHOTO_BRIEF_UNSAFE");
+      expect(parseCode(photoRequest({ materials: [{ ...MATERIALS[0], note: bad }], max_images: 1 })), bad).toBe("REQUEST_MATERIALS_UNSAFE");
+      expect(parseCode(photoRequest({ materials: [{ ...MATERIALS[0], placement: bad }], max_images: 1 })), bad).toBe("REQUEST_MATERIALS_UNSAFE");
+      expect(parseCode(photoRequest({ mood: bad })), bad).toBe("REQUEST_MATERIALS_UNSAFE");
     }
   });
   it("design photo_inputs: schema 1..6 files, tool limit 5 (photo-N.png, SHA-256, unique, another request id)", () => {
@@ -251,8 +318,8 @@ describe("DEV-303 photo_materials request schema (strict; same unsafe-text filte
 
 describe("DEV-303 the prompts of both stages", () => {
   const photo = parseRequest(bytesOf(photoRequest()), sha(bytesOf(photoRequest())), PHOTO_ID).request as PhotoMaterialsRequest;
-  const plan = buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
-  it("stage 1: one prompt per subject, web-friendly frames, no facts value, the material rules", () => {
+  const plan = buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: AD });
+  it("materials: one prompt per listed material in its aspect slot, the approved design as references, no facts value, the material rules", () => {
     expect([plan.photos.length, plan.batch.images]).toEqual([6, 6]);
     expect(plan.photos.map((p) => p.aspect)).toEqual(["landscape_3x2", "landscape_3x2", "square_1x1", "square_1x1", "portrait_2x3", "portrait_2x3"]);
     expect(plan.photos.map((p) => p.file)).toEqual([1, 2, 3, 4, 5, 6].map((n) => `parts/photo-${n}.png`));
@@ -262,14 +329,38 @@ describe("DEV-303 the prompts of both stages", () => {
       expect(p.prompt).toContain("文字・数字・記号・看板・ロゴ");
       expect(p.prompt).toContain("人の顔や頭を写さない");
       expect(p.prompt).toContain("値札・メニュー表を写さない");
+      expect(p.prompt).toContain("承認したデザインの中");
+      expect(p.prompt).toContain(`「${PHOTO_LABEL}」と表示し`);
+      expect(p.prompt).toContain("参照画像として渡す");
     }
+    expect(plan.photos.map((p) => [p.material_id, p.kind])).toEqual(MATERIALS.map((m) => [m.id, m.kind]));
+    expect(plan.photos[0]!.prompt).toContain(`置く場所（承認したデザインの中）: ${MATERIALS[0]!.placement}`);
     expect(plan.batch.prompt).toContain("exactly 6 times");
     expect(plan.batch.prompt).toContain("1536x1024");
-    expect(buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS }).plan_sha256).toBe(plan.plan_sha256);
+    expect(plan.batch.prompt).toContain(`set referenced_image_paths to exactly ["${REFERENCE_DIR_TOKEN}/ref-1.png", "${REFERENCE_DIR_TOKEN}/ref-2.png"]`);
+    expect(plan.approved_design).toEqual({ bundle_id: BASE_ID, bundle_sha256: AD.bundle_sha256, review_sha256: AD.review_sha256, approval_sha256: AD.approval_sha256 });
+    expect(plan.materials_sha256).toBe(plan.direction_sha256);
+    expect(plan.references.map((r) => r.image)).toEqual(["pc-1", "sp-1"]);
+    expect(buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: AD }).plan_sha256).toBe(plan.plan_sha256);
+    // the slot follows the aspect, not the list order
+    const swapped = { ...photo, materials: [photo.materials[4]!, photo.materials[0]!] , max_images: 2 } as PhotoMaterialsRequest;
+    expect(buildPhotoPlan({ request: swapped, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: AD }).photos.map((p) => p.file)).toEqual(["parts/photo-1.png", "parts/photo-5.png"]);
   });
-  it("stage 1: a brief quoting a facts value is refused", () => {
-    const quoting = { ...photo, photo_brief: { ...photo.photo_brief, mood: "架空パン店 ほし窯 の朝" } };
-    expect(() => buildPhotoPlan({ request: quoting, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS })).toThrow(PromptStop);
+  it("materials: a list quoting a facts value, no approved design, another design, or bad references are refused", () => {
+    const code = (f: () => unknown) => {
+      try {
+        f();
+        return "ok";
+      } catch (e) {
+        return e instanceof PromptStop ? e.code : String(e);
+      }
+    };
+    const quoting = { ...photo, mood: "架空パン店 ほし窯 の朝" };
+    expect(code(() => buildPhotoPlan({ request: quoting, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: AD }))).toBe("REQUEST_MATERIALS_HAS_FACT");
+    expect(code(() => buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: null }))).toBe("APPROVED_DESIGN_REQUIRED");
+    expect(code(() => buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: { ...AD, bundle_sha256: sha("other") } }))).toBe("APPROVED_DESIGN_MISMATCH");
+    expect(code(() => buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: { ...AD, references: [] } }))).toBe("REFERENCE_IMAGES_MISSING");
+    expect(code(() => buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, approvedDesign: { ...AD, references: [{ ...AD.references[0]!, id: "ref-2" }] } }))).toBe("REFERENCE_IMAGES_INVALID");
   });
   it("stage 2 with photo_inputs: the イメージ label, the 提案用デモ marker, replaceable frames, facts kept apart; without them the prompt is unchanged", () => {
     const files = [1, 2, 3].map((n) => ({ name: `photo-${n}.png`, sha256: sha(String(n)) }));
@@ -332,17 +423,117 @@ describe("Issue #335 (production flow §3.5, §6.1 row 1): at most 5 reference p
   });
 });
 
-describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 pictures", () => {
-  it("stage 1 makes 6 materials in its own run; stage 2 attaches them with --image and leaves only its own 6 pictures in parts/ and the inbox", async () => {
-    const { w, one, files, d1 } = await stageOne();
-    expect([one.fake.execs, one.fake.attached[0]]).toEqual([1, []]);
+describe("DEV-303 §6.1 change 6: a materials request runs only on the owner-approved design (validate and worker alike)", () => {
+  it("each refusal of the approved design stops the request before anything runs; the approved one passes", async () => {
+    const w = home();
+    const a = await approvedBase(w);
+    const validate = async () => {
+      const r = w.place(photoRequest());
+      return validateRequestFile({ file: r.file, home: w.h, repo: w.repo }).then((v) => v, (e: { code?: string }) => e.code ?? String(e));
+    };
+    // the approved design passes: its record of it is in the output (SHA-256s and the bundle id, no path)
+    const ok = (await validate()) as Record<string, unknown>;
+    expect(ok).toMatchObject({ stage: "photo_materials", approved_design: { bundle_id: BASE_ID, bundle_sha256: a.bundleSha }, materials_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(JSON.stringify(ok)).not.toMatch(/design-reviews|\.review\.json/);
+    const approvalPath = join(a.dir, APPROVAL_FILE);
+    const reviewPath = join(a.dir, REVIEW_FILE);
+    const approvalBytes = readFileSync(approvalPath);
+    const reviewBytes = readFileSync(reviewPath);
+    const restore = () => {
+      rmSync(approvalPath, { force: true });
+      rmSync(reviewPath, { force: true });
+      writeFileSync(approvalPath, approvalBytes);
+      writeFileSync(reviewPath, reviewBytes);
+    };
+    const editApproval = (edit: (x: Record<string, unknown>) => void) => {
+      const x = JSON.parse(approvalBytes.toString("utf8")) as Record<string, unknown>;
+      edit(x);
+      rmSync(approvalPath);
+      writeFileSync(approvalPath, bytesOf(x));
+    };
+    editApproval((x) => (x.decision = "revise"));
+    expect(await validate()).toBe("DESIGN_NOT_APPROVED");
+    editApproval((x) => (x.review_sha256 = sha("another review")));
+    expect(await validate()).toBe("DESIGN_APPROVAL_REVIEW_MISMATCH");
+    editApproval((x) => (x.page_sha256 = sha("another page")));
+    expect(await validate()).toBe("DESIGN_APPROVAL_PAGE_MISMATCH");
+    restore();
+    // a review with a fail (the approval rebound to it) is never approvable
+    const review = JSON.parse(reviewBytes.toString("utf8")) as { axes: Record<string, { verdict: string }> };
+    review.axes.originality!.verdict = "fail";
+    rmSync(reviewPath);
+    writeFileSync(reviewPath, bytesOf(review));
+    const c = await checkDesignApproval({ bundleDir: a.bundleDir, reviewPath, repo: w.repo, mode: "draft" });
+    editApproval((x) => {
+      x.review_sha256 = c.review_sha256;
+      x.page_sha256 = c.page_sha256;
+    });
+    expect(await validate()).toBe("DESIGN_REVIEW_HAS_FAIL");
+    restore();
+    // missing records, a linked folder, another bundle SHA-256 than the request names
+    rmSync(approvalPath);
+    expect(await validate()).toBe("APPROVED_DESIGN_MISSING");
+    restore();
+    const realDir = join(tmp("sr-photo-dr-"), "design-reviews");
+    cpSync(a.dir, realDir, { recursive: true });
+    rmSync(a.dir, { recursive: true });
+    symlinkSync(realDir, a.dir);
+    expect(await validate()).toBe("APPROVED_DESIGN_UNSAFE");
+    rmSync(a.dir);
+    cpSync(realDir, a.dir, { recursive: true });
+    const saved = approvedBundleSha;
+    approvedBundleSha = sha("another bundle");
+    expect(await validate()).toBe("APPROVED_DESIGN_MISMATCH");
+    approvedBundleSha = saved;
+    // the delivered design changed after the approval: the bundle no longer verifies
+    const pc = join(a.bundleDir, "parts", "pc-1.png");
+    const pcBytes = readFileSync(pc);
+    rmSync(pc);
+    writeFileSync(pc, colourPng(640, 640), { mode: 0o600 });
+    expect(await validate()).toBe("DESIGN_BUNDLE_INVALID");
+    rmSync(pc);
+    writeFileSync(pc, pcBytes, { mode: 0o600 });
+    expect(((await validate()) as Record<string, unknown>).stage).toBe("photo_materials");
+    // the worker refuses the same way, nothing invoked
+    editApproval((x) => (x.decision = "reject"));
+    expect((await w.cycle(photoRequest({ id: "req-test-shop-p-photos-9" }))).report).toMatchObject({ status: "refused", code: "DESIGN_NOT_APPROVED", invoked: false });
+    expect(w.fakes.reduce((n, f) => n + f.execs, 0)).toBe(1);
+  });
+
+  it("sealing and delivery hold the receipt to the run's own approved-design-input.json", async () => {
+    const { w, one } = await stageOne();
+    const input = join(one.report.run_dir!, "approved-design-input.json");
+    const original = readFileSync(input, "utf8");
+    const deliver = () => deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }).then((r) => r.status, (e: { code?: string }) => e.code ?? String(e));
+    const edited = JSON.parse(original) as Record<string, unknown>;
+    edited.materials_sha256 = sha("another list");
+    rmSync(input);
+    writeFileSync(input, JSON.stringify(edited), { mode: 0o600 });
+    expect(await deliver()).toBe("APPROVED_DESIGN_INPUT_MISMATCH");
+    rmSync(input);
+    expect(await deliver()).toBe("APPROVED_DESIGN_INPUT_MISMATCH");
+    writeFileSync(input, original, { mode: 0o600 });
+    // restored: it passes again (stageOne already delivered this run, so the re-send reports the same sealed bundle)
+    expect(await deliver()).toBe("duplicate");
+  });
+});
+
+describe("DEV-303 design → approval → materials → (research) design with photo inputs, end to end (fake Codex)", () => {
+  it("materials are made after the approved design, with its PC / SP pictures as references; a research design may then attach them, leaving only its own 6 pictures", async () => {
+    const { w, one, files, d1, approved } = await stageOne();
+    // DEV-303 §6.1 change 6: the approved design's pictures (2 + 4 > 5: the first PC and the first SP part) are the references
+    expect([one.fake.execs, one.fake.attached[0]]).toEqual([1, [approved.images.pc[0]!.sha256, approved.images.sp[0]!.sha256]]);
     const photoRun = one.report.run_dir!;
     expect(photoRun.startsWith(w.runsDir)).toBe(true);
     expect(statSync(photoRun).mode & 0o777).toBe(0o700);
     expect(readdirSync(join(photoRun, "parts")).sort()).toEqual([1, 2, 3, 4, 5, 6].map((n) => `photo-${n}.png`));
-    expect(existsSync(join(photoRun, "photo-brief.json"))).toBe(true);
+    expect(existsSync(join(photoRun, "materials.json"))).toBe(true);
     const r1 = JSON.parse(readFileSync(one.report.receipt!, "utf8")) as WorkerReceipt;
     expect(r1).toMatchObject({ status: "succeeded", verified: true, mode: "request", request_stage: "photo_materials", request_id: PHOTO_ID, kind: "fictional", shop: SHOP, counts: { pc: 0, sp: 0, photo: 6, total: 6, stopped: 0 }, images_total: 6 });
+    expect(r1.approved_design).toMatchObject({ bundle_id: BASE_ID, bundle_sha256: approved.bundleSha });
+    expect(r1.materials_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.parse(readFileSync(join(photoRun, "approved-design-input.json"), "utf8"))).toEqual({ schema: "image_first_approved_design_input_v0", ...r1.approved_design, materials_sha256: r1.materials_sha256 });
+    expect(JSON.stringify(r1)).not.toMatch(/design-reviews|\.review\.json|\.approval\.json/);
     expect(files.map((f) => f.name)).toEqual([1, 2, 3, 4, 5, 6].map((n) => `photo-${n}.png`));
     expect(files.map((f) => f.sha256)).toEqual(r1.images.map((i) => i.sha256));
     // one use per request id
@@ -408,8 +599,8 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     expect(imagesUnder(join(photoRun, "parts")).length).toBe(6);
     expect(imagesUnder(photoInbox).length).toBe(6);
     for (const dir of [join(photoRun, "parts"), photoInbox, join(designRun, "parts"), inboxCopy]) expect(imagesUnder(dir).length, dir).toBeLessThanOrEqual(6);
-    // in all: 2 runs, 12 pictures; the design request is used once
-    expect(w.fakes.reduce((n, f) => n + f.execs, 0)).toBe(2);
+    // in all: 3 runs (the approved design, its materials, the research design); the design request is used once
+    expect(w.fakes.reduce((n, f) => n + f.execs, 0)).toBe(3);
     expect((await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: inputs } }))).report.code).toBe("REQUEST_ALREADY_CLAIMED");
     expect(git(w.repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
   });
@@ -479,7 +670,8 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     rmSync(sealed);
     writeFileSync(sealed, keep3, { mode: 0o600 });
     rmSync(aside, { recursive: true });
-    expect(execs()).toBe(1);
+    // the approved design and the materials run only
+    expect(execs()).toBe(2);
     // with everything restored, the first picture resolves again
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-10")).status).toBe("succeeded");
   });
@@ -489,8 +681,9 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     const f = [{ name: "photo-1.png", sha256: sha("1") }];
     const design = w.place(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: f } }));
     expect(await validateRequestFile({ file: design.file, home: w.h, repo: w.repo })).toMatchObject({ request_id: DESIGN_ID, stage: "design", photo_inputs: "unchecked" });
+    // DEV-303 §6.1 change 6: no approved design in this home yet: the materials request is refused
     const photo = w.place(photoRequest());
-    expect(await validateRequestFile({ file: photo.file, home: w.h, repo: w.repo })).toMatchObject({ request_id: PHOTO_ID, stage: "photo_materials", photo_inputs: null });
+    expect(await codeOf(validateRequestFile({ file: photo.file, home: w.h, repo: w.repo }))).toBe("APPROVED_DESIGN_MISSING");
     const plain = w.place(designRequest({ id: "req-test-shop-p-plain-1" }));
     expect(await validateRequestFile({ file: plain.file, home: w.h, repo: w.repo })).toMatchObject({ stage: "design", photo_inputs: null });
     expect(existsSync(w.stateDir) || existsSync(w.ledgerDir)).toBe(false);
