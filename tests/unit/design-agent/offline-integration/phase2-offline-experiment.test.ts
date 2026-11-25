@@ -15,6 +15,7 @@
  */
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { waitForFrame } from "@/lib/design-agent/frame-ready";
 import { auditPageText } from "@/lib/design-agent/identity/identity-lock";
 import { compareRenders, type RenderSide, type Viewport } from "@/lib/design-agent/impl-lane/compare";
 import { runLoop, type Ports } from "@/lib/design-agent/loop/controller";
@@ -69,9 +70,11 @@ async function render(page: Page, v: Viewport): Promise<RenderSide & { text: str
     // DEV-135: the page is shot at its own height, not by stitching a full-page capture: under load on CI, Chromium
     // refused the tall full-page capture once ("Unable to capture screenshot", develop 1220d3e). The boxes are measured
     // above, at the real viewport; the fixture pages size nothing by the viewport height (keep it so: no vh units,
-    // position: fixed or height media queries in fixtures here). If the capture still fails under load, it is an
-    // infrastructure flake to record, not a reason to add a retry.
+    // position: fixed or height media queries in fixtures here). DEV-098: the first frame after the resize is awaited
+    // (waitForFrame) before the capture, since Chromium refused it once more on CI right after the resize. Still no
+    // retry: if the capture fails under load, it is an infrastructure flake to record.
     await p.setViewportSize({ width: WIDTH[v].width, height: Math.max(WIDTH[v].height, Math.ceil(m.height)) });
+    await waitForFrame(p);
     const png = await p.screenshot({ clip: { x: 0, y: 0, width: WIDTH[v].width, height: m.height } });
     return { png, sections: m.sections, text: m.text };
   } finally {
