@@ -232,11 +232,15 @@
   `verdict`（`pass` / `revise` / `fail`）・`note`（1 行、300 字まで））、`reviewer`（Claude の別の文脈）、`reviewed_at`。**審査は助言**。
   見る観点は §2a の 9 と MVP_SPEC §7.1 の 5 条件（文字・ロゴ・人の顔・店の物に見える物が無いか、承認したデザインから写した文字や構図が無いか）。
   審査の `id` は素材の依頼の一覧の ID と**照合しない**（bundle には一覧の SHA-256 `materials_sha256` しか無いため）。審査する Claude が依頼の一覧を見て正しく書く。
+- **確認ページ**（オーナー承認 2026-11-26）: `npx tsx scripts/design-artifact/materials-impl-check.ts --page --design-bundle <dir> --design-review <file> --design-approval <file> --materials-bundle <dir> --materials-review <file> --out <非公開の空の出力先>`。
+  §G と同じ形の静的な HTML（script なし・通信なし・CSP。素材の画像は検証した bundle から横に写す。各素材の審査の判定と所見を並べる。文はすべて escape。承認は載せない）。
+  出力先はリポジトリの外で、空か無い場所（作ると 0700、ファイルは 0600）。表示される `page_sha256` と `review_sha256` を承認の記録に使う。
 - **承認の記録** `sr_materials_approval_v1`（同じ置き場の `.materials-approval.json`）: `request_id`、`bundle_sha256`、`review_sha256`（審査の記録のファイルの SHA-256）、
-  `approved_materials`（使ってよい画像の `file` と `sha256`。審査した画像だけ、審査の順で 1〜6 枚。外した画像は使えない）、`decision`（`approve` / `revise` / `reject`）、
-  `decided_at`（審査より前にできない）、`note`（任意）。**承認の記録を書くのは Claude で、オーナーが決めたと言ったときだけ**。これは記録であって**オーナー本人の署名ではない**。
+  `page_sha256`（オーナーが見た確認ページ。検査のたびに審査と run から描き直して照合するので、審査やページのひな形が変われば承認はやり直し）、`approved_materials`（使ってよい画像の `file` と `sha256`。審査した画像だけ、審査の順で 1〜6 枚。外した画像は使えない）、`decision`（`approve` / `revise` / `reject`）、
+  `decided_at`（審査より前にできない）、`note`（任意）。**承認の記録を書くのは Claude で、オーナーが確認ページを見て、承認と使ってよい素材をはっきり決めたと言ったときだけ**
+  （Claude が自分の判断で素材を承認済みにすることはない）。これは記録であって**オーナー本人の署名ではない**。
   `fail` の画像は承認できない（`MATERIALS_APPROVAL_HAS_FAIL`。新しい審査か新しい素材にする）。`revise` はオーナーが決めれば承認できる。
-  確認ページはまだ無い（オーナーは review inbox の画像と審査の記録を見る）。
+  承認がページと違えば `MATERIALS_APPROVAL_PAGE_MISMATCH`。
 - **検査（ゲート）**: `npx tsx scripts/design-artifact/materials-impl-check.ts --design-bundle <dir> --design-review <file> --design-approval <file> --materials-bundle <dir> --materials-review <file> --materials-approval <file>`。
   `--materials-approval` を省くと審査だけの確認（承認の前）。`lib/design-agent/imagefirst-worker/materials-approval.ts` の `approvedMaterials` が、承認された画像と SHA-256 を返すか、
   `MATERIALS_*` の決まった名前で止まる。
