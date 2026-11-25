@@ -23,10 +23,23 @@
  * (`stage: "design"` or none) may name a photo_materials run's pictures (`photo_inputs`): they are attached to its one
  * Codex run, every photo frame is labelled 「イメージ」, the page shows 「提案用デモ」, and the page text is still only facts
  * values and the fixed labels. Without photo_inputs a design request's prompts and plan are byte-identical to before.
+ *
+ * DEV-303 §6.1 row 3 (docs/design/image-first-production-flow.md §1 stage 2, §2 principles 2/3/6, §3.2, §3.5): the
+ * design stage's `layout`. "whole_page" (buildWholePagePlan) asks for ONE coherent full-page design picture for PC and
+ * ONE for SP (each its own composition under the same direction; WHOLE_PAGE_IMAGES = PC 1 + SP 1, both portrait 2:3,
+ * the tallest frame the image tool makes): no section order in code — the prompt gives the information inventory
+ * (unordered), the owner-confirmed case study's shop_specific_principles and each counted case's principles_to_bring /
+ * do_not_copy, the PC/SP independence rule, Japanese as the information language, and photo areas as plain replaceable
+ * frames labelled 「イメージ」 (never a photo, product, dish, interior, building or person). The counted cases' original
+ * pictures (at most IMAGE_TOOL_MAX_REFS) are attached as references; the batch prompt names them as
+ * `REFERENCE_DIR_TOKEN/ref-N.<ext>` (image-once.ts replaces the token with the absolute staged directory). A real_shop
+ * design request must be whole_page (REAL_SHOP_WHOLE_PAGE_REQUIRED) and name its case study; a whole_page request never
+ * carries photo_inputs (WHOLE_PAGE_PHOTO_INPUTS_REFUSED: design → approval → materials). No layout (or
+ * "section_sequence"): the PC 2 + SP 4 section split above, for fictional / research requests only, byte-identical.
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
+import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "../image-tool-limits";
 import { LABELS_BY_KEY } from "../quality-pipeline/copy-record";
 import { FactsPack } from "../quality-pipeline/facts-pack";
 import { boxesFor, NAV_LABELS, PRINCIPLES, PromptStop, splitSections, type PlannedPart, type PlannedViewport } from "./prompt";
@@ -44,6 +57,12 @@ export const REQUEST_MAX_BYTES = 16 * 1024;
 export const FACTS_MAX_BYTES = 256 * 1024;
 /** One request = one Codex run of exactly this many pictures (PC 2 + SP 4). */
 export const REQUEST_IMAGES = { pc: 2, sp: 4, total: 6 } as const;
+/** DEV-303 §6.1 row 3: a whole_page design request = one Codex run of one full-page picture per viewport. */
+export const WHOLE_PAGE_IMAGES = { pc: 1, sp: 1, total: 2 } as const;
+export const DESIGN_LAYOUTS = ["section_sequence", "whole_page"] as const;
+export type DesignLayout = (typeof DESIGN_LAYOUTS)[number];
+/** The pictures a request's one run makes, by its layout. */
+export const imagesOfLayout = (layout: DesignLayout): { readonly pc: number; readonly sp: number; readonly total: number } => (layout === "whole_page" ? WHOLE_PAGE_IMAGES : REQUEST_IMAGES);
 export const FACTS_ROOTS = ["second-root-shops", "local-shops"] as const;
 export type FactsRoot = (typeof FACTS_ROOTS)[number];
 
@@ -150,20 +169,27 @@ const factsRefOk = (r: EnvelopeShape) => r.facts_ref.shop_id === r.shop_id;
 // a real shop's facts live only in ~/second-root-shops (never inside the clone, where Codex is not kept out)
 const realShopRootOk = (r: EnvelopeShape) => r.kind !== "real_shop" || r.facts_ref.root === "second-root-shops";
 
-/** The design stage (the original request; `stage` may be left out). PC 2 + SP 4 = 6 pictures. */
+/**
+ * The design stage (the original request; `stage` may be left out). No layout or "section_sequence": PC 2 + SP 4 = 6
+ * pictures; "whole_page" (DEV-303 §6.1 row 3): PC 1 + SP 1 = 2 (max_images must say so).
+ */
 export const DesignRequest = z
   .strictObject({
     ...ENVELOPE,
     stage: z.literal("design").optional(),
+    layout: z.enum(DESIGN_LAYOUTS).optional(),
     direction: RequestDirection,
     photo_inputs: PhotoInputs.optional(),
     case_study: CaseStudyRef.optional(),
-    max_images: z.literal(REQUEST_IMAGES.total),
+    max_images: z.union([z.literal(REQUEST_IMAGES.total), z.literal(WHOLE_PAGE_IMAGES.total)]),
   })
   .refine(factsRefOk, "facts_ref_shop_mismatch")
   .refine(realShopRootOk, "real_shop_facts_root")
-  .refine((r) => r.photo_inputs === undefined || r.photo_inputs.request_id !== r.id, "photo_inputs_self");
+  .refine((r) => r.photo_inputs === undefined || r.photo_inputs.request_id !== r.id, "photo_inputs_self")
+  .refine((r) => r.max_images === imagesOfLayout(r.layout ?? "section_sequence").total, "max_images_layout");
 export type DesignRequest = z.infer<typeof DesignRequest>;
+/** The design request's layout (none = the section split, as before). */
+export const layoutOf = (r: Pick<DesignRequest, "layout">): DesignLayout => r.layout ?? "section_sequence";
 
 /** DEV-303 (owner decision 2026-11-24): the photo-materials stage. One picture per subject; max_images = that count. */
 export const PhotoMaterialsRequest = z
@@ -205,8 +231,16 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? (photo ? "REQUEST_PHOTO_BRIEF_UNSAFE" : "REQUEST_DIRECTION_UNSAFE") : "REQUEST_INVALID");
   if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
   if (!isPhotoRequest(r.data) && !photoInputsWithinToolLimit(r.data.photo_inputs)) throw new PromptStop("PHOTO_INPUTS_OVER_TOOL_LIMIT");
-  // Issue #336: a real shop's design starts only from an owner-confirmed success-case analysis (§1 stage 1)
-  if (!isPhotoRequest(r.data) && r.data.kind === "real_shop" && !r.data.case_study) throw new PromptStop("CASE_STUDY_REQUIRED");
+  if (!isPhotoRequest(r.data)) {
+    const whole = layoutOf(r.data) === "whole_page";
+    // DEV-303 §6.1 row 3: a real shop's design is one whole-page picture per viewport (§3.2), never the section split
+    if (r.data.kind === "real_shop" && !whole) throw new PromptStop("REAL_SHOP_WHOLE_PAGE_REQUIRED");
+    // the formal order is design → approval → materials (§1): a whole-page design never starts from photo materials
+    if (whole && r.data.photo_inputs) throw new PromptStop("WHOLE_PAGE_PHOTO_INPUTS_REFUSED");
+    // Issue #336: a real shop's design (and every whole-page design: its principles and references come from it) starts
+    // only from an owner-confirmed success-case analysis (§1 stage 1)
+    if ((r.data.kind === "real_shop" || whole) && !r.data.case_study) throw new PromptStop("CASE_STUDY_REQUIRED");
+  }
   return { request: r.data, sha256: got };
 }
 
@@ -280,9 +314,33 @@ export function requestSections(facts: FactsPack): RequestSection[] {
   return out;
 }
 
+/**
+ * DEV-303 §6.1 row 3: one success-case original attached to a whole_page run as a reference picture: its staged name
+ * (ref-N.<ext>), the case it comes from, its SHA-256 and media type. Never a path (the worker resolved and checked it).
+ */
+export type PlanReference = { id: string; case_id: string; name: string; sha256: string; media_type: "image/png" | "image/jpeg" | "image/webp" };
+/**
+ * DEV-303 §6.1 row 3: what a whole_page plan takes from the gate-checked case study (request.ts readRequestCaseStudy):
+ * its SHA-256, the shop's own principles, each counted case's principles and do-not-copy list (owner-selected order),
+ * and the chosen reference pictures (1..IMAGE_TOOL_MAX_REFS).
+ */
+export type RequestCaseStudyUse = {
+  sha256: string;
+  shop_specific_principles: readonly string[];
+  cases: readonly { id: string; principles_to_bring: readonly string[]; do_not_copy: readonly string[] }[];
+  references: readonly PlanReference[];
+};
+export const WHOLE_PAGE_PROMPT_VERSION = "if-req-whole-v0";
+/** The one frame both whole-page pictures use: the tallest the image tool makes (1024x1536, portrait 2:3). */
+export const WHOLE_PAGE_FRAME = "portrait_2x3" as const;
+/** The single section a whole-page part declares: the whole frame (the page's own sections are the model's decision). */
+export const WHOLE_PAGE_SECTION = "page";
+const REFERENCE_ID_RE = /^ref-([1-5])$/;
+const REFERENCE_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as const;
+
 export type RequestPlan = {
   schema: typeof REQUEST_PLAN_SCHEMA;
-  prompt_version: typeof REQUEST_PROMPT_VERSION;
+  prompt_version: typeof REQUEST_PROMPT_VERSION | typeof WHOLE_PAGE_PROMPT_VERSION;
   request_id: string;
   kind: ImagefirstRequest["kind"];
   direction_key: "request";
@@ -298,6 +356,10 @@ export type RequestPlan = {
   batch: { prompt: string; sha256: string; chars: number; images: number };
   /** DEV-303 (owner decision 2026-11-24): only when the request names photo inputs (bound into plan_sha256). */
   photo_inputs?: PhotoInputs;
+  /** DEV-303 §6.1 row 3: only on a whole_page plan (all three bound into plan_sha256). */
+  layout?: "whole_page";
+  case_study_sha256?: string;
+  references?: PlanReference[];
   plan_sha256: string;
 };
 
@@ -305,7 +367,8 @@ export type RequestPlan = {
 export const PHOTO_LABEL = "イメージ";
 export const DEMO_MARKER = "提案用デモ";
 
-export type RequestInputs = { request: DesignRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack };
+/** caseStudy: DEV-303 §6.1 row 3, required by (and only read for) a whole_page request. */
+export type RequestInputs = { request: DesignRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack; caseStudy?: RequestCaseStudyUse | null };
 
 /** direction.json for a request: the direction object as canonical JSON (written into the private run directory). */
 export const requestDirectionBytes = (request: DesignRequest) => Buffer.from(`${JSON.stringify(request.direction, null, 2)}\n`, "utf8");
@@ -398,6 +461,9 @@ export function buildRequestPlan(inputs: RequestInputs): RequestPlan {
   // the direction carries no fact: no facts-pack value (but the category code, a generic word) appears in its text
   const dirText = Object.values(request.direction).join("\n").normalize("NFKC").toLowerCase();
   for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && dirText.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_DIRECTION_HAS_FACT");
+  // DEV-303 §6.1 row 3: a whole-page design; the section split stays for fictional / research requests only
+  // (parseRequest refuses a real_shop section split, and the run refuses its plan; the builder itself stays as pinned)
+  if (layoutOf(request) === "whole_page") return buildWholePagePlan(inputs);
   const sections = requestSections(facts);
   const ids = sections.map((s) => s.id);
   const viewports = {} as Record<ImageFirstViewport, PlannedViewport>;
@@ -451,6 +517,165 @@ ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.n
   } as const;
   const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, viewports: Object.fromEntries(Object.entries(viewports).map(([k, v]) => [k, { ...v, parts: v.parts.map((p) => ({ ...p, prompt: undefined })) }])) };
   return { ...body, plan_sha256: sha256(canonical(stripped)) };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// DEV-303 §6.1 row 3 (production flow §1 stage 2, §3.2): the whole-page design. One picture per viewport, each the whole
+// page (header to footer) as one composition; no section order in code.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * The facts a whole-page design must show (unordered): the same keys the section split shows — name, description, up
+ * to MAX_STATEMENTS statement_*, up to MAX_SERVICES service_*, and the visit information — in the pack's own order.
+ */
+export function wholePageInventory(facts: FactsPack): string[] {
+  const has = (k: string) => facts.facts.some((f) => f.key === k);
+  if (!has("name") || !has("description")) throw new PromptStop("FACT_MISSING");
+  if (new Set(facts.facts.map((f) => f.key)).size !== facts.facts.length) throw new PromptStop("FACTS_DUPLICATE_KEY");
+  const keys = new Set(["name", "description", ...numbered(facts, "statement", MAX_STATEMENTS), ...numbered(facts, "service", MAX_SERVICES), ...INFO_KEYS.filter(has)]);
+  return facts.facts.filter((f) => keys.has(f.key)).map((f) => f.key);
+}
+
+/** The case study's part of a whole-page plan, checked: bound to the request's case study, 1..5 well-formed references. */
+function checkCaseStudyUse(request: DesignRequest, cs: RequestCaseStudyUse | null | undefined): RequestCaseStudyUse {
+  if (!cs || !request.case_study) throw new PromptStop("CASE_STUDY_REQUIRED");
+  if (cs.sha256 !== request.case_study.sha256) throw new PromptStop("CASE_STUDY_PLAN_MISMATCH");
+  if (cs.shop_specific_principles.length === 0 || cs.cases.length === 0) throw new PromptStop("CASE_STUDY_PLAN_MISMATCH");
+  const refs = cs.references;
+  if (refs.length === 0) throw new PromptStop("REFERENCE_IMAGES_MISSING");
+  if (refs.length > IMAGE_TOOL_MAX_REFS) throw new PromptStop("REFERENCE_IMAGES_OVER_TOOL_LIMIT");
+  const caseIds = new Set(cs.cases.map((c) => c.id));
+  const ok = refs.every((r, n) => REFERENCE_ID_RE.exec(r.id)?.[1] === String(n + 1) && Object.hasOwn(REFERENCE_EXT, r.media_type) && r.name === `${r.id}.${REFERENCE_EXT[r.media_type]}` && /^[0-9a-f]{64}$/.test(r.sha256) && caseIds.has(r.case_id));
+  if (!ok || new Set(refs.map((r) => r.sha256)).size !== refs.length) throw new PromptStop("REFERENCE_IMAGES_INVALID");
+  return cs;
+}
+
+function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewport; inventory: string[]; cs: RequestCaseStudyUse }): string {
+  const { inputs, viewport, inventory, cs } = o;
+  const { request, facts } = inputs;
+  const d = request.direction;
+  const value = (key: string) => {
+    const f = facts.facts.find((x) => x.key === key);
+    if (!f) throw new PromptStop("FACT_MISSING");
+    return f.value;
+  };
+  const pc = viewport === "desktop_1440";
+  // the facts schema's own labels of the visit information shown (checked against copy-record LABELS_BY_KEY)
+  const labels = NAV_LABELS.filter(([key]) => inventory.includes(key)).map(([key]) => labelOf(key));
+  const category = facts.facts.find((f) => f.key === "category")?.value;
+  const lines: string[] = [];
+  lines.push("これは Web サイトのデザインカンプ（完成イメージ）の画像1枚です。写真でも、ポスターでも、パソコンやスマートフォンの写った見本画像でもありません。ブラウザの枠・スクロールバー・端末の縁・机・手は描かず、ページの画面そのものだけを、平らな画像として正面から描いてください。");
+  lines.push("");
+  lines.push(
+    request.kind === "fictional"
+      ? `店: ${value("name")}（比較研究用の架空の店。実在の店舗ではない）`
+      : `店: ${value("name")}（実在の店。この画像は社内のデザインの参考だけに使い、店の事実の根拠にも、店や第三者に見せる素材にもならない）`,
+  );
+  if (category) lines.push(`業種の分類: ${category}（参考。画像には書かない）`);
+  lines.push(pc ? `表示: PC 版（幅 ${VIEWPORT_WIDTHS[viewport]}px のデスクトップの画面）。` : `表示: スマートフォン版（幅 ${VIEWPORT_WIDTHS[viewport]}px の縦長の画面）。`);
+  lines.push("この画像の役割: この表示のページ全体（いちばん上のヘッダーから、いちばん下のフッターまで）を、1枚の縦長の枠（横:縦 = 2:3）に縮めて描く。区画ごとに分けた画像ではなく、ページ全体として一貫した1つの構図にする。");
+  lines.push(
+    pc
+      ? "PC 版とスマートフォン版: 同じデザインの方針（下の原理・色・文字の組み方・写真の枠の扱い）に基づき、それぞれ独立して設計する。この画像は PC 版だけの構図。"
+      : "PC 版とスマートフォン版: 同じデザインの方針（下の原理・色・文字の組み方・写真の枠の扱い）に基づき、それぞれ独立して設計する。この画像はスマートフォン版だけの構図で、PC 版を縮めたものでも、PC 版の区画を縦に積み直したものでもない。最初の画面で店が分かるようにする。",
+  );
+  lines.push("区画の数と順: 決まった区画の順番はない。区画の数・順番・形・大きさ・余白は、下の原理と方向性から決める。既存のテンプレートの並びに当てはめない。");
+  lines.push("");
+  lines.push(`方向性の名前（画像には書かない）: ${d.name}`);
+  lines.push(`デザインの考え: ${d.concept}`);
+  lines.push(`色: ${d.palette}`);
+  lines.push(`文字の組み方: ${d.typography}`);
+  lines.push(pc ? `PC 版の組み方: ${d.layout_pc}` : `スマートフォン版の組み方: ${d.layout_sp}`);
+  lines.push(`避けること: ${d.avoid}`);
+  lines.push("");
+  lines.push("この店固有のデザインの原理（この店の事実から導いたもの。画像には書かない）:");
+  for (const p of cs.shop_specific_principles) lines.push(`- ${p}`);
+  lines.push("");
+  lines.push(`参照画像: 成功例の原本 ${cs.references.length} 枚を参照画像として渡す。構図・配色・文字・写真・ロゴをそのまま写さない。各成功例から持ち込むのは次の原理だけで、写さないことは必ず避ける（成功例の名前は画像に書かない）:`);
+  for (const c of cs.cases) lines.push(`- ${c.id}: 持ち込む原理: ${c.principles_to_bring.join(" / ")}。写さないこと: ${c.do_not_copy.join(" / ")}。`);
+  lines.push("");
+  lines.push("情報の言語: ページの情報は日本語で示す（日本の客に向けた店。下の文字列が情報の中心）。英字の見出し・飾りの英文を加えない。");
+  lines.push(`写真の場所: 写真が要る場所は、単純な長方形か角丸の長方形の枠として描き、枠の中は無地か薄い斜線だけにして、枠の隅に小さく「${PHOTO_LABEL}」と書く（後で本物の写真や素材と差し替える枠）。写真や写真風の絵そのものは描かない。`);
+  lines.push("商品・料理・店内・建物・人物の姿は描かない（描いたものが店の実物と取り違えられないように）。線画・図形・色の面・文字・写真の枠で組む。");
+  lines.push("");
+  lines.push("ページに載せる情報（順不同。区画の順はこの並びと関係がない。次の文字列だけを、一字一句そのまま。言い換え・要約・翻訳・分割をしない。どれもページのどこかに載せる）:");
+  for (const t of [...new Set(inventory.map(value))]) lines.push(`- 「${t}」`);
+  lines.push(`ナビゲーションの項目と、情報の値の上の小さな見出しに使ってよい語: ${labels.map((x) => `「${x}」`).join(" ")}`);
+  lines.push(`写真の枠の隅だけに使ってよい語: 「${PHOTO_LABEL}」`);
+  lines.push("それ以外の文字・英字・見出し・キャッチコピー・ロゴは描かない。数字だけの目盛りや時刻のラベルを単独で書かない（数字が現れるのは上の文字列の中だけ）。文字の代わりに読めない模様の文字を描かない。");
+  lines.push("画像の文字は店の事実の根拠にならない。価格・受賞・歴史や創業の年・人物（店主・職人など）・評判・お客様の声・メニューの説明・予約・限定の表示を作らない。人の顔や手を描かない。");
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The whole_page plan: per viewport ONE part (the whole frame, section "page"), its prompt, the ONE batch prompt (with
+ * the reference paths as REFERENCE_DIR_TOKEN/<name>) and the plan SHA (the same canonical form as the section split).
+ * Pure. Refuses a request without its checked case study (CASE_STUDY_REQUIRED / _PLAN_MISMATCH), without 1..5
+ * well-formed references (REFERENCE_IMAGES_*), with photo inputs (WHOLE_PAGE_PHOTO_INPUTS_REFUSED), and any prompt text
+ * that carries the reference token (REFERENCE_TOKEN_IN_TEXT).
+ */
+function buildWholePagePlan(inputs: RequestInputs): RequestPlan {
+  const { request, facts } = inputs;
+  if (request.photo_inputs) throw new PromptStop("WHOLE_PAGE_PHOTO_INPUTS_REFUSED");
+  if (request.max_images !== WHOLE_PAGE_IMAGES.total) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
+  const cs = checkCaseStudyUse(request, inputs.caseStudy);
+  const inventory = wholePageInventory(facts);
+  const viewports = {} as Record<ImageFirstViewport, PlannedViewport>;
+  for (const viewport of ["desktop_1440", "mobile_390"] as const) {
+    const tag = viewport === "desktop_1440" ? "pc" : "sp";
+    const prompt = wholePagePrompt({ inputs, viewport, inventory, cs });
+    if (prompt.includes(REFERENCE_DIR_TOKEN)) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
+    const part: PlannedPart = { index: 1, name: `${tag}-1`, file: `parts/${tag}-1.png`, prompt_file: `prompts/${tag}-1.txt`, frame: WHOLE_PAGE_FRAME, sections: [{ id: WHOLE_PAGE_SECTION, box: { x: 0, y: 0, w: 1, h: 1 } }], prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
+    viewports[viewport] = { target_css_width: VIEWPORT_WIDTHS[viewport], mode: "whole_page", section_order: [WHOLE_PAGE_SECTION], parts: [part], seams: [] };
+  }
+  const all = [
+    { vp: "PC 1440 — the whole PC page", p: viewports.desktop_1440.parts[0]! },
+    { vp: "SP 390 — the whole smartphone page", p: viewports.mobile_390.parts[0]! },
+  ];
+  const about =
+    request.kind === "fictional"
+      ? "The shop is fictional."
+      : "This is an internal design reference only: never depict products, dishes, interiors, buildings or people; photo areas are plain replaceable frames labelled イメージ.";
+  const refPaths = `[${cs.references.map((r) => `"${REFERENCE_DIR_TOKEN}/${r.name}"`).join(", ")}]`;
+  const batchPrompt = `Make the ${all.length} images of ONE website design (flat website screen designs, not photos, not posters, not device mockups) with the image generation tool: Image 1 is the whole PC page, Image 2 the whole smartphone page, each a complete page from header to footer in one picture, each its own composition under the same design direction. ${about}
+
+Rules for this run:
+- Call the image generation tool exactly ${all.length} times, once per image below, in the order given (Image 1 first, Image ${all.length} last). Never more than ${all.length} calls in all.
+- For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
+- For each call, set referenced_image_paths to exactly ${refPaths} (${cs.references.length} success-case originals, absolute paths, also attached as input images; never another path, never more than ${IMAGE_TOOL_MAX_REFS}). They are references for design principles only: never copy their layout, text, colours, photographs or logos.
+- Each image is a portrait frame 2:3 (taller than wide, 1024x1536).
+- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
+- Do not run shell commands, do not read or write files yourself, do not browse (the image tool reads the referenced images itself).
+- When you have finished, reply with one line only: DONE followed by the number of images saved.
+
+${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.name}:\n<<<\n${p.prompt}>>>`).join("\n\n")}
+`;
+  // the token appears only in the reference list (checkRunAttachments in image-once.ts holds the run to the same rule)
+  if (batchPrompt.split(REFERENCE_DIR_TOKEN).length - 1 !== cs.references.length) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
+  const value = (key: string) => facts.facts.find((f) => f.key === key)?.value ?? "";
+  const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: all.length };
+  const references = cs.references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type }));
+  const body = {
+    schema: REQUEST_PLAN_SCHEMA,
+    prompt_version: WHOLE_PAGE_PROMPT_VERSION,
+    request_id: request.id,
+    kind: request.kind,
+    direction_key: "request",
+    direction_id: `request-${request.id}`.slice(0, 41),
+    direction_sha256: sha256(requestDirectionBytes(request)),
+    direction_set_sha256: inputs.requestSha256,
+    request_sha256: inputs.requestSha256,
+    facts_sha256: sha256(inputs.factsBytes),
+    shop: { shop_id: facts.shop_id, display_name: value("name"), category_code: value("category") || "unknown" },
+    viewports,
+    batch,
+    layout: "whole_page",
+    case_study_sha256: cs.sha256,
+    references,
+  } as const;
+  if (all.length !== WHOLE_PAGE_IMAGES.total) throw new PromptStop("SPLIT_INVALID");
+  const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, viewports: Object.fromEntries(Object.entries(viewports).map(([k, v]) => [k, { ...v, parts: v.parts.map((p) => ({ ...p, prompt: undefined })) }])) };
+  return { ...body, references, plan_sha256: sha256(canonical(stripped)) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

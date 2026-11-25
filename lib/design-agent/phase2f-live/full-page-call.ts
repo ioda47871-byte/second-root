@@ -37,10 +37,13 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { CodexAbortedError, CodexError } from "../codex";
 import { REQUIRED_GENERATION, REQUIRED_RIGHTS, REQUIRED_STORAGE, OUTPUT_KIND, RECORD_SCHEMA, ROUTE, VIEWPORTS } from "../image-first/record";
 import type { PromptInputs, PromptPlan } from "../image-first/prompt";
-import { isRequestId, type PhotoInputs, type PhotoPlan } from "../image-first/request-prompt";
+import { isRequestId, type PhotoInputs, type PhotoPlan, type PlanReference } from "../image-first/request-prompt";
 import { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec } from "./approval-packets";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, sha256, writeOnce, type CommitState } from "./steps";
+
+/** The image tool's reference limit per call (lib/design-agent/image-tool-limits.ts IMAGE_TOOL_MAX_REFS; this module does not import it). */
+const MAX_REFERENCES = 5;
 
 /** What the batch did, as the CLI reports it from the one-run batch call (fixed facts only). */
 export type FullPageBatchResult = {
@@ -109,7 +112,12 @@ function diagnosticsOf(d: FullPageBatchDiagnostics | undefined): Record<string, 
  * inputImages (DEV-303, owner decision 2026-11-24): a design request's photo inputs, handed to the ONE Codex run as
  * `--image` attachments (staged in the run's temporary work dir by image-once.ts, never in the private run directory).
  */
-export type FullPageBatch = (o: { prompt: string; timeoutMs: number; maxImages: number; inputImages?: readonly Buffer[]; signal?: AbortSignal }) => Promise<FullPageBatchResult>;
+/**
+ * referenceImages (DEV-303 §6.1 row 3): a whole_page design's success-case reference pictures (ref-N.<ext>), staged and
+ * attached the same way; the prompt names them by the reference token, which image-once.ts replaces with the absolute
+ * staged directory (image-once.ts ReferenceImage, by shape).
+ */
+export type FullPageBatch = (o: { prompt: string; timeoutMs: number; maxImages: number; inputImages?: readonly Buffer[]; referenceImages?: readonly { name: string; bytes: Buffer }[]; signal?: AbortSignal }) => Promise<FullPageBatchResult>;
 
 export type FullPageCallInput = {
   plan: PromptPlan;
@@ -299,6 +307,8 @@ export type RequestCallInput = {
   repoRoot: string;
   /** DEV-303 (owner decision 2026-11-24): the resolved photo inputs, exactly the plan's photo_inputs (names, SHA-256). */
   photos?: readonly { name: string; sha256: string; bytes: Buffer }[];
+  /** DEV-303 §6.1 row 3: a whole_page plan's reference pictures, exactly its references (ids, names, SHA-256), with bytes. */
+  references?: readonly (PlanReference & { bytes: Buffer })[];
   signal?: AbortSignal;
 };
 
@@ -308,6 +318,15 @@ function photosMatch(planned: PhotoInputs | undefined, photos: RequestCallInput[
   if (!photos || photos.length !== planned.files.length || photos.length > 6) return false;
   return planned.files.every((f, n) => photos[n]!.name === f.name && photos[n]!.sha256 === f.sha256 && sha256(photos[n]!.bytes) === f.sha256);
 }
+
+/** The reference pictures handed to the run are exactly the plan's (same ids, names, order, bytes with those SHA-256s). */
+function referencesMatch(planned: readonly PlanReference[] | undefined, refs: RequestCallInput["references"]): boolean {
+  if (!planned) return refs === undefined || refs.length === 0;
+  if (!refs || refs.length !== planned.length || refs.length === 0 || refs.length > MAX_REFERENCES) return false;
+  return planned.every((p, n) => refs[n]!.id === p.id && refs[n]!.name === p.name && refs[n]!.case_id === p.case_id && refs[n]!.sha256 === p.sha256 && sha256(refs[n]!.bytes) === p.sha256);
+}
+/** The pictures one run of this plan makes: PC 2 + SP 4, or (DEV-303 §6.1 row 3) a whole_page plan's PC 1 + SP 1. */
+const planImages = (plan: RunnablePlan) => (plan.layout === "whole_page" ? 2 : 6);
 
 /**
  * DEV-303 (owner direction 2026-11-23, first-client-pipeline.md §2 A/B): ONE IMAGE_FIRST batch for a request root
@@ -327,13 +346,17 @@ export async function runRequestFullPageCall(i: RequestCallInput, d: Omit<FullPa
   if (!repo) return refuse("REPO_UNRESOLVABLE");
   if (within(i.outDir, i.repoRoot) || within(i.outDir, repo) || (parent !== null && within(parent, repo))) return refuse("RUN_DIR_IN_REPO");
   if (!isRequestId(i.requestId)) return refuse("REQUEST_ID_INVALID");
+  // DEV-303 §6.1 row 3: a real shop's design runs only as a whole page (parseRequest refuses the section split too)
+  if (plan.kind === "real_shop" && plan.layout !== "whole_page") return refuse("REAL_SHOP_WHOLE_PAGE_REQUIRED");
   if (!/^[a-f0-9]{64}$/.test(i.requestSha256) || plan.direction_key !== "request" || plan.direction_set_sha256 !== i.requestSha256) return refuse("PLAN_PIN_MISMATCH");
   if (plan.plan_sha256 !== i.expected.planSha256) return refuse("PLAN_PIN_MISMATCH");
   if (plan.batch.sha256 !== sha256(Buffer.from(plan.batch.prompt, "utf8")) || plan.batch.chars !== plan.batch.prompt.length) return refuse("PLAN_PIN_MISMATCH");
   if (sha256(i.inputs.factsBytes) !== plan.facts_sha256 || sha256(i.inputs.directionBytes) !== plan.direction_sha256) return refuse("PLAN_PIN_MISMATCH");
   const parts = VIEWPORTS.flatMap((v) => plan.viewports[v].parts.map((p) => ({ v, p })));
-  if (parts.length !== plan.batch.images || parts.length !== 6) return refuse("PLAN_PIN_MISMATCH");
+  if (parts.length !== plan.batch.images || parts.length !== planImages(plan)) return refuse("PLAN_PIN_MISMATCH");
+  if (plan.layout === "whole_page" && (plan.photo_inputs !== undefined || VIEWPORTS.some((v) => plan.viewports[v].mode !== "whole_page" || plan.viewports[v].parts.length !== 1))) return refuse("PLAN_PIN_MISMATCH");
   if (!photosMatch(plan.photo_inputs, i.photos)) return refuse("PHOTO_INPUTS_MISMATCH");
+  if (!referencesMatch(plan.references, i.references)) return refuse("REFERENCE_IMAGES_MISMATCH");
   // the owner's standing permission (root's quota and one-use marker) stands in for the per-run flag
   const checked = await checkBeforeApproval(
     { humanApprovalConfirmed: true, prompt: plan.batch.prompt, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit }, outDir: i.outDir, approvalId: i.requestId, planId: i.requestId, route: FULL_PAGE_ROUTE, retryOf: null, ...(i.signal === undefined ? {} : { signal: i.signal }) },
@@ -342,11 +365,12 @@ export async function runRequestFullPageCall(i: RequestCallInput, d: Omit<FullPa
   );
   if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
   const photoInputs = plan.photo_inputs && i.photos ? { meta: plan.photo_inputs, bytes: i.photos.map((p) => p.bytes) } : undefined;
-  return executeFullPageRun({ plan, inputs: i.inputs, approvalId: i.requestId, planId: i.requestId, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit, packetSha256: i.requestSha256 }, outDir: i.outDir, ...(photoInputs ? { photoInputs } : {}), ...(i.signal === undefined ? {} : { signal: i.signal }) }, d, checked.timeoutMs);
+  const references = plan.references && i.references ? i.references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, bytes: r.bytes })) : undefined;
+  return executeFullPageRun({ plan, inputs: i.inputs, approvalId: i.requestId, planId: i.requestId, expected: { promptSha256: i.expected.promptSha256, promptChars: i.expected.promptChars, commit: i.expected.commit, packetSha256: i.requestSha256 }, outDir: i.outDir, ...(photoInputs ? { photoInputs } : {}), ...(references ? { references } : {}), ...(i.signal === undefined ? {} : { signal: i.signal }) }, d, checked.timeoutMs);
 }
 
 /** What the run after the checks needs of a plan (a pinned direction's PromptPlan, or DEV-303 a request's plan). */
-export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string; photo_inputs?: PhotoInputs };
+export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string; photo_inputs?: PhotoInputs; kind?: "real_shop" | "fictional"; layout?: "whole_page"; references?: PlanReference[] };
 type ExecuteInput = {
   plan: RunnablePlan;
   inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
@@ -357,6 +381,8 @@ type ExecuteInput = {
   outDir: string;
   /** DEV-303: the photo inputs attached to the one batch (metadata recorded as photo-inputs.json; the pictures are never written here). */
   photoInputs?: { meta: PhotoInputs; bytes: Buffer[] };
+  /** DEV-303 §6.1 row 3: a whole_page run's reference pictures (recorded as reference-inputs.json: ids, cases, SHA-256; never a path or the bytes). */
+  references?: { id: string; case_id: string; name: string; sha256: string; bytes: Buffer }[];
   signal?: AbortSignal;
 };
 
@@ -391,6 +417,8 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
     await writeOnce(out("prompts/batch.txt"), Buffer.from(plan.batch.prompt, "utf8"));
     // names and SHA-256 only: an attached photo is never copied into this run (root counts parts/ and the inbox copy)
     if (i.photoInputs) await writeOnce(out("photo-inputs.json"), { schema: "image_first_photo_inputs_v0", ...i.photoInputs.meta });
+    // DEV-303 §6.1 row 3: the reference pictures by id, case and SHA-256 only (never copied here, never a path)
+    if (i.references) await writeOnce(out("reference-inputs.json"), { schema: "image_first_reference_inputs_v0", layout: "whole_page", references: i.references.map((r) => ({ id: r.id, case_id: r.case_id, sha256: r.sha256 })) });
   } catch {
     await end("failed", "OUT_DIR_UNWRITABLE").catch(() => undefined);
     return { status: "stopped", code: "OUT_DIR_UNWRITABLE", stage: "call", aborted: false };
@@ -410,7 +438,7 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
 
   let res: FullPageBatchResult;
   try {
-    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: parts.length, ...(i.photoInputs ? { inputImages: i.photoInputs.bytes } : {}), ...(i.signal === undefined ? {} : { signal: i.signal }) });
+    res = await d.batch({ prompt: plan.batch.prompt, timeoutMs: checked.timeoutMs, maxImages: parts.length, ...(i.photoInputs ? { inputImages: i.photoInputs.bytes } : {}), ...(i.references ? { referenceImages: i.references.map((r) => ({ name: r.name, bytes: r.bytes })) } : {}), ...(i.signal === undefined ? {} : { signal: i.signal }) });
   } catch (error) {
     const aborted = error instanceof CodexAbortedError;
     const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";

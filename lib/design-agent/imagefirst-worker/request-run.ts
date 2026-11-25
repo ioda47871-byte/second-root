@@ -1,6 +1,6 @@
 /**
  * DEV-303 (owner decision 2026-11-24): the entry's request mode after loadRequestRun — one request, one Codex run, by
- * stage: photo_materials → runRequestPhotoCall (1..6 picture materials); design → runRequestFullPageCall (PC 2 + SP 4),
+ * stage: photo_materials → runRequestPhotoCall (1..6 picture materials); design → runRequestFullPageCall (PC 2 + SP 4, or a whole_page PC 1 + SP 1 with its reference pictures),
  * with the resolved photo inputs (if the request names them) attached to that one run. Used by the IMAGE_FIRST entry's
  * request mode (cycle.ts GENERATE_ENTRY) and its in-process test mirror, so both dispatch the same way.
  * No process and no network here.
@@ -31,5 +31,6 @@ export async function runLoadedRequest(o: LoadedRequestOptions, d: Omit<FullPage
   if (isPhotoRequest(run.request)) return runRequestPhotoCall({ ...common, plan: run.plan as PhotoPlan }, d);
   // a run never starts on unchecked photo inputs (only --validate-request leaves them unchecked)
   if (run.photos === "unchecked") return { status: "stopped", code: "PHOTO_INPUT_RUN_MISSING", stage: "precheck", aborted: false };
-  return runRequestFullPageCall({ ...common, plan: run.plan as RequestPlan, ...(run.photos ? { photos: run.photos } : {}) }, d);
+  // DEV-303 §6.1 row 3: a whole_page run carries its success-case reference pictures (exactly the plan's references)
+  return runRequestFullPageCall({ ...common, plan: run.plan as RequestPlan, ...(run.photos ? { photos: run.photos } : {}), ...(run.references ? { references: run.references } : {}) }, d);
 }

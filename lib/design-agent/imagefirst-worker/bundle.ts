@@ -101,6 +101,9 @@ const COMPOSITE_RE = /^composites\/(pc|sp)\.png$/;
 export const isBundleFilePath = (p: string) => p === "receipt.json" || PART_RE.test(p) || COMPOSITE_RE.test(p);
 export const BUNDLE_DIRS = ["parts", "composites"] as const;
 export const IMAGES = { pc: 2, sp: 4 } as const;
+/** DEV-303 §6.1 row 3: a whole_page request run's pictures (one full-page picture per viewport). */
+export const WHOLE_PAGE_IMAGES = { pc: 1, sp: 1 } as const;
+const SHA_LIST_MAX = 5;
 
 export type BundleCode =
   | "LIMITS_RAISED"
@@ -208,6 +211,8 @@ type Receipt = {
   facts_sha256?: unknown;
   images_total?: unknown;
   request_stage?: unknown;
+  design_layout?: unknown;
+  reference_images?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -278,7 +283,24 @@ const asPng = (bytes: Buffer, limits: PngLimits, code: BundleCode) => {
 const renderSums = (files: readonly BundleFile[]) => files.map((f) => `${f.sha256}  ${f.path}\n`).join("");
 const sortFiles = (files: BundleFile[]) => files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
-function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; photo: boolean } {
+/**
+ * DEV-303 §6.1 row 3: a request design run's layout. A whole_page receipt (design_layout "whole_page") lists 1..5
+ * reference pictures by id (ref-1.. in order), case id and SHA-256 only; anything else, or the fields on any other
+ * receipt, is invalid. Its pictures are PC 1 + SP 1; every other design run's PC 2 + SP 4.
+ */
+function designImagesOf(r: Receipt): { readonly pc: number; readonly sp: number } {
+  if (r.design_layout === undefined && r.reference_images === undefined) return IMAGES;
+  if (r.mode !== "request" || r.request_stage !== undefined || r.design_layout !== "whole_page" || !Array.isArray(r.reference_images)) return stop("RECEIPT_INVALID");
+  const refs = r.reference_images as unknown[];
+  const ok = refs.length >= 1 && refs.length <= SHA_LIST_MAX && refs.every((x, n) => {
+    const e = x as { id?: unknown; case_id?: unknown; sha256?: unknown } | null;
+    return !!e && typeof e === "object" && Object.keys(e).sort().join(",") === "case_id,id,sha256" && e.id === `ref-${n + 1}` && typeof e.case_id === "string" && /^(?:CP|SR)-\d{3}$/.test(e.case_id) && typeof e.sha256 === "string" && SHA_RE.test(e.sha256);
+  });
+  if (!ok) stop("RECEIPT_INVALID");
+  return WHOLE_PAGE_IMAGES;
+}
+
+function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; photo: boolean; design: { readonly pc: number; readonly sp: number } } {
   let r: Receipt;
   try {
     r = JSON.parse(bytes.toString("utf8")) as Receipt;
@@ -317,10 +339,11 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; phot
   // DEV-303 (owner decision 2026-11-24): a photo-materials request run: 1..6 parts/photo-N.png and nothing else
   const photo = r.mode === "request" && r.request_stage === "photo_materials";
   if (r.request_stage !== undefined && !photo) stop("RECEIPT_INVALID");
+  const design = designImagesOf(r);
   if (photo) {
     if (pc !== 0 || sp !== 0 || photos < 1 || photos > 6 || photos !== images.length || !c || c.pc !== 0 || c.sp !== 0 || c.photo !== photos || c.total !== images.length || c.stopped !== 0) stop("RECEIPT_NOT_SUCCEEDED");
-  } else if (photos !== 0 || pc !== IMAGES.pc || sp !== IMAGES.sp || !c || c.pc !== pc || c.sp !== sp || c.total !== images.length || c.stopped !== 0 || c.photo !== undefined) stop("RECEIPT_NOT_SUCCEEDED");
-  return { r, images, photo };
+  } else if (photos !== 0 || pc !== design.pc || sp !== design.sp || !c || c.pc !== pc || c.sp !== sp || c.total !== images.length || c.stopped !== 0 || c.photo !== undefined) stop("RECEIPT_NOT_SUCCEEDED");
+  return { r, images, photo, design };
 }
 
 export type PackOptions = {
@@ -344,7 +367,7 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
   // ---- the receipt ----
   const receiptBytes = await readNoFollow(o.receiptPath, limits.receiptBytes, { link: "RECEIPT_UNREADABLE", big: "RECEIPT_UNREADABLE" }, true);
   if (!receiptBytes) return stop("RECEIPT_UNREADABLE");
-  const { r, images, photo } = parseReceipt(receiptBytes);
+  const { r, images, photo, design } = parseReceipt(receiptBytes);
   // a photo-materials bundle has no composites (there is no page to stack)
   if (photo && Object.values(o.composites ?? {}).some((v) => v !== undefined)) stop("COMPOSITE_SHA_INVALID");
 
@@ -435,7 +458,7 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
           image_material_label: IMAGE_MATERIAL_LABEL,
           photos: files.filter((f) => f.role === "part").map((f) => ({ file: f.path, sha256: f.sha256, frame: photoFrameOf(f.path)! })),
         }
-      : { counts: { pc: IMAGES.pc, sp: IMAGES.sp, composites: composites.length, files: files.length } }),
+      : { counts: { pc: design.pc, sp: design.sp, composites: composites.length, files: files.length } }),
     total_bytes: total,
     created_at: new Date(created).toISOString(),
     access: { visibility: "private", retrieval_ttl_seconds: BUNDLE_ACCESS.retrievalTtlSeconds },
@@ -555,13 +578,13 @@ export async function verifyBundleDir(dir: string, o: VerifyOptions = {}): Promi
   // the receipt inside agrees with the manifest
   const receipt = entries.find((e) => e.path === "receipt.json");
   if (!receipt || sha256(receipt.bytes) !== m.receipt_sha256) return stop("BUNDLE_RECEIPT_MISMATCH");
-  let parsed: { r: Receipt; images: ReceiptImage[]; photo: boolean };
+  let parsed: ReturnType<typeof parseReceipt>;
   try {
     parsed = parseReceipt(receipt.bytes);
   } catch {
     return stop("BUNDLE_RECEIPT_MISMATCH");
   }
-  const { r, images, photo } = parsed;
+  const { r, images, photo, design } = parsed;
   if (r.approval_id !== m.approval_id || r.plan_id !== m.plan_id || r.commit !== m.commit || r.packet_sha256 !== m.packet_sha256 || r.plan_sha256 !== m.plan_sha256 || r.run_dir !== RECEIPT_RUN_DIR_REDACTED) stop("BUNDLE_RECEIPT_MISMATCH");
   if (m.shop !== r.shop || m.direction !== r.direction || m.mode !== r.mode || m.kind !== r.kind) stop("BUNDLE_RECEIPT_MISMATCH");
   const parts = m.files.filter((f) => f.role === "part");
@@ -577,7 +600,7 @@ export async function verifyBundleDir(dir: string, o: VerifyOptions = {}): Promi
     if (pc !== 0 || sp !== 0 || comps !== 0 || parts.length < 1 || parts.length > 6 || m.counts?.pc !== 0 || m.counts?.sp !== 0 || m.counts?.photo !== parts.length || m.counts?.composites !== 0 || m.counts?.files !== m.files.length) stop("BUNDLE_COUNTS_INVALID");
   } else {
     if (m.image_material !== undefined || m.image_material_label !== undefined || m.photos !== undefined || m.counts?.photo !== undefined) stop("BUNDLE_MANIFEST_INVALID");
-    if (pc !== IMAGES.pc || sp !== IMAGES.sp || m.counts?.pc !== pc || m.counts?.sp !== sp || m.counts?.composites !== comps || m.counts?.files !== m.files.length) stop("BUNDLE_COUNTS_INVALID");
+    if (pc !== design.pc || sp !== design.sp || m.counts?.pc !== pc || m.counts?.sp !== sp || m.counts?.composites !== comps || m.counts?.files !== m.files.length) stop("BUNDLE_COUNTS_INVALID");
   }
 
   if (o.expected) {

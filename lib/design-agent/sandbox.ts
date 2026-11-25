@@ -409,6 +409,35 @@ export async function stageInputs(workDir: string, images: readonly string[]): P
 }
 
 /**
+ * DEV-303 §6.1 row 3: writes already-checked reference pictures (success-case originals the worker read and verified by
+ * SHA-256) into <workDir>/inputs under their given names (ref-N.png / .jpg / .webp, image-tool-limits.ts
+ * REFERENCE_NAME_RE); each name's extension must be its content's type. Never overwrites (O_EXCL, no link). Returns the
+ * copies' absolute paths in the given order. Throws CODEX_INPUT_REJECTED otherwise.
+ */
+export async function stageReferenceBytes(workDir: string, refs: readonly { name: string; bytes: Buffer }[]): Promise<string[]> {
+  const dir = join(workDir, "inputs");
+  // the absolute directory goes into the prompt (image-once.ts): plain path characters only (no space, quote, newline)
+  if (!/^\/[A-Za-z0-9._/-]{1,400}$/.test(dir)) throw new SandboxError("CODEX_INPUT_REJECTED");
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const out: string[] = [];
+  for (const { name, bytes } of refs) {
+    const m = /^ref-[1-5]\.(png|jpg|webp)$/.exec(name);
+    if (!m || bytes.length < 24 || bytes.length > MAX_INPUT_BYTES || imageType(bytes) !== m[1]) throw new SandboxError("CODEX_INPUT_REJECTED");
+    const target = join(dir, name);
+    const copy = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600).catch(() => {
+      throw new SandboxError("CODEX_INPUT_REJECTED");
+    });
+    try {
+      await copy.writeFile(bytes);
+    } finally {
+      await copy.close();
+    }
+    out.push(target);
+  }
+  return out;
+}
+
+/**
  * Writes already-checked PNG bytes (DEV-029: design assets read and verified by
  * the caller) into <workDir>/inputs as photo-N.png. Codex gets these copies
  * only; the store they came from is never named. Throws CODEX_INPUT_REJECTED

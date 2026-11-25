@@ -61,7 +61,7 @@ describe("isolation of the IMAGE_FIRST contract (offline, read only)", () => {
     const named = (file: string, from: string) =>
       [...readFileSync(resolve(REPO, file), "utf8").matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].filter((m) => m[2] === from).flatMap((m) => m[1]!.split(",").map((s) => s.trim()).filter(Boolean)).sort();
     expect(named(`${LIB}/record.ts`, "../design-image/capability")).toEqual(["IMAGE_OUTCOMES"]);
-    expect(named(`${LIB}/request-prompt.ts`, "../image-tool-limits")).toEqual(["IMAGE_TOOL_MAX_REFS"]);
+    expect(named(`${LIB}/request-prompt.ts`, "../image-tool-limits")).toEqual(["IMAGE_TOOL_MAX_REFS", "REFERENCE_DIR_TOKEN"]);
     // the shared limit module is a constant only: it imports nothing and can call nothing
     expect(specifiers(readFileSync(resolve(REPO, "lib/design-agent/image-tool-limits.ts"), "utf8"))).toEqual([]);
     expect(named(`${LIB}/validate.ts`, "../design-image/png")).toEqual(["MOCKUP_PNG_LIMITS", "checkPng"]);

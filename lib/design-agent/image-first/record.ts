@@ -73,7 +73,8 @@ export const Seam = z.strictObject({
 
 export const Composition = z.strictObject({
   target_css_width: z.union([z.literal(1440), z.literal(390)]),
-  mode: z.enum(["single", "section_sequence"]),
+  /** DEV-303 §6.1 row 3: "whole_page" = exactly one picture of the whole page (header to footer), its sections the model's own. */
+  mode: z.enum(["single", "section_sequence", "whole_page"]),
   /** The page's section order at this width (PC: the direction's order; SP: may reorder, never drop). */
   section_order: z.array(Id).min(1).max(12),
   parts: z.array(Part).min(1).max(MAX_PARTS_PER_VIEWPORT),
