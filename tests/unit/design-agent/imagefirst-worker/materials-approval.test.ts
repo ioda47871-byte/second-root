@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto";
-import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
-import { approvedMaterials, checkMaterialsApproval, MaterialsApprovalStop, type ApprovedMaterials } from "@/lib/design-agent/imagefirst-worker/materials-approval";
+import {
+  approvedMaterials,
+  checkMaterialsApproval,
+  MaterialsApprovalStop,
+  materialsReviewPageSha256,
+  parseMaterialsReview,
+  readDeliveredMaterials,
+  renderMaterialsReviewPage,
+  writeMaterialsReviewPage,
+  type ApprovedMaterials,
+} from "@/lib/design-agent/imagefirst-worker/materials-approval";
+import { VIEWING_PAGE_CSP } from "@/lib/design-agent/case-study/case-study";
 import { checkMaterialsInSite, MaterialsImplStop } from "@/lib/design-agent/imagefirst-worker/materials-impl-check";
 import { materialsMain } from "@/scripts/design-artifact/materials-impl-check";
 import { colourPng } from "../phase2f/fixtures";
@@ -96,8 +107,16 @@ const reviewOf = (m: Materials, verdicts: ("pass" | "revise" | "fail")[] = ["pas
     materials: m.images.map((img, n) => ({ id: ["counter-texture", "linen-light"][n], file: img.file, sha256: img.sha256, verdict: verdicts[n], note: "試験用の所見（架空）" })),
     reviewer: "independent-subagent", reviewed_at: "2026-11-25T05:00:00Z", ...extra,
   });
-const approvalOf = (m: Materials, review: Buffer, extra: Record<string, unknown> = {}) =>
-  bytesOf({ schema: "sr_materials_approval_v1", request_id: MAT_ID, bundle_sha256: m.bundleSha, review_sha256: sha(review), approved_materials: m.images.map((i) => ({ file: i.file, sha256: i.sha256 })), decision: "approve", decided_at: "2026-11-25T06:00:00Z", ...extra });
+/** The page_sha256 the owner's viewing page of this review has (re-rendered as the gate does; zeros for a review that does not parse). */
+const pageShaOf = async (m: Materials, review: Buffer) => {
+  try {
+    return materialsReviewPageSha256(parseMaterialsReview(review), await readDeliveredMaterials(m.bundleDir));
+  } catch {
+    return "0".repeat(64);
+  }
+};
+const approvalOf = async (m: Materials, review: Buffer, extra: Record<string, unknown> = {}) =>
+  bytesOf({ schema: "sr_materials_approval_v1", request_id: MAT_ID, bundle_sha256: m.bundleSha, review_sha256: sha(review), page_sha256: await pageShaOf(m, review), approved_materials: m.images.map((i) => ({ file: i.file, sha256: i.sha256 })), decision: "approve", decided_at: "2026-11-25T06:00:00Z", ...extra });
 const put = (dir: string, name: string, b: Buffer) => {
   const p = join(dir, name);
   rmSync(p, { force: true });
@@ -113,7 +132,7 @@ beforeAll(async () => {
   d = await design();
   m = await materials(d);
   const review = reviewOf(m);
-  approved = await approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, "r.json", review), approvalPath: put(m.recs, "a.json", approvalOf(m, review)), repo: REPO });
+  approved = await approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, "r.json", review), approvalPath: put(m.recs, "a.json", await approvalOf(m, review)), repo: REPO });
 });
 
 describe("DEV-303 §6.1 change 7: the materials review and the owner's approval (bound to the approved design)", () => {
@@ -124,7 +143,7 @@ describe("DEV-303 §6.1 change 7: the materials review and the owner's approval 
     const reviewPath = put(m.recs, "r2.json", review);
     // draft: the review alone, with its verdicts
     expect((await checkMaterialsApproval({ design: d, bundleDir: m.bundleDir, reviewPath, repo: REPO, mode: "draft" })).verdicts.map((v) => v.verdict)).toEqual(["pass", "fail"]);
-    const one = await approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath, approvalPath: put(m.recs, "a2.json", approvalOf(m, review, { approved_materials: [{ file: m.images[0]!.file, sha256: m.images[0]!.sha256 }] })), repo: REPO });
+    const one = await approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath, approvalPath: put(m.recs, "a2.json", await approvalOf(m, review, { approved_materials: [{ file: m.images[0]!.file, sha256: m.images[0]!.sha256 }] })), repo: REPO });
     expect(one.materials.map((x) => x.file)).toEqual(["parts/photo-1.png"]);
   });
 
@@ -132,18 +151,18 @@ describe("DEV-303 §6.1 change 7: the materials review and the owner's approval 
     const go = (review: Buffer, approval: Buffer | null, name: string) =>
       codeOf(approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, `${name}.r.json`, review), approvalPath: approval ? put(m.recs, `${name}.a.json`, approval) : join(m.recs, "absent.json"), repo: REPO }));
     const failed = reviewOf(m, ["pass", "fail"]);
-    expect(await go(failed, approvalOf(m, failed), "fail")).toBe("MATERIALS_APPROVAL_HAS_FAIL");
+    expect(await go(failed, await approvalOf(m, failed), "fail")).toBe("MATERIALS_APPROVAL_HAS_FAIL");
     const revised = reviewOf(m, ["pass", "revise"]);
-    expect(await go(revised, approvalOf(m, revised), "revise")).toBe("ok");
+    expect(await go(revised, await approvalOf(m, revised), "revise")).toBe("ok");
     const ok = reviewOf(m);
-    expect(await go(ok, approvalOf(m, ok, { decision: "revise" }), "decision")).toBe("MATERIALS_NOT_APPROVED");
-    expect(await go(reviewOf(m, ["pass", "pass"], { reviewer: "another-subagent" }), approvalOf(m, ok), "edited")).toBe("MATERIALS_APPROVAL_REVIEW_MISMATCH");
-    expect(await go(ok, approvalOf(m, ok, { decided_at: "2026-11-25T04:59:59Z" }), "early")).toBe("MATERIALS_APPROVAL_BEFORE_REVIEW");
-    expect(await go(ok, approvalOf(m, ok, { approved_materials: [{ file: "parts/photo-1.png", sha256: "0".repeat(64) }] }), "unreviewed")).toBe("MATERIALS_APPROVAL_MATERIALS_MISMATCH");
-    const reversed = approvalOf(m, ok, { approved_materials: [...m.images].reverse().map((i) => ({ file: i.file, sha256: i.sha256 })) });
+    expect(await go(ok, await approvalOf(m, ok, { decision: "revise" }), "decision")).toBe("MATERIALS_NOT_APPROVED");
+    expect(await go(reviewOf(m, ["pass", "pass"], { reviewer: "another-subagent" }), await approvalOf(m, ok), "edited")).toBe("MATERIALS_APPROVAL_REVIEW_MISMATCH");
+    expect(await go(ok, await approvalOf(m, ok, { decided_at: "2026-11-25T04:59:59Z" }), "early")).toBe("MATERIALS_APPROVAL_BEFORE_REVIEW");
+    expect(await go(ok, await approvalOf(m, ok, { approved_materials: [{ file: "parts/photo-1.png", sha256: "0".repeat(64) }] }), "unreviewed")).toBe("MATERIALS_APPROVAL_MATERIALS_MISMATCH");
+    const reversed = await approvalOf(m, ok, { approved_materials: [...m.images].reverse().map((i) => ({ file: i.file, sha256: i.sha256 })) });
     expect(await go(ok, reversed, "order")).toBe("MATERIALS_APPROVAL_MATERIALS_MISMATCH");
     const partial = bytesOf({ ...JSON.parse(ok.toString("utf8")), materials: JSON.parse(ok.toString("utf8")).materials.slice(0, 1) });
-    expect(await go(partial, approvalOf(m, partial), "partial")).toBe("MATERIALS_REVIEW_MATERIALS_MISMATCH");
+    expect(await go(partial, await approvalOf(m, partial), "partial")).toBe("MATERIALS_REVIEW_MATERIALS_MISMATCH");
     expect(await go(reviewOf(m, ["pass", "pass"], { reviewer: "see https://example.invalid" }), null, "url")).toBe("MATERIALS_REVIEW_TEXT_UNSAFE");
     expect(await go(ok, null, "noapproval")).toBe("MATERIALS_RECORD_MISSING");
     // review L4: the gate without an approval path at all is named
@@ -153,13 +172,76 @@ describe("DEV-303 §6.1 change 7: the materials review and the owner's approval 
 
   it("the materials must belong to the approved design: an unapproved design stops (DESIGN_*), another design's materials and a design bundle are refused", async () => {
     const review = reviewOf(m);
-    const records = { reviewPath: put(m.recs, "b.r.json", review), approvalPath: put(m.recs, "b.a.json", approvalOf(m, review)), repo: REPO };
+    const records = { reviewPath: put(m.recs, "b.r.json", review), approvalPath: put(m.recs, "b.a.json", await approvalOf(m, review)), repo: REPO };
     const revised = await design("revise");
     expect(await codeOf(approvedMaterials({ design: revised, bundleDir: m.bundleDir, ...records }))).toBe("DESIGN_NOT_APPROVED");
     const other = await materials(d, { approvalSha: "7".repeat(64) });
     const r2 = reviewOf(other);
-    expect(await codeOf(approvedMaterials({ design: d, bundleDir: other.bundleDir, reviewPath: put(other.recs, "r.json", r2), approvalPath: put(other.recs, "a.json", approvalOf(other, r2)), repo: REPO }))).toBe("MATERIALS_DESIGN_MISMATCH");
+    expect(await codeOf(approvedMaterials({ design: d, bundleDir: other.bundleDir, reviewPath: put(other.recs, "r.json", r2), approvalPath: put(other.recs, "a.json", await approvalOf(other, r2)), repo: REPO }))).toBe("MATERIALS_DESIGN_MISMATCH");
     expect(await codeOf(approvedMaterials({ design: d, bundleDir: d.bundleDir, ...records }))).toBe("MATERIALS_BUNDLE_NOT_MATERIALS");
+  });
+});
+
+describe("DEV-303: the owner's materials viewing page (owner-approved 2026-11-26) and its page_sha256 binding", () => {
+  it("a static private page: CSP, no script, every picture copied from the bundle with its verdict and note, never the approval", async () => {
+    const review = reviewOf(m, ["pass", "revise"]);
+    const reviewPath = put(m.recs, "page.r.json", review);
+    const c = await checkMaterialsApproval({ design: d, bundleDir: m.bundleDir, reviewPath, repo: REPO, mode: "draft" });
+    const out = join(tmp("sr-mat-page-"), "page");
+    const w = await writeMaterialsReviewPage(c.review, c.run, { outDir: out, repo: REPO });
+    const html = readFileSync(w.page, "utf8");
+    expect([w.page_sha256, sha(html), c.page_sha256].every((s) => s === w.page_sha256)).toBe(true);
+    expect(html).toContain(`content="${VIEWING_PAGE_CSP}"`);
+    expect(html).not.toMatch(/<script|https?:|<link/i);
+    expect(html).toContain("合格");
+    expect(html).toContain("要修正");
+    expect(html).toContain("試験用の所見（架空）");
+    for (const [n, img] of m.images.entries()) expect(sha(readFileSync(join(out, "images", `material-${n + 1}.png`)))).toBe(img.sha256);
+    expect([statSync(out).mode & 0o777, statSync(w.page).mode & 0o777]).toEqual([0o700, 0o600]);
+    // the approval is never on the page (recording it does not change the page)
+    const approval = await approvalOf(m, review);
+    expect(html).not.toContain(sha(approval));
+    expect(html).not.toMatch(/decided_at|"decision"/);
+    // every text is escaped (rendered directly from a record the schema would refuse)
+    const evil = { ...c.review, reviewer: '"><script>x</script>', materials: c.review.materials.map((x) => ({ ...x, note: "<img src=x onerror=alert(1)> & 'q'" })) };
+    const page = renderMaterialsReviewPage(evil, c.run);
+    expect(page).not.toContain("<script>x");
+    expect(page).not.toContain("<img src=x");
+    expect(page).toContain("&lt;img src=x onerror=alert(1)&gt; &amp; &#39;q&#39;");
+  });
+
+  it("the approval is bound to the page: another page_sha256 is refused; an edited review re-renders another page", async () => {
+    const review = reviewOf(m);
+    const reviewPath = put(m.recs, "bind.r.json", review);
+    const go = async (approval: Buffer, name: string) => codeOf(approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath, approvalPath: put(m.recs, `${name}.a.json`, approval), repo: REPO }));
+    expect(await go(await approvalOf(m, review), "bound")).toBe("ok");
+    expect(await go(await approvalOf(m, review, { page_sha256: "1".repeat(64) }), "otherpage")).toBe("MATERIALS_APPROVAL_PAGE_MISMATCH");
+    const noPage = JSON.parse((await approvalOf(m, review)).toString("utf8")) as Record<string, unknown>;
+    delete noPage.page_sha256;
+    expect(await go(bytesOf(noPage), "nopage")).toBe("MATERIALS_APPROVAL_INVALID");
+    const edited = reviewOf(m, ["pass", "pass"], { reviewer: "another-subagent" });
+    expect(await pageShaOf(m, edited)).not.toBe(await pageShaOf(m, review));
+    // the old approval (bound to the old review and its page) does not carry over
+    const old = await approvalOf(m, review);
+    expect(await codeOf(approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, "edited.r.json", edited), approvalPath: put(m.recs, "edited.a.json", old), repo: REPO }))).toBe("MATERIALS_APPROVAL_REVIEW_MISMATCH");
+    expect(await codeOf(approvedMaterials({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, "edited2.r.json", edited), approvalPath: put(m.recs, "edited2.a.json", await approvalOf(m, edited, { review_sha256: sha(edited), page_sha256: await pageShaOf(m, review) })), repo: REPO }))).toBe("MATERIALS_APPROVAL_PAGE_MISMATCH");
+  });
+
+  it("the page directory: never inside the repository, empty or absent, ours and private", async () => {
+    const c = await checkMaterialsApproval({ design: d, bundleDir: m.bundleDir, reviewPath: put(m.recs, "dir.r.json", reviewOf(m)), repo: REPO, mode: "draft" });
+    const write = (outDir: string) => codeOf(writeMaterialsReviewPage(c.review, c.run, { outDir, repo: REPO }));
+    expect(await write(join(REPO, "tmp-materials-page"))).toBe("MATERIALS_PAGE_IN_REPO");
+    expect(existsSync(join(REPO, "tmp-materials-page"))).toBe(false);
+    const linkedIntoRepo = join(tmp(), "into-repo");
+    symlinkSync(REPO, linkedIntoRepo);
+    expect(await write(join(linkedIntoRepo, "tmp-materials-page"))).toBe("MATERIALS_PAGE_IN_REPO");
+    const full = tmp();
+    writeFileSync(join(full, "x"), "x");
+    expect(await write(full)).toBe("MATERIALS_PAGE_DIR_NOT_EMPTY");
+    const open = tmp();
+    chmodSync(open, 0o755);
+    expect(await write(open)).toBe("MATERIALS_PAGE_DIR_UNSAFE");
+    expect(await write(join(tmp(), "fresh"))).toBe("ok");
   });
 });
 
@@ -244,13 +326,13 @@ describe("DEV-303 §6.1 change 7: the implemented site shows only approved mater
     expect(await codeOf(check(join(tmp(), "absent")))).toBe("MATERIALS_IMPL_SITE_MISSING");
   });
 
-  it("the CLI: draft (exit 0), approved (exit 0), a site refused (exit 1), bad arguments (exit 2); it writes nothing", async () => {
+  it("the CLI: draft (exit 0), approved (exit 0), a site refused (exit 1), bad arguments (exit 2); only --page writes (its page)", async () => {
     const out: string[] = [];
     const spy = vi.spyOn(process.stdout, "write").mockImplementation((s) => (out.push(String(s)), true));
     try {
       const review = reviewOf(m);
       const reviewPath = put(m.recs, "cli.r.json", review);
-      const approvalPath = put(m.recs, "cli.a.json", approvalOf(m, review));
+      const approvalPath = put(m.recs, "cli.a.json", await approvalOf(m, review));
       const base = ["--design-bundle", d.bundleDir, "--design-review", d.reviewPath, "--design-approval", d.approvalPath, "--materials-bundle", m.bundleDir, "--materials-review", reviewPath];
       expect(await materialsMain(base, REPO)).toBe(0);
       expect(JSON.parse(out.pop()!)).toMatchObject({ status: "draft", request_id: MAT_ID });
@@ -261,6 +343,15 @@ describe("DEV-303 §6.1 change 7: the implemented site shows only approved mater
       expect(JSON.parse(out.pop()!)).toMatchObject({ status: "refused", problems: [{ code: "MATERIALS_IMPL_IMAGE_NOT_APPROVED", detail: "assets/other.png" }] });
       expect(await materialsMain([...base, "--site", bad], REPO)).toBe(2);
       expect(await materialsMain(base.slice(0, 4), REPO)).toBe(2);
+      // --page: the viewing page and the two SHA-256s the approval record must carry
+      const pageDir = join(tmp("sr-mat-cli-page-"), "page");
+      expect(await materialsMain(["--page", ...base, "--out", pageDir], REPO)).toBe(0);
+      const printed = JSON.parse(out.pop()!) as { status: string; page_sha256: string; review_sha256: string };
+      expect(printed).toMatchObject({ status: "page_written", review_sha256: sha(review), page_sha256: sha(readFileSync(join(pageDir, "index.html"))) });
+      expect(printed.page_sha256).toBe(JSON.parse(readFileSync(approvalPath, "utf8")).page_sha256);
+      expect(await materialsMain(["--page", ...base], REPO)).toBe(2);
+      expect(await materialsMain(["--page", ...base, "--out", join(tmp(), "p"), "--materials-approval", approvalPath], REPO)).toBe(2);
+      expect(await materialsMain([...base, "--out", join(tmp(), "p")], REPO)).toBe(2);
     } finally {
       spy.mockRestore();
     }

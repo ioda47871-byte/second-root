@@ -9,29 +9,41 @@
  *     [--materials-approval <materials-approval.json>] [--site <site dir>]
  *
  * Without --materials-approval: the review alone (draft; what the owner is about to decide on). With it: the gate (the
- * approved materials). With --site as well: the site check. Writes nothing. Prints JSON.
+ * approved materials). With --site as well: the site check. These write nothing. Prints JSON.
+ *
+ *   ... materials-impl-check.ts --page <the five records above> --out <private empty dir outside the repo>
+ *
+ * --page writes the owner's viewing page (index.html + images/, the review's verdicts and notes, never the approval) and
+ * prints its page_sha256 and the review_sha256 that the approval record must carry.
  *
  * Exit: 0 ok (draft read, gate passed, or site ok), 1 stopped or refused (a named code), 2 bad arguments.
  */
 import { resolve } from "node:path";
-import { approvedMaterials, checkMaterialsApproval, MaterialsApprovalStop } from "../../lib/design-agent/imagefirst-worker/materials-approval";
+import { approvedMaterials, checkMaterialsApproval, MaterialsApprovalStop, writeMaterialsReviewPage } from "../../lib/design-agent/imagefirst-worker/materials-approval";
 import { checkMaterialsInSite, MaterialsImplStop } from "../../lib/design-agent/imagefirst-worker/materials-impl-check";
 
 const REPO = resolve(__dirname, "../..");
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
-const KEYS = ["--design-bundle", "--design-review", "--design-approval", "--materials-bundle", "--materials-review", "--materials-approval", "--site"] as const;
+const KEYS = ["--design-bundle", "--design-review", "--design-approval", "--materials-bundle", "--materials-review", "--materials-approval", "--site", "--out"] as const;
 const REQUIRED = KEYS.slice(0, 5);
 
-export function parseMaterialsArgs(argv: string[]): Partial<Record<(typeof KEYS)[number], string>> | null {
-  const o: Partial<Record<(typeof KEYS)[number], string>> = {};
-  for (let i = 0; i < argv.length; i += 2) {
-    const k = argv[i] as (typeof KEYS)[number];
-    const v = argv[i + 1];
+export function parseMaterialsArgs(argv: string[]): (Partial<Record<(typeof KEYS)[number], string>> & { page: boolean }) | null {
+  const o: Partial<Record<(typeof KEYS)[number], string>> & { page: boolean } = { page: false };
+  const rest = [...argv];
+  // --page (a flag): write the owner's viewing page to --out (the review alone, before any approval)
+  if (rest[0] === "--page") {
+    rest.shift();
+    o.page = true;
+  }
+  for (let i = 0; i < rest.length; i += 2) {
+    const k = rest[i] as (typeof KEYS)[number];
+    const v = rest[i + 1];
     if (!k || !v || v.startsWith("--") || !KEYS.includes(k) || k in o) return null;
     o[k] = resolve(v);
   }
   if (REQUIRED.some((k) => !o[k])) return null;
   if (o["--site"] && !o["--materials-approval"]) return null;
+  if (o.page !== !!o["--out"] || (o.page && (o["--materials-approval"] || o["--site"]))) return null;
   return o;
 }
 
@@ -41,9 +53,15 @@ export async function materialsMain(argv: string[], repoRoot: string = REPO): Pr
   const design = { bundleDir: a["--design-bundle"]!, reviewPath: a["--design-review"]!, approvalPath: a["--design-approval"]! };
   const common = { design, bundleDir: a["--materials-bundle"]!, reviewPath: a["--materials-review"]!, repo: repoRoot };
   try {
+    if (a.page) {
+      const c = await checkMaterialsApproval({ ...common, mode: "draft" });
+      const w = await writeMaterialsReviewPage(c.review, c.run, { outDir: a["--out"]!, repo: repoRoot });
+      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, request_id: c.request_id });
+      return 0;
+    }
     if (!a["--materials-approval"]) {
       const c = await checkMaterialsApproval({ ...common, mode: "draft" });
-      say({ status: "draft", request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, verdicts: c.verdicts, design: { request_id: c.design.request_id, approval_sha256: c.design.approval_sha256 } });
+      say({ status: "draft", request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, page_sha256: c.page_sha256, verdicts: c.verdicts, design: { request_id: c.design.request_id, approval_sha256: c.design.approval_sha256 } });
       return 0;
     }
     const approved = await approvedMaterials({ ...common, approvalPath: a["--materials-approval"] });
