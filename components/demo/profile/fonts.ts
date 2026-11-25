@@ -1,4 +1,5 @@
-import { Archivo, M_PLUS_1, Playfair_Display, Zen_Kaku_Gothic_New, Zen_Old_Mincho } from "next/font/google";
+import "./fonts-fallback.css";
+import { condensedJa, editorial, editorialJa, grotesk, lightJa } from "./fonts.generated";
 
 // Display faces for design profiles, self-hosted by next/font (no request to
 // Google from the visitor). Latin: Playfair Display and Archivo. DEV-068:
@@ -11,49 +12,29 @@ import { Archivo, M_PLUS_1, Playfair_Display, Zen_Kaku_Gothic_New, Zen_Old_Minch
 // lighter and a heavier one (the browser maps light / regular to the lighter and
 // bold / black to the heavier: half the files of loading all four); M PLUS 1 is
 // one variable file. The Japanese faces are not preloaded: the browser fetches
-// only the unicode ranges a page uses. (`subsets` only names what would be
-// preloaded; with preload off every range is listed in the CSS.)
+// only the unicode ranges a page uses.
+//
+// DEV-303: the files next/font/google downloaded are committed (fonts/, see
+// fonts/PROVENANCE.md) and loaded with next/font/local, so the build needs no
+// network. fonts.generated.ts declares them exactly as next/font/google did:
+// one @font-face per unicode-range subset, the same families, weights, styles,
+// width axis and preloads (only the latin subsets of Playfair Display and
+// Archivo), and the same CSS variable values.
 
-export const editorial = Playfair_Display({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-editorial",
-  display: "swap",
-});
+/** editorial_serif (Latin): Playfair Display, normal and italic, weight axis 400–900. */
+export { editorial };
 
-export const grotesk = Archivo({
-  subsets: ["latin"],
-  axes: ["wdth"],
-  variable: "--font-grotesk",
-  display: "swap",
-});
+/** condensed_grotesk / light_grotesk (Latin): Archivo, weight and width axes. */
+export { grotesk };
 
-/** editorial_serif: a classic high-contrast Mincho (Zen Old Mincho). */
-export const editorialJa = Zen_Old_Mincho({
-  weight: ["400", "900"],
-  subsets: ["latin"],
-  variable: "--font-ja-editorial",
-  display: "swap",
-  preload: false,
-});
+/** editorial_serif: a classic high-contrast Mincho (Zen Old Mincho, 400 and 900). */
+export { editorialJa };
 
-/** condensed_grotesk: a tight, heavy gothic (Zen Kaku Gothic New). */
-export const condensedJa = Zen_Kaku_Gothic_New({
-  weight: ["400", "900"],
-  subsets: ["latin"],
-  variable: "--font-ja-condensed",
-  display: "swap",
-  preload: false,
-});
+/** condensed_grotesk: a tight, heavy gothic (Zen Kaku Gothic New, 400 and 900). */
+export { condensedJa };
 
 /** light_grotesk: a wide, open gothic with light weights (M PLUS 1, variable). */
-export const lightJa = M_PLUS_1({
-  weight: "variable",
-  subsets: ["latin"],
-  variable: "--font-ja-light",
-  display: "swap",
-  preload: false,
-});
+export { lightJa };
 
 /** The class names that define every display face's variable. */
 export const displayFaceVariables = [editorial, grotesk, editorialJa, condensedJa, lightJa].map((f) => f.variable).join(" ");

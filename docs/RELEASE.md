@@ -11,7 +11,7 @@
 ## 2. feature → develop（Claude 自律 merge 条件）
 
 - [ ] 必須 CI（static / unit / integration / build / e2e / e2e-sales）成功
-  - `unit` は集約 check（DEV-085）。実際の test は `unit (1/2)` / `unit (2/2)` の 2 shard で走り、`unit` は両方が success のときだけ成功する（失敗・cancel・skip は赤）。required check 名は `unit` のままでよい
+  - `unit` は集約 check（DEV-085）。実際の test は `unit (1/3)`・`unit (2/3)`・`unit (3/3)` の 3 shard で走り（PR #348 で 2 から 3 に分割）、`unit` は 3 つすべてが success のときだけ成功する（失敗・cancel・skip は赤）。required check 名は集約の `unit` のままでよい
 - [ ] Fresh Reviewer PASS（`.ai/reviews/<task-id>.md`）
 - [ ] Critical / High = 0
 - [ ] Protected Scope 変更なし
@@ -127,7 +127,7 @@ Release Readiness（DEV-019）でチェック:
 ## 9. リリース前の追加確認
 
 - [x] `npm audit --omit=dev` で high / critical が 0（2026-09-28、develop）
-- [ ] GitHub branch protection（`main` / `develop`）に required checks: `static` / `unit` / `integration` / `build` / `e2e` / `e2e-sales`（HUMAN-003、推奨。`unit` は 2 shard の集約 check）
+- [ ] GitHub branch protection（`main` / `develop`）に required checks: `static` / `unit` / `integration` / `build` / `e2e` / `e2e-sales`（HUMAN-003、推奨。`unit` は 3 shard（`unit (1/3)`〜`unit (3/3)`、PR #348）の集約 check）
 - [ ] Production の Supabase Auth: sign-up 無効・管理者 1 名のみ（`staging:verify` 14 項目 PASS）
 - [ ] Vercel の Production と Preview で `SALES_AGENT_INGEST_TOKEN` が別の値
 - [ ] Staging 用の Supabase / Vercel token を片付けた（`docs/STAGING.md` §8。merge 後でもよい）

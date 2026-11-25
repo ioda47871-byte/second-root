@@ -1,0 +1,8 @@
+/* DEV-303: the metric-matched fallback faces next/font/google generated for the
+   display faces (copied verbatim from its build output), so the text before a
+   font arrives keeps the same size as before. fonts.generated.ts names them. */
+@font-face{font-family:"Playfair Display Fallback";src:local("Times New Roman");ascent-override:97.25%;descent-override:22.56%;line-gap-override:0.00%;size-adjust:111.26%}
+@font-face{font-family:"Archivo Fallback";src:local("Arial");ascent-override:88.96%;descent-override:21.28%;line-gap-override:0.00%;size-adjust:98.70%}
+@font-face{font-family:"Zen Old Mincho Fallback";src:local("Times New Roman");ascent-override:107.59%;descent-override:26.71%;line-gap-override:0.00%;size-adjust:107.82%}
+@font-face{font-family:"Zen Kaku Gothic New Fallback";src:local("Arial");ascent-override:117.00%;descent-override:29.05%;line-gap-override:0.00%;size-adjust:99.15%}
+@font-face{font-family:"M PLUS 1 Fallback";src:local("Arial");ascent-override:105.54%;descent-override:26.20%;line-gap-override:0.00%;size-adjust:109.91%}
