@@ -9,7 +9,7 @@ import { buildPhotoPlan, buildRequestPlan, DEMO_MARKER, parseRequest, PHOTO_LABE
 import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
 import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
-import { IMAGE_MATERIAL_LABEL, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
+import { IMAGE_MATERIAL_LABEL, packBundle, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
 import { loadRequestRun, recordUseOf, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
 import { runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
@@ -498,6 +498,65 @@ describe("DEV-303 §6.1 change 6: a materials request runs only on the owner-app
     editApproval((x) => (x.decision = "reject"));
     expect((await w.cycle(photoRequest({ id: "req-test-shop-p-photos-9" }))).report).toMatchObject({ status: "refused", code: "DESIGN_NOT_APPROVED", invoked: false });
     expect(w.fakes.reduce((n, f) => n + f.execs, 0)).toBe(1);
+  });
+
+  it("review L1: another shop's or kind's design, a materials bundle, swapped record files or one linked record are refused", async () => {
+    const { w, approved } = await stageOne();
+    const validate = async (over: Record<string, unknown>, id = "req-test-shop-p-photos-7") => {
+      const r = w.place(photoRequest({ id, ...over }));
+      return validateRequestFile({ file: r.file, home: w.h, repo: w.repo }).then(() => "ok", (e: { code?: string }) => e.code ?? String(e));
+    };
+    /** A sealed whole-page design bundle in the review inbox of another shop / kind, reviewed and approved (fictional). */
+    const otherBundle = async (id: string, receiptOver: Record<string, unknown>) => {
+      const runs = tmp("sr-photo-other-");
+      chmodSync(runs, 0o700);
+      const runDir = join(runs, `${id}-20261124T010000Z`);
+      mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
+      chmodSync(runDir, 0o700);
+      const images = ["pc-1", "sp-1"].map((n, k) => {
+        const bytes = colourPng(512 + k, 768);
+        writeFileSync(join(runDir, "parts", `${n}.png`), bytes, { mode: 0o600 });
+        return { file: `parts/${n}.png`, sha256: sha(bytes), bytes: bytes.length };
+      });
+      const refs = [{ id: "ref-1", case_id: "CP-001", sha256: "f".repeat(64) }];
+      writeFileSync(join(runDir, "reference-inputs.json"), JSON.stringify({ schema: "image_first_reference_inputs_v0", layout: "whole_page", references: refs }), { mode: 0o600 });
+      const receipt = {
+        schema: "imagefirst_worker_receipt_v1", status: "succeeded", stop_code: null, stage: null, cli_exit: 0, cli_timed_out: false, interrupted: false,
+        shop: SHOP, direction: "request", approval_id: id, plan_id: id, commit: "c".repeat(40), packet_sha256: "a".repeat(64), plan_sha256: "b".repeat(64), prompt_sha256: "d".repeat(64), prompt_chars: 5000,
+        run_dir: runDir, images, stopped_images: [], counts: { pc: 1, sp: 1, total: 2, stopped: 0 }, verified: true,
+        timings: { started_at: "2026-11-24T01:00:00.000Z", finished_at: "2026-11-24T01:10:00.000Z", elapsed_ms: 600_000 },
+        mode: "request", kind: "fictional", request_id: id, request_sha256: "a".repeat(64), facts_sha256: "e".repeat(64), images_total: 2,
+        design_layout: "whole_page", reference_images: refs, ...receiptOver,
+      };
+      const receiptPath = join(runs, `${id}-20261124T010000Z.receipt.json`);
+      writeFileSync(receiptPath, JSON.stringify(receipt), { mode: 0o600 });
+      const sealed = await packBundle({ runDir, receiptPath, bundlesDir: join(w.runsDir, "review-inbox"), now: () => NOW });
+      const reviewFile = `${id}.review.json`;
+      const approvalFile = `${id}.approval.json`;
+      const axis = { verdict: "pass", evidence: [{ image: "pc", region: "最初の画面", note: "試験用の根拠（架空）" }] };
+      const imgs = { pc: [{ file: images[0]!.file, sha256: images[0]!.sha256 }], sp: [{ file: images[1]!.file, sha256: images[1]!.sha256 }] };
+      writeFileSync(join(approved.dir, reviewFile), bytesOf({ schema: "sr_design_review_v1", request_id: id, bundle_sha256: sealed.bundle_sha256, images: imgs, axes: Object.fromEntries(DESIGN_AXES.map((a) => [a, axis])), reviewer: "independent-subagent", reviewed_at: "2026-11-24T01:00:00Z" }));
+      const c = await checkDesignApproval({ bundleDir: sealed.dir, reviewPath: join(approved.dir, reviewFile), repo: w.repo, mode: "draft" });
+      writeFileSync(join(approved.dir, approvalFile), bytesOf({ schema: "sr_design_approval_v1", request_id: id, bundle_sha256: sealed.bundle_sha256, approved_images: imgs, review_sha256: c.review_sha256, page_sha256: c.page_sha256, decision: "approve", decided_at: "2026-11-24T02:00:00Z" }));
+      return { approved_design: { bundle_id: id, bundle_sha256: sealed.bundle_sha256, review_file: reviewFile, approval_file: approvalFile } };
+    };
+    // a design of another shop, and one of another kind: approved, but not this request's design
+    expect(await validate(await otherBundle("req-test-shop-z-design-1", { shop: "test-shop-z" }))).toBe("APPROVED_DESIGN_MISMATCH");
+    expect(await validate(await otherBundle("req-test-shop-p-real-1", { kind: "real_shop" }))).toBe("APPROVED_DESIGN_MISMATCH");
+    // the materials bundle itself named as the approved design
+    expect(await validate({ approved_design: { bundle_id: PHOTO_ID, bundle_sha256: approvedBundleSha, review_file: REVIEW_FILE, approval_file: APPROVAL_FILE } })).toBe("DESIGN_BUNDLE_NOT_A_DESIGN");
+    // the review and approval files swapped: the approval does not parse as a review
+    expect(await validate({ approved_design: { bundle_id: BASE_ID, bundle_sha256: approvedBundleSha, review_file: APPROVAL_FILE, approval_file: REVIEW_FILE } })).toBe("DESIGN_REVIEW_INVALID");
+    // one record file replaced by a link (the folder itself real)
+    const approvalPath = join(approved.dir, APPROVAL_FILE);
+    const keep = join(tmp("sr-photo-keep-ap-"), APPROVAL_FILE);
+    cpSync(approvalPath, keep);
+    rmSync(approvalPath);
+    symlinkSync(keep, approvalPath);
+    expect(await validate({})).toBe("APPROVED_DESIGN_UNSAFE");
+    rmSync(approvalPath);
+    cpSync(keep, approvalPath);
+    expect(await validate({})).toBe("ok");
   });
 
   it("sealing and delivery hold the receipt to the run's own approved-design-input.json", async () => {

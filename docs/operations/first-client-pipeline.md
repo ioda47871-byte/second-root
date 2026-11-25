@@ -90,7 +90,9 @@
    一覧の文は direction と同じ検査（URL・HTML・引用符・3 桁以上の数字・通貨記号・facts の値を含めない。`REQUEST_MATERIALS_UNSAFE` / `REQUEST_MATERIALS_HAS_FACT`）。
    記録: run の `materials.json`（一覧）と `approved-design-input.json`（承認したデザインの bundle の ID・SHA-256、審査と承認の記録の SHA-256、一覧の SHA-256）、
    receipt の `approved_design` と `materials_sha256`、実店舗の private な記録の同じ項目、`--validate-request` の結果の同じ項目（パスは残さない）。
-   封印と review の受け渡しは receipt と `approved-design-input.json` を比べる（`APPROVED_DESIGN_INPUT_MISMATCH`）。結果は private の
+   封印と review の受け渡しは receipt と `approved-design-input.json` を比べる（`APPROVED_DESIGN_INPUT_MISMATCH`）。
+   この変更より前に封印した素材の bundle（`photo_brief` の古い receipt。例: 研究の run `req-vatten-photo-01`）は、もう `verifyBundleDir`・review の受け渡しを通らない。
+   研究の記録として残すだけで、正式なフローには使わない。結果は private の
    `~/sr-runs/<依頼 ID>-<UTC>/parts/photo-N.png` に入り、デザインと同じ封印・検証で **review inbox `~/sr-runs/review-inbox/<依頼 ID>/`** に届く
    （`parts/photo-N.png`、receipt の `request_stage: "photo_materials"`・`images_total` = 枚数、manifest の `image_material: true`・
    `image_material_label: "イメージ素材"`・`photos: [{file, sha256, frame: "3:2"|"1:1"|"2:3"}]`、previews も同じ）。どちらの置き場も 6 枚まで
@@ -208,7 +210,7 @@
 7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
 8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
 9. 写真素材を使う場合（§2 D）: デザインが届いたら §G の審査とオーナーの承認を記録し、**その後で**、承認したデザインから決めた `materials` と `approved_design` を持つ素材の段の依頼を置く。
-   inbox に届いた素材は Claude が 1 枚ずつ確かめ、本実装（§C）に使う。（架空・研究の依頼だけは、届いた素材を節ごとの分割のデザインの `photo_inputs` に写してもよい。実店舗の whole_page のデザインには付けられない。）
+   inbox に届いた素材は Claude が 1 枚ずつ確かめ（§C の項目に加えて、参照に渡した承認済みのデザインから写した文字・店名・構図が入っていないか）、本実装（§C）に使う。（架空・研究の依頼だけは、届いた素材を節ごとの分割のデザインの `photo_inputs` に写してもよい。実店舗の whole_page のデザインには付けられない。）
    素材を頁に使うときは MVP_SPEC §7.1 の限定の改定の 5 条件（「イメージ」の表示・店の物として見せない・事実と分ける・「提案用デモ」の表示・差し替えられる）をすべて守る。
 
 ## 3. オーナーの判断・承認が要るもの
