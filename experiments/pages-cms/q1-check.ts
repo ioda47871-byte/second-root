@@ -5,6 +5,8 @@
  *
  *   npx tsx experiments/pages-cms/q1-check.ts --out <empty dir outside the repository>
  *
+ * Limits (review L5): "cut off" is horizontal only (vertical clipping is not detected), and overlap covers the menu
+ * items only (not other sections).
  * Per fixture and width it records: horizontal overflow, broken pictures, overlapping boxes (menu items with each
  * other, and the texts inside one item), unreadable text (font smaller than 12px, or text cut off by its box), and
  * requests that left the site; it saves the page shot (taken at the page's own height, not fullPage: DEV-135).
@@ -13,7 +15,7 @@
  * The existing render helpers (phase2f render-prototype, comp-impl render) are pinned to their importers by the
  * owner-approved isolation tests, so this experiment uses Playwright and the unpinned DEV-098 frame wait directly.
  */
-import { mkdir, mkdtemp, readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -106,20 +108,25 @@ export async function runQ1(o: { outDir: string; browser: Browser; only?: string
   await mkdir(out, { recursive: true, mode: 0o700 });
   if ((await readdir(out)).length > 0) throw new Error("Q1_OUT_NOT_EMPTY");
   const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1-"));
-  const missed = await controlCheck(o.browser, work, out);
-  if (missed.length > 0) throw new Error(`Q1_CONTROL_MISSED ${missed.join(",")}`);
-  const all = q1Fixtures();
-  const names = Object.keys(all).filter((n) => !o.only || o.only.includes(n));
-  const findings: Q1Finding[] = [];
-  for (const name of names) {
-    const repo = join(work, name, "repo");
-    const dist = join(work, name, "dist");
-    await writeFixture(repo, all[name]!);
-    await buildSite({ repo, outDir: dist, today: Q1_TODAY });
-    for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out)));
+  try {
+    const missed = await controlCheck(o.browser, work, out);
+    if (missed.length > 0) throw new Error(`Q1_CONTROL_MISSED ${missed.join(",")}`);
+    const all = q1Fixtures();
+    const names = Object.keys(all).filter((n) => !o.only || o.only.includes(n));
+    const findings: Q1Finding[] = [];
+    for (const name of names) {
+      const repo = join(work, name, "repo");
+      const dist = join(work, name, "dist");
+      await writeFixture(repo, all[name]!);
+      await buildSite({ repo, outDir: dist, today: Q1_TODAY });
+      for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out)));
+    }
+    await writeFile(join(out, "q1-report.json"), `${JSON.stringify({ schema: "pages_cms_q1_experiment_v0", fixtures: names, viewports: VIEWPORTS, findings }, null, 2)}\n`);
+    return { fixtures: names, findings };
+  } finally {
+    // review L1: the working copies (fixture repos and builds) are removed; only --out keeps the report and shots
+    await rm(work, { recursive: true, force: true });
   }
-  await writeFile(join(out, "q1-report.json"), `${JSON.stringify({ schema: "pages_cms_q1_experiment_v0", fixtures: names, viewports: VIEWPORTS, findings }, null, 2)}\n`);
-  return { fixtures: names, findings };
 }
 
 if (require.main === module) {

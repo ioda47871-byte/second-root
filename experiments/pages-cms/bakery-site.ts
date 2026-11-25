@@ -18,7 +18,7 @@ function item(m: MenuItem): string {
   const pic = m.image
     ? `<img src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="600" height="450">`
     : `<span class="noimg" aria-hidden="true">${e(m.name.slice(0, 1))}</span>`;
-  return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><div class="frame">${pic}</div><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">本日売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}</div></li>`;
+  return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><div class="frame">${pic}</div><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}</div></li>`;
 }
 
 function hours(shop: ShopInfo, today: string): string {

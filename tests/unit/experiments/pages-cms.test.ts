@@ -75,7 +75,7 @@ describe("DEV-303 Pages CMS experiment: the content model and the fictional bake
     expect(shown.length).toBe(8);
     for (const s of states.sections) expect(s.items.map((m) => m.displayOrder)).toEqual([...s.items.map((m) => m.displayOrder)].sort((a, b) => a - b));
     const html = renderBakery(await loadContent(await fixtureRepo("hidden-soldout-reorder")), Q1_TODAY).html;
-    expect(html.match(/本日売り切れ/g)?.length).toBe(shown.filter((m) => m.soldOut).length);
+    expect(html.match(/>売り切れ</g)?.length).toBe(shown.filter((m) => m.soldOut).length);
     const hours = renderBakery(await loadContent(await fixtureRepo("hours-closures")), Q1_TODAY).html;
     expect(hours).not.toContain("過ぎた休業");
     expect(hours).toContain("2026-12-29");
@@ -129,6 +129,9 @@ describe("DEV-303 Pages CMS experiment: the generated .pages.yml", () => {
     expect(JSON.stringify(config)).not.toMatch(/style\.css|index\.html|\.pages\.yml|build|dist|package\.json/);
     const shop = config.content.find((c) => c.name === "shop")!;
     expect(shop.fields.filter((f) => "readonly" in f && f.readonly).map((f) => f.name)).toEqual(["name", "address", "phone"]);
+    // review M2: the category reference stores the category's id and shows its name field ({name} would be the entry's file name)
+    const category = config.content.find((c) => c.name === "menu")!.fields.find((f) => f.name === "category")!;
+    expect(category.options).toEqual({ collection: "categories", value: "{fields.id}", label: "{fields.name}" });
     // the documented-schema check is not vacuous
     expect(checkPagesConfig({ ...config, content: [{ ...config.content[0]!, fields: [{ name: "x", type: "colour" }] }] }).length).toBeGreaterThan(0);
     expect(checkPagesConfig({ ...config, content: [{ ...config.content[0]!, fields: [{ name: "x", type: "string", options: { values: [] } }] }] })).toEqual(["content.0.fields.0: option values is not documented for string"]);

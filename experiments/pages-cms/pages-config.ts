@@ -4,7 +4,9 @@
  * (menu items with prices and photos, categories, weekly hours and special closures, announcements); the shop's
  * name / address / phone are shown read-only, and nothing reaches the page code, the CSS or the build settings.
  *
- * Written against the Pages CMS configuration docs as read on 2026-11-26 (https://pagescms.org/docs/configuration/:
+ * Written against the Pages CMS configuration docs as read on 2026-11-26 (https://pagescms.org/docs/configuration/,
+ * .../configuration/media/, .../configuration/content/, .../configuration/content/fields/ and the per-type pages
+ * .../configuration/fields/<type>/ — there is no index page at .../configuration/fields/:
  * top-level `media` / `content`; content entries `name`, `label`, `type` collection | file, `path`, `format`, `fields`,
  * `filename`, `view`, `operations`; field types string, text, number, boolean, image, date, select, object, reference,
  * uuid; field keys `required`, `readonly`, `hidden`, `description`, `default`, `list`, `options`). Checked offline by
@@ -45,7 +47,7 @@ export function pagesConfig() {
   const menuFields: Field[] = [
     ID,
     { name: "name", label: "商品名", type: "string", required: true, options: { maxlength: 80 } },
-    { name: "category", label: "分類", type: "reference", required: true, options: { collection: "categories", value: "{fields.id}", label: "{name}" } },
+    { name: "category", label: "分類", type: "reference", required: true, options: { collection: "categories", value: "{fields.id}", label: "{fields.name}" } },
     { name: "priceDisplay", label: "価格の表示", type: "string", description: "頁にそのまま出ます（例: 480円（税込）、時価）", options: { maxlength: 40 } },
     { name: "description", label: "説明", type: "text", options: { maxlength: 400 } },
     { name: "image", label: "写真", type: "image", options: { extensions: ["jpg", "jpeg", "png", "webp"] } },
