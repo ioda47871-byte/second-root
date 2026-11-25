@@ -152,6 +152,33 @@
   封印・検証（bundle.ts）と review の受け渡しは whole_page の run を PC 1 + SP 1 として数える。`image-first-check` の検査は whole_page の表示を
   1 枚の全体画像として扱う（節の宣言は `page` だけ。画面の高さの下限は当てはめず、全体であることはヘッダーとフッターと複数の節の読み取りで確かめる）。
 
+### F. オーナーが承認した日本語訳（DEV-303 §6.1 の 4）
+
+事実パックに英語など別の言葉でしかない事実（例: 英語の紹介文）は、**オーナーが承認した日本語訳**としてだけ、自然な日本語で頁と依頼に出せる。
+
+- **記録**: 店ごとの非公開の `sr_ja_renderings_v1`（例: `~/second-root-shops/<shop_id>/ja-renderings.json`。リポジトリの外、事実パックの隣）。
+  `{ schema, shop_id, entries: [{ fact_key, source_text, ja_text, note? }], owner_confirmation?: { confirmed: true, confirmed_at, entries_sha256 } }`。
+  `source_text` は事実パックのその key の値と**完全に同じ**文字列。`ja_text` は 1 行・300 字まで・URL や HTML なし。1 つの key に 1 つの訳。
+- **訳は事実を足さない**: 原文に無い数字（算用数字・漢数字の並び「三十」「十数」「〇三」・助数詞つきの漢数字「七時」「三種」）、値段・メニュー、日付・時間、歴史、人物、
+  素材・産地、受賞・掲載、評判、お客様の声、効能・保証、予約・在庫・限定の印、漢字・ひらがな・カタカナ・ローマ字以外の文字（`script`）、原文の単語に無いローマ字の語
+  （`proper_noun`。語ごとに比べる）があれば `JA_RENDERING_ADDS_FACT`（区分・項目・key だけを出し、文は出さない）。原文の数字に 年・時・月・日 を付けるのはよい。
+  算用数字以外の数字（アラビア・インドの数字、〇 など）と大字（壱・弐・参・拾・廿 など）も数字として扱う。原文の単語にある語（例 Café）なら、ローマ字以外の文字を含む語も使える。
+  **厳しめに作ってある**: 「一つ」「一番」「一人」「十分」「八百屋」のような日常の語も止まる。原文が数を言葉で書いている（例 twelve seats）とき、訳で数字（12席・十二席）にはできない。
+  **この検査は数字・事実らしい印・日本語以外の文字・ローマ字の語だけを見る仕掛け（tripwire）**で、印の無い名前・地名・営業の言い方
+  （例「東京都渋谷区」「ジョン・スミス」「週末だけ営業」）は止まらない。それらはオーナーの確認で見る。
+- **検査**: `npx tsx scripts/design-artifact/ja-renderings-check.ts --check <ja-renderings.json> --facts <facts-pack.json> [--draft]`。
+  `--draft` はオーナーの確認の前。既定（ゲート）は `owner_confirmation.entries_sha256` が表示される `entries_sha256`（entries の正規化した JSON の SHA-256）と一致することを求める。
+  **`owner_confirmation` を書くのは Claude で、オーナーが訳を確認したと言ったときだけ**。これは「Claude が、オーナーがこの訳を確認したと記録した」証拠であって、**オーナー本人の署名ではない**。
+  確認の後に訳を直せば `JA_RENDERINGS_SHA_MISMATCH` になり、確認はやり直し。
+- **依頼**: 実店舗の whole_page のデザインの依頼に `"ja_renderings": { "path": "ja-renderings.json", "sha256": "<記録の SHA-256>" }` を入れられる
+  （whole_page 以外は `JA_RENDERINGS_NOT_WHOLE_PAGE`）。worker と `--validate-request` がゲートの検査を行う（`--validate-request` の結果に `ja_renderings: {sha256, keys}`、
+  拒否では `detail` に区分・項目・key）。プロンプトの載せる情報の一覧では、訳のある事実を「訳（オーナーが承認した日本語訳）」とだけ出し、原文は画像のプロンプトに入れない
+  （書く文字の一覧に原文を混ぜない。原文との結びつきは計画の SHA-256 とゲートの検査が持つ）。
+  訳の無い事実は今までどおり原文。計画・receipt・実店舗の private な記録には `ja_renderings_sha256` だけを残す（パスは残さない）。節ごとの分割の依頼とその固定値は変わらない。
+- **実装（文章の監査）**: `comp-copy.ts --audit|--gate|--revise <comp> --facts <facts-pack.json> --ja-renderings <ja-renderings.json>`。copy.json の項目
+  `claim_type: "approved_rendering"`（`source_fact_ids` はその事実 1 つ）は、文がその key の承認済みの `ja_text` と同じときだけ通る（`RENDERING_NOT_APPROVED` / `RENDERING_WITHOUT_ONE_FACT`）。
+  それ以外の文は今までどおりの検査。監査の記録は訳の記録の SHA-256（`ja_renderings_sha256`）に結びつき、訳が変われば古くなる（`REVIEW_STALE_JA_RENDERINGS`）。
+
 ### G. デザイン審査とオーナーの承認（段 3。DEV-303 §6.1 の 5）
 
 **生成の成功（画像が保存された）だけでは次の段（素材の生成・本実装）へ進まない。** review inbox に届いたデザインの run

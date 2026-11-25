@@ -151,6 +151,19 @@ export const CaseStudyRef = z.strictObject({
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
 });
 export type CaseStudyRef = z.infer<typeof CaseStudyRef>;
+/**
+ * DEV-303 §6.1 change 4: a whole_page design request's owner-approved Japanese renderings (`sr_ja_renderings_v1`,
+ * lib/design-agent/ja-renderings/ja-renderings.ts): a plain file name in the shop's private directory next to the facts
+ * pack, bound by its SHA-256. The worker and --validate-request run its gate check; the plan shows each rendered fact as
+ * its approved Japanese only (the original stays out of the image prompt; the plan binds the renderings by SHA-256).
+ */
+export const JaRenderingsRef = z.strictObject({
+  path: z.string().regex(CASE_STUDY_NAME_RE).refine((p) => p !== "facts-pack.json", "ja_renderings_is_facts"),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type JaRenderingsRef = z.infer<typeof JaRenderingsRef>;
+/** The checked renderings as a whole_page plan uses them (the worker's gate check made them; no path). */
+export type RequestJaRenderings = { sha256: string; entries: readonly { fact_key: string; source_text: string; ja_text: string }[] };
 
 /** Exactly YYYY-MM-DDTHH:MM:SSZ (root's rule: no fraction, no offset). */
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -181,6 +194,7 @@ export const DesignRequest = z
     direction: RequestDirection,
     photo_inputs: PhotoInputs.optional(),
     case_study: CaseStudyRef.optional(),
+    ja_renderings: JaRenderingsRef.optional(),
     max_images: z.union([z.literal(REQUEST_IMAGES.total), z.literal(WHOLE_PAGE_IMAGES.total)]),
   })
   .refine(factsRefOk, "facts_ref_shop_mismatch")
@@ -240,6 +254,9 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
     // Issue #336: a real shop's design (and every whole-page design: its principles and references come from it) starts
     // only from an owner-confirmed success-case analysis (§1 stage 1)
     if ((r.data.kind === "real_shop" || whole) && !r.data.case_study) throw new PromptStop("CASE_STUDY_REQUIRED");
+    // DEV-303 §6.1 change 4: approved Japanese renderings feed only the whole-page prompt (the section split is pinned)
+    if (r.data.ja_renderings && !whole) throw new PromptStop("JA_RENDERINGS_NOT_WHOLE_PAGE");
+    if (r.data.ja_renderings && r.data.case_study && r.data.ja_renderings.path === r.data.case_study.path) throw new PromptStop("REQUEST_INVALID");
   }
   return { request: r.data, sha256: got };
 }
@@ -359,6 +376,8 @@ export type RequestPlan = {
   /** DEV-303 §6.1 row 3: only on a whole_page plan (all three bound into plan_sha256). */
   layout?: "whole_page";
   case_study_sha256?: string;
+  /** DEV-303 §6.1 change 4: only when the whole_page request names approved Japanese renderings (bound into plan_sha256). */
+  ja_renderings_sha256?: string;
   references?: PlanReference[];
   plan_sha256: string;
 };
@@ -368,7 +387,22 @@ export const PHOTO_LABEL = "イメージ";
 export const DEMO_MARKER = "提案用デモ";
 
 /** caseStudy: DEV-303 §6.1 row 3, required by (and only read for) a whole_page request. */
-export type RequestInputs = { request: DesignRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack; caseStudy?: RequestCaseStudyUse | null };
+export type RequestInputs = { request: DesignRequest; requestSha256: string; factsBytes: Buffer; facts: FactsPack; caseStudy?: RequestCaseStudyUse | null; jaRenderings?: RequestJaRenderings | null };
+
+/** The renderings a whole_page plan may use: exactly the request's (SHA-256), each source the pack's value (else a stop). */
+function checkJaRenderingsUse(request: DesignRequest, facts: FactsPack, ja: RequestJaRenderings | null | undefined): Map<string, string> {
+  if (!request.ja_renderings) {
+    if (ja) throw new PromptStop("JA_RENDERINGS_PLAN_MISMATCH");
+    return new Map();
+  }
+  if (!ja || ja.sha256 !== request.ja_renderings.sha256) throw new PromptStop("JA_RENDERINGS_PLAN_MISMATCH");
+  const out = new Map<string, string>();
+  for (const e of ja.entries) {
+    if (out.has(e.fact_key) || facts.facts.find((f) => f.key === e.fact_key)?.value !== e.source_text || e.ja_text.includes(REFERENCE_DIR_TOKEN)) throw new PromptStop("JA_RENDERINGS_PLAN_MISMATCH");
+    out.set(e.fact_key, e.ja_text);
+  }
+  return out;
+}
 
 /** direction.json for a request: the direction object as canonical JSON (written into the private run directory). */
 export const requestDirectionBytes = (request: DesignRequest) => Buffer.from(`${JSON.stringify(request.direction, null, 2)}\n`, "utf8");
@@ -598,7 +632,7 @@ export function assertCaseStudyTextHasNoFact(cs: Pick<RequestCaseStudyUse, "shop
   }
 }
 
-function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewport; inventory: string[]; cs: RequestCaseStudyUse }): string {
+function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewport; inventory: string[]; cs: RequestCaseStudyUse; ja?: ReadonlyMap<string, string> }): string {
   const { inputs, viewport, inventory, cs } = o;
   const { request, facts } = inputs;
   const d = request.direction;
@@ -647,7 +681,16 @@ function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewpor
   lines.push("商品・料理・店内・建物・人物の姿は描かない（描いたものが店の実物と取り違えられないように）。線画・図形・色の面・文字・写真の枠で組む。");
   lines.push("");
   lines.push("ページに載せる情報（順不同。区画の順はこの並びと関係がない。次の文字列だけを、一字一句そのまま。言い換え・要約・翻訳・分割をしない。どれもページのどこかに載せる）:");
-  for (const t of [...new Set(inventory.map(value))]) lines.push(`- 「${t}」`);
+  // DEV-303 §6.1 change 4: a fact with an owner-approved Japanese rendering is shown as that Japanese only. Its original
+  // stays out of the image prompt (review L3: never among the strings to write); the plan binds the renderings by SHA-256
+  // and the worker's gate check ties each rendering to its facts-pack value.
+  const ja = o.ja ?? new Map<string, string>();
+  const shown = new Set<string>();
+  for (const key of inventory) {
+    const line = ja.has(key) ? `- 「${ja.get(key)!}」（オーナーが承認した日本語訳）` : `- 「${value(key)}」`;
+    if (!shown.has(line)) lines.push(line);
+    shown.add(line);
+  }
   lines.push(`ナビゲーションの項目と、情報の値の上の小さな見出しに使ってよい語: ${labels.map((x) => `「${x}」`).join(" ")}`);
   lines.push(`写真の枠の隅だけに使ってよい語: 「${PHOTO_LABEL}」`);
   lines.push("それ以外の文字・英字・見出し・キャッチコピー・ロゴは描かない。数字だけの目盛りや時刻のラベルを単独で書かない（数字が現れるのは上の文字列の中だけ）。文字の代わりに読めない模様の文字を描かない。");
@@ -668,11 +711,12 @@ function buildWholePagePlan(inputs: RequestInputs): RequestPlan {
   if (request.max_images !== WHOLE_PAGE_IMAGES.total) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   const cs = checkCaseStudyUse(request, inputs.caseStudy);
   if (request.kind === "real_shop") assertCaseStudyTextHasNoFact(cs, facts);
+  const ja = checkJaRenderingsUse(request, facts, inputs.jaRenderings);
   const inventory = wholePageInventory(facts);
   const viewports = {} as Record<ImageFirstViewport, PlannedViewport>;
   for (const viewport of ["desktop_1440", "mobile_390"] as const) {
     const tag = viewport === "desktop_1440" ? "pc" : "sp";
-    const prompt = wholePagePrompt({ inputs, viewport, inventory, cs });
+    const prompt = wholePagePrompt({ inputs, viewport, inventory, cs, ja });
     if (prompt.includes(REFERENCE_DIR_TOKEN)) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
     const part: PlannedPart = { index: 1, name: `${tag}-1`, file: `parts/${tag}-1.png`, prompt_file: `prompts/${tag}-1.txt`, frame: WHOLE_PAGE_FRAME, sections: [{ id: WHOLE_PAGE_SECTION, box: { x: 0, y: 0, w: 1, h: 1 } }], prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
     viewports[viewport] = { target_css_width: VIEWPORT_WIDTHS[viewport], mode: "whole_page", section_order: [WHOLE_PAGE_SECTION], parts: [part], seams: [] };
@@ -721,6 +765,7 @@ ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.n
     layout: "whole_page",
     case_study_sha256: cs.sha256,
     references,
+    ...(request.ja_renderings ? { ja_renderings_sha256: request.ja_renderings.sha256 } : {}),
   } as const;
   if (all.length !== WHOLE_PAGE_IMAGES.total) throw new PromptStop("SPLIT_INVALID");
   const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, viewports: Object.fromEntries(Object.entries(viewports).map(([k, v]) => [k, { ...v, parts: v.parts.map((p) => ({ ...p, prompt: undefined })) }])) };

@@ -9,7 +9,8 @@ import { buildRequestPlan, isRequestId, parseRequest, REQUEST_MAX_BYTES, RESERVE
 import { loadRequestAuditMaterial, requestMaterialId } from "@/lib/design-agent/imagefirst-worker/claude-audit";
 import { gitCommitState, IMAGEFIRST_RUNS, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
-import { loadRequestRun, readRequestFacts, REAL_SHOP_RECORD_SCHEMA, validateRequestFile, writeRealShopRecord } from "@/lib/design-agent/imagefirst-worker/request";
+import { jaRenderingsRefusalDetailOf, loadRequestRun, readRequestFacts, REAL_SHOP_RECORD_SCHEMA, validateRequestFile, writeRealShopRecord } from "@/lib/design-agent/imagefirst-worker/request";
+import { entriesSha256 } from "@/lib/design-agent/ja-renderings/ja-renderings";
 import { precheckRequestCycle, runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
 import { runLoadedRequest } from "@/lib/design-agent/imagefirst-worker/request-run";
 import { BUNDLE_ID_RE, REQUEST_RUN_ID_RE } from "@/lib/design-agent/imagefirst-worker/run-directions";
@@ -503,6 +504,68 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(await deliver()).toBe("resolved");
   });
 
+  it("DEV-303 §6.1 change 4: approved Japanese renderings — gate-checked, shown (without the original) in the prompt, bound by SHA-256 in plan, receipt and record", async () => {
+    const entries = [{ fact_key: "statement_1", source_text: "豆は架空の焙煎所から届きます", ja_text: "架空の焙煎所から豆が届きます" }];
+    const jaRecord = (over: Record<string, unknown> = {}) => Buffer.from(`${JSON.stringify({ schema: "sr_ja_renderings_v1", shop_id: SHOP, entries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(entries) }, ...over }, null, 2)}\n`);
+    const JA = jaRecord();
+    const w = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(JA) } }) });
+    writeFileSync(join(w.home, "second-root-shops", SHOP, "ja-renderings.json"), JA);
+    expect(await validateRequestFile({ file: w.requestFile, home: w.home, repo: w.repo })).toMatchObject({ layout: "whole_page", ja_renderings: { sha256: sha(JA), keys: ["statement_1"] } });
+    const { report, run } = await w.cycle();
+    expect(report.status).toBe("succeeded");
+    const prompt = readFileSync(join(report.run_dir!, "prompts", "pc-1.txt"), "utf8");
+    expect(prompt).toContain("- 「架空の焙煎所から豆が届きます」（オーナーが承認した日本語訳）\n");
+    expect(prompt).not.toContain("豆は架空の焙煎所から届きます");
+    const receipt = JSON.parse(readFileSync(report.receipt!, "utf8")) as WorkerReceipt;
+    expect(receipt.ja_renderings_sha256).toBe(sha(JA));
+    expect(run!.jaRenderingsSha256).toBe(sha(JA));
+    expect(readFileSync(report.receipt!, "utf8")).not.toContain("ja-renderings.json");
+    const plan = (await loadRequestRun({ requestFile: w.requestFile, requestSha256: sha(w.requestBytes), requestId: ID, home: w.home, repo: w.repo })).plan as RequestPlan;
+    expect(plan.ja_renderings_sha256).toBe(sha(JA));
+    // review L4: the run keeps the renderings SHA-256 (no path, no text); delivery holds the receipt to it
+    const inputPath = join(report.run_dir!, "ja-renderings-input.json");
+    const inputOriginal = readFileSync(inputPath, "utf8");
+    expect(JSON.parse(inputOriginal)).toEqual({ schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: sha(JA) });
+    rmSync(inputPath);
+    writeFileSync(inputPath, JSON.stringify({ schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: sha("other") }), { mode: 0o600 });
+    expect(await codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }))).toBe("JA_RENDERINGS_INPUT_MISMATCH");
+    rmSync(inputPath);
+    expect(await codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }))).toBe("JA_RENDERINGS_INPUT_MISMATCH");
+    writeFileSync(inputPath, inputOriginal, { mode: 0o600 });
+    // sealed and delivered as a whole_page run with the field
+    expect((await deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true })).status).toBe("delivered");
+    // the real shop's private record keeps the SHA-256 only
+    const path = await writeRealShopRecord({ home: w.home, repo: w.repo, record: { schema: REAL_SHOP_RECORD_SCHEMA, request_id: ID, shop_id: SHOP, kind: "real_shop", request_sha256: run!.requestSha256, facts_sha256: run!.factsSha256, plan_sha256: run!.planSha256, case_study_sha256: run!.caseStudySha256, design_layout: "whole_page", reference_images: run!.referenceImages!, ja_renderings_sha256: run!.jaRenderingsSha256!, commit: run!.commit, run: { status: "succeeded", code: null, invoked: true, receipt_written: true }, review: null, use: "internal_design_reference_only", recorded_at: "2026-11-25T04:00:00Z" } });
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ ja_renderings_sha256: sha(JA) });
+    expect(readFileSync(path, "utf8")).not.toContain("焙煎所");
+
+    // refusals (validate and worker alike; nothing invoked)
+    const check = async (bytes: Buffer, over: Record<string, unknown> = {}) => {
+      const v = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(bytes) }, ...over }) });
+      writeFileSync(join(v.home, "second-root-shops", SHOP, "ja-renderings.json"), bytes);
+      const refused = await validateRequestFile({ file: v.requestFile, home: v.home, repo: v.repo }).then(() => null, (e: unknown) => e);
+      const cyc = await v.cycle();
+      expect(v.invoked).toEqual([]);
+      return { code: (refused as { code?: string } | null)?.code ?? "ok", detail: jaRenderingsRefusalDetailOf(refused), cycle: cyc.report.code };
+    };
+    expect(await check(jaRecord({ owner_confirmation: undefined }))).toMatchObject({ code: "JA_RENDERINGS_NOT_OWNER_CONFIRMED", cycle: "JA_RENDERINGS_NOT_OWNER_CONFIRMED" });
+    const badEntries = [{ ...entries[0]!, ja_text: "職人の焙煎所から豆が届きます" }];
+    expect(await check(jaRecord({ entries: badEntries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(badEntries) } }))).toEqual({ code: "JA_RENDERING_ADDS_FACT", detail: { category: "people", field: "ja_text", fact_key: "statement_1" }, cycle: "JA_RENDERING_ADDS_FACT" });
+    const wrongSource = [{ ...entries[0]!, source_text: "豆は届きます" }];
+    expect((await check(jaRecord({ entries: wrongSource, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(wrongSource) } }))).code).toBe("JA_RENDERINGS_SOURCE_MISMATCH");
+    // the request's SHA-256 is not the file's
+    const mismatch = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha("other") } }) });
+    writeFileSync(join(mismatch.home, "second-root-shops", SHOP, "ja-renderings.json"), JA);
+    expect(await codeOf(validateRequestFile({ file: mismatch.requestFile, home: mismatch.home, repo: mismatch.repo }))).toBe("JA_RENDERINGS_RECORD_SHA_MISMATCH");
+    // missing, or a link
+    const missing = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(JA) } }) });
+    expect(await codeOf(validateRequestFile({ file: missing.requestFile, home: missing.home, repo: missing.repo }))).toBe("JA_RENDERINGS_RECORD_MISSING");
+    const elsewhere = join(tmp("sr-req-ja-"), "ja.json");
+    writeFileSync(elsewhere, JA);
+    symlinkSync(elsewhere, join(missing.home, "second-root-shops", SHOP, "ja-renderings.json"));
+    expect(await codeOf(validateRequestFile({ file: missing.requestFile, home: missing.home, repo: missing.repo }))).toBe("JA_RENDERINGS_RECORD_UNSAFE");
+  });
+
   it("fictional: the fictional-shop check passes, the bundle is delivered and the research log intake accepts it", async () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-1";
@@ -605,5 +668,22 @@ describe("DEV-303 the worker CLI's request arguments", () => {
     expect([r.status, r.out?.status, r.out?.code]).toEqual([2, "refused", "CASE_STUDY_TEXT_HAS_FACT"]);
     expect((r.out as unknown as { detail?: unknown }).detail).toEqual({ category: "money", field: "do_not_copy", case_id: "CP-002" });
     expect(JSON.stringify(r.out)).not.toContain("円");
+  });
+
+  it("DEV-303 §6.1 change 4: a rendering that adds a fact names its category, field and key in the CLI line (never the text)", () => {
+    const home = tmp("sr-req-cli-ja-");
+    const shopDir = join(home, "second-root-shops", SHOP);
+    mkdirSync(shopDir, { recursive: true });
+    writeFileSync(join(shopDir, "facts-pack.json"), FACTS_BYTES);
+    writeFileSync(join(shopDir, CASE_STUDY_FILE), CASE_STUDY);
+    const entries = [{ fact_key: "statement_1", source_text: "豆は架空の焙煎所から届きます", ja_text: "職人の焙煎所から豆が届きます" }];
+    const ja = Buffer.from(JSON.stringify({ schema: "sr_ja_renderings_v1", shop_id: SHOP, entries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(entries) } }));
+    writeFileSync(join(shopDir, "ja-renderings.json"), ja);
+    const file = join(tmp("sr-req-cli-jaf-"), `${ID}.json`);
+    writeFileSync(file, bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(ja) } })));
+    const r = run(["--validate-request", file], { HOME: home });
+    expect([r.status, r.out?.status, r.out?.code]).toEqual([2, "refused", "JA_RENDERING_ADDS_FACT"]);
+    expect((r.out as unknown as { detail?: unknown }).detail).toEqual({ category: "people", field: "ja_text", fact_key: "statement_1" });
+    expect(JSON.stringify(r.out)).not.toContain("職人");
   });
 });

@@ -8,7 +8,7 @@ import { assertCaseStudyTextHasNoFact, buildRequestPlan, CASE_STUDY_TEXT_CATEGOR
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
 import { IMAGE_TOOL_MAX_REFS, isReferenceName, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
-import { BUNDLE_MAX_REFERENCES, checkReferenceInputs, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
+import { BUNDLE_MAX_REFERENCES, checkJaRenderingsInput, checkReferenceInputs, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { SandboxError, stageReferenceBytes } from "@/lib/design-agent/sandbox";
 import { assertRealShopReferences, caseStudyUseOf, referenceRecordOf, refusalDetailOf, selectReferenceImages, selectReferences } from "@/lib/design-agent/imagefirst-worker/request";
 import { FULL_PAGE_MAX_REFERENCES, runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
@@ -355,6 +355,47 @@ describe("Issue #335 review Low: the reference limit holds for every image call,
   });
 });
 
+describe("DEV-303 §6.1 change 4: owner-approved Japanese renderings in the whole-page inventory", () => {
+  const JA_SHA = sha("invented renderings bytes");
+  const SOURCE = "架空の古書を一冊ずつ棚に並べます";
+  const JA_TEXT = "架空の古書を一冊ずつ並べています";
+  const JA = { sha256: JA_SHA, entries: [{ fact_key: "statement_1", source_text: SOURCE, ja_text: JA_TEXT }] };
+  const withJa = parseRequest(bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: JA_SHA } })), sha(bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: JA_SHA } }))), ID).request as DesignRequest;
+  const planJa = (ja: typeof JA | null | undefined, request: DesignRequest = withJa) => buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, caseStudy: CS_USE, ...(ja === undefined ? {} : { jaRenderings: ja }) });
+
+  it("a rendered fact is shown as its approved Japanese only (review L3: the original is not among the strings to write); others as before", () => {
+    const p = planJa(JA);
+    for (const vp of ["desktop_1440", "mobile_390"] as const) {
+      const t = p.viewports[vp].parts[0]!.prompt;
+      expect(t).toContain(`- 「${JA_TEXT}」（オーナーが承認した日本語訳）\n`);
+      expect(t).not.toContain(SOURCE);
+      expect(t).not.toContain("原文");
+      expect(t).toContain(`- 「${FACTS.facts.find((f) => f.key === "description")!.value}」`);
+    }
+    expect(p.ja_renderings_sha256).toBe(JA_SHA);
+    expect(p.plan_sha256).not.toBe(plan().plan_sha256);
+    // without renderings the whole-page plan is unchanged (its pin holds)
+    expect(plan().plan_sha256).toBe(WHOLE_PAGE_BATCH_PIN.plan);
+    expect("ja_renderings_sha256" in plan()).toBe(false);
+  });
+
+  it("the plan uses exactly the request's renderings: another SHA-256, another source, missing or extra ones stop", () => {
+    expect(planCode(() => planJa(null))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa({ ...JA, sha256: sha("other") }))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa({ ...JA, entries: [{ ...JA.entries[0]!, source_text: "別の文" }] }))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa({ ...JA, entries: [JA.entries[0]!, JA.entries[0]!] }))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa(JA, REQUEST))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+  });
+
+  it("only a whole_page request may name renderings; a plain file name, never the facts pack or the case study's", () => {
+    const ref = { path: "ja-renderings.json", sha256: JA_SHA };
+    expect(parseCode(requestObject({ ja_renderings: ref }))).toBe("ok");
+    expect(parseCode(requestObject({ kind: "fictional", layout: undefined, max_images: 6, case_study: undefined, ja_renderings: ref }))).toBe("JA_RENDERINGS_NOT_WHOLE_PAGE");
+    for (const path of ["../ja.json", "facts-pack.json", "ja.txt", "/abs/ja.json"]) expect(parseCode(requestObject({ ja_renderings: { ...ref, path } })), path).toBe("REQUEST_INVALID");
+    expect(parseCode(requestObject({ ja_renderings: { ...ref, path: "case-study.json" } }))).toBe("REQUEST_INVALID");
+  });
+});
+
 describe("DEV-303 §6.1 row 3 the run refuses a real_shop section split and references that are not the plan's", () => {
   const sectionPlan = () => {
     const fictional = parseRequest(bytesOf(requestObject({ kind: "fictional", layout: undefined, max_images: 6, case_study: undefined })), sha(bytesOf(requestObject({ kind: "fictional", layout: undefined, max_images: 6, case_study: undefined }))), ID).request as DesignRequest;
@@ -615,5 +656,28 @@ describe("review L4: the receipt's reference list is the run's own reference-inp
       ["no file", null, two],
       ["a file without a receipt list", doc(two), undefined],
     ] as const) expect(await codeOf(checkReferenceInputs(runDirWith(file), receipt)), why).toBe("REFERENCE_INPUTS_MISMATCH");
+  });
+});
+
+describe("review L4 (ja renderings): the receipt's renderings SHA-256 is the run's own ja-renderings-input.json", () => {
+  const dirWith = (file: unknown) => {
+    const dir = tmp("sr-wp-ja-");
+    if (file !== null) writeFileSync(join(dir, "ja-renderings-input.json"), typeof file === "string" ? file : JSON.stringify(file), { mode: 0o600 });
+    return dir;
+  };
+  const codeOf = (p: Promise<unknown>) => p.then(() => "ok", (e: { code?: string }) => e.code ?? String(e));
+  const doc = (s: string) => ({ schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: s });
+  it("equal passes; another SHA, an extra field, another schema, a missing or unexpected file is JA_RENDERINGS_INPUT_MISMATCH", async () => {
+    const s = sha("renderings");
+    expect(await codeOf(checkJaRenderingsInput(dirWith(doc(s)), s))).toBe("ok");
+    expect(await codeOf(checkJaRenderingsInput(dirWith(null), undefined))).toBe("ok");
+    for (const [why, file, receipt] of [
+      ["another SHA", doc(sha("other")), s],
+      ["extra field", { ...doc(s), path: "/x" }, s],
+      ["another schema", { ...doc(s), schema: "x" }, s],
+      ["not JSON", "{", s],
+      ["missing file", null, s],
+      ["file without a receipt SHA", doc(s), undefined],
+    ] as const) expect(await codeOf(checkJaRenderingsInput(dirWith(file), receipt)), why).toBe("JA_RENDERINGS_INPUT_MISMATCH");
   });
 });
