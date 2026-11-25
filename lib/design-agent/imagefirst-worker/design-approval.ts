@@ -193,7 +193,8 @@ export function parseDesignApproval(bytes: Buffer): DesignApproval {
 
 /** One design image of the delivered run, its bytes as the bundle verified them. */
 export type RunImage = { file: string; sha256: string; bytes: Buffer };
-export type DeliveredRun = { request_id: string; bundle_sha256: string; images: { pc: RunImage[]; sp: RunImage[] } };
+/** shop / kind (DEV-303 §6.1 change 6): the bundle manifest's, so a later stage can hold the run to its own shop. */
+export type DeliveredRun = { request_id: string; bundle_sha256: string; shop: string; kind: "real_shop" | "fictional" | null; images: { pc: RunImage[]; sp: RunImage[] } };
 
 /** The delivered design run: the sealed bundle verifies, it is a design (not image materials), its PC / SP parts. */
 export async function readDeliveredRun(bundleDir: string): Promise<DeliveredRun> {
@@ -213,7 +214,7 @@ export async function readDeliveredRun(bundleDir: string): Promise<DeliveredRun>
       .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
   const images = { pc: of("pc"), sp: of("sp") };
   if (images.pc.length === 0 || images.sp.length === 0 || images.pc.length + images.sp.length !== parts.length) stop("DESIGN_BUNDLE_NOT_A_DESIGN");
-  return { request_id: v.manifest.bundle_id, bundle_sha256: v.bundle_sha256, images };
+  return { request_id: v.manifest.bundle_id, bundle_sha256: v.bundle_sha256, shop: v.manifest.shop, kind: v.manifest.kind ?? null, images };
 }
 
 const sameImages = (a: DesignImages, run: DeliveredRun["images"]) =>
@@ -367,10 +368,10 @@ export async function checkDesignApproval(o: { bundleDir: string; reviewPath: st
 }
 
 /** What a later stage (change 6: materials after approval) receives: the approved run, its images and the records' SHA-256s. */
-export type ApprovedDesignRun = { request_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string; page_sha256: string; images: { pc: RunImage[]; sp: RunImage[] } };
+export type ApprovedDesignRun = { request_id: string; bundle_sha256: string; shop: string; kind: "real_shop" | "fictional" | null; review_sha256: string; approval_sha256: string; page_sha256: string; images: { pc: RunImage[]; sp: RunImage[] } };
 
 /** The approved design run, or a DesignApprovalStop: the gate check above (decision approve, no axis fail). */
 export async function approvedDesignRun(o: { bundleDir: string; reviewPath: string; approvalPath: string; repo: string }): Promise<ApprovedDesignRun> {
   const c = await checkDesignApproval({ ...o, mode: "gate" });
-  return { request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, approval_sha256: c.approval!.sha256, page_sha256: c.page_sha256, images: c.run.images };
+  return { request_id: c.request_id, bundle_sha256: c.bundle_sha256, shop: c.run.shop, kind: c.run.kind, review_sha256: c.review_sha256, approval_sha256: c.approval!.sha256, page_sha256: c.page_sha256, images: c.run.images };
 }

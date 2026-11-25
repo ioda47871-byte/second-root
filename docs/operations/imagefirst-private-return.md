@@ -20,7 +20,7 @@
 
 - **bundle の SHA = manifest.json のバイトの SHA-256。** manifest が全ファイルの SHA・バイト数と SHA256SUMS の SHA を持つので、1 つの
   ハッシュが全バイトを覆う。同じ承認 ID の 2 回目の封入は `BUNDLE_EXISTS`（上書きしない）。一時名で書いてから rename。0700 / 0600。
-- 封入の前に: receipt が `succeeded`・`verified`・停止コードなし・PC 2 + SP 4（依頼モードの whole_page の run は PC 1 + SP 1 で、receipt の `reference_images` は `id`・`case_id`・`sha256` だけの 1〜5 件。DEV-303 §6.1 の 3）・`stopped_images` が空、receipt の `run_dir` = 渡された
+- 封入の前に: receipt が `succeeded`・`verified`・停止コードなし・PC 2 + SP 4（依頼モードの whole_page の run は PC 1 + SP 1 で、receipt の `reference_images` は `id`・`case_id`・`sha256` だけの 1〜5 件。DEV-303 §6.1 の 3）・`stopped_images` が空（素材の段の run は、承認したデザインの後でだけ作られる: receipt の `approved_design`・`materials_sha256` が run の `approved-design-input.json` と一致。DEV-303 §6.1 の 6。それより前に封印した `photo_brief` の素材の bundle（例 `req-vatten-photo-01`）は検証を通らず、研究の記録として残すだけ。削除・移動しない）、receipt の `run_dir` = 渡された
   run ディレクトリ（realpath）、run ディレクトリと receipt が自分の所有で group/other に閉じている。`parts/` と `composites/` に
   receipt（と渡された合成の SHA）に無いファイルがあれば `RUN_FILE_UNEXPECTED`、無ければ `RUN_FILE_MISSING`、link は `RUN_FILE_LINK`、
   receipt の名前が `parts/(pc|sp)-*.png` でない（`../`・絶対パス・別ディレクトリ）なら読む前に `RUN_FILE_OUTSIDE`。各ファイルは

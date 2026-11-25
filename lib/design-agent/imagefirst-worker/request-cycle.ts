@@ -28,7 +28,7 @@ import { LedgerStop, type Ledger } from "../phase2f-live/ledger";
 import type { CommitState } from "../phase2f-live/steps";
 import { acquireLock, WorkerStepError } from "../worker/state";
 import { claimApproval, claimed, privateDir, privateOrMissing, settleRun, stamp, type ApprovalIdCheck, type CycleReport } from "./cycle";
-import { loadRequestRun, referenceRecordOf, type ReferenceRecord, type RequestRunInputs } from "./request";
+import { approvedDesignRecordOf, loadRequestRun, referenceRecordOf, type ApprovedDesignRecord, type ReferenceRecord, type RequestRunInputs } from "./request";
 
 /** A request id's claim rule: a request id (never an approval id's form). */
 export const requestIdCheck = (id: string): ApprovalIdCheck => (isRequestId(id) ? "ok" : "APPROVAL_ID_INVALID");
@@ -60,7 +60,7 @@ export type RequestCycleResult = {
   report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[] };
   /** caseStudySha256: Issue #336 the checked case study's SHA-256 (request.ts readRequestCaseStudy), null when the run has none. */
   /** referenceImages: DEV-303 §6.1 row 3 a whole_page run's reference pictures (id, case_id, sha256), null otherwise. */
-  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null; referenceImages: ReferenceRecord[] | null; jaRenderingsSha256: string | null } | null;
+  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null; referenceImages: ReferenceRecord[] | null; approvedDesign: ApprovedDesignRecord | null; materialsSha256: string | null; jaRenderingsSha256: string | null } | null;
 };
 
 /** The entry's arguments in request mode (its REQUEST_VALUES): the request and the pins to re-check. */
@@ -135,7 +135,7 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
     return refuse(error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE");
   }
   const kind = (seen.kind = inputs.request.kind);
-  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null, referenceImages: inputs.references ? referenceRecordOf(inputs.references) : null, jaRenderingsSha256: inputs.jaRenderings?.sha256 ?? null };
+  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null, referenceImages: inputs.references ? referenceRecordOf(inputs.references) : null, approvedDesign: inputs.approvedDesign ? approvedDesignRecordOf(inputs.approvedDesign) : null, materialsSha256: "materials_sha256" in inputs.plan ? inputs.plan.materials_sha256 : null, jaRenderingsSha256: inputs.jaRenderings?.sha256 ?? null };
   const photoStage = isPhotoRequest(inputs.request);
   // one Codex run; a design run makes PC 2 + SP 4 (DEV-303 §6.1 row 3: a whole_page one PC 1 + SP 1), a
   // photo-materials run 1..6 pictures (one per subject)
@@ -184,6 +184,8 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
           request_sha256: inputs.requestSha256,
           facts_sha256: plan.facts_sha256,
           ...(photoStage ? { request_stage: "photo_materials" as const } : {}),
+          // DEV-303 §6.1 change 6: the approved design a materials run is for, and its materials list, by SHA-256 only
+          ...(photoStage && inputs.approvedDesign && "materials_sha256" in inputs.plan ? { approved_design: approvedDesignRecordOf(inputs.approvedDesign), materials_sha256: inputs.plan.materials_sha256 } : {}),
           ...(!isPhotoRequest(inputs.request) && inputs.request.photo_inputs ? { photo_inputs: inputs.request.photo_inputs } : {}),
           // Issue #336: the design stage's checked case study, by its SHA-256 only (never its path or content)
           ...(inputs.caseStudy ? { case_study_sha256: inputs.caseStudy.sha256 } : {}),
