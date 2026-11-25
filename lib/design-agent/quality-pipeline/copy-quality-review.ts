@@ -68,6 +68,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { checkArtifactCopy } from "@/lib/sales/demo-version/copy-check";
 import { checkArtifactHtml } from "@/lib/sales/demo-version/html-safety";
+import { checkJaRenderings, JaRenderingsStop } from "../ja-renderings/ja-renderings";
 import { CopyRecord, factParts, INVENTED_FACT_SIGNS, type CopyItem } from "./copy-record";
 import { FactsPack } from "./facts-pack";
 import { OUTSIDE_SECTIONS, pageSkeleton, pageText, type EntryRole, type PageSection } from "./copy-quality-page";
@@ -242,6 +243,8 @@ export const CopyQualityReview = z
      */
     facts_content_sha256: Sha,
     copy_sha256: Sha,
+    /** DEV-303 §6.1 change 4: only when the page was audited with owner-approved Japanese renderings (that record's bytes). */
+    ja_renderings_sha256: Sha.optional(),
     page_html_sha256: Sha,
     page_css_sha256: Sha,
     /** 0 = the first audit; each local revision adds one, at most MAX_COPY_REVISION_ROUNDS */
@@ -360,7 +363,11 @@ function bigrams(s: string): string[] {
 
 // ---- the audit ---------------------------------------------------------------------------------------------------
 
-export type CopyQualityFiles = { factsPack: string | Uint8Array; copyRecord: string | Uint8Array; pageHtml: string | Uint8Array; pageCss: string | Uint8Array };
+/**
+ * jaRenderings (DEV-303 §6.1 change 4): the shop's owner-approved Japanese renderings record (`sr_ja_renderings_v1`), when
+ * the page shows `approved_rendering` items. Checked in gate mode against the facts pack; bound by its SHA-256.
+ */
+export type CopyQualityFiles = { factsPack: string | Uint8Array; copyRecord: string | Uint8Array; pageHtml: string | Uint8Array; pageCss: string | Uint8Array; jaRenderings?: string | Uint8Array };
 
 const sha256 = (b: string | Uint8Array) => createHash("sha256").update(b).digest("hex");
 const utf8 = (b: string | Uint8Array) => (typeof b === "string" ? b : new TextDecoder("utf-8", { fatal: false }).decode(b));
@@ -481,7 +488,8 @@ function classify(sections: readonly PageSection[], record: CopyRecord | null): 
   const labels = new Map<string, CopyItem>();
   const prose = new Map<string, CopyItem>();
   for (const i of record?.items ?? []) {
-    const m = i.claim_type === "fact" ? facts : prose;
+    // an owner-approved rendering is a fact line (bound to its one fact), never prose
+    const m = i.claim_type === "fact" || i.claim_type === "approved_rendering" ? facts : prose;
     if (!m.has(norm(i.text))) m.set(norm(i.text), i);
     if (i.label && !labels.has(norm(i.label))) labels.set(norm(i.label), i);
   }
@@ -533,7 +541,7 @@ export function styleAndInformationFindings(entries: readonly AuditEntry[], c: S
   }
 
   // -- information: what the facts hold and what the page shows
-  const shownFactIds = new Set(entries.filter((e) => e.kind === "fact" && e.item?.claim_type === "fact").flatMap((e) => e.item!.source_fact_ids));
+  const shownFactIds = new Set(entries.filter((e) => e.kind === "fact" && (e.item?.claim_type === "fact" || e.item?.claim_type === "approved_rendering")).flatMap((e) => e.item!.source_fact_ids));
   const familyGaps: string[] = [];
   for (const [family, holds, describe] of INFORMATION_FAMILIES) {
     const inPack = c.facts.filter((f) => holds(f.key));
@@ -748,7 +756,18 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
   if (safety.texts.some((t) => !readNorm.some((r) => r.includes(norm(t))))) baseCodes.push("PAGE_TEXT_NOT_COVERED");
   if (!facts.success) baseCodes.push("FACTS_PACK_INVALID");
   const factList = facts.success ? facts.data.facts : [];
-  const base = checkArtifactCopy({ texts: read, copyRecord: copyRaw, shopId: facts.success ? facts.data.shop_id : "", factsSha256: hashes.facts_sha256, facts: factList });
+  // DEV-303 §6.1 change 4: the owner-approved renderings, checked in gate mode against this facts pack
+  let renderings: { fact_key: string; ja_text: string }[] | undefined;
+  if (files.jaRenderings !== undefined) {
+    if (!facts.success) baseCodes.push("JA_RENDERINGS_UNCHECKED");
+    else
+      try {
+        renderings = checkJaRenderings(typeof files.jaRenderings === "string" ? Buffer.from(files.jaRenderings, "utf8") : Buffer.from(files.jaRenderings), facts.data, { mode: "gate" }).entries.map((e) => ({ fact_key: e.fact_key, ja_text: e.ja_text }));
+      } catch (error) {
+        baseCodes.push(error instanceof JaRenderingsStop ? error.code : "JA_RENDERINGS_INVALID");
+      }
+  }
+  const base = checkArtifactCopy({ texts: read, copyRecord: copyRaw, shopId: facts.success ? facts.data.shop_id : "", factsSha256: hashes.facts_sha256, facts: factList, ...(renderings ? { renderings } : {}) });
   baseCodes.push(...base.findings.map((f) => f.code));
   const baseCodesUnique = [...new Set(baseCodes)].sort().slice(0, 80);
   const baseOk = baseCodesUnique.length === 0;
@@ -816,6 +835,7 @@ export function reviewCopyQuality(files: CopyQualityFiles, o: ReviewOptions = {}
     lane,
     ...hashes,
     facts_content_sha256: factsContent,
+    ...(files.jaRenderings !== undefined ? { ja_renderings_sha256: sha256(files.jaRenderings) } : {}),
     round,
     previous_copy_sha256: o.previousCopySha256 ?? null,
     revision_findings: revisionFindings,
@@ -871,6 +891,7 @@ export function checkCopyQualityReview(raw: unknown, files: CopyQualityFiles, o:
   if (r.copy_sha256 !== sha256(files.copyRecord)) codes.push("REVIEW_STALE_COPY");
   if (r.page_html_sha256 !== sha256(files.pageHtml)) codes.push("REVIEW_STALE_PAGE_HTML");
   if (r.page_css_sha256 !== sha256(files.pageCss)) codes.push("REVIEW_STALE_PAGE_CSS");
+  if (r.ja_renderings_sha256 !== (files.jaRenderings !== undefined ? sha256(files.jaRenderings) : undefined)) codes.push("REVIEW_STALE_JA_RENDERINGS");
   const previous = o.previous ?? [];
   // the audit of a revision round needs its earlier rounds; without the whole chain chainCodes refuses the review
   if (previous.length === r.round) {
@@ -919,7 +940,7 @@ function chainCodes(r: CopyQualityReview, files: CopyQualityFiles, previous: rea
     if (sha256(cur.pageCss) !== q.page_css_sha256) codes.push("PREVIOUS_PAGE_CSS_DOES_NOT_MATCH_REVIEW");
     // the earlier review must be the audit of its own files, not a record written to open a revision (round 2 M1)
     if (q.round === i) {
-      const redone = reviewCopyQuality({ factsPack: files.factsPack, copyRecord: cur.copyRecord, pageHtml: cur.pageHtml, pageCss: cur.pageCss }, { round: q.round, previousCopySha256: q.previous_copy_sha256, photoUrls, earlierRounds: previous.slice(0, i) });
+      const redone = reviewCopyQuality({ factsPack: files.factsPack, copyRecord: cur.copyRecord, pageHtml: cur.pageHtml, pageCss: cur.pageCss, ...(files.jaRenderings !== undefined ? { jaRenderings: files.jaRenderings } : {}) }, { round: q.round, previousCopySha256: q.previous_copy_sha256, photoUrls, earlierRounds: previous.slice(0, i) });
       if (canonical(q) !== canonical(redone)) codes.push("PREVIOUS_REVIEW_DOES_NOT_MATCH_AUDIT");
     }
     if (next.review.success && next.review.data.previous_copy_sha256 !== q.copy_sha256) codes.push("REVISION_CHAIN_BROKEN");
@@ -1117,6 +1138,8 @@ export function validateCopyRevision(
       if (!i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)))) f.push({ code: "REVISION_FACT_NOT_VERBATIM", severity: "fail", item: i.id });
       continue;
     }
+    // an owner-approved rendering is held to its approved text by the base check (checkCopyRecord with the renderings)
+    if (i.claim_type === "approved_rendering") continue;
     if (old && norm(old.text) === norm(i.text) && old.claim_type === i.claim_type) continue;
     changedProse.add(norm(i.text));
     const fact = restatesFact(i.text, o.facts);

@@ -355,6 +355,46 @@ describe("Issue #335 review Low: the reference limit holds for every image call,
   });
 });
 
+describe("DEV-303 §6.1 change 4: owner-approved Japanese renderings in the whole-page inventory", () => {
+  const JA_SHA = sha("invented renderings bytes");
+  const SOURCE = "架空の古書を一冊ずつ棚に並べます";
+  const JA_TEXT = "架空の古書を一冊ずつ並べています";
+  const JA = { sha256: JA_SHA, entries: [{ fact_key: "statement_1", source_text: SOURCE, ja_text: JA_TEXT }] };
+  const withJa = parseRequest(bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: JA_SHA } })), sha(bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: JA_SHA } }))), ID).request as DesignRequest;
+  const planJa = (ja: typeof JA | null | undefined, request: DesignRequest = withJa) => buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, caseStudy: CS_USE, ...(ja === undefined ? {} : { jaRenderings: ja }) });
+
+  it("a rendered fact is shown as its approved Japanese with the original quoted as 原文 (both exact); others as before", () => {
+    const p = planJa(JA);
+    for (const vp of ["desktop_1440", "mobile_390"] as const) {
+      const t = p.viewports[vp].parts[0]!.prompt;
+      expect(t).toContain(`- 「${JA_TEXT}」（オーナーが承認した日本語訳。原文: 「${SOURCE}」。画像には日本語訳だけを書き、原文は書かない）`);
+      expect(t).not.toContain(`- 「${SOURCE}」\n`);
+      expect(t).toContain(`- 「${FACTS.facts.find((f) => f.key === "description")!.value}」`);
+    }
+    expect(p.ja_renderings_sha256).toBe(JA_SHA);
+    expect(p.plan_sha256).not.toBe(plan().plan_sha256);
+    // without renderings the whole-page plan is unchanged (its pin holds)
+    expect(plan().plan_sha256).toBe(WHOLE_PAGE_BATCH_PIN.plan);
+    expect("ja_renderings_sha256" in plan()).toBe(false);
+  });
+
+  it("the plan uses exactly the request's renderings: another SHA-256, another source, missing or extra ones stop", () => {
+    expect(planCode(() => planJa(null))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa({ ...JA, sha256: sha("other") }))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa({ ...JA, entries: [{ ...JA.entries[0]!, source_text: "別の文" }] }))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa({ ...JA, entries: [JA.entries[0]!, JA.entries[0]!] }))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+    expect(planCode(() => planJa(JA, REQUEST))).toBe("JA_RENDERINGS_PLAN_MISMATCH");
+  });
+
+  it("only a whole_page request may name renderings; a plain file name, never the facts pack or the case study's", () => {
+    const ref = { path: "ja-renderings.json", sha256: JA_SHA };
+    expect(parseCode(requestObject({ ja_renderings: ref }))).toBe("ok");
+    expect(parseCode(requestObject({ kind: "fictional", layout: undefined, max_images: 6, case_study: undefined, ja_renderings: ref }))).toBe("JA_RENDERINGS_NOT_WHOLE_PAGE");
+    for (const path of ["../ja.json", "facts-pack.json", "ja.txt", "/abs/ja.json"]) expect(parseCode(requestObject({ ja_renderings: { ...ref, path } })), path).toBe("REQUEST_INVALID");
+    expect(parseCode(requestObject({ ja_renderings: { ...ref, path: "case-study.json" } }))).toBe("REQUEST_INVALID");
+  });
+});
+
 describe("DEV-303 §6.1 row 3 the run refuses a real_shop section split and references that are not the plan's", () => {
   const sectionPlan = () => {
     const fictional = parseRequest(bytesOf(requestObject({ kind: "fictional", layout: undefined, max_images: 6, case_study: undefined })), sha(bytesOf(requestObject({ kind: "fictional", layout: undefined, max_images: 6, case_study: undefined }))), ID).request as DesignRequest;

@@ -37,6 +37,7 @@ import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy, type CaseStudyInsp
 import { PromptStop } from "../image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, layoutOf, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
 import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
+import { checkJaRenderings, JA_RENDERINGS_MAX_BYTES, jaRenderingDetailOf, JaRenderingsStop, type CheckedJaRenderings, type JaRenderingDetail } from "../ja-renderings/ja-renderings";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
 import { verifyBundleDir } from "./bundle";
@@ -119,6 +120,47 @@ export async function readRequestFacts(request: ImagefirstRequest, places: { hom
  * directory, no link), bound by the request's SHA-256, of the request's shop, and passing the gate (case-study.ts).
  * null when the request names none (a fictional request; parseRequest already refused a real_shop one).
  */
+/**
+ * DEV-303 §6.1 change 4: a refused renderings record as request mode's stop (the same JA_RENDERING* code), keeping the
+ * category / field / key of an added fact for --validate-request (never the text).
+ */
+export class RequestJaRenderingsStop extends PromptStop {
+  constructor(
+    code: string,
+    readonly detail: JaRenderingDetail | null,
+  ) {
+    super(code);
+  }
+}
+/** What --validate-request may print of a renderings refusal (allowlisted; never the text). null otherwise. */
+export const jaRenderingsRefusalDetailOf = (error: unknown): JaRenderingDetail | null => (error instanceof RequestJaRenderingsStop && error.detail ? jaRenderingDetailOf(new JaRenderingsStop("JA_RENDERING_ADDS_FACT", error.detail)) : null);
+
+/**
+ * DEV-303 §6.1 change 4: the whole_page design request's owner-approved Japanese renderings (`sr_ja_renderings_v1`),
+ * next to its facts pack (the same root and shop directory, no link, as readRequestCaseStudy), bound by the request's
+ * SHA-256, checked in gate mode against the pack (ja-renderings.ts checkJaRenderings). null when the request names none.
+ */
+export async function readRequestJaRenderings(request: DesignRequest, facts: FactsPack, places: { home: string; repo: string }): Promise<CheckedJaRenderings | null> {
+  const ref = request.ja_renderings;
+  if (!ref) return null;
+  const base = factsBase(request.facts_ref.root, places);
+  const shopDir = join(base, request.facts_ref.shop_id);
+  const path = join(shopDir, ref.path);
+  if (!(await realDir(base)) || !(await realDir(shopDir))) throw new PromptStop("JA_RENDERINGS_RECORD_MISSING");
+  if ((await realpath(path).catch(() => null)) !== join(await realpath(shopDir), ref.path)) {
+    if (!(await lstat(path).then(() => true, () => false))) throw new PromptStop("JA_RENDERINGS_RECORD_MISSING");
+    throw new PromptStop("JA_RENDERINGS_RECORD_UNSAFE");
+  }
+  const bytes = await readChecked(path, JA_RENDERINGS_MAX_BYTES, { unsafe: "JA_RENDERINGS_RECORD_UNSAFE", big: "JA_RENDERINGS_TOO_LARGE", missing: "JA_RENDERINGS_RECORD_MISSING" });
+  if (createHash("sha256").update(bytes).digest("hex") !== ref.sha256) throw new PromptStop("JA_RENDERINGS_RECORD_SHA_MISMATCH");
+  try {
+    return checkJaRenderings(bytes, facts, { mode: "gate" });
+  } catch (error) {
+    if (error instanceof JaRenderingsStop) throw new RequestJaRenderingsStop(error.code, error.detail);
+    throw error;
+  }
+}
+
 export async function readRequestCaseStudy(request: DesignRequest, places: { home: string; repo: string }): Promise<CheckedCaseStudy | null> {
   const ref = request.case_study;
   if (!ref) return null;
@@ -262,6 +304,8 @@ export type RequestRunInputs = {
   caseStudy: CheckedCaseStudy | null;
   /** DEV-303 §6.1 row 3: the reference pictures attached to a whole_page run (the plan's references, with bytes); null otherwise. */
   references: ResolvedReference[] | null;
+  /** DEV-303 §6.1 change 4: a whole_page design's checked owner-approved Japanese renderings, or null (none named). */
+  jaRenderings: CheckedJaRenderings | null;
 };
 
 /**
@@ -277,17 +321,18 @@ export async function loadRequestRun(o: { requestFile: string; requestSha256: st
   if (isPhotoRequest(r.request)) {
     const plan = buildPhotoPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
     if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
-    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null, caseStudy: null, references: null };
+    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null, caseStudy: null, references: null, jaRenderings: null };
   }
   const caseStudy = await readRequestCaseStudy(r.request, { home: o.home, repo: o.repo });
   const whole = layoutOf(r.request) === "whole_page";
   // review Q4: a real shop's whole page attaches at least min(3, counted cases with an attachable original) references
   if (whole && r.request.kind === "real_shop" && caseStudy) assertRealShopReferences(caseStudy.references, caseStudy.usableCases);
   // DEV-303 §6.1 row 3: a whole-page plan reads the case study's principles and reference metadata (never a path)
-  const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, ...(whole ? { caseStudy: caseStudy?.use ?? null } : {}) });
+  const jaRenderings = await readRequestJaRenderings(r.request, f.facts, { home: o.home, repo: o.repo });
+  const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, ...(whole ? { caseStudy: caseStudy?.use ?? null } : {}), ...(jaRenderings ? { jaRenderings: { sha256: jaRenderings.sha256, entries: jaRenderings.entries } } : {}) });
   if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   const photos = r.request.photo_inputs ? await resolvePhotoInputs(r.request, { runsDir: join(o.home, RUNS_DIR), mode: o.photoInputs ?? "required" }) : null;
-  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy, references: whole ? (caseStudy?.references ?? null) : null };
+  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy, references: whole ? (caseStudy?.references ?? null) : null, jaRenderings };
 }
 
 /** A photo input is at most this large (the Codex input cap, sandbox.ts MAX_INPUT_BYTES). */
@@ -383,7 +428,7 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[] }> {
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; ja_renderings?: { sha256: string; keys: string[] } }> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
@@ -399,6 +444,7 @@ export async function validateRequestFile(o: { file: string; home: string; repo:
     plan_sha256: run.plan.plan_sha256,
     photo_inputs: run.photos === null ? null : run.photos === "unchecked" ? "unchecked" : "checked",
     case_study: run.caseStudy ? { sha256: run.caseStudy.sha256, counted: run.caseStudy.counted } : null,
+    ...(run.jaRenderings ? { ja_renderings: { sha256: run.jaRenderings.sha256, keys: run.jaRenderings.entries.map((e) => e.fact_key) } } : {}),
     ...(run.references ? { layout: "whole_page" as const, reference_images: referenceRecordOf(run.references) } : {}),
   };
 }
@@ -413,6 +459,8 @@ export type RealShopRecord = {
   plan_sha256: string | null;
   /** Issue #336: the SHA-256 of the case study the run was checked against (readRequestCaseStudy); null for a photo-materials run. */
   case_study_sha256: string | null;
+  /** DEV-303 §6.1 change 4: only when the run used owner-approved Japanese renderings — that record's SHA-256 (no path). */
+  ja_renderings_sha256?: string;
   /** DEV-303 §6.1 row 3: only on a whole_page design run — the layout and its reference pictures (id, case_id, sha256). */
   design_layout?: "whole_page";
   reference_images?: ReferenceRecord[];

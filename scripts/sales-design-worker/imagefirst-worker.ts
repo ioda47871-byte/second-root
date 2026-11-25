@@ -96,7 +96,7 @@ import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
 import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, GRANT_ENV, gitCommitState, grantFromEnv, isRequestRunId, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
-import { REAL_SHOP_RECORD_SCHEMA, recordUseOf, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
+import { jaRenderingsRefusalDetailOf, REAL_SHOP_RECORD_SCHEMA, recordUseOf, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
 import { precheckRequestCycle, runRequestCycle, type RequestCycleResult } from "../../lib/design-agent/imagefirst-worker/request-cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -158,7 +158,9 @@ export async function main(readCgroup?: () => Promise<string>): Promise<number> 
       return 0;
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code;
-      say({ status: "refused", code: typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? code : "REQUEST_UNREADABLE" });
+      // DEV-303 §6.1 change 4: a renderings refusal names the added fact's category, field and key (never the text)
+      const jaDetail = jaRenderingsRefusalDetailOf(error);
+      say({ status: "refused", code: typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? code : "REQUEST_UNREADABLE", ...(jaDetail ? { detail: jaDetail } : {}) });
       return 2;
     }
   }
@@ -286,6 +288,7 @@ async function recordRealShop(result: RequestCycleResult, review: Awaited<Return
         plan_sha256: run.planSha256,
         case_study_sha256: run.caseStudySha256,
         ...(run.referenceImages ? { design_layout: "whole_page" as const, reference_images: run.referenceImages } : {}),
+        ...(run.jaRenderingsSha256 ? { ja_renderings_sha256: run.jaRenderingsSha256 } : {}),
         commit: run.commit,
         run: { status: report.status, code: report.code, invoked: report.invoked, receipt_written: report.receipt !== undefined },
         review: review ? { status: review.status, code: review.code, bundle_sha256: review.bundle_sha256 ?? null } : null,

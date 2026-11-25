@@ -4,6 +4,10 @@
  *   npx tsx scripts/design-artifact/comp-copy.ts --audit  <comp dir> --facts <facts-pack.json>
  *   npx tsx scripts/design-artifact/comp-copy.ts --revise <comp dir> --facts <facts-pack.json>
  *   npx tsx scripts/design-artifact/comp-copy.ts --gate   <comp dir> --facts <facts-pack.json>
+ *   (any mode) --ja-renderings <ja-renderings.json>   DEV-303 §6.1 change 4: the shop's owner-approved Japanese renderings
+ *     (`sr_ja_renderings_v1`, private, checked in gate mode against the facts pack). A copy item of claim_type
+ *     approved_rendering is accepted only when its text equals the approved ja_text of its one fact's key; every other
+ *     text is judged as before. The review binds the record's SHA-256 (ja_renderings_sha256).
  *
  * Files of a comp (beside copy.json, index.html, style.css):
  *   copy-review.json                          the audit (copy_quality_review_v1) of the current files
@@ -48,12 +52,13 @@ const parse = (b: Buffer): unknown => {
 };
 
 /** The current files of a comp with the facts pack given (bytes as read). */
-export function compFiles(dir: string, factsPath: string): CopyQualityFiles {
+export function compFiles(dir: string, factsPath: string, jaRenderingsPath?: string): CopyQualityFiles {
   return {
     factsPack: readFileSync(factsPath),
     copyRecord: readFileSync(join(dir, "copy.json")),
     pageHtml: readFileSync(join(dir, "index.html")),
     pageCss: readFileSync(join(dir, "style.css")),
+    ...(jaRenderingsPath !== undefined ? { jaRenderings: readFileSync(jaRenderingsPath) } : {}),
   };
 }
 
@@ -71,14 +76,14 @@ export function compPriorRounds(dir: string): PriorRound[] {
 }
 
 /** The gate of a comp's copy now. */
-export function checkCompCopy(dir: string, factsPath: string): CompCopyGate {
+export function checkCompCopy(dir: string, factsPath: string, jaRenderingsPath?: string): CompCopyGate {
   const file = join(dir, COPY_REVIEW_FILE);
-  return compCopyGate({ files: compFiles(dir, factsPath), review: existsSync(file) ? parse(readFileSync(file)) : null, previous: compPriorRounds(dir) });
+  return compCopyGate({ files: compFiles(dir, factsPath, jaRenderingsPath), review: existsSync(file) ? parse(readFileSync(file)) : null, previous: compPriorRounds(dir) });
 }
 
 /** Audit the current files as the next round and write copy-review.json; returns the gate of what was written. */
-export function auditCompCopy(dir: string, factsPath: string): CompCopyGate {
-  const files = compFiles(dir, factsPath);
+export function auditCompCopy(dir: string, factsPath: string, jaRenderingsPath?: string): CompCopyGate {
+  const files = compFiles(dir, factsPath, jaRenderingsPath);
   const previous = compPriorRounds(dir);
   const file = join(dir, COPY_REVIEW_FILE);
   const review = reviewCopyQuality(files, { round: previous.length, previousCopySha256: prevCopy(previous), earlierRounds: previous });
@@ -86,7 +91,7 @@ export function auditCompCopy(dir: string, factsPath: string): CompCopyGate {
     const old = CopyQualityReview.safeParse(parse(readFileSync(file)));
     // the same files again: the audit is deterministic, nothing changes. Other files of the same facts: a revision.
     if (old.success && old.data.facts_content_sha256 === review.facts_content_sha256) {
-      const same = old.data.copy_sha256 === review.copy_sha256 && old.data.page_html_sha256 === review.page_html_sha256 && old.data.page_css_sha256 === review.page_css_sha256 && old.data.facts_sha256 === review.facts_sha256;
+      const same = old.data.copy_sha256 === review.copy_sha256 && old.data.page_html_sha256 === review.page_html_sha256 && old.data.page_css_sha256 === review.page_css_sha256 && old.data.facts_sha256 === review.facts_sha256 && old.data.ja_renderings_sha256 === review.ja_renderings_sha256;
       if (!same) throw new CompCopyError("COPY_REVIEW_EXISTS_FOR_OTHER_FILES");
     } else if (previous.length) throw new CompCopyError("COPY_ROUNDS_FOR_OTHER_FACTS");
   }
@@ -95,8 +100,8 @@ export function auditCompCopy(dir: string, factsPath: string): CompCopyGate {
 }
 
 /** Start the next round: only when the gate says revise. Moves the current round into copy-rounds/<n>/. */
-export function startCompCopyRevision(dir: string, factsPath: string): { round: number } {
-  const gate = checkCompCopy(dir, factsPath);
+export function startCompCopyRevision(dir: string, factsPath: string, jaRenderingsPath?: string): { round: number } {
+  const gate = checkCompCopy(dir, factsPath, jaRenderingsPath);
   if (gate.step !== "revise") throw new CompCopyError(gate.step === "refused" ? "COPY_REVIEW_REFUSED" : `COPY_NOT_REVISABLE_${gate.step.toUpperCase()}`);
   const n = compPriorRounds(dir).length;
   const target = join(dir, COPY_ROUNDS_DIR, String(n));
@@ -121,6 +126,12 @@ function main(): number {
     return i > 0 ? process.argv[i + 1] : undefined;
   };
   const facts = arg("--facts");
+  const ja = arg("--ja-renderings");
+  if (process.argv.includes("--ja-renderings") && !ja) {
+    process.stderr.write("USAGE: --ja-renderings <ja-renderings.json>\n");
+    return 2;
+  }
+  const jaPath = ja ? resolve(ja) : undefined;
   const [mode, dir] = (["--audit", "--revise", "--gate"] as const).map((m) => [m, arg(m)] as const).find(([, d]) => d) ?? [];
   if (!mode || !dir || !facts) {
     process.stderr.write("USAGE: --audit|--revise|--gate <comp dir> --facts <facts-pack.json>\n");
@@ -129,10 +140,10 @@ function main(): number {
   try {
     const d = resolve(dir);
     if (mode === "--revise") {
-      process.stdout.write(`${JSON.stringify(startCompCopyRevision(d, resolve(facts)))}\n`);
+      process.stdout.write(`${JSON.stringify(startCompCopyRevision(d, resolve(facts), jaPath))}\n`);
       return 0;
     }
-    const gate = mode === "--audit" ? auditCompCopy(d, resolve(facts)) : checkCompCopy(d, resolve(facts));
+    const gate = mode === "--audit" ? auditCompCopy(d, resolve(facts), jaPath) : checkCompCopy(d, resolve(facts), jaPath);
     process.stdout.write(json(gate));
     return gate.mayShowOwner ? 0 : 1;
   } catch (e) {

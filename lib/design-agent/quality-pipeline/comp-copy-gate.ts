@@ -95,7 +95,7 @@ export function compCopyGate(i: CompCopyGateInput): CompCopyGate {
   // a REVISION_INVALID from a broken earlier round is never excused as this round's named failure)
   const named = new Set(r.revision_findings.filter((x) => x.severity === "fail").map((x) => x.code));
   const earlierClean = () =>
-    previous.every((p, k) => checkCopyQualityReview(p.review, { factsPack: i.files.factsPack, copyRecord: p.copyRecord, pageHtml: p.pageHtml, pageCss: p.pageCss }, { previous: previous.slice(0, k), photoUrls }).ok);
+    previous.every((p, k) => checkCopyQualityReview(p.review, { factsPack: i.files.factsPack, copyRecord: p.copyRecord, pageHtml: p.pageHtml, pageCss: p.pageCss, ...(i.files.jaRenderings !== undefined ? { jaRenderings: i.files.jaRenderings } : {}) }, { previous: previous.slice(0, k), photoUrls }).ok);
   const honestFail = r.verdict === "fail" && append.length === 0 && check.codes.every((c) => c === "REVISION_INVALID" || named.has(c)) && earlierClean();
   if (!check.ok && !honestFail) codes.push(...check.codes);
   if (codes.length) return refused(codes, r.round);

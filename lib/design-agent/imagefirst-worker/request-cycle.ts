@@ -60,7 +60,7 @@ export type RequestCycleResult = {
   report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[] };
   /** caseStudySha256: Issue #336 the checked case study's SHA-256 (request.ts readRequestCaseStudy), null when the run has none. */
   /** referenceImages: DEV-303 §6.1 row 3 a whole_page run's reference pictures (id, case_id, sha256), null otherwise. */
-  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null; referenceImages: ReferenceRecord[] | null } | null;
+  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null; referenceImages: ReferenceRecord[] | null; jaRenderingsSha256: string | null } | null;
 };
 
 /** The entry's arguments in request mode (its REQUEST_VALUES): the request and the pins to re-check. */
@@ -135,7 +135,7 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
     return refuse(error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE");
   }
   const kind = (seen.kind = inputs.request.kind);
-  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null, referenceImages: inputs.references ? referenceRecordOf(inputs.references) : null };
+  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null, referenceImages: inputs.references ? referenceRecordOf(inputs.references) : null, jaRenderingsSha256: inputs.jaRenderings?.sha256 ?? null };
   const photoStage = isPhotoRequest(inputs.request);
   // one Codex run; a design run makes PC 2 + SP 4 (DEV-303 §6.1 row 3: a whole_page one PC 1 + SP 1), a
   // photo-materials run 1..6 pictures (one per subject)
@@ -189,6 +189,8 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
           ...(inputs.caseStudy ? { case_study_sha256: inputs.caseStudy.sha256 } : {}),
           // DEV-303 §6.1 row 3: a whole_page run's layout and its reference pictures (id, case_id, sha256; never a path)
           ...(whole && inputs.references ? { design_layout: "whole_page" as const, reference_images: referenceRecordOf(inputs.references) } : {}),
+          // DEV-303 §6.1 change 4: the owner-approved Japanese renderings the prompt used, by their SHA-256 only
+          ...(whole && inputs.jaRenderings ? { ja_renderings_sha256: inputs.jaRenderings.sha256 } : {}),
         },
       },
       res,

@@ -217,6 +217,7 @@ type Receipt = {
   request_stage?: unknown;
   design_layout?: unknown;
   reference_images?: unknown;
+  ja_renderings_sha256?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -293,6 +294,8 @@ const sortFiles = (files: BundleFile[]) => files.sort((a, b) => (a.path < b.path
  * receipt, is invalid. Its pictures are PC 1 + SP 1; every other design run's PC 2 + SP 4.
  */
 function designImagesOf(r: Receipt): { readonly pc: number; readonly sp: number } {
+  // DEV-303 §6.1 change 4: the renderings SHA-256 only on a whole_page receipt, and only as a SHA-256
+  if (r.ja_renderings_sha256 !== undefined && (r.design_layout !== "whole_page" || typeof r.ja_renderings_sha256 !== "string" || !SHA_RE.test(r.ja_renderings_sha256))) stop("RECEIPT_INVALID");
   if (r.design_layout === undefined && r.reference_images === undefined) return IMAGES;
   if (r.mode !== "request" || r.request_stage !== undefined || r.design_layout !== "whole_page" || !Array.isArray(r.reference_images)) return stop("RECEIPT_INVALID");
   const refs = r.reference_images as unknown[];

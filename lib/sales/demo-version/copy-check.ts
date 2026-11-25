@@ -6,7 +6,7 @@
  *
  * Pure. The caller reads the copy record (delivered beside the package, not served) and the facts from the DB.
  */
-import { checkCopyRecord, CopyRecord, joinedTextsLookingLikeFact, textsNotInRecord, type CopyFinding } from "@/lib/design-agent/quality-pipeline/copy-record";
+import { checkCopyRecord, CopyRecord, joinedTextsLookingLikeFact, textsNotInRecord, type ApprovedRendering, type CopyFinding } from "@/lib/design-agent/quality-pipeline/copy-record";
 
 export type ArtifactCopyResult = { ok: boolean; findings: CopyFinding[] };
 
@@ -20,8 +20,10 @@ export function checkArtifactCopy(o: {
   shopId: string;
   factsSha256: string;
   facts: ReadonlyArray<{ id: string; key?: string; value: string }>;
+  /** DEV-303 §6.1 change 4: the owner-approved Japanese renderings (checked in gate mode by the caller), if any. */
+  renderings?: readonly ApprovedRendering[];
 }): ArtifactCopyResult {
-  const base = checkCopyRecord(o.copyRecord, { shopId: o.shopId, factsSha256: o.factsSha256, facts: o.facts });
+  const base = checkCopyRecord(o.copyRecord, { shopId: o.shopId, factsSha256: o.factsSha256, facts: o.facts, ...(o.renderings ? { renderings: o.renderings } : {}) });
   const findings = [...base.findings];
   const parsed = CopyRecord.safeParse(o.copyRecord);
   if (parsed.success) {
