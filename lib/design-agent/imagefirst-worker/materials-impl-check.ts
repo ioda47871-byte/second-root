@@ -124,7 +124,10 @@ type Element = DefaultTreeAdapterTypes.Element;
 type Node = DefaultTreeAdapterTypes.Node;
 const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
 const children = (n: Node): Node[] => ("childNodes" in n ? (n as DefaultTreeAdapterTypes.ParentNode).childNodes : []);
-const textOf = (n: Node): string => (n.nodeName === "#text" ? (n as DefaultTreeAdapterTypes.TextNode).value : children(n).map(textOf).join(""));
+/** A hidden element (the `hidden` attribute or aria-hidden="true") shows no text. */
+const isHidden = (n: Node) => "tagName" in n && (attr(n as Element, "hidden") !== undefined || attr(n as Element, "aria-hidden")?.trim().toLowerCase() === "true");
+/** The text a reader sees: hidden descendants are skipped (#350 review Low: <figcaption><span hidden>イメージ</span></figcaption> is no label). */
+const textOf = (n: Node): string => (n.nodeName === "#text" ? (n as DefaultTreeAdapterTypes.TextNode).value : isHidden(n) ? "" : children(n).map(textOf).join(""));
 const srcsetUrls = (v: string) =>
   v
     .split(",")
@@ -200,7 +203,7 @@ export async function checkMaterialsInSite(o: { approved: ApprovedMaterials; sit
     (via.get(path) ?? via.set(path, new Set()).get(path)!).add(from);
     return path;
   };
-  const hiddenAttr = (el: Element) => attr(el, "hidden") !== undefined || attr(el, "aria-hidden")?.trim().toLowerCase() === "true";
+  const hiddenAttr = (el: Element) => isHidden(el);
   // the HTML: every picture element, with the figure / figcaption around an <img>, and whether an ancestor is hidden
   const stack: { node: Node; figure: Element | null; hidden: boolean }[] = [{ node: parse(htmlText), figure: null, hidden: false }];
   while (stack.length) {
