@@ -28,7 +28,8 @@ export async function runLoadedRequest(o: LoadedRequestOptions, d: Omit<FullPage
     repoRoot: o.repoRoot,
     ...(o.signal === undefined ? {} : { signal: o.signal }),
   };
-  if (isPhotoRequest(run.request)) return runRequestPhotoCall({ ...common, plan: run.plan as PhotoPlan }, d);
+  // DEV-303 §6.1 change 6: a materials run carries the approved design's PC / SP pictures as references
+  if (isPhotoRequest(run.request)) return runRequestPhotoCall({ ...common, plan: run.plan as PhotoPlan, ...(run.approvedDesign ? { references: run.approvedDesign.references } : {}) }, d);
   // a run never starts on unchecked photo inputs (only --validate-request leaves them unchecked)
   if (run.photos === "unchecked") return { status: "stopped", code: "PHOTO_INPUT_RUN_MISSING", stage: "precheck", aborted: false };
   // DEV-303 §6.1 row 3: a whole_page run carries its success-case reference pictures (exactly the plan's references)

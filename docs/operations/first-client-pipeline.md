@@ -60,28 +60,44 @@
 - `comp-lane.ts` で PC/SP を検査し、`comp-copy.ts` で文章を監査し、`package-local.ts` → `import-local.ts`。
 - 管理画面で品質承認（オーナー）→ 営業文の下書き → 送信承認（オーナー）→ 手で送る。
 
-### D. 二段の依頼: 写真素材 → デザイン（オーナー決定 2026-11-24。MVP_SPEC §7.1 の限定の改定）
+### D. 素材の段は承認したデザインの後（DEV-303 §6.1 の 6。最初はオーナー決定 2026-11-24。MVP_SPEC §7.1 の限定の改定）
 
-1 店の計画は **2 回の実行・最大 12 枚**。どちらの段も 1 依頼 ID = 1 回の Codex 実行・最大 6 枚・再試行なし（root の上限・1 回限りの記録は今のまま）。
+**正式な順番は デザイン（§E）→ 審査とオーナーの承認（§G）→ 素材。** 素材を先に作ってデザインを合わせる古い順番（素材の段 → `photo_inputs` 付きのデザイン）は、
+実店舗には使えない。各段とも 1 依頼 ID = 1 回の Codex 実行・最大 6 枚・再試行なし（root の上限・1 回限りの記録は今のまま）。
 
-1. **素材の段** `stage: "photo_materials"`: 営業提案に置く写真風の**画像素材**を 1〜6 枚（店の記録ではない）。被写体は質感・道具・顔の写らない手元・光など。
-   文字・ロゴ・人の顔・店の外観や店内・建物・その店の商品として見せる物・値段やメニューの表示は入れない。被写体 1 つにつき 1 枚、
-   枠は画像ツールの寸法から Web 向けに 1〜2 枚目 横 3:2、3〜4 枚目 正方形、5〜6 枚目 縦 2:3。
+1. **素材の段** `stage: "photo_materials"`: **承認したデザインが必要とする**写真・背景・装飾の**画像素材**を 1〜6 枚（店の記録ではない）。
+   依頼には `approved_design`（承認したデザインの run の bundle の ID と SHA-256、店の非公開の `design-reviews/` にある審査と承認の記録のファイル名）が必須
+   （無ければ実店舗も架空・研究の依頼も `APPROVED_DESIGN_REQUIRED`）（オーナー決定 2026-11-25: 古い `photo_brief` の依頼は、すでに置いたものも `APPROVED_DESIGN_REQUIRED`。互換の道は作らない）。worker と `--validate-request` は `approvedDesignRun`（§G）でゲートの検査をし、
+   どれかの `DESIGN_*` の停止・記録の欠け（`APPROVED_DESIGN_MISSING`）・link（`APPROVED_DESIGN_UNSAFE`）・別の run や店（`APPROVED_DESIGN_MISMATCH`）なら止まる。
+   架空の店の依頼も同じ（記録はリポジトリの外に置くので、`facts_ref.root` は `second-root-shops`）。
+   素材は自由な題材ではなく、**承認したデザインから決めた一覧** `materials`: 各素材 `{ id, kind: photo | background | decoration, aspect: landscape_3x2 |
+   square_1x1 | portrait_2x3, placement（承認した PC/SP のデザインのどこに置くか、120 字まで）, note（200 字まで） }`。同じ枠は 2 つまで
+   （`MATERIALS_ASPECT_FULL`。ファイルは枠ごとの場所: 横 3:2 は photo-1・2、正方形は photo-3・4、縦 2:3 は photo-5・6）。
+   文字・ロゴ・人の顔・店の外観や店内・建物・その店の商品として見せる物・値段やメニューの表示は入れない（§7.1 の条件のとおり、頁では「イメージ」と表示し、差し替えられる枠に置く）。
+   承認したデザインの PC/SP の画像（全部で 5 枚以内ならすべて、それより多い古い節ごとの分割のデザインでは PC と SP の最初の 1 枚ずつ。オーナー決定 2026-11-25。正式な制作は PC・SP のページ全体の 2 枚）を参照画像として添付し
+   （§E と同じ印の仕組みで、Codex に渡す文だけ絶対パスに置き換える）、素材をデザインの色・光・質感に合わせる。
 
    ```json
-   { "schema": "sr_imagefirst_request_v1", "id": "req-<shop>-photos-1", "shop_id": "<shop_id>", "kind": "real_shop",
+   { "schema": "sr_imagefirst_request_v1", "id": "req-<shop>-materials-1", "shop_id": "<shop_id>", "kind": "real_shop",
      "created_at": "YYYY-MM-DDTHH:MM:SSZ", "stage": "photo_materials",
-     "photo_brief": { "subjects": ["<1〜6 個、各 200 字まで>"], "mood": "<300 字まで>", "avoid": "<300 字まで>" },
+     "approved_design": { "bundle_id": "req-<shop>-design-1", "bundle_sha256": "<sha256>", "review_file": "req-<shop>-design-1.review.json", "approval_file": "req-<shop>-design-1.approval.json" },
+     "materials": [ { "id": "hero-texture", "kind": "photo", "aspect": "landscape_3x2", "placement": "<どこに>", "note": "<何を>" } ],
+     "mood": "<300 字まで>", "avoid": "<300 字まで>",
      "facts_ref": { "root": "second-root-shops", "shop_id": "<shop_id>" }, "facts_sha256": "<sha256>",
-     "max_images": <subjects の数>, "codex_runs": 1 }
+     "max_images": <materials の数>, "codex_runs": 1 }
    ```
 
-   brief は direction と同じ検査（URL・HTML・引用符・3 桁以上の数字・通貨記号・facts の値を含めない）。結果は private の
+   一覧の文は direction と同じ検査（URL・HTML・引用符・3 桁以上の数字・通貨記号・facts の値を含めない。`REQUEST_MATERIALS_UNSAFE` / `REQUEST_MATERIALS_HAS_FACT`）。
+   記録: run の `materials.json`（一覧）と `approved-design-input.json`（承認したデザインの bundle の ID・SHA-256、審査と承認の記録の SHA-256、一覧の SHA-256）、
+   receipt の `approved_design` と `materials_sha256`、実店舗の private な記録の同じ項目、`--validate-request` の結果の同じ項目（パスは残さない）。
+   封印と review の受け渡しは receipt と `approved-design-input.json` を比べる（`APPROVED_DESIGN_INPUT_MISMATCH`）。
+   この変更より前に封印した素材の bundle（`photo_brief` の古い receipt。例: 研究の run `req-vatten-photo-01`）は、もう `verifyBundleDir`・review の受け渡しを通らない。
+   研究の記録として残すだけで（オーナー決定 2026-11-25: vatten の古い素材と過去の実験の記録は削除・移動しない）、正式なフローには使わない。結果は private の
    `~/sr-runs/<依頼 ID>-<UTC>/parts/photo-N.png` に入り、デザインと同じ封印・検証で **review inbox `~/sr-runs/review-inbox/<依頼 ID>/`** に届く
    （`parts/photo-N.png`、receipt の `request_stage: "photo_materials"`・`images_total` = 枚数、manifest の `image_material: true`・
    `image_material_label: "イメージ素材"`・`photos: [{file, sha256, frame: "3:2"|"1:1"|"2:3"}]`、previews も同じ）。どちらの置き場も 6 枚まで
    （root の実行後の数え方と同じ）。研究ログには入れない（`PHOTO_MATERIALS_NOT_LOGGED`）。worker の結果の 1 行にも `photo_files` が出る。
-2. **デザインの段**（今の依頼、`stage: "design"` または省略）に、任意で `photo_inputs` を足す:
+2. **（架空・研究の依頼だけ）節ごとの分割のデザインの段**に、任意で `photo_inputs` を足す（その素材の run も、上のとおり承認したデザインの後でしか作れない）:
 
    ```json
    "photo_inputs": { "request_id": "req-<shop>-photos-1", "files": [ { "name": "photo-1.png", "sha256": "<sha256>" } ] }
@@ -113,8 +129,8 @@
 - (a) worker と同じ uid なら、`~/sr-runs` に手作りの素材の run（receipt と inbox の写し）を置けば、uid と mode の検査は通りうる。これは、
   実装する Claude がもともと HTML に置けるもの以上を足さない。関門は、完成した頁とスクリーンショットのオーナーの最終確認であり、
   頁に置く素材は、inbox に receipt 付きで届いた run のものに限る。
-- (b) `photo_brief` の被写体が商品らしいものでも、止めるのはプロンプトだけ（brief の検査は URL・数字・facts の値などの形の検査）。
-  依頼を置く前に、Claude が brief を独立に確かめる（商品・店内・建物・人の顔を被写体にしない）。
+- (b) 素材の一覧の `note` が商品らしいものでも、止めるのはプロンプトだけ（一覧の検査は URL・数字・facts の値などの形の検査）。
+  依頼を置く前に、Claude が一覧を独立に確かめる（商品・店内・建物・人の顔を題材にしない）。
 
 ### E. デザインの段はページ全体の画像（whole_page。DEV-303 §6.1 の 3）
 
@@ -201,8 +217,8 @@
   （`DESIGN_REVIEW_HAS_FAIL`。オーナーが通したいときは、新しい審査か新しいデザインにする）。`revise` は助言なので、オーナーは承認できる。
   `--draft` は承認の前（審査だけ）。止まったときは `DESIGN_*` の決まった名前だけを出す。承認の `decided_at` は審査の `reviewed_at` より前にできない（`DESIGN_APPROVAL_BEFORE_REVIEW`）。
   `page_sha256` は検査のたびに審査と run からページを描き直して計算するので、ページのひな形や escape の仕方が変われば、それより前の承認は通らなくなる（安全側。オーナーは新しいページを見直す）。
-- **後の段**: 素材の段（§6.1 の 6）はこの承認を前提にする（`lib/design-agent/imagefirst-worker/design-approval.ts` の `approvedDesignRun` が、
-  承認された run の画像と SHA-256 を返すか止まる）。今の素材の段は、まだ変えていない。
+- **後の段**: 素材の段（§D、§6.1 の 6）はこの承認を前提にする（`lib/design-agent/imagefirst-worker/design-approval.ts` の `approvedDesignRun` が、
+  承認された run の画像と SHA-256 を返すか止まる）。素材の依頼の `approved_design` が、この審査と承認の記録のファイル名を名指しする。
 
 ## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
 
@@ -220,7 +236,8 @@
 6. `package-local.ts` → 事実の登録（workflow §5）→ `import-local.ts --facts-from-store`（ローカル）。hosted は runbook B-5a の後だけ。
 7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
 8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
-9. 写真素材を使う場合（§2 D。架空・研究の依頼だけ。実店舗の whole_page のデザインには `photo_inputs` を付けられない）: 3 の前に素材の段の依頼を置き、inbox に届いた素材を確かめてから、manifest の `photos`（または結果の `photo_files`）をデザインの段の `photo_inputs` に写す。
+9. 写真素材を使う場合（§2 D）: デザインが届いたら §G の審査とオーナーの承認を記録し、**その後で**、承認したデザインから決めた `materials` と `approved_design` を持つ素材の段の依頼を置く。
+   inbox に届いた素材は Claude が 1 枚ずつ確かめ（§C の項目に加えて、参照に渡した承認済みのデザインから写した文字・店名・構図が入っていないか）、本実装（§C）に使う。（架空・研究の依頼だけは、届いた素材を節ごとの分割のデザインの `photo_inputs` に写してもよい。実店舗の whole_page のデザインには付けられない。）
    素材を頁に使うときは MVP_SPEC §7.1 の限定の改定の 5 条件（「イメージ」の表示・店の物として見せない・事実と分ける・「提案用デモ」の表示・差し替えられる）をすべて守る。
 
 ## 3. オーナーの判断・承認が要るもの

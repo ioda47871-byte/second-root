@@ -35,12 +35,13 @@ import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promise
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy, type CaseStudyInspection, type ViewedFile } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
-import { buildPhotoPlan, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, CASE_STUDY_TEXT_FIELDS, CaseStudyTextStop, FACTS_MAX_BYTES, type CaseStudyTextField, isPhotoRequest, layoutOf, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
+import { buildPhotoPlan, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, CASE_STUDY_TEXT_FIELDS, CaseStudyTextStop, FACTS_MAX_BYTES, type CaseStudyTextField, isPhotoRequest, layoutOf, materialsBytes, parseRequest, parseRequestFacts, PHOTO_FILE_RE, type ApprovedDesignUse, type DesignReference, type PhotoMaterialsRequest, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
 import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
 import { checkJaRenderings, JA_RENDERINGS_MAX_BYTES, jaRenderingDetailOf, JaRenderingsStop, type CheckedJaRenderings, type JaRenderingDetail } from "../ja-renderings/ja-renderings";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
 import { verifyBundleDir } from "./bundle";
+import { approvedDesignRun, DesignApprovalStop } from "./design-approval";
 
 export const SHOPS_DIR = "second-root-shops";
 /** The worker's private runs directory under its home (~/sr-runs; the worker CLI uses the same place). */
@@ -284,6 +285,50 @@ export async function checkRequestShop(request: ImagefirstRequest, facts: FactsP
   if (!facts.shop_id.startsWith("fictional-") || facts.shop_id !== committed) throw new PromptStop("FACTS_SHOP_MISMATCH");
 }
 
+/** DEV-303 §6.1 change 6: where a shop's design review / approval records live (inside its private shop directory). */
+export const DESIGN_REVIEWS_DIR = "design-reviews";
+/** The approved design a materials request names, gate-checked: what the plan uses, and the reference pictures' bytes. */
+export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[] };
+
+/**
+ * DEV-303 §6.1 change 6 (production flow §1 stage 4, §3.4): the owner-approved design a photo-materials request names.
+ * The review and approval records are plain file names in the shop's private design-reviews folder next to its facts
+ * pack (the same root and shop directory, no link anywhere, as readRequestCaseStudy); the run is the review inbox's
+ * sealed bundle ~/sr-runs/review-inbox/<bundle_id>. approvedDesignRun (design-approval.ts) runs the gate check (bundle
+ * verified, five axes, approval bound to review / page / images, decision approve, no axis fail); its DESIGN_* stop is
+ * request mode's stop with the same code. The run must be the named one (id, SHA-256) and of the request's shop and kind.
+ * References: the approved PC / SP pictures (all of them when at most IMAGE_TOOL_MAX_REFS, else the first PC and the
+ * first SP part), as ref-N.png.
+ */
+export async function readApprovedDesign(request: PhotoMaterialsRequest, places: { home: string; repo: string }): Promise<ResolvedApprovedDesign> {
+  const ref = request.approved_design;
+  const base = factsBase(request.facts_ref.root, places);
+  const shopDir = join(base, request.facts_ref.shop_id);
+  const dir = join(shopDir, DESIGN_REVIEWS_DIR);
+  if (!(await realDir(base)) || !(await realDir(shopDir))) throw new PromptStop("APPROVED_DESIGN_MISSING");
+  if (!(await realDir(dir))) throw new PromptStop((await lstat(dir).then(() => true, () => false)) ? "APPROVED_DESIGN_UNSAFE" : "APPROVED_DESIGN_MISSING");
+  const realDirPath = join(await realpath(shopDir), DESIGN_REVIEWS_DIR);
+  if ((await realpath(dir).catch(() => null)) !== realDirPath) throw new PromptStop("APPROVED_DESIGN_UNSAFE");
+  for (const name of [ref.review_file, ref.approval_file]) {
+    if ((await realpath(join(dir, name)).catch(() => null)) !== join(realDirPath, name)) throw new PromptStop((await lstat(join(dir, name)).then(() => true, () => false)) ? "APPROVED_DESIGN_UNSAFE" : "APPROVED_DESIGN_MISSING");
+  }
+  let a;
+  try {
+    a = await approvedDesignRun({ bundleDir: join(places.home, RUNS_DIR, "review-inbox", ref.bundle_id), reviewPath: join(dir, ref.review_file), approvalPath: join(dir, ref.approval_file), repo: places.repo });
+  } catch (error) {
+    if (error instanceof DesignApprovalStop) throw new PromptStop(error.code);
+    throw error;
+  }
+  if (a.request_id !== ref.bundle_id || a.bundle_sha256 !== ref.bundle_sha256 || a.shop !== request.shop_id || a.kind !== request.kind) throw new PromptStop("APPROVED_DESIGN_MISMATCH");
+  const all = [...a.images.pc, ...a.images.sp];
+  const chosen = all.length <= IMAGE_TOOL_MAX_REFS ? all : [a.images.pc[0]!, a.images.sp[0]!];
+  const references = chosen.map((img, n) => ({ id: `ref-${n + 1}`, image: basename(img.file, ".png"), name: `ref-${n + 1}.png`, sha256: img.sha256, bytes: img.bytes }));
+  return {
+    use: { bundle_id: a.request_id, bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256, references: references.map((r) => ({ id: r.id, image: r.image, name: r.name, sha256: r.sha256 })) },
+    references,
+  };
+}
+
 /** DEV-303 (owner decision 2026-11-24): one resolved photo input (its bytes checked against the request's SHA-256). */
 export type ResolvedPhoto = { name: string; sha256: string; bytes: Buffer };
 export type RequestRunInputs = {
@@ -292,7 +337,7 @@ export type RequestRunInputs = {
   requestSha256: string;
   factsBytes: Buffer;
   facts: FactsPack;
-  /** direction.json (design) or photo-brief.json (photo materials). */
+  /** direction.json (design) or materials.json (photo materials). */
   directionBytes: Buffer;
   plan: RequestPlan | PhotoPlan;
   /** The design stage's photo inputs: resolved, "unchecked" (validation only, the photo run not there yet) or null (none). */
@@ -304,6 +349,8 @@ export type RequestRunInputs = {
   caseStudy: CheckedCaseStudy | null;
   /** DEV-303 §6.1 row 3: the reference pictures attached to a whole_page run (the plan's references, with bytes); null otherwise. */
   references: ResolvedReference[] | null;
+  /** DEV-303 §6.1 change 6: a photo-materials run's gate-checked approved design and its reference pictures; null otherwise. */
+  approvedDesign: ResolvedApprovedDesign | null;
   /** DEV-303 §6.1 change 4: a whole_page design's checked owner-approved Japanese renderings, or null (none named). */
   jaRenderings: CheckedJaRenderings | null;
 };
@@ -319,9 +366,11 @@ export async function loadRequestRun(o: { requestFile: string; requestSha256: st
   await checkRequestShop(r.request, f.facts, o.repo);
   const base = { request: r.request, requestBytes: r.bytes, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts };
   if (isPhotoRequest(r.request)) {
-    const plan = buildPhotoPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
+    // DEV-303 §6.1 change 6: the owner-approved design first (gate-checked), then the materials it needs
+    const approvedDesign = await readApprovedDesign(r.request, { home: o.home, repo: o.repo });
+    const plan = buildPhotoPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, approvedDesign: approvedDesign.use });
     if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
-    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null, caseStudy: null, references: null, jaRenderings: null };
+    return { ...base, directionBytes: materialsBytes(r.request), plan, photos: null, caseStudy: null, references: null, approvedDesign, jaRenderings: null };
   }
   const caseStudy = await readRequestCaseStudy(r.request, { home: o.home, repo: o.repo });
   const whole = layoutOf(r.request) === "whole_page";
@@ -332,7 +381,7 @@ export async function loadRequestRun(o: { requestFile: string; requestSha256: st
   const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, ...(whole ? { caseStudy: caseStudy?.use ?? null } : {}), ...(jaRenderings ? { jaRenderings: { sha256: jaRenderings.sha256, entries: jaRenderings.entries } } : {}) });
   if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   const photos = r.request.photo_inputs ? await resolvePhotoInputs(r.request, { runsDir: join(o.home, RUNS_DIR), mode: o.photoInputs ?? "required" }) : null;
-  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy, references: whole ? (caseStudy?.references ?? null) : null, jaRenderings };
+  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy, references: whole ? (caseStudy?.references ?? null) : null, approvedDesign: null, jaRenderings };
 }
 
 /** A photo input is at most this large (the Codex input cap, sandbox.ts MAX_INPUT_BYTES). */
@@ -439,7 +488,7 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; ja_renderings?: { sha256: string; keys: string[] } }> {
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] } }> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
@@ -457,8 +506,13 @@ export async function validateRequestFile(o: { file: string; home: string; repo:
     case_study: run.caseStudy ? { sha256: run.caseStudy.sha256, counted: run.caseStudy.counted } : null,
     ...(run.jaRenderings ? { ja_renderings: { sha256: run.jaRenderings.sha256, keys: run.jaRenderings.entries.map((e) => e.fact_key) } } : {}),
     ...(run.references ? { layout: "whole_page" as const, reference_images: referenceRecordOf(run.references) } : {}),
+    ...(run.approvedDesign && "materials_sha256" in run.plan ? { approved_design: approvedDesignRecordOf(run.approvedDesign), materials_sha256: run.plan.materials_sha256 } : {}),
   };
 }
+
+/** DEV-303 §6.1 change 6: what records keep of a materials run's approved design (SHA-256s and the bundle id; no path). */
+export type ApprovedDesignRecord = { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
+export const approvedDesignRecordOf = (a: ResolvedApprovedDesign): ApprovedDesignRecord => ({ bundle_id: a.use.bundle_id, bundle_sha256: a.use.bundle_sha256, review_sha256: a.use.review_sha256, approval_sha256: a.use.approval_sha256 });
 
 export type RealShopRecord = {
   schema: typeof REAL_SHOP_RECORD_SCHEMA;
@@ -470,6 +524,9 @@ export type RealShopRecord = {
   plan_sha256: string | null;
   /** Issue #336: the SHA-256 of the case study the run was checked against (readRequestCaseStudy); null for a photo-materials run. */
   case_study_sha256: string | null;
+  /** DEV-303 §6.1 change 6: only on a photo-materials run — the approved design it is for and the materials list's SHA-256. */
+  approved_design?: ApprovedDesignRecord;
+  materials_sha256?: string;
   /** DEV-303 §6.1 change 4: only when the run used owner-approved Japanese renderings — that record's SHA-256 (no path). */
   ja_renderings_sha256?: string;
   /** DEV-303 §6.1 row 3: only on a whole_page design run — the layout and its reference pictures (id, case_id, sha256). */
