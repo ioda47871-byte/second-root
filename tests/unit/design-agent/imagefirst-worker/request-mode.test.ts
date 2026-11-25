@@ -471,14 +471,36 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(batch).not.toContain(inputs);
     expect(existsSync(inputs)).toBe(false);
     expect(readFileSync(report.receipt!, "utf8")).not.toMatch(/design-library|\.webp|inputs\//);
-    // the bundle verifier holds the receipt's reference list: a forged entry is refused before delivery
+    // review L4: delivery holds the receipt's reference list to the run's own reference-inputs.json
+    const deliver = () => codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }));
     const receiptPath = report.receipt!;
     const original = readFileSync(receiptPath, "utf8");
+    const rewrite = (path: string, text: string) => {
+      rmSync(path);
+      writeFileSync(path, text, { mode: 0o600 });
+    };
+    // a receipt whose list was reordered (each entry still well-formed): REFERENCE_INPUTS_MISMATCH
+    const reordered = JSON.parse(original) as { reference_images: { id: string }[] };
+    reordered.reference_images = [REFS[1]!, REFS[0]!, REFS[2]!].map((r, n) => ({ ...r, id: `ref-${n + 1}` }));
+    rewrite(receiptPath, JSON.stringify(reordered));
+    expect(await deliver()).toBe("REFERENCE_INPUTS_MISMATCH");
+    // the receipt as written, but the run's reference-inputs.json changed: REFERENCE_INPUTS_MISMATCH
+    rewrite(receiptPath, original);
+    const inputsPath = join(report.run_dir!, "reference-inputs.json");
+    const inputsOriginal = readFileSync(inputsPath, "utf8");
+    const edited = JSON.parse(inputsOriginal) as { references: { sha256: string }[] };
+    edited.references[2]!.sha256 = sha("another picture");
+    rewrite(inputsPath, JSON.stringify(edited));
+    expect(await deliver()).toBe("REFERENCE_INPUTS_MISMATCH");
+    rewrite(inputsPath, inputsOriginal);
+    // a forged (over-long) list is refused before delivery too
     const forged = JSON.parse(original) as Record<string, unknown>;
     forged.reference_images = [...REFS, ...REFS, ...REFS].map((r, n) => ({ ...r, id: `ref-${n + 1}` }));
-    rmSync(receiptPath);
-    writeFileSync(receiptPath, JSON.stringify(forged), { mode: 0o600 });
-    expect(await codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }))).toBe("RECEIPT_INVALID");
+    rewrite(receiptPath, JSON.stringify(forged));
+    expect(await deliver()).toBe("REFERENCE_INPUTS_MISMATCH");
+    // with both restored, it is delivered
+    rewrite(receiptPath, original);
+    expect(await deliver()).toBe("resolved");
   });
 
   it("fictional: the fictional-shop check passes, the bundle is delivered and the research log intake accepts it", async () => {
@@ -566,5 +588,22 @@ describe("DEV-303 the worker CLI's request arguments", () => {
     const m = run(["--validate-request", file]);
     expect([m.status, m.out?.code]).toEqual([2, "FACTS_MISSING"]);
     expect(readdirSync(m.home)).toEqual([]);
+  });
+
+  it("review Q5 follow-up: a case-study text refusal names its category, field and case in the CLI line (never the text)", () => {
+    const home = tmp("sr-req-cli-q5-");
+    const shopDir = join(home, "second-root-shops", SHOP);
+    mkdirSync(shopDir, { recursive: true });
+    writeFileSync(join(shopDir, "facts-pack.json"), FACTS_BYTES);
+    const base = JSON.parse(CASE_STUDY.toString("utf8")) as { cases: { do_not_copy: string[] }[] };
+    const cases = base.cases.map((c, n) => (n === 1 ? { ...c, do_not_copy: ["円の札を写さない"] } : c));
+    const cs = caseStudyBytes(SHOP, { cases });
+    writeFileSync(join(shopDir, CASE_STUDY_FILE), cs);
+    const file = join(tmp("sr-req-cli-q5f-"), `${ID}.json`);
+    writeFileSync(file, bytesOf(requestObject({ case_study: { path: CASE_STUDY_FILE, sha256: sha(cs) } })));
+    const r = run(["--validate-request", file], { HOME: home });
+    expect([r.status, r.out?.status, r.out?.code]).toEqual([2, "refused", "CASE_STUDY_TEXT_HAS_FACT"]);
+    expect((r.out as unknown as { detail?: unknown }).detail).toEqual({ category: "money", field: "do_not_copy", case_id: "CP-002" });
+    expect(JSON.stringify(r.out)).not.toContain("円");
   });
 });

@@ -140,7 +140,8 @@ export type BundleCode =
   | "BUNDLE_COUNTS_INVALID"
   | "BUNDLE_SHA_MISMATCH"
   | "BUNDLE_RECORD_MISMATCH"
-  | "BUNDLE_TERMS_INVALID";
+  | "BUNDLE_TERMS_INVALID"
+  | "REFERENCE_INPUTS_MISMATCH";
 
 export class BundleStop extends Error {
   constructor(readonly code: BundleCode) {
@@ -304,6 +305,31 @@ function designImagesOf(r: Receipt): { readonly pc: number; readonly sp: number 
   return WHOLE_PAGE_IMAGES;
 }
 
+/** The run's reference-inputs.json (full-page-call.ts writes it for a whole_page run): small, ours, no link. */
+const REFERENCE_INPUTS_MAX_BYTES = 16 * 1024;
+/**
+ * Review L4 (DEV-303 §6.1 row 3): the receipt's `reference_images` must equal the run directory's own
+ * reference-inputs.json (schema image_first_reference_inputs_v0, layout whole_page): the same entries (id, case_id,
+ * sha256), in the same order, nothing else. A receipt without a reference list needs a run without that file.
+ * REFERENCE_INPUTS_MISMATCH otherwise (no path, no content in the code).
+ */
+export async function checkReferenceInputs(runDir: string, receiptRefs: unknown): Promise<void> {
+  const bytes = await readNoFollow(join(runDir, "reference-inputs.json"), REFERENCE_INPUTS_MAX_BYTES, { link: "REFERENCE_INPUTS_MISMATCH", big: "REFERENCE_INPUTS_MISMATCH" }, true);
+  if (receiptRefs === undefined) {
+    if (bytes !== null) stop("REFERENCE_INPUTS_MISMATCH");
+    return;
+  }
+  if (bytes === null) return stop("REFERENCE_INPUTS_MISMATCH");
+  let f: { schema?: unknown; layout?: unknown; references?: unknown };
+  try {
+    f = JSON.parse(bytes.toString("utf8")) as typeof f;
+  } catch {
+    return stop("REFERENCE_INPUTS_MISMATCH");
+  }
+  const canon = (x: unknown) => (Array.isArray(x) ? JSON.stringify(x.map((e: { id?: unknown; case_id?: unknown; sha256?: unknown } | null) => (e && typeof e === "object" ? [e.id, e.case_id, e.sha256, Object.keys(e).sort().join(",")] : null))) : null);
+  if (!f || f.schema !== "image_first_reference_inputs_v0" || f.layout !== "whole_page" || canon(f.references) === null || canon(f.references) !== canon(receiptRefs)) stop("REFERENCE_INPUTS_MISMATCH");
+}
+
 function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; photo: boolean; design: { readonly pc: number; readonly sp: number } } {
   let r: Receipt;
   try {
@@ -380,6 +406,8 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
   const root = await realpath(o.runDir);
   const named = await realpath(r.run_dir as string).catch(() => null);
   if (named !== root) stop("RECEIPT_RUN_DIR_MISMATCH");
+  // review L4: the receipt's reference list is the run's own reference-inputs.json (or neither has one)
+  await checkReferenceInputs(root, r.reference_images);
 
   // ---- what may be there: exactly the receipt's parts, and the composites the caller named ----
   const composites: [string, string][] = [];
