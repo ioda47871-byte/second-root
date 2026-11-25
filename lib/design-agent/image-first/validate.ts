@@ -22,7 +22,7 @@ import { INVENTED_FACT_SIGNS, LABELS_BY_KEY, factParts, norm } from "../quality-
 import { FactsPack } from "../quality-pipeline/facts-pack";
 import { auditIdentity, cleanName } from "../identity/identity-lock";
 import { MOCKUP_PNG_LIMITS, checkPng } from "../design-image/png";
-import { brokenSeams, buildComposite, compositeProblems, COMPOSITION_LIMITS, sequenceProblems, spLooksScaledFromPc, type CompositeView } from "./composition";
+import { brokenSeams, buildComposite, compositeProblems, COMPOSITION_LIMITS, sequenceProblems, spLooksScaledFromPc, wholePageProblems, type CompositeView } from "./composition";
 import { compSetSha256, ownerGate, type OwnerGate } from "./owner-gate";
 import { containsExactCrop, decodeRgb, type RgbImage } from "./pixels";
 import {
@@ -213,10 +213,19 @@ export function validateImageFirst(e: RunEvidence): ImageFirstVerdict {
       if (fp.data.shop_id !== r.shop.shop_id) add("COMP_SHA_MISMATCH", "facts_pack_shop");
     }
   }
+  // DEV-303 §6.1 row 3: a whole_page comp (request mode) has no section order to check against a direction: every
+  // viewport is one picture of the whole page, its sections the model's own; its direction is bound by SHA only
+  const wholePage = vps.length > 0 && vps.every((v) => r.viewports[v]!.mode === "whole_page");
+  if (!wholePage && vps.some((v) => r.viewports[v]!.mode === "whole_page")) add("COMP_SECTION_SEQUENCE_INVALID", "layout_mixed");
+  // review L1: whole_page exists only in request mode (its plan's direction_id is "request-<request id>"); a pinned
+  // direction's comp is always the declared section sequence
+  if (vps.some((v) => r.viewports[v]!.mode === "whole_page") && !r.direction.direction_id.startsWith("request-")) add("COMP_SECTION_SEQUENCE_INVALID", "whole_page_not_request");
   // the chosen direction (only that object): bound by SHA, read for its section order
   let directionIds: string[] | null = null;
   if (!e.direction || !r.direction.direction_sha256) add("COMP_PROVENANCE_MISSING", "direction");
-  else {
+  else if (wholePage) {
+    if (sha256(e.direction) !== r.direction.direction_sha256) add("COMP_SHA_MISMATCH", "direction");
+  } else {
     if (sha256(e.direction) !== r.direction.direction_sha256) add("COMP_SHA_MISMATCH", "direction");
     let d: unknown;
     try {
@@ -280,14 +289,17 @@ export function validateImageFirst(e: RunEvidence): ImageFirstVerdict {
     const c = r.viewports[v]!;
     const shas = c.parts.map((p) => p.png_sha256);
     if (new Set(shas).size !== shas.length) add("COMP_SECTION_SEQUENCE_INVALID", `${v}_picture_repeated`);
-    const seqProblems = directionIds ? sequenceProblems(c, v, directionIds) : ["DIRECTION_UNKNOWN"];
+    // a whole_page viewport only in a comp whose viewports are all whole_page (never mixed with a section split)
+    const seqProblems = c.mode === "whole_page" || wholePage ? wholePageProblems(c, v) : directionIds ? sequenceProblems(c, v, directionIds) : ["DIRECTION_UNKNOWN"];
     for (const s of seqProblems) add("COMP_SECTION_SEQUENCE_INVALID", `${v}_${s}`);
     if (!allDecoded || seqProblems.length > 0) continue;
     const view = buildComposite(c, v, decoded[v]);
     composites[v] = view;
     const cp = compositeProblems(view);
-    if (cp.heroOnly) add("COMP_HERO_ONLY", `${v}_composite_height`);
-    if (cp.singleTooShort) add("COMP_HERO_ONLY", `${v}_single_picture_too_short`);
+    // a whole_page picture is the whole page drawn smaller in one 2:3 frame (production flow §3.2), not a CSS-scale
+    // page: the screen-height floors do not apply; that it is a whole page is the located read's header + footer check
+    if (cp.heroOnly && c.mode !== "whole_page") add("COMP_HERO_ONLY", `${v}_composite_height`);
+    if (cp.singleTooShort && c.mode !== "whole_page") add("COMP_HERO_ONLY", `${v}_single_picture_too_short`);
     if (cp.outOfRange) add("COMP_COMPOSITE_OUT_OF_RANGE", `${v}_composite_height`);
     for (const s of brokenSeams(c, view)) add("COMP_SEAM_BROKEN", `${v}_after_part_${s.after_part}`);
   }
@@ -308,7 +320,9 @@ export function validateImageFirst(e: RunEvidence): ImageFirstVerdict {
         const c = r.viewports[v]!;
         const reads = c.parts.map((p) => readOf(p.png_sha256));
         const seen = new Set(reads.flatMap((x) => x.observed_section_ids));
-        if (c.section_order.some((id) => !seen.has(id))) add("COMP_HERO_ONLY", `${v}_sections_not_seen`);
+        // whole_page: the declared order is the one "page" section; the sections are read off the picture, not declared
+        if (c.mode !== "whole_page" && c.section_order.some((id) => !seen.has(id))) add("COMP_HERO_ONLY", `${v}_sections_not_seen`);
+        if (c.mode === "whole_page" && seen.size < 2) add("COMP_HERO_ONLY", `${v}_sections_not_seen`);
         if (!reads[0]!.header_visible) add("COMP_HERO_ONLY", `${v}_no_header`);
         if (!reads[reads.length - 1]!.footer_visible) add("COMP_HERO_ONLY", `${v}_no_footer`);
         if (reads.some((x) => x.photo_only)) add("COMP_NOT_A_WEBSITE", `${v}_photo_only`);

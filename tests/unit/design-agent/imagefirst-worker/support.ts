@@ -119,7 +119,7 @@ const caseOf = (id: string, path: string) => ({
 export function pageShaOf(record: Record<string, unknown>): string {
   const cases = record.cases as { id: string; files: { path: string; sha256: string }[] }[];
   const files = cases.flatMap((c) => c.files.map((f) => ({ case_id: c.id, path: f.path, sha256: f.sha256, bytes: readFileSync(resolve(REPO, f.path)) })));
-  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files });
+  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files, counting_files: {} });
 }
 /** An owner-confirmed case study for `shopId` that counts CP-001..003 (the repository's images; the text is invented). */
 export function caseStudyObject(shopId: string, over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -155,7 +155,7 @@ export const pointOrigin = (repo: string) => git(repo, "update-ref", "refs/remot
 // ---- the fake Codex (the image-once tests' in-process sandbox) ----------------------------------------------------
 export type Fake = { execs: number; codexHome: string; tmpBase: string; sandbox: CodexSandbox };
 export const ok = (stdout = ""): BoundedResult => ({ code: 0, signal: null, stdout, stderr: "", timedOut: false });
-export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-ifw-codex-"), onExec: () => void = () => undefined, stopDelayMs = 0, stopHold?: string): Fake {
+export function fakeCodex(mode: "six" | "two" | "fail" | "hang", root: string = tmp("sr-ifw-codex-"), onExec: () => void = () => undefined, stopDelayMs = 0, stopHold?: string): Fake {
   const codexHome = join(root, "home", ".codex");
   const tmpBase = join(root, "tmp");
   for (const d of [codexHome, tmpBase]) mkdirSync(d, { recursive: true });
@@ -183,18 +183,18 @@ export function fakeCodex(mode: "six" | "fail" | "hang", root: string = tmp("sr-
           return { code: null, signal: "SIGTERM", stdout: "", stderr: "", timedOut: false, aborted: true };
         }
         if (mode === "fail") return { ...ok(), code: 1, stderr: "fake failure" };
-        // what the CLI leaves: a session log with one completed image call per picture, and the pictures (PC 2 + SP 4)
+        // what the CLI leaves: a session log with one completed image call per picture, and the pictures (PC 2 + SP 4; "two": a whole_page run's PC 1 + SP 1)
         const sessions = join(codexHome, "sessions", "2026", "11", "20");
         mkdirSync(sessions, { recursive: true });
         const recs = [
           { type: "session_meta", payload: { id: THREAD, cwd: o.workDir, cli_version: "0.163.0", model_provider: "fake" } },
           { type: "turn_context", payload: { cwd: o.workDir, model: "fake-session" } },
-          ...Array.from({ length: 6 }, (_, i) => ({ type: "response_item", payload: { type: "image_generation_call", id: `ig_${i}`, status: "completed" } })),
+          ...Array.from({ length: mode === "two" ? 2 : 6 }, (_, i) => ({ type: "response_item", payload: { type: "image_generation_call", id: `ig_${i}`, status: "completed" } })),
         ];
         writeFileSync(join(sessions, `rollout-2026-11-20T01-00-00-${THREAD}.jsonl`), recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
         const dir = join(codexHome, "generated_images", THREAD);
         mkdirSync(dir, { recursive: true });
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < (mode === "two" ? 2 : 6); i++) {
           const p = join(dir, `ig_${i}.png`);
           writeFileSync(p, colourPng(1024 + i, 1536));
           const t = new Date(Date.UTC(2026, 10, 20, 1, 0, i));

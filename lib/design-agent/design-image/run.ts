@@ -171,6 +171,8 @@ const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
   CODEX_DOTENV_PRESENT: "environment",
   CODEX_PREFLIGHT_FAILED: "environment",
   CODEX_IMAGE_TOOL_FAILED: "capability",
+  // Issue #335: the image tool refused the call's arguments before it started (pocStopClass also maps it first)
+  CODEX_IMAGE_ARGS_REFUSED: "capability",
   CODEX_EXEC_FAILED: "request",
   CODEX_NO_THREAD: "request",
   CODEX_NO_IMAGE: "request",

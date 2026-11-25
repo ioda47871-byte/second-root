@@ -19,7 +19,11 @@
  *                    CASE_STUDY_MAX_BYTES, SHA-256 = case_study.sha256, the same shop_id), checked in gate mode
  *                    (case-study/case-study.ts: every viewed file and SHA-256, ≥ 3 counted originals, the owner's
  *                    confirmation). Required for real_shop (parseRequest refuses CASE_STUDY_REQUIRED); checked when
- *                    present on a fictional request. Never handed to Codex; the prompts and plan do not change.
+ *                    present on a fictional request. A section-split plan never reads it. DEV-303 §6.1 row 3: a
+ *                    whole_page plan takes its principles (shop_specific_principles, each counted case's
+ *                    principles_to_bring / do_not_copy) into the prompt, and the counted cases' original pictures
+ *                    (selectReferenceImages, at most 5) are attached to the one Codex run; never the record's paths,
+ *                    observations or bytes in any record (ids and SHA-256 only).
  *   the record:      real_shop only, ~/second-root-shops/<shop_id>/runs/<id>.json (metadata: ids, codes, SHA-256s;
  *                    0700 / 0600, written once). A real shop never enters design-library/research-log (public repo).
  *
@@ -28,10 +32,11 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
-import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy } from "../case-study/case-study";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy, type CaseStudyInspection, type ViewedFile } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
-import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type RequestPlan } from "../image-first/request-prompt";
+import { buildPhotoPlan, buildRequestPlan, FACTS_MAX_BYTES, isPhotoRequest, layoutOf, parseRequest, parseRequestFacts, photoBriefBytes, PHOTO_FILE_RE, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
+import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
 import { verifyBundleDir } from "./bundle";
@@ -114,7 +119,7 @@ export async function readRequestFacts(request: ImagefirstRequest, places: { hom
  * directory, no link), bound by the request's SHA-256, of the request's shop, and passing the gate (case-study.ts).
  * null when the request names none (a fictional request; parseRequest already refused a real_shop one).
  */
-export async function readRequestCaseStudy(request: DesignRequest, places: { home: string; repo: string }): Promise<{ sha256: string; counted: string[] } | null> {
+export async function readRequestCaseStudy(request: DesignRequest, places: { home: string; repo: string }): Promise<CheckedCaseStudy | null> {
   const ref = request.case_study;
   if (!ref) return null;
   const base = factsBase(request.facts_ref.root, places);
@@ -132,7 +137,87 @@ export async function readRequestCaseStudy(request: DesignRequest, places: { hom
     throw error instanceof CaseStudyStop ? new PromptStop(error.code) : error;
   });
   if (checked.shop_id !== request.shop_id) throw new PromptStop("CASE_STUDY_SHOP_MISMATCH");
-  return { sha256: checked.case_study_sha256, counted: checked.counted };
+  return { sha256: checked.case_study_sha256, counted: checked.counted, ...caseStudyUseOf(checked) };
+}
+
+/** DEV-303 §6.1 row 3: one chosen reference picture with its verified bytes (never a path past this point). */
+export type ResolvedReference = PlanReference & { bytes: Buffer };
+/**
+ * Issue #336 + DEV-303 §6.1 row 3: the checked case study as request mode uses it. `use` feeds a whole_page plan
+ * (principles and reference metadata, no path); `references` carries the chosen pictures' verified bytes for the run.
+ */
+export type CheckedCaseStudy = { sha256: string; counted: string[]; use: RequestCaseStudyUse; references: ResolvedReference[]; usableCases: number };
+
+/** A reference picture is at most the Codex input cap (sandbox.ts MAX_INPUT_BYTES). */
+export const REFERENCE_MAX_BYTES = 20 * 1024 * 1024;
+const REFERENCE_TYPES: readonly { ext: readonly string[]; media: PlanReference["media_type"]; name: string; magic: (b: Buffer) => boolean }[] = [
+  { ext: [".png"], media: "image/png", name: "png", magic: (b) => b.subarray(0, 8).equals(PNG_MAGIC) },
+  { ext: [".jpg", ".jpeg"], media: "image/jpeg", name: "jpg", magic: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { ext: [".webp"], media: "image/webp", name: "webp", magic: (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP" },
+];
+
+/** The inspection fields reference selection reads. */
+type SelectionInput = Pick<CaseStudyInspection, "counted" | "record" | "files" | "counting_files">;
+/** A counted case's verified originals that can be attached: PNG / JPEG / WebP by extension and magic bytes, with bytes. */
+function usableOriginals(i: SelectionInput, caseId: string): { file: ViewedFile; type: (typeof REFERENCE_TYPES)[number] }[] {
+  const originals = i.counting_files[caseId] ?? [];
+  const out: { file: ViewedFile; type: (typeof REFERENCE_TYPES)[number] }[] = [];
+  for (const f of i.files.filter((x) => x.case_id === caseId && originals.some((o) => o.path === x.path && o.sha256 === x.sha256))) {
+    const type = REFERENCE_TYPES.find((t) => t.ext.includes(extname(f.path).toLowerCase()));
+    if (type && f.bytes !== null && type.magic(f.bytes)) out.push({ file: f, type });
+  }
+  return out;
+}
+const ownerOrder = (i: Pick<CaseStudyInspection, "counted" | "record">) => i.record.owner_confirmation?.selected_ids.filter((id) => i.counted.includes(id)) ?? i.counted;
+
+/**
+ * DEV-303 §6.1 row 3: the reference pictures of a gate-checked case study, chosen deterministically: the counted cases in
+ * the owner's selection order (owner_confirmation.selected_ids; gate mode made it exactly the counted set), per case its
+ * FIRST verified original (review M1: only the files that made the case count — its originals-index entry's path and
+ * SHA-256, or a SHA-256 recorded for a private original; never another file listed under the case) that is a PNG / JPEG /
+ * WebP picture (by extension and magic bytes; never a page's HTML/CSS, a GIF or an archive), at most IMAGE_TOOL_MAX_REFS
+ * in all. A picture already chosen for an earlier case is skipped (review L3: the case's next original, if any). Their
+ * bytes are the ones the gate check read and hashed. A picture over REFERENCE_MAX_BYTES stops (REFERENCE_IMAGE_TOO_LARGE).
+ * `usableCases`: the counted cases with at least one attachable original (for the real-shop minimum). Pure.
+ */
+export function selectReferences(i: SelectionInput): { references: ResolvedReference[]; usableCases: number } {
+  const out: ResolvedReference[] = [];
+  let usableCases = 0;
+  for (const caseId of ownerOrder(i)) {
+    const usable = usableOriginals(i, caseId);
+    if (usable.length > 0) usableCases += 1;
+    if (out.length >= IMAGE_TOOL_MAX_REFS) continue;
+    for (const { file: f, type } of usable) {
+      if (out.some((r) => r.sha256 === f.sha256)) continue;
+      if (f.bytes!.length > REFERENCE_MAX_BYTES) throw new PromptStop("REFERENCE_IMAGE_TOO_LARGE");
+      if (createHash("sha256").update(f.bytes!).digest("hex") !== f.sha256) throw new PromptStop("REFERENCE_IMAGE_SHA_MISMATCH");
+      const id = `ref-${out.length + 1}`;
+      out.push({ id, case_id: caseId, name: `${id}.${type.name}`, sha256: f.sha256, media_type: type.media, bytes: f.bytes! });
+      break;
+    }
+  }
+  return { references: out, usableCases };
+}
+export const selectReferenceImages = (i: SelectionInput): ResolvedReference[] => selectReferences(i).references;
+
+/**
+ * Review Q4: a real shop's whole-page run attaches at least min(3, the counted cases with an attachable original)
+ * references (and at least one): REFERENCE_IMAGES_MISSING with none, REFERENCE_IMAGES_TOO_FEW below the minimum.
+ */
+export function assertRealShopReferences(references: readonly unknown[], usableCases: number): void {
+  if (references.length === 0) throw new PromptStop("REFERENCE_IMAGES_MISSING");
+  if (references.length < Math.min(3, usableCases)) throw new PromptStop("REFERENCE_IMAGES_TOO_FEW");
+}
+
+/** The case study as request mode uses it (counted cases in the owner's order; the chosen references). Pure. */
+export function caseStudyUseOf(i: SelectionInput & Pick<CaseStudyInspection, "case_study_sha256">): { use: RequestCaseStudyUse; references: ResolvedReference[]; usableCases: number } {
+  const { references, usableCases } = selectReferences(i);
+  const cases = ownerOrder(i).flatMap((id) => i.record.cases.filter((c) => c.id === id)).map((c) => ({ id: c.id, principles_to_bring: [...c.principles_to_bring], do_not_copy: [...c.do_not_copy] }));
+  return {
+    use: { sha256: i.case_study_sha256, shop_specific_principles: [...i.record.shop_specific_principles], cases, references: references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type })) },
+    references,
+    usableCases,
+  };
 }
 
 /** The request's kind against the pack (see the header). Throws PromptStop. */
@@ -170,8 +255,13 @@ export type RequestRunInputs = {
   plan: RequestPlan | PhotoPlan;
   /** The design stage's photo inputs: resolved, "unchecked" (validation only, the photo run not there yet) or null (none). */
   photos: ResolvedPhoto[] | "unchecked" | null;
-  /** Issue #336: the design stage's checked success-case analysis (gate mode), or null (photo materials; fictional without one). */
-  caseStudy: { sha256: string; counted: string[] } | null;
+  /**
+   * Issue #336: the design stage's checked success-case analysis (gate mode), or null (photo materials; fictional without
+   * one). DEV-303 §6.1 row 3: with its use in a whole_page plan and the chosen reference pictures' bytes.
+   */
+  caseStudy: CheckedCaseStudy | null;
+  /** DEV-303 §6.1 row 3: the reference pictures attached to a whole_page run (the plan's references, with bytes); null otherwise. */
+  references: ResolvedReference[] | null;
 };
 
 /**
@@ -187,13 +277,17 @@ export async function loadRequestRun(o: { requestFile: string; requestSha256: st
   if (isPhotoRequest(r.request)) {
     const plan = buildPhotoPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
     if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
-    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null, caseStudy: null };
+    return { ...base, directionBytes: photoBriefBytes(r.request), plan, photos: null, caseStudy: null, references: null };
   }
   const caseStudy = await readRequestCaseStudy(r.request, { home: o.home, repo: o.repo });
-  const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts });
+  const whole = layoutOf(r.request) === "whole_page";
+  // review Q4: a real shop's whole page attaches at least min(3, counted cases with an attachable original) references
+  if (whole && r.request.kind === "real_shop" && caseStudy) assertRealShopReferences(caseStudy.references, caseStudy.usableCases);
+  // DEV-303 §6.1 row 3: a whole-page plan reads the case study's principles and reference metadata (never a path)
+  const plan = buildRequestPlan({ request: r.request, requestSha256: r.sha256, factsBytes: f.bytes, facts: f.facts, ...(whole ? { caseStudy: caseStudy?.use ?? null } : {}) });
   if (plan.batch.images !== r.request.max_images) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   const photos = r.request.photo_inputs ? await resolvePhotoInputs(r.request, { runsDir: join(o.home, RUNS_DIR), mode: o.photoInputs ?? "required" }) : null;
-  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy };
+  return { ...base, directionBytes: requestDirectionBytes(r.request), plan, photos, caseStudy, references: whole ? (caseStudy?.references ?? null) : null };
 }
 
 /** A photo input is at most this large (the Codex input cap, sandbox.ts MAX_INPUT_BYTES). */
@@ -272,6 +366,13 @@ export async function resolvePhotoInputs(request: DesignRequest, o: { runsDir: s
   return out;
 }
 
+/**
+ * DEV-303 §6.1 row 3: what a run's records keep of its reference pictures — the allowlisted fields id, case_id and
+ * sha256 only (never a path, a name on disk or the bytes).
+ */
+export type ReferenceRecord = { id: string; case_id: string; sha256: string };
+export const referenceRecordOf = (refs: readonly Pick<PlanReference, "id" | "case_id" | "sha256">[]): ReferenceRecord[] => refs.map((r) => ({ id: r.id, case_id: r.case_id, sha256: r.sha256 }));
+
 /** Where root's pilot puts the run's private copy of the request (an absolute path to <dir>/<request id>.json). */
 export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
 
@@ -282,7 +383,7 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null }> {
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[] }> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
@@ -297,7 +398,8 @@ export async function validateRequestFile(o: { file: string; home: string; repo:
     facts_sha256: run.plan.facts_sha256,
     plan_sha256: run.plan.plan_sha256,
     photo_inputs: run.photos === null ? null : run.photos === "unchecked" ? "unchecked" : "checked",
-    case_study: run.caseStudy,
+    case_study: run.caseStudy ? { sha256: run.caseStudy.sha256, counted: run.caseStudy.counted } : null,
+    ...(run.references ? { layout: "whole_page" as const, reference_images: referenceRecordOf(run.references) } : {}),
   };
 }
 
@@ -311,6 +413,9 @@ export type RealShopRecord = {
   plan_sha256: string | null;
   /** Issue #336: the SHA-256 of the case study the run was checked against (readRequestCaseStudy); null for a photo-materials run. */
   case_study_sha256: string | null;
+  /** DEV-303 §6.1 row 3: only on a whole_page design run — the layout and its reference pictures (id, case_id, sha256). */
+  design_layout?: "whole_page";
+  reference_images?: ReferenceRecord[];
   commit: string | null;
   run: { status: string; code: string | null; invoked: boolean; receipt_written: boolean };
   review: { status: string; code: string | null; bundle_sha256: string | null } | null;

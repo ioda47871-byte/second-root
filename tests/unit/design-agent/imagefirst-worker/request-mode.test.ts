@@ -13,12 +13,13 @@ import { loadRequestRun, readRequestFacts, REAL_SHOP_RECORD_SCHEMA, validateRequ
 import { precheckRequestCycle, runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
 import { runLoadedRequest } from "@/lib/design-agent/imagefirst-worker/request-run";
 import { BUNDLE_ID_RE, REQUEST_RUN_ID_RE } from "@/lib/design-agent/imagefirst-worker/run-directions";
+import { REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
 import { runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
 import { entryFromInbox } from "@/lib/design-agent/research-log/intake";
 import { parseArgs } from "@/scripts/design-artifact/phase2f-live-cli";
-import { CASE_STUDY_FILE, caseStudyBytes, cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, tmp, workerRepo, type Fake } from "./support";
+import { CASE_STUDY_FILE, CASE_STUDY_REPO_FILES, caseStudyBytes, cleanupTemps, ENV, fakeCodex, git, NOW, REPO, sha, tmp, workerRepo, type Fake } from "./support";
 
 // DEV-303 (owner direction 2026-11-23, docs/operations/first-client-pipeline.md §2 B): IMAGE_FIRST request mode, worker
 // side, end to end against a FAKE Codex. FICTIONAL fixtures only: the "real_shop" pack below is invented for the test
@@ -59,6 +60,8 @@ const DIRECTION = {
 const BAKERY = "design-library/research/quality-pipeline/poc/bakery/facts-pack.json";
 /** Issue #336: the shop's owner-confirmed case study (invented text; it counts the repository's CP-001..003). */
 const CASE_STUDY = caseStudyBytes(SHOP);
+/** DEV-303 §6.1 row 3: the reference pictures a whole_page run attaches: the counted cases' first image each (owner order). */
+const REFS = ["CP-001", "CP-002", "CP-003"].map((case_id, n) => ({ id: `ref-${n + 1}`, case_id, sha256: sha(readFileSync(resolve(REPO, CASE_STUDY_REPO_FILES[n + 1]!))) }));
 
 function requestObject(over: Record<string, unknown> = {}, facts: Buffer = FACTS_BYTES): Record<string, unknown> {
   return {
@@ -71,11 +74,15 @@ function requestObject(over: Record<string, unknown> = {}, facts: Buffer = FACTS
     case_study: { path: CASE_STUDY_FILE, sha256: sha(CASE_STUDY) },
     facts_ref: { root: "second-root-shops", shop_id: SHOP },
     facts_sha256: sha(facts),
-    max_images: 6,
+    // DEV-303 §6.1 row 3: a real shop's design is one whole-page picture per viewport (PC 1 + SP 1)
+    layout: "whole_page",
+    max_images: 2,
     codex_runs: 1,
     ...over,
   };
 }
+/** The section split (no layout, PC 2 + SP 4): fictional / research requests only. */
+const SECTION_SPLIT = { layout: undefined, max_images: 6 } as const;
 const bytesOf = (o: unknown) => Buffer.from(`${JSON.stringify(o, null, 2)}\n`);
 const codeOf = async (p: Promise<unknown>) => p.then(() => "resolved", (e: { code?: string }) => e.code ?? String(e));
 const syncCode = (f: () => unknown) => {
@@ -117,7 +124,7 @@ async function requestEntry(argv: string[], w: { repo: string; home: string; led
       preflight: async () => null,
       now: () => NOW,
       batch: async (o) => {
-        const r = await generateImagesInOneRun({ sandbox: w.fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: w.fake.tmpBase, maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.signal === undefined ? {} : { signal: o.signal }) });
+        const r = await generateImagesInOneRun({ sandbox: w.fake.sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: w.fake.tmpBase, maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.referenceImages ? { referenceImages: o.referenceImages } : {}), ...(o.signal === undefined ? {} : { signal: o.signal }) });
         return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model };
       },
     },
@@ -142,10 +149,11 @@ function world(o: { request?: Record<string, unknown>; facts?: Buffer; shopDir?:
   // root's validated copy in the run's private directory (outside the clone)
   const privateDir = join(runsDir, "requests-private", id);
   mkdirSync(privateDir, { recursive: true, mode: 0o700 });
-  const requestBytes = bytesOf(o.request ?? requestObject({}, o.facts ?? FACTS_BYTES));
+  const requestObj = o.request ?? requestObject({}, o.facts ?? FACTS_BYTES);
+  const requestBytes = bytesOf(requestObj);
   const requestFile = join(privateDir, `${id}.json`);
   writeFileSync(requestFile, requestBytes);
-  const fake = fakeCodex("six");
+  const fake = fakeCodex(requestObj.layout === "whole_page" ? "two" : "six");
   const invoked: string[][] = [];
   const opts = { repoRoot: repo, stateDir, runsDir, home, requestId: id, requestSha256: sha(requestBytes), requestFile };
   const deps = {
@@ -229,7 +237,7 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
     expect((await fictionalAsReal.cycle()).report).toMatchObject({ status: "refused", code: "REAL_SHOP_IS_FICTIONAL", invoked: false });
     const other = Buffer.from(JSON.stringify({ ...FACTS, shop_id: "test-shop-b" }));
     expect((await world({ request: requestObject({}, other), facts: other }).cycle()).report.code).toBe("FACTS_SHOP_MISMATCH");
-    const notListed = world({ request: requestObject({ kind: "fictional" }) });
+    const notListed = world({ request: requestObject({ kind: "fictional", ...SECTION_SPLIT }) });
     expect((await notListed.cycle()).report.code).toBe("SHOP_NOT_FICTIONAL");
     expect(notListed.fake.execs + fictionalAsReal.fake.execs).toBe(0);
   });
@@ -310,15 +318,19 @@ describe("DEV-303 the facts pack a request names (outside git, no link, its SHA-
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-cs-1";
     const cs = caseStudyBytes("hoshigama");
-    const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: { path: CASE_STUDY_FILE, sha256: sha(cs) }, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama", caseStudy: cs });
+    const w = world({ id, request: requestObject({ id, kind: "fictional", ...SECTION_SPLIT, case_study: { path: CASE_STUDY_FILE, sha256: sha(cs) }, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama", caseStudy: cs });
     expect((await validateRequestFile({ file: w.requestFile, home: w.home, repo: w.repo })).case_study?.counted).toEqual(["CP-001", "CP-002", "CP-003"]);
-    const without = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama", caseStudy: null });
+    const without = world({ id, request: requestObject({ id, kind: "fictional", ...SECTION_SPLIT, case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama", caseStudy: null });
     expect((await validateRequestFile({ file: without.requestFile, home: without.home, repo: without.repo })).case_study).toBeNull();
   });
 });
 
 describe("DEV-303 request prompts: text from the facts pack only; the pinned prompts unchanged", () => {
-  const request = parseRequest(bytesOf(requestObject()), sha(bytesOf(requestObject())), ID).request as DesignRequest;
+  // DEV-303 §6.1 row 3: parseRequest refuses a real_shop section split; the pure builder's section-split prompts are
+  // unchanged (pinned), so they are built here from the same request object without the layout
+  const parsed = parseRequest(bytesOf(requestObject()), sha(bytesOf(requestObject())), ID).request as DesignRequest;
+  const request = { ...parsed, max_images: 6 } as DesignRequest;
+  delete (request as { layout?: unknown }).layout;
   const plan = buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
   const parts = [...plan.viewports.desktop_1440.parts, ...plan.viewports.mobile_390.parts];
 
@@ -364,7 +376,7 @@ describe("DEV-303 request prompts: text from the facts pack only; the pinned pro
 });
 
 describe("DEV-303 the request cycle end to end (fake Codex)", () => {
-  it("real_shop: one invocation, six pictures in a private run outside the clone, one use per request id, delivered, private record", async () => {
+  it("real_shop: one invocation, a whole-page PC 1 + SP 1 in a private run outside the clone, one use per request id, delivered, private record", async () => {
     const w = world();
     expect((await precheckRequestCycle(w.opts, w.deps)).report).toMatchObject({ status: "would_run", approval_id: ID, kind: "real_shop" });
     const { report, run } = await w.cycle();
@@ -374,10 +386,15 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(runDir.startsWith(w.runsDir)).toBe(true);
     expect(runDir.startsWith(w.repo)).toBe(false);
     expect(statSync(runDir).mode & 0o777).toBe(0o700);
-    expect(readdirSync(join(runDir, "parts")).sort()).toEqual(["pc-1.png", "pc-2.png", "sp-1.png", "sp-2.png", "sp-3.png", "sp-4.png"]);
+    expect(readdirSync(join(runDir, "parts")).sort()).toEqual(["pc-1.png", "sp-1.png"]);
     expect(readFileSync(join(runDir, "facts-pack.json"))).toEqual(FACTS_BYTES);
     const receipt = JSON.parse(readFileSync(report.receipt!, "utf8")) as WorkerReceipt;
-    expect(receipt).toMatchObject({ status: "succeeded", mode: "request", kind: "real_shop", request_id: ID, approval_id: ID, plan_id: ID, shop: SHOP, direction: "request", packet_sha256: sha(w.requestBytes), request_sha256: sha(w.requestBytes), facts_sha256: sha(FACTS_BYTES), counts: { pc: 2, sp: 4, total: 6, stopped: 0 }, verified: true, images_total: 6 });
+    expect(receipt).toMatchObject({ status: "succeeded", mode: "request", kind: "real_shop", request_id: ID, approval_id: ID, plan_id: ID, shop: SHOP, direction: "request", packet_sha256: sha(w.requestBytes), request_sha256: sha(w.requestBytes), facts_sha256: sha(FACTS_BYTES), counts: { pc: 1, sp: 1, total: 2, stopped: 0 }, verified: true, images_total: 2, design_layout: "whole_page" });
+    // DEV-303 §6.1 row 3: the success-case references by id, case and SHA-256 only (the counted cases, owner order)
+    expect(receipt.reference_images).toEqual(REFS);
+    expect(run!.referenceImages).toEqual(REFS);
+    expect(JSON.parse(readFileSync(join(runDir, "reference-inputs.json"), "utf8"))).toEqual({ schema: "image_first_reference_inputs_v0", layout: "whole_page", references: REFS });
+    expect(JSON.parse(readFileSync(join(runDir, "run-plan.json"), "utf8")).viewports.desktop_1440).toMatchObject({ mode: "whole_page", section_order: ["page"] });
     // Issue #336 follow-up: the checked case study is bound by its SHA-256 (an allowlisted field; never its path or content)
     expect(receipt.case_study_sha256).toBe(sha(CASE_STUDY));
     expect(run!.caseStudySha256).toBe(sha(CASE_STUDY));
@@ -400,7 +417,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(d).toMatchObject({ status: "delivered", approval_id: ID, bundle: "sealed" });
     const inbox = join(w.runsDir, "review-inbox");
     const manifest = JSON.parse(readFileSync(join(inbox, ID, "manifest.json"), "utf8")) as Record<string, unknown>;
-    expect(manifest).toMatchObject({ bundle_id: ID, approval_id: ID, shop: SHOP, direction: "request", mode: "request", kind: "real_shop" });
+    expect(manifest).toMatchObject({ bundle_id: ID, approval_id: ID, shop: SHOP, direction: "request", mode: "request", kind: "real_shop", counts: { pc: 1, sp: 1 } });
     expect(existsSync(join(inbox, "previews", ID, "INDEX.json"))).toBe(true);
 
     // the audit material comes from the run itself, never the repository
@@ -415,20 +432,59 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     const path = await writeRealShopRecord({
       home: w.home,
       repo: w.repo,
-      record: { schema: REAL_SHOP_RECORD_SCHEMA, request_id: ID, shop_id: SHOP, kind: "real_shop", request_sha256: run!.requestSha256, facts_sha256: run!.factsSha256, plan_sha256: run!.planSha256, case_study_sha256: run!.caseStudySha256, commit: run!.commit, run: { status: "succeeded", code: null, invoked: true, receipt_written: true }, review: { status: d.status, code: d.code, bundle_sha256: d.bundle_sha256 }, use: "internal_design_reference_only", recorded_at: "2026-11-20T02:00:00Z" },
+      record: { schema: REAL_SHOP_RECORD_SCHEMA, request_id: ID, shop_id: SHOP, kind: "real_shop", request_sha256: run!.requestSha256, facts_sha256: run!.factsSha256, plan_sha256: run!.planSha256, case_study_sha256: run!.caseStudySha256, design_layout: "whole_page", reference_images: run!.referenceImages!, commit: run!.commit, run: { status: "succeeded", code: null, invoked: true, receipt_written: true }, review: { status: d.status, code: d.code, bundle_sha256: d.bundle_sha256 }, use: "internal_design_reference_only", recorded_at: "2026-11-20T02:00:00Z" },
     });
     expect(path).toBe(join(w.home, "second-root-shops", SHOP, "runs", `${ID}.json`));
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(readFileSync(path, "utf8")).not.toContain("架空喫茶");
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ case_study_sha256: sha(CASE_STUDY), facts_sha256: sha(FACTS_BYTES) });
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ case_study_sha256: sha(CASE_STUDY), facts_sha256: sha(FACTS_BYTES), design_layout: "whole_page", reference_images: REFS });
+    expect(readFileSync(path, "utf8")).not.toMatch(/design-library|\.webp|\//);
     expect(await codeOf(writeRealShopRecord({ home: w.home, repo: w.repo, record: JSON.parse(readFileSync(path, "utf8")) }))).toBe("RECORD_EXISTS");
     expect(git(w.repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
+  });
+
+  it("DEV-303 §6.1 row 3: the success-case references reach the one exec as --image copies and ABSOLUTE staged paths in the prompt; the run keeps only the token", async () => {
+    const w = world();
+    const seen: { stdin: string; argv: string[]; staged: Record<string, string> }[] = [];
+    const base = w.fake.sandbox.run.bind(w.fake.sandbox);
+    w.fake.sandbox.run = async (a, o) => {
+      if (a[0] === "exec") {
+        const dir = join(o.workDir!, "inputs");
+        seen.push({ stdin: String(o.input ?? ""), argv: [...a], staged: Object.fromEntries(readdirSync(dir).sort().map((n) => [n, sha(readFileSync(join(dir, n)))])) });
+      }
+      return base(a, o);
+    };
+    const { report } = await w.cycle();
+    expect(report.status).toBe("succeeded");
+    expect(seen).toHaveLength(1);
+    const argv = seen[0]!.argv;
+    const inputs = join(argv[argv.indexOf("--cd") + 1]!, "inputs");
+    expect(inputs.startsWith("/")).toBe(true);
+    const names = ["ref-1.webp", "ref-2.webp", "ref-3.webp"];
+    expect(seen[0]!.staged).toEqual(Object.fromEntries(names.map((n, k) => [n, REFS[k]!.sha256])));
+    expect(argv.filter((x) => x.startsWith("--image="))).toEqual(names.map((n) => `--image=${join(inputs, n)}`));
+    expect(seen[0]!.stdin).toContain(`set referenced_image_paths to exactly [${names.map((n) => `"${join(inputs, n)}"`).join(", ")}]`);
+    expect(seen[0]!.stdin).not.toContain(REFERENCE_DIR_TOKEN);
+    // the private run keeps the pinned prompt (the token, never the temporary path); the copies are gone with the work dir
+    const batch = readFileSync(join(report.run_dir!, "prompts", "batch.txt"), "utf8");
+    expect(batch).toContain(`"${REFERENCE_DIR_TOKEN}/ref-1.webp"`);
+    expect(batch).not.toContain(inputs);
+    expect(existsSync(inputs)).toBe(false);
+    expect(readFileSync(report.receipt!, "utf8")).not.toMatch(/design-library|\.webp|inputs\//);
+    // the bundle verifier holds the receipt's reference list: a forged entry is refused before delivery
+    const receiptPath = report.receipt!;
+    const original = readFileSync(receiptPath, "utf8");
+    const forged = JSON.parse(original) as Record<string, unknown>;
+    forged.reference_images = [...REFS, ...REFS, ...REFS].map((r, n) => ({ ...r, id: `ref-${n + 1}` }));
+    rmSync(receiptPath);
+    writeFileSync(receiptPath, JSON.stringify(forged), { mode: 0o600 });
+    expect(await codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }))).toBe("RECEIPT_INVALID");
   });
 
   it("fictional: the fictional-shop check passes, the bundle is delivered and the research log intake accepts it", async () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-1";
-    const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
+    const w = world({ id, request: requestObject({ id, kind: "fictional", ...SECTION_SPLIT, case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "second-root-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
     const { report, run } = await w.cycle();
     expect(report).toMatchObject({ status: "succeeded", kind: "fictional", approval_id: id });
     // no case study on this fictional request: nothing to bind
@@ -447,7 +503,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
   it("local-shops root (the clone's gitignored .local-shops; fictional only) works and leaves the tree clean", async () => {
     const bakery = readFileSync(resolve(REPO, BAKERY));
     const id = "req-hoshigama-local-1";
-    const w = world({ id, request: requestObject({ id, kind: "fictional", case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "local-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
+    const w = world({ id, request: requestObject({ id, kind: "fictional", ...SECTION_SPLIT, case_study: undefined, shop_id: "hoshigama", facts_ref: { root: "local-shops", shop_id: "hoshigama" } }, bakery), facts: bakery, shopDir: "hoshigama" });
     mkdirSync(join(w.repo, ".local-shops", "hoshigama"), { recursive: true });
     writeFileSync(join(w.repo, ".local-shops", "hoshigama", "facts-pack.json"), bakery);
     expect((await w.cycle()).report.status).toBe("succeeded");

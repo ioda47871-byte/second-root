@@ -144,6 +144,9 @@ export type RequestReceiptFields = {
   photo_inputs?: { request_id: string; files: { name: string; sha256: string }[] };
   /** Issue #336: a design run's checked success-case analysis, by its SHA-256 only (request.ts readRequestCaseStudy). */
   case_study_sha256?: string;
+  /** DEV-303 §6.1 row 3: only on a whole_page design run (PC 1 + SP 1): the layout, and its reference pictures by id, case and SHA-256 only. */
+  design_layout?: "whole_page";
+  reference_images?: { id: string; case_id: string; sha256: string }[];
 };
 
 export type CycleOptions = {

@@ -118,6 +118,14 @@
 6. **依頼に結びつける。**実店舗のデザインの依頼 (IMAGE_FIRST の依頼モード、`kind: "real_shop"`) には
    `case_study: { "path": "case-study.json", "sha256": "<記録の SHA-256>" }` を入れる (path は事実パックと
    同じ店の置き場の中のファイル名)。`--validate-request` と worker が同じゲートの検査を行い、無い・未確認・
-   3 件未満なら `CASE_STUDY_REQUIRED` や `CASE_STUDY_NOT_OWNER_CONFIRMED` などで拒否する。記録は Codex に渡さない
+   3 件未満なら `CASE_STUDY_REQUIRED` や `CASE_STUDY_NOT_OWNER_CONFIRMED` などで拒否する。
+   実店舗のデザインの依頼は **ページ全体の画像** (`"layout": "whole_page"`、`"max_images": 2`、PC 1 枚 + SP 1 枚。
+   節ごとの分割 `section_sequence` は架空・研究の依頼だけ) にする (`docs/design/image-first-production-flow.md` §3.2、
+   §6.1 の 3)。whole_page の依頼では、記録のうち**原理だけ**がプロンプトに入る: `shop_specific_principles` と、
+   数えた例ごとの `principles_to_bring` / `do_not_copy` (オーナーが選んだ順)。観察の文・ファイルのパスは入らない。
+   さらに、数えた例の原本の画像 (各例の最初の PNG / JPEG / WebP。頁の HTML・GIF・ZIP は使わない。合わせて 5 枚まで)
+   を参照画像として 1 回の Codex 実行に添付する (記録は SHA-256 と id だけ)。だから原理と写さないことには、
+   店の未確認の事実・数字・人名を書かない (プロンプトに入る)。whole_page の依頼に `photo_inputs` は付けられない
+   (`WHOLE_PAGE_PHOTO_INPUTS_REFUSED`。順番はデザイン → 承認 → 素材)
 
 この記録の文面 (店の事実を含みうる) と確認ページは、リポジトリ・試験・Issue に入れない。

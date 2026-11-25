@@ -97,6 +97,23 @@ export function sequenceProblems(c: Composition, viewport: ImageFirstViewport, d
   return [...new Set(p)];
 }
 
+/**
+ * DEV-303 §6.1 row 3: problems with a whole_page viewport's declaration (fixed detail strings): its width, exactly one
+ * part (index 1) holding the one section "page" over the whole frame, no seam, section_order ["page"]. The page's own
+ * sections are not declared (the model decides them; the located read reports what it sees).
+ */
+export function wholePageProblems(c: Composition, viewport: ImageFirstViewport): string[] {
+  const p: string[] = [];
+  if (c.target_css_width !== VIEWPORT_WIDTHS[viewport]) p.push("TARGET_WIDTH");
+  if (c.mode !== "whole_page") p.push("MODE_NOT_WHOLE_PAGE");
+  if (c.parts.length !== 1 || c.parts[0]!.index !== 1) p.push("MODE_PART_COUNT");
+  if (c.seams.length !== 0) p.push("SEAMS_DECLARATION");
+  if (c.section_order.length !== 1 || c.section_order[0] !== "page") p.push("WHOLE_PAGE_ORDER");
+  const s = c.parts[0]?.sections ?? [];
+  if (s.length !== 1 || s[0]!.id !== "page" || s[0]!.box.x !== 0 || s[0]!.box.y !== 0 || s[0]!.box.w !== 1 || s[0]!.box.h !== 1) p.push("WHOLE_PAGE_BOX");
+  return p;
+}
+
 /** Scales and stacks the parts (the pictures already decoded, by part index) and converts the declared boxes. */
 export function buildComposite(c: Composition, viewport: ImageFirstViewport, decoded: ReadonlyMap<number, RgbImage>): CompositeView {
   const width = VIEWPORT_WIDTHS[viewport];

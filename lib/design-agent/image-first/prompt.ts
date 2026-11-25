@@ -287,7 +287,8 @@ export type PlannedPart = {
 };
 export type PlannedViewport = {
   target_css_width: 1440 | 390;
-  mode: "section_sequence";
+  /** DEV-303 §6.1 row 3: "whole_page" = one part holding the whole page (request mode only). */
+  mode: "section_sequence" | "whole_page";
   section_order: string[];
   parts: PlannedPart[];
   seams: { after_part: number; kind: "section_break" }[];

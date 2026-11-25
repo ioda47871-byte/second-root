@@ -104,6 +104,10 @@
    素材は Claude が自分で 1 枚ずつ確かめる。デザインの段は今までどおり監査する。
 6. 実店舗の private な記録の `use`: 素材の段 `sales_proposal_image_material`、写真入りのデザイン `proposal_demo_design`、写真なしのデザインは今までどおり `internal_design_reference_only`。
 
+**DEV-303 §6.1 の 3（[正式な制作フロー](../design/image-first-production-flow.md) §1 段 2・§3.2）以降**: 実店舗のデザインの段は
+§E の whole_page だけ。whole_page の依頼に `photo_inputs` は付けられない（`WHOLE_PAGE_PHOTO_INPUTS_REFUSED`。正式な順番はデザイン → 承認 → 素材で、
+素材の段の作り直しは §6.1 の 6）。上の 2〜6 の `photo_inputs` は、架空・研究の依頼（節ごとの分割）にだけ残る。
+
 残る危険（受け入れ済み、オーナー決定 2026-11-24 の review）:
 
 - (a) worker と同じ uid なら、`~/sr-runs` に手作りの素材の run（receipt と inbox の写し）を置けば、uid と mode の検査は通りうる。これは、
@@ -112,13 +116,50 @@
 - (b) `photo_brief` の被写体が商品らしいものでも、止めるのはプロンプトだけ（brief の検査は URL・数字・facts の値などの形の検査）。
   依頼を置く前に、Claude が brief を独立に確かめる（商品・店内・建物・人の顔を被写体にしない）。
 
+### E. デザインの段はページ全体の画像（whole_page。DEV-303 §6.1 の 3）
+
+実店舗のデザインの依頼は `"layout": "whole_page"` だけ（無い・`"section_sequence"` は `REAL_SHOP_WHOLE_PAGE_REQUIRED`）。節ごとの分割（PC 2 + SP 4）は
+架空・研究の依頼にだけ残り、その依頼とプロンプトは今までと 1 バイトも変わらない。
+
+```json
+{ "schema": "sr_imagefirst_request_v1", "id": "req-<shop>-design-1", "shop_id": "<shop_id>", "kind": "real_shop",
+  "created_at": "YYYY-MM-DDTHH:MM:SSZ", "layout": "whole_page", "direction": { … },
+  "case_study": { "path": "case-study.json", "sha256": "<記録の SHA-256>" },
+  "facts_ref": { "root": "second-root-shops", "shop_id": "<shop_id>" }, "facts_sha256": "<sha256>",
+  "max_images": 2, "codex_runs": 1 }
+```
+
+- **枚数と枠**: 1 回の Codex 実行で PC 1 枚 + SP 1 枚（`max_images: 2`）。どちらも画像ツールの縦長 2:3（1024x1536。ツールが作れるいちばん縦長の枠）に、
+  ページ全体（ヘッダーからフッターまで）を縮めて 1 つの構図で描く。PC と SP は同じ方針の、それぞれ独立した構図。細部が要るときも節ごとに分けない
+  （承認した全体の画像を参照する追加の画像で補う。§3.2）。計画（`image_first_request_plan_v0`、`prompt_version: if-req-whole-v0`）は
+  `layout: "whole_page"`、各表示 `mode: "whole_page"`・1 枚（節 `page` = 枠全体）・`frame: "portrait_2x3"` を記録する。
+- **プロンプト**: 節の順・数をコードで決めない（モデルが原理から決める）。載せる情報の一覧（facts pack の値。順不同。一字一句そのまま）、
+  使ってよいラベル、事例分析の `shop_specific_principles` と、数えた例ごとの `principles_to_bring` / `do_not_copy`、PC/SP の独立、
+  日本語が情報の中心であること、写真の場所は単純な長方形・角丸の差し替え枠に「イメージ」と書くこと（写真そのもの・商品・料理・店内・建物・人物は描かない）、
+  Identity Lock の行（事実を作らない）。
+- **成功例の参照画像**: ゲートを通った事例分析の、数えた例の原本（オーナーが選んだ順に、各例の**その例を数えさせた原本**（索引の path と SHA-256、
+  または非公開の原本として記録された SHA-256）のうち最初の PNG / JPEG / WebP。例の下に並べた他の画像・頁の HTML・GIF・ZIP は使わない。
+  前の例で選んだ画像と同じ SHA-256 は飛ばし、その例の次の原本にする）を最大 5 枚（画像ツールの上限 `IMAGE_TOOL_MAX_REFS`）。
+  実店舗では、添付できる原本のある数えた例の数を n として、min(3, n) 枚以上が要る（0 枚は `REFERENCE_IMAGES_MISSING`、足りなければ
+  `REFERENCE_IMAGES_TOO_FEW`）。実店舗では、プロンプトに入る原理・写さないことの文に、数字・通貨・値段・年・歴史・人物・受賞・予約などの
+  事実らしい印や facts pack の値があれば止まる（`CASE_STUDY_TEXT_HAS_FACT`）。Codex の一時作業 dir の `inputs/ref-N.<ext>` に写し、`--image` で添付する。
+  ツールの `referenced_image_paths` は**絶対パスだけ**を受けるので、計画のプロンプトは各参照を `@@SR_REFERENCE_DIR@@/ref-N.<ext>` と書き、
+  実行の直前に image-once.ts がこの印を写した先の絶対パスに置き換える（置き換えるのは Codex に渡す文だけ。計画・その SHA-256・run の
+  `prompts/batch.txt` は印のまま。パスはどの記録にも残らない）。印と参照画像が一致しない、または合わせて 6 枚以上の実行は、写す前に止まる。
+- **whole_page は事例分析が必須**（架空の依頼でも。`CASE_STUDY_REQUIRED`）。`photo_inputs` は付けられない（`WHOLE_PAGE_PHOTO_INPUTS_REFUSED`）。
+- **記録**: run の `reference-inputs.json`（`id`・`case_id`・`sha256` だけ）、receipt の `design_layout: "whole_page"` と `reference_images`
+  （同じ 3 項目）、実店舗の private な記録の `design_layout`・`reference_images`。`--validate-request` の結果にも `layout`・`reference_images` が出る。
+  封印・検証（bundle.ts）と review の受け渡しは whole_page の run を PC 1 + SP 1 として数える。`image-first-check` の検査は whole_page の表示を
+  1 枚の全体画像として扱う（節の宣言は `page` だけ。画面の高さの下限は当てはめず、全体であることはヘッダーとフッターと複数の節の読み取りで確かめる）。
+
 ## 2a. Claude の手順（1 店。既存の `real-shop-demo-workflow.md` に画像の段を足しただけ）
 
 1. 候補を選ぶ（営業エージェントの run で登録済みの候補。新しく作らない）。
 2. `~/second-root-shops/<shop_id>/facts-pack.json` を書き、**オーナーに値を 1 つずつ確認してもらう**（workflow §2）。
 3. `second-root-design-director` スキルで店に固有の方向性を決め、依頼 `~/sr-runs/requests/<依頼 ID>.json` を作る
    （`schema: sr_imagefirst_request_v1`、ID は `req-…`（"imagefirst" を含まない）、`created_at` は `YYYY-MM-DDTHH:MM:SSZ`、`kind: real_shop`、
-   方向性、`facts_ref.root: second-root-shops` と facts の SHA-256、`max_images: 6`、`codex_runs: 1`）。置く前に
+   方向性、`facts_ref.root: second-root-shops` と facts の SHA-256、`layout: "whole_page"`、`max_images: 2`、`codex_runs: 1`、
+   オーナーが確認した事例分析の `case_study`。§E）。置く前に
    `node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --validate-request <file>` で確かめる（root は拾った依頼を断られても回数に数える）。
    依頼 ID は二度と使えない。あとは root の timer が上限の中で動かす（A）。
 4. 届いたら `~/sr-runs/review-inbox/<依頼 ID>` を見る（実店舗の記録は `~/second-root-shops/<shop_id>/runs/` に入り、研究ログには書かない）。PC と SP の画像を**参考として**見て、頁 `comp/` を書く（workflow §3。
@@ -127,7 +168,7 @@
 6. `package-local.ts` → 事実の登録（workflow §5）→ `import-local.ts --facts-from-store`（ローカル）。hosted は runbook B-5a の後だけ。
 7. 営業文の下書きを用意し、管理画面でオーナーの品質承認・送信承認を待つ。**送信はオーナーが手で行う。**
 8. 生成が要件を満たさなければ、同じ依頼 ID は使わず、方向性を直した新しい依頼にする（上限の中で。自動の再試行はしない）。
-9. 写真素材を使う場合（§2 D）: 3 の前に素材の段の依頼を置き、inbox に届いた素材を確かめてから、manifest の `photos`（または結果の `photo_files`）をデザインの段の `photo_inputs` に写す。
+9. 写真素材を使う場合（§2 D。架空・研究の依頼だけ。実店舗の whole_page のデザインには `photo_inputs` を付けられない）: 3 の前に素材の段の依頼を置き、inbox に届いた素材を確かめてから、manifest の `photos`（または結果の `photo_files`）をデザインの段の `photo_inputs` に写す。
    素材を頁に使うときは MVP_SPEC §7.1 の限定の改定の 5 条件（「イメージ」の表示・店の物として見せない・事実と分ける・「提案用デモ」の表示・差し替えられる）をすべて守る。
 
 ## 3. オーナーの判断・承認が要るもの

@@ -130,6 +130,7 @@ type Receipt = {
   request_sha256?: unknown;
   images_total?: unknown;
   request_stage?: unknown;
+  design_layout?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown; photo?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
@@ -211,7 +212,7 @@ async function checkReceipt(r: Receipt, approvalId: string, runDir: string, stat
 /**
  * DEV-303: a request run's receipt. There is no packet: the request (its SHA-256 is the receipt's packet_sha256, which
  * the worker checked against root's) was the run's approval. The receipt is a finished, verified, complete run of exactly
- * this request id (PC 2 + SP 4), its commit is on origin/develop and the worker's own claim for the id agrees with it.
+ * this request id (PC 2 + SP 4; a whole_page run PC 1 + SP 1), its commit is on origin/develop and the worker's own claim for the id agrees with it.
  */
 async function checkRequestReceipt(r: Receipt, id: string, runDir: string, stateDir: string, d: DeliverReviewDeps): Promise<ExpectedRecord> {
   if (!r || typeof r !== "object" || r.schema !== "imagefirst_worker_receipt_v1" || r.mode !== "request") stop("RECEIPT_INVALID");
@@ -224,7 +225,13 @@ async function checkRequestReceipt(r: Receipt, id: string, runDir: string, state
     // DEV-303 (owner decision 2026-11-24): a photo-materials run: 1..6 pictures, no PC / SP part (bundle.ts checks each file)
     const n = c.photo;
     if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 6 || c.pc !== 0 || c.sp !== 0 || c.total !== n || r.images_total !== n) stop("RECEIPT_NOT_SUCCEEDED");
-  } else if (r.request_stage !== undefined || c.pc !== 2 || c.sp !== 4 || c.total !== 6 || r.images_total !== 6) stop("RECEIPT_NOT_SUCCEEDED");
+  } else {
+    // DEV-303 §6.1 row 3: a whole_page design run makes PC 1 + SP 1 (bundle.ts checks its reference list); others PC 2 + SP 4
+    const whole = r.design_layout === "whole_page";
+    if (r.design_layout !== undefined && !whole) stop("RECEIPT_INVALID");
+    const want = whole ? { pc: 1, sp: 1, total: 2 } : { pc: 2, sp: 4, total: 6 };
+    if (r.request_stage !== undefined || c.pc !== want.pc || c.sp !== want.sp || c.total !== want.total || r.images_total !== want.total) stop("RECEIPT_NOT_SUCCEEDED");
+  }
   const started = typeof r.timings?.started_at === "string" ? Date.parse(r.timings.started_at) : NaN;
   const finished = typeof r.timings?.finished_at === "string" ? Date.parse(r.timings.finished_at) : NaN;
   if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) stop("RECEIPT_INVALID");

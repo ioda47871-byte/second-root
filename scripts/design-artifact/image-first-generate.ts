@@ -66,7 +66,7 @@ function batchIn(ctx: Ctx): FullPageBatch {
   return async (o) => {
     const sandbox = ctx.sandbox();
     if (sandbox === null) throw new Error("no sandbox");
-    const r = await generateImagesInOneRun({ sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: tmpdir(), maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.signal === undefined ? {} : { signal: o.signal }) });
+    const r = await generateImagesInOneRun({ sandbox, prompt: o.prompt, timeoutMs: o.timeoutMs, tmpBase: tmpdir(), maxImages: o.maxImages, ...(o.inputImages ? { inputImages: o.inputImages } : {}), ...(o.referenceImages ? { referenceImages: o.referenceImages } : {}), ...(o.signal === undefined ? {} : { signal: o.signal }) });
     return { images: r.images, outcome: r.outcome, stopCode: r.stopCode, imageCalls: r.imageCalls, imageFailed: r.imageFailed, imageCallIds: r.imageCallIds ?? [], threadId: r.threadId, cliVersion: r.cliVersion, model: r.model, ...(r.diagnostics ? { diagnostics: r.diagnostics } : {}) };
   };
 }

@@ -22,16 +22,23 @@ import { CASE_STUDY_FILE, caseStudyBytes, cleanupTemps, ENV, fakeCodex, git, NOW
 
 // DEV-303 (owner decision 2026-11-24): the two-stage IMAGE_FIRST request flow — stage 1 photo_materials (1..6 picture
 // materials, one Codex run), stage 2 design with photo_inputs (the stage-1 pictures attached to the one Codex run with
-// --image, never copied into the design run or its inbox bundle). FICTIONAL fixtures only (the "real_shop" pack is
-// invented for the test). A FAKE Codex: no model, no image tool, no network.
+// --image, never copied into the design run or its inbox bundle). FICTIONAL fixtures only. A FAKE Codex: no model, no
+// image tool, no network.
+// DEV-303 §6.1 row 3: a real_shop design is whole_page only and a whole_page design never takes photo_inputs, so the
+// section-split design with photo_inputs below runs on the research log's fictional bakery (hoshigama); the invented
+// "real_shop"-shaped pack (PIN_FACTS) stays only for the pinned section-split prompt (built without parseRequest).
 
 vi.setConfig({ testTimeout: 90_000 });
 afterAll(cleanupTemps);
 
-const SHOP = "test-shop-p";
-const FACTS: FactsPack = {
+const SHOP = "hoshigama";
+/** The research log's fictional bakery (its committed pack): the fictional-shop check accepts it. */
+const FACTS_BYTES = readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/bakery/facts-pack.json"));
+const FACTS = JSON.parse(FACTS_BYTES.toString("utf8")) as FactsPack;
+/** The invented real_shop-shaped pack of the pinned section-split prompt (see the pin below). */
+const PIN_FACTS: FactsPack = {
   schema: "shop_facts_pack_v1",
-  shop_id: SHOP,
+  shop_id: "test-shop-p",
   facts: [
     { id: "F1", key: "name", value: "架空パン工房 こむぎの木", source_id: "S1" },
     { id: "F2", key: "category", value: "bakery", source_id: "S1" },
@@ -42,7 +49,7 @@ const FACTS: FactsPack = {
     { id: "F7", key: "service_1", value: "架空の食パン", source_id: "S1" },
   ],
 };
-const FACTS_BYTES = Buffer.from(`${JSON.stringify(FACTS, null, 2)}\n`);
+const PIN_FACTS_BYTES = Buffer.from(`${JSON.stringify(PIN_FACTS, null, 2)}\n`);
 const DIRECTION = {
   name: "粉の朝",
   concept: "粉の白さと朝の光を、余白の多い静かな画面にする。",
@@ -59,9 +66,9 @@ const BRIEF = {
 };
 const PHOTO_ID = "req-test-shop-p-photos-1";
 const DESIGN_ID = "req-test-shop-p-design-1";
-const envelope = (id: string) => ({ schema: "sr_imagefirst_request_v1", id, shop_id: SHOP, kind: "real_shop", created_at: "2026-11-24T00:30:00Z", facts_ref: { root: "second-root-shops", shop_id: SHOP }, facts_sha256: sha(FACTS_BYTES), codex_runs: 1 });
+const envelope = (id: string) => ({ schema: "sr_imagefirst_request_v1", id, shop_id: SHOP, kind: "fictional", created_at: "2026-11-24T00:30:00Z", facts_ref: { root: "second-root-shops", shop_id: SHOP }, facts_sha256: sha(FACTS_BYTES), codex_runs: 1 });
 const photoRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(PHOTO_ID), stage: "photo_materials", photo_brief: BRIEF, max_images: 6, ...over });
-// Issue #336: a real_shop design request names its owner-confirmed case study (invented text, the repository's images)
+// Issue #336: a design request may name its owner-confirmed case study (invented text, the repository's images; checked when named)
 const CASE_STUDY = caseStudyBytes(SHOP);
 const designRequest = (over: Record<string, unknown> = {}) => ({ ...envelope(DESIGN_ID), stage: "design", direction: DIRECTION, case_study: { path: CASE_STUDY_FILE, sha256: sha(CASE_STUDY) }, max_images: 6, ...over });
 const bytesOf = (o: unknown) => Buffer.from(`${JSON.stringify(o, null, 2)}\n`);
@@ -261,7 +268,7 @@ describe("DEV-303 the prompts of both stages", () => {
     expect(buildPhotoPlan({ request: photo, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS }).plan_sha256).toBe(plan.plan_sha256);
   });
   it("stage 1: a brief quoting a facts value is refused", () => {
-    const quoting = { ...photo, photo_brief: { ...photo.photo_brief, mood: "架空パン工房 こむぎの木 の朝" } };
+    const quoting = { ...photo, photo_brief: { ...photo.photo_brief, mood: "架空パン店 ほし窯 の朝" } };
     expect(() => buildPhotoPlan({ request: quoting, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS })).toThrow(PromptStop);
   });
   it("stage 2 with photo_inputs: the イメージ label, the 提案用デモ marker, replaceable frames, facts kept apart; without them the prompt is unchanged", () => {
@@ -314,9 +321,12 @@ describe("Issue #335 (production flow §3.5, §6.1 row 1): at most 5 reference p
     expect(buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS }).photo_inputs?.files).toHaveLength(5);
   });
   it("without photo_inputs the batch prompt and plan are byte-identical to before (pinned SHA-256)", () => {
+    // DEV-303 §6.1 row 3: parseRequest now refuses a real_shop section split (REAL_SHOP_WHOLE_PAGE_REQUIRED); the pure
+    // plan builder is unchanged for it, so the pinned section-split prompt is rebuilt from the same request object
     const obj = designRequest();
-    const request = parseRequest(bytesOf(obj), sha(bytesOf(obj)), DESIGN_ID).request as DesignRequest;
-    const b = buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS });
+    expect(parseCode({ ...obj, kind: "real_shop" })).toBe("REAL_SHOP_WHOLE_PAGE_REQUIRED");
+    const request = { ...(parseRequest(bytesOf(obj), sha(bytesOf(obj)), DESIGN_ID).request as DesignRequest), kind: "real_shop" } as DesignRequest;
+    const b = buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: PIN_FACTS_BYTES, facts: PIN_FACTS });
     expect(b.batch.sha256).toBe("61e75a79e31101647392792236145ff5f68796991626963c3f5af264c8b532fe");
     expect(b.plan_sha256).toBe("f8f33e416a1d0fae0f6ae6cea13d0a3fe298c990eead810576eace226365e775");
   });
@@ -332,7 +342,7 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     expect(readdirSync(join(photoRun, "parts")).sort()).toEqual([1, 2, 3, 4, 5, 6].map((n) => `photo-${n}.png`));
     expect(existsSync(join(photoRun, "photo-brief.json"))).toBe(true);
     const r1 = JSON.parse(readFileSync(one.report.receipt!, "utf8")) as WorkerReceipt;
-    expect(r1).toMatchObject({ status: "succeeded", verified: true, mode: "request", request_stage: "photo_materials", request_id: PHOTO_ID, kind: "real_shop", shop: SHOP, counts: { pc: 0, sp: 0, photo: 6, total: 6, stopped: 0 }, images_total: 6 });
+    expect(r1).toMatchObject({ status: "succeeded", verified: true, mode: "request", request_stage: "photo_materials", request_id: PHOTO_ID, kind: "fictional", shop: SHOP, counts: { pc: 0, sp: 0, photo: 6, total: 6, stopped: 0 }, images_total: 6 });
     expect(files.map((f) => f.name)).toEqual([1, 2, 3, 4, 5, 6].map((n) => `photo-${n}.png`));
     expect(files.map((f) => f.sha256)).toEqual(r1.images.map((i) => i.sha256));
     // one use per request id
@@ -343,7 +353,7 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     const photoInbox = join(w.runsDir, "review-inbox", PHOTO_ID);
     expect(imagesUnder(photoInbox).sort()).toEqual([1, 2, 3, 4, 5, 6].map((n) => `parts/photo-${n}.png`));
     const pm = JSON.parse(readFileSync(join(photoInbox, "manifest.json"), "utf8")) as Record<string, unknown>;
-    expect(pm).toMatchObject({ bundle_id: PHOTO_ID, mode: "request", kind: "real_shop", image_material: true, image_material_label: IMAGE_MATERIAL_LABEL, counts: { pc: 0, sp: 0, photo: 6, composites: 0 } });
+    expect(pm).toMatchObject({ bundle_id: PHOTO_ID, mode: "request", kind: "fictional", image_material: true, image_material_label: IMAGE_MATERIAL_LABEL, counts: { pc: 0, sp: 0, photo: 6, composites: 0 } });
     expect(pm.photos).toEqual(files.map((f, n) => ({ file: `parts/${f.name}`, sha256: f.sha256, frame: ["3:2", "3:2", "1:1", "1:1", "2:3", "2:3"][n] })));
     expect(JSON.parse(readFileSync(join(photoInbox, "receipt.json"), "utf8"))).toMatchObject({ request_stage: "photo_materials", images_total: 6 });
     expect((await verifyBundleDir(photoInbox)).manifest.image_material).toBe(true);
@@ -357,7 +367,7 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
     rmSync(join(forged, "manifest.json"));
     writeFileSync(join(forged, "manifest.json"), `${JSON.stringify(fm, null, 2)}\n`, { mode: 0o600 });
     expect(await codeOf(verifyBundleDir(forged))).toBe("BUNDLE_MANIFEST_INVALID");
-    // never logged in the research log (a real shop's, and a photo-materials bundle in any case)
+    // never logged in the research log (a photo-materials bundle is never logged)
     expect(await codeOf(entryFromInbox({ repo: w.repo, inbox: join(w.runsDir, "review-inbox"), bundleId: PHOTO_ID, shop: SHOP, direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-24T02:00:00Z" }))).not.toBe("resolved");
     const fakeInbox = tmp("sr-photo-intake-");
     mkdirSync(join(fakeInbox, "req-hoshigama-photos-1"));
@@ -436,7 +446,7 @@ describe("DEV-303 two stages end to end (fake Codex): 2 runs, at most 12 picture
       rmSync(receipt);
       writeFileSync(receipt, JSON.stringify(r), { mode: 0o600 });
     };
-    rewrite((r) => (r.kind = "fictional"));
+    rewrite((r) => (r.kind = "real_shop"));
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-6")).code).toBe("PHOTO_INPUT_RUN_MISMATCH");
     rewrite((r) => (r.shop = "test-shop-q"));
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-7")).code).toBe("PHOTO_INPUT_RUN_MISMATCH");
@@ -506,7 +516,7 @@ describe("DEV-303 image-once: --image only when photo inputs are given", () => {
     // Issue #335 follow-up: the lower-level guard shares the request check's limit (lib/design-agent/image-tool-limits.ts)
     expect(IMAGE_TOOL_MAX_REFS).toBe(5);
     expect(PHOTO_TOOL_MAX_REFS).toBe(IMAGE_TOOL_MAX_REFS);
-    for (const n of [6, 7]) await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: n }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 5 input images");
+    for (const n of [6, 7]) await expect(generateImagesInOneRun({ sandbox: f.sandbox, prompt: "p", timeoutMs: 1_000, tmpBase: f.tmpBase, maxImages: 6, inputImages: Array.from({ length: n }, () => Buffer.alloc(30)) })).rejects.toThrow("at most 5 input and reference images");
     expect(f.argv).toHaveLength(1);
   });
 });

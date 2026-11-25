@@ -7,7 +7,7 @@
  *   run's private directory (`--request-file`), its SHA-256 = `--request-sha256`, its id = `--request`, strict schema
  *   (request.ts / request-prompt.ts) → the facts pack it names (outside git, no link, its SHA-256) and the shop's kind
  *   (real_shop: the pack is that shop's and not fictional; fictional: the research log's fictional-shop check) → the plan
- *   built from the facts and the direction (PC 2 + SP 4 = 6 pictures, one Codex run) → the request id never claimed here
+ *   built from the facts and the direction (PC 2 + SP 4 = 6 pictures, or a whole_page PC 1 + SP 1, one Codex run) → the request id never claimed here
  *   and unused in the entry's ledger → the one-use claim (claims/<id>.used, O_EXCL) → the EXISTING entry
  *   (cycle.ts GENERATE_ENTRY, its `--request-file` mode) invoked ONCE; it rebuilds and re-checks everything itself, uses
  *   the request id once in the phase2f ledger and runs the one Codex batch → the private run directory read back
@@ -22,13 +22,13 @@ import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BoundedResult } from "../bounded-process";
 import { PromptStop } from "../image-first/prompt";
-import { isPhotoRequest, isRequestId, REQUEST_IMAGES, type ImagefirstRequest } from "../image-first/request-prompt";
+import { imagesOfLayout, isPhotoRequest, isRequestId, layoutOf, REQUEST_IMAGES, type ImagefirstRequest } from "../image-first/request-prompt";
 import { FULL_PAGE_KIND, FULL_PAGE_ROUTE } from "../phase2f-live/full-page-call";
 import { LedgerStop, type Ledger } from "../phase2f-live/ledger";
 import type { CommitState } from "../phase2f-live/steps";
 import { acquireLock, WorkerStepError } from "../worker/state";
 import { claimApproval, claimed, privateDir, privateOrMissing, settleRun, stamp, type ApprovalIdCheck, type CycleReport } from "./cycle";
-import { loadRequestRun, type RequestRunInputs } from "./request";
+import { loadRequestRun, referenceRecordOf, type ReferenceRecord, type RequestRunInputs } from "./request";
 
 /** A request id's claim rule: a request id (never an approval id's form). */
 export const requestIdCheck = (id: string): ApprovalIdCheck => (isRequestId(id) ? "ok" : "APPROVAL_ID_INVALID");
@@ -59,7 +59,8 @@ export type RequestCycleResult = {
   /** photo_files: DEV-303 a succeeded photo-materials run's pictures (names and SHA-256), what a design request's photo_inputs names. */
   report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[] };
   /** caseStudySha256: Issue #336 the checked case study's SHA-256 (request.ts readRequestCaseStudy), null when the run has none. */
-  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null } | null;
+  /** referenceImages: DEV-303 §6.1 row 3 a whole_page run's reference pictures (id, case_id, sha256), null otherwise. */
+  run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null; referenceImages: ReferenceRecord[] | null } | null;
 };
 
 /** The entry's arguments in request mode (its REQUEST_VALUES): the request and the pins to re-check. */
@@ -134,11 +135,15 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
     return refuse(error instanceof PromptStop ? error.code : "REQUEST_UNREADABLE");
   }
   const kind = (seen.kind = inputs.request.kind);
-  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null };
+  run = { request: inputs.request, requestSha256: inputs.requestSha256, factsSha256: inputs.plan.facts_sha256, planSha256: inputs.plan.plan_sha256, commit, caseStudySha256: inputs.caseStudy?.sha256 ?? null, referenceImages: inputs.references ? referenceRecordOf(inputs.references) : null };
   const photoStage = isPhotoRequest(inputs.request);
-  // one Codex run; a design run makes PC 2 + SP 4, a photo-materials run 1..6 pictures (one per subject)
-  const images = photoStage ? { pc: 0, sp: 0, photo: inputs.request.max_images } : REQUEST_IMAGES;
-  const want = photoStage ? inputs.request.max_images : REQUEST_IMAGES.total;
+  // one Codex run; a design run makes PC 2 + SP 4 (DEV-303 §6.1 row 3: a whole_page one PC 1 + SP 1), a
+  // photo-materials run 1..6 pictures (one per subject)
+  const whole = !isPhotoRequest(inputs.request) && layoutOf(inputs.request) === "whole_page";
+  const design = whole ? imagesOfLayout("whole_page") : REQUEST_IMAGES;
+  const images = photoStage ? { pc: 0, sp: 0, photo: inputs.request.max_images } : { pc: design.pc, sp: design.sp };
+  const want = photoStage ? inputs.request.max_images : design.total;
+  if (whole && (!inputs.references || inputs.references.length === 0)) return refuse("REFERENCE_IMAGES_MISSING");
   if (inputs.plan.batch.images !== want || want < 1 || want > REQUEST_IMAGES.total || inputs.request.codex_runs !== 1) return refuse("REQUEST_IMAGES_MISMATCH");
   if (inputs.photos === "unchecked") return refuse("PHOTO_INPUT_RUN_MISSING");
 
@@ -182,6 +187,8 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
           ...(!isPhotoRequest(inputs.request) && inputs.request.photo_inputs ? { photo_inputs: inputs.request.photo_inputs } : {}),
           // Issue #336: the design stage's checked case study, by its SHA-256 only (never its path or content)
           ...(inputs.caseStudy ? { case_study_sha256: inputs.caseStudy.sha256 } : {}),
+          // DEV-303 §6.1 row 3: a whole_page run's layout and its reference pictures (id, case_id, sha256; never a path)
+          ...(whole && inputs.references ? { design_layout: "whole_page" as const, reference_images: referenceRecordOf(inputs.references) } : {}),
         },
       },
       res,

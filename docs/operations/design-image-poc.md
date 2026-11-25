@@ -173,6 +173,7 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `CODEX_DOTENV_PRESENT` | `$CODEX_HOME/.env` exists (DEV-078; since DEV-079 also refused by the jail before every Codex process): Codex would load it into its own environment (only `CODEX_*` keys are filtered), which can carry an API key past the env allowlist. Codex not started; the file is never opened. Remove or move it as `sr-designgen` (`design-worker-wsl.md`, `CODEX_DOTENV_PRESENT`) |
 | `CODEX_PREFLIGHT_FAILED` | `codex --version` inside the jail did not run cleanly (DEV-078); no model call was made |
 | `CODEX_IMAGE_TOOL_FAILED` | the CLI's session log shows the image tool was called and failed (not a usage limit: that is `CODEX_QUOTA`); `img_fail=` says `POLICY` / `OTHER` (DEV-078) |
+| `CODEX_IMAGE_ARGS_REFUSED` | the image tool refused the call's arguments before it started (outcome `TOOL_REFUSED_ARGS`, e.g. more than 5 `referenced_image_paths` or a path that is not absolute; Issue #335): no item, no image, class `capability`. Fix the request (at most 5 reference images, absolute staged paths); never retry the same request id |
 | `POC_STOPPED_BY_SIGNAL`, `POC_KILLED_OR_TIMED_OUT`, exit 137 / 124 | check for an OOM kill first (the wrapper prints `--oom-check`) |
 
 ## Diagnostics (DEV-077)

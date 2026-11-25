@@ -11,12 +11,12 @@
  * dirs this call created are removed before it returns (the picture is handed back in memory).
  */
 import { lstat, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent, codexLooksRateLimited, codexLooksSignedOut, listDesignAgentSessions, readCodexEvents, removeCodexSession, removeCodexSessionsOf, removeStaleCodexSessions } from "../codex";
-import { SandboxError, stageInputBytes, type CodexSandbox } from "../sandbox";
+import { SandboxError, stageInputBytes, stageReferenceBytes, type CodexSandbox } from "../sandbox";
 import { classifyAnswerText, deriveImageOutcome, parseCodexVersion, readSessionFacts, type AnswerTextCode, type CodeModeArgErrorKind, type ImageFailureReason, type ImageOutcome, type ToolMode } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
-import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
+import { IMAGE_TOOL_MAX_REFS, isReferenceName, REFERENCE_DIR_TOKEN } from "../image-tool-limits";
 
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PNG_NAME = /^[A-Za-z0-9_.-]{1,120}\.png$/i;
@@ -105,11 +105,31 @@ type RunSeen = {
   diagnostics: ImageRunDiagnostics;
 };
 /**
- * inputImages (DEV-303, owner decision 2026-11-24; batch only): at most IMAGE_TOOL_MAX_REFS (5, Issue #335) PNGs attached to the one exec
- * with `--image`, staged as copies in this call's temporary work dir (removed with it). None: the command line is the
- * PoC's, unchanged.
+ * inputImages (DEV-303, owner decision 2026-11-24): PNGs attached to the one exec with `--image`, staged as copies in this
+ * call's temporary work dir (removed with it).
+ * referenceImages (DEV-303 §6.1 row 3): success-case originals (PNG / JPEG / WebP, named ref-N.<ext>), staged the same way
+ * and attached after the input images; the prompt names them as `REFERENCE_DIR_TOKEN/ref-N.<ext>`, and the token is
+ * replaced with the absolute staged directory right before the exec (the image tool's `referenced_image_paths` takes
+ * absolute paths only). Together at most IMAGE_TOOL_MAX_REFS (5, Issue #335), checked for every mode before anything is
+ * staged. None: the command line is the PoC's, unchanged.
  */
-type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number; inputImages?: readonly Buffer[] };
+export type ReferenceImage = { name: string; bytes: Buffer };
+type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number; inputImages?: readonly Buffer[]; referenceImages?: readonly ReferenceImage[] };
+
+/**
+ * Issue #335 / DEV-303 §6.1 row 3: the attachments a run may carry, checked before any stage, process or file: at most
+ * IMAGE_TOOL_MAX_REFS pictures in all; every reference name of the right form, once; and the prompt names a staged
+ * reference (`REFERENCE_DIR_TOKEN/<name>`) exactly when references are given, each reference at least once and nothing else.
+ */
+export function checkRunAttachments(o: Pick<RunOptions, "prompt" | "inputImages" | "referenceImages">): void {
+  const refs = o.referenceImages ?? [];
+  if ((o.inputImages?.length ?? 0) + refs.length > IMAGE_TOOL_MAX_REFS) throw new Error(`image run: at most ${IMAGE_TOOL_MAX_REFS} input and reference images in all`);
+  const names = refs.map((r) => r.name);
+  if (names.some((n) => !isReferenceName(n)) || new Set(names).size !== names.length) throw new Error("image run: reference names invalid");
+  const named = [...o.prompt.matchAll(new RegExp(`${REFERENCE_DIR_TOKEN}/([^\\s,"'\\]\\[]*)`, "g"))].map((m) => m[1]!);
+  const bare = o.prompt.split(REFERENCE_DIR_TOKEN).length - 1;
+  if (bare !== named.length || named.some((n) => !names.includes(n)) || names.some((n) => !named.includes(n))) throw new Error("image run: the prompt's reference paths do not match the reference images");
+}
 
 /**
  * Issue #335: what the session log and the answer already told about a run, as fixed values only (never text). Carried
@@ -139,6 +159,8 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
   const now = o.now ?? Date.now;
   const { sandbox, signal } = o;
   const withSignal = signal === undefined ? {} : { signal };
+  // Issue #335 review: the reference limit holds for every mode (one picture or a batch), before anything is staged
+  checkRunAttachments(o);
   if (signal?.aborted) throw new CodexAbortedError();
   const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
   // before any Codex process: Codex would load $CODEX_HOME/.env past the cleared environment (DEV-078)
@@ -170,14 +192,18 @@ async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early
     const cliVersion = version && version.code === 0 && !version.timedOut ? parseCodexVersion(version.stdout) : null;
     if (signal?.aborted) throw new CodexAbortedError();
     const attached = o.inputImages && o.inputImages.length > 0 ? await stageInputBytes(cwd, o.inputImages) : [];
+    const references = o.referenceImages && o.referenceImages.length > 0 ? await stageReferenceBytes(cwd, o.referenceImages) : [];
+    // DEV-303 §6.1 row 3: the absolute staged directory replaces the pinned prompt's token (the prompt sent, never a record)
+    // (stageReferenceBytes refused a directory with anything but plain path characters)
+    const prompt = references.length > 0 ? o.prompt.split(REFERENCE_DIR_TOKEN).join(dirname(references[0]!)) : o.prompt;
     before = await imageThreads(codexHome);
     const started = now();
     let run;
     try {
       // the PoC's command line: the image feature pinned on, read-only, the built-in provider only
-      run = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, ...attached.map((path) => `--image=${path}`), "-"], {
+      run = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, ...[...attached, ...references].map((path) => `--image=${path}`), "-"], {
         workDir: cwd,
-        input: o.prompt,
+        input: prompt,
         timeoutMs: o.timeoutMs,
         ...withSignal,
       });
@@ -310,8 +336,7 @@ async function takeImages(dir: string): Promise<Array<{ bytes: Buffer; width: nu
 export async function generateImagesInOneRun(o: RunOptions & { maxImages: number }): Promise<ImageBatchResult> {
   if (!Number.isInteger(o.maxImages) || o.maxImages < 1 || o.maxImages > MAX_BATCH_IMAGES) throw new Error("generateImagesInOneRun: maxImages must be 1..6");
   // Issue #335: the image tool refuses more than IMAGE_TOOL_MAX_REFS reference pictures per call (the same limit as the
-  // request check, PHOTO_INPUTS_OVER_TOOL_LIMIT); never start a run that would hand it more
-  if ((o.inputImages?.length ?? 0) > IMAGE_TOOL_MAX_REFS) throw new Error(`generateImagesInOneRun: at most ${IMAGE_TOOL_MAX_REFS} input images`);
+  // request check, PHOTO_INPUTS_OVER_TOOL_LIMIT); imageRun refuses a run that would hand it more (checkRunAttachments)
   const result = (r: Partial<ImageBatchResult> & Pick<ImageBatchResult, "outcome" | "stopCode">): ImageBatchResult => ({ images: [], imageCalls: 0, imageFailed: 0, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
   return imageRun(
     o,

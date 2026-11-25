@@ -293,7 +293,7 @@ describe("Issue #336 the owner's viewing page", () => {
     const evil = `<script>alert("x")</script> & 'q' https://example.invalid`;
     const tampered = { ...record, shop_specific_principles: [evil], cases: record.cases.map((c) => ({ ...c, principles_to_bring: [evil], do_not_copy: [evil] })) };
     const files: ViewedFile[] = [{ case_id: "CP-001", path: `x"><script>y</script>.webp`, sha256: "a".repeat(64), bytes: Buffer.alloc(0) }];
-    const html = renderViewingPage({ shop_id: SHOP, case_study_sha256: "b".repeat(64), counted: ["CP-001"], not_counted: [], owner_confirmed: false, record: tampered, files }, new Map([[files[0]!, "images/CP-001-1.webp"]]));
+    const html = renderViewingPage({ shop_id: SHOP, case_study_sha256: "b".repeat(64), counted: ["CP-001"], not_counted: [], owner_confirmed: false, record: tampered, files, counting_files: {} }, new Map([[files[0]!, "images/CP-001-1.webp"]]));
     expect(html).not.toMatch(/<script/i);
     // a tampered text is shown as text only: no attribute or stylesheet ever points at the network
     expect(html).not.toMatch(/(?:src|href|action)\s*=\s*["']?\s*(?:https?:|\/\/)|url\(/i);
