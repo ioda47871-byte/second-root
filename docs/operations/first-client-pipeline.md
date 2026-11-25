@@ -280,3 +280,17 @@
    これが無いと、相手に送れるデモの URL ができない。最初の案件のためには、どこかの時点で必要。
    なお、この WSL の jail では Docker が動いていない（2026-11-23 に確認）ため、ローカルの Supabase は使えない。jail の中でできるのは
    `package-local.ts` の包みまで。デモの保存（事実の登録・取り込み）は、hosted（Staging）の B-5a の承認の後か、Docker が動く別の環境で行う。
+
+## 4. 段 6: 実装と承認したデザインの比較（DEV-303 §6.1 の 8）
+
+[正式な制作フロー](../design/image-first-production-flow.md) §1 段 6。承認したデザイン（§G）の run と、Claude が実装した静的な頁を比べる。
+
+- **実行**: `npx tsx scripts/design-artifact/impl-compare-approved.ts --bundle <review-inbox/<依頼 ID>> --review <審査の記録> --approval <承認の記録> --site <頁の置き場> --out <非公開の空の出力先>`。
+  先に承認のゲートの検査（`approvedDesignRun`）を行い、`DESIGN_*` で止まればそこで終わる。比べるのは PC・SP のページ全体の画像が 1 枚ずつの run だけ（`IMPL_DESIGN_NOT_WHOLE_PAGE`）。
+- **頁**: リポジトリの外（例 `~/second-root-shops/<shop_id>/site-<n>/`）の `index.html`・`style.css`・`assets/*.png` だけを読み、Chromium で JS なし・通信なしに PC 1440 と SP 390 の全体を撮る。
+  リポジトリの中・link・足りないファイルは止まる（`IMPL_SITE_*`）。ファイルごとの上限は実装レーンの比較と同じ、全部で 64 MiB まで（`IMPL_SITE_TOTAL_TOO_LARGE`）。撮影の失敗は止まる（`IMPL_CAPTURE_FAILED`）。横のはみ出しと、読み込めなかった画像などの要求は**所見**として記録する。
+- **比べ方**: 承認した画像を同じ幅に拡大縮小し、既存の比較（実装レーンの比較、DEV-131 の暫定の閾値）でページ全体の配置（SSIM）・色の塊・線の密度・高さの比を測る。
+  ページ全体の画像は縮めた全体像なので、高さの比と `PAGE_HEIGHT` は違って当然。ページ全体の数値は撮影をデザインの縦横比に縮めて測るので、頁の本当の縦横比は測らない（高さはそのまま記録する）。節の宣言が無いので、節ごとの順・位置・色・大きさは測らない。文章は文章の監査（§F・`comp-copy.ts`）とオーナーが見る。
+- **記録**: `--out` に `record.json`（`sr_impl_compare_v1`: 承認の bundle・審査・承認の SHA-256、頁のファイルと撮影の SHA-256、表示ごとの数値・違い・所見、道具の版）、
+  `images/`（拡大縮小したデザインと撮影）、`index.html`（静的な確認ページ。script なし・通信なし・CSP）。リポジトリの中には書かない。
+- **扱い**: 数値は**オーナーの確認のための助言**で、それだけで合否を決めない（`passing` は常に false）。段 6 から先へ進むのは、再現性の審査（§3.3 の観点で見る）と Q1 の合格をオーナーが確かめたときだけ。
