@@ -658,4 +658,21 @@ describe("DEV-303 the worker CLI's request arguments", () => {
     expect((r.out as unknown as { detail?: unknown }).detail).toEqual({ category: "money", field: "do_not_copy", case_id: "CP-002" });
     expect(JSON.stringify(r.out)).not.toContain("円");
   });
+
+  it("DEV-303 §6.1 change 4: a rendering that adds a fact names its category, field and key in the CLI line (never the text)", () => {
+    const home = tmp("sr-req-cli-ja-");
+    const shopDir = join(home, "second-root-shops", SHOP);
+    mkdirSync(shopDir, { recursive: true });
+    writeFileSync(join(shopDir, "facts-pack.json"), FACTS_BYTES);
+    writeFileSync(join(shopDir, CASE_STUDY_FILE), CASE_STUDY);
+    const entries = [{ fact_key: "statement_1", source_text: "豆は架空の焙煎所から届きます", ja_text: "職人の焙煎所から豆が届きます" }];
+    const ja = Buffer.from(JSON.stringify({ schema: "sr_ja_renderings_v1", shop_id: SHOP, entries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(entries) } }));
+    writeFileSync(join(shopDir, "ja-renderings.json"), ja);
+    const file = join(tmp("sr-req-cli-jaf-"), `${ID}.json`);
+    writeFileSync(file, bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(ja) } })));
+    const r = run(["--validate-request", file], { HOME: home });
+    expect([r.status, r.out?.status, r.out?.code]).toEqual([2, "refused", "JA_RENDERING_ADDS_FACT"]);
+    expect((r.out as unknown as { detail?: unknown }).detail).toEqual({ category: "people", field: "ja_text", fact_key: "statement_1" });
+    expect(JSON.stringify(r.out)).not.toContain("職人");
+  });
 });
