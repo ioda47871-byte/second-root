@@ -103,7 +103,11 @@ export const BUNDLE_DIRS = ["parts", "composites"] as const;
 export const IMAGES = { pc: 2, sp: 4 } as const;
 /** DEV-303 §6.1 row 3: a whole_page request run's pictures (one full-page picture per viewport). */
 export const WHOLE_PAGE_IMAGES = { pc: 1, sp: 1 } as const;
-const SHA_LIST_MAX = 5;
+/**
+ * The image tool's reference limit (lib/design-agent/image-tool-limits.ts IMAGE_TOOL_MAX_REFS), restated: this module's
+ * imports are pinned (bundle.test.ts); whole-page.test.ts asserts the two are equal.
+ */
+export const BUNDLE_MAX_REFERENCES = 5;
 
 export type BundleCode =
   | "LIMITS_RAISED"
@@ -292,7 +296,7 @@ function designImagesOf(r: Receipt): { readonly pc: number; readonly sp: number 
   if (r.design_layout === undefined && r.reference_images === undefined) return IMAGES;
   if (r.mode !== "request" || r.request_stage !== undefined || r.design_layout !== "whole_page" || !Array.isArray(r.reference_images)) return stop("RECEIPT_INVALID");
   const refs = r.reference_images as unknown[];
-  const ok = refs.length >= 1 && refs.length <= SHA_LIST_MAX && refs.every((x, n) => {
+  const ok = refs.length >= 1 && refs.length <= BUNDLE_MAX_REFERENCES && refs.every((x, n) => {
     const e = x as { id?: unknown; case_id?: unknown; sha256?: unknown } | null;
     return !!e && typeof e === "object" && Object.keys(e).sort().join(",") === "case_id,id,sha256" && e.id === `ref-${n + 1}` && typeof e.case_id === "string" && /^(?:CP|SR)-\d{3}$/.test(e.case_id) && typeof e.sha256 === "string" && SHA_RE.test(e.sha256);
   });

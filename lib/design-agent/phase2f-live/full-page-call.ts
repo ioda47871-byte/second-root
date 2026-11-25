@@ -42,8 +42,11 @@ import { D4_PACKET, P3_PACKET, packetOfDirection, type ApprovalPacketSpec } from
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, sha256, writeOnce, type CommitState } from "./steps";
 
-/** The image tool's reference limit per call (lib/design-agent/image-tool-limits.ts IMAGE_TOOL_MAX_REFS; this module does not import it). */
-const MAX_REFERENCES = 5;
+/**
+ * The image tool's reference limit per call. This module may not import outside its allowed list (phase2f-live
+ * isolation test), so the value is restated; whole-page.test.ts asserts it equals image-tool-limits.ts IMAGE_TOOL_MAX_REFS.
+ */
+export const FULL_PAGE_MAX_REFERENCES = 5;
 
 /** What the batch did, as the CLI reports it from the one-run batch call (fixed facts only). */
 export type FullPageBatchResult = {
@@ -322,7 +325,7 @@ function photosMatch(planned: PhotoInputs | undefined, photos: RequestCallInput[
 /** The reference pictures handed to the run are exactly the plan's (same ids, names, order, bytes with those SHA-256s). */
 function referencesMatch(planned: readonly PlanReference[] | undefined, refs: RequestCallInput["references"]): boolean {
   if (!planned) return refs === undefined || refs.length === 0;
-  if (!refs || refs.length !== planned.length || refs.length === 0 || refs.length > MAX_REFERENCES) return false;
+  if (!refs || refs.length !== planned.length || refs.length === 0 || refs.length > FULL_PAGE_MAX_REFERENCES) return false;
   return planned.every((p, n) => refs[n]!.id === p.id && refs[n]!.name === p.name && refs[n]!.case_id === p.case_id && refs[n]!.sha256 === p.sha256 && sha256(refs[n]!.bytes) === p.sha256);
 }
 /** The pictures one run of this plan makes: PC 2 + SP 4, or (DEV-303 §6.1 row 3) a whole_page plan's PC 1 + SP 1. */

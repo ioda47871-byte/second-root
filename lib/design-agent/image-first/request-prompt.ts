@@ -40,7 +40,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "../image-tool-limits";
-import { LABELS_BY_KEY } from "../quality-pipeline/copy-record";
+import { INVENTED_FACT_SIGNS, LABELS_BY_KEY } from "../quality-pipeline/copy-record";
 import { FactsPack } from "../quality-pipeline/facts-pack";
 import { boxesFor, NAV_LABELS, PRINCIPLES, PromptStop, splitSections, type PlannedPart, type PlannedViewport } from "./prompt";
 import { MAX_PARTS_PER_VIEWPORT, VIEWPORT_WIDTHS, type ImageFirstViewport } from "./record";
@@ -335,7 +335,7 @@ export const WHOLE_PAGE_PROMPT_VERSION = "if-req-whole-v0";
 export const WHOLE_PAGE_FRAME = "portrait_2x3" as const;
 /** The single section a whole-page part declares: the whole frame (the page's own sections are the model's decision). */
 export const WHOLE_PAGE_SECTION = "page";
-const REFERENCE_ID_RE = /^ref-([1-5])$/;
+const REFERENCE_ID_RE = /^ref-([1-9][0-9]*)$/;
 const REFERENCE_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as const;
 
 export type RequestPlan = {
@@ -550,6 +550,21 @@ function checkCaseStudyUse(request: DesignRequest, cs: RequestCaseStudyUse | nul
   return cs;
 }
 
+/**
+ * Review Q5: a real shop's whole-page prompt carries the case study's principle and do-not-copy texts, so (like the
+ * direction, REQUEST_DIRECTION_HAS_FACT) none may look like a fact: no digit, currency sign, price, year, history,
+ * person, award, reputation, reservation or other invented-fact sign (copy-record INVENTED_FACT_SIGNS), and no
+ * facts-pack value (but the category code). CASE_STUDY_TEXT_HAS_FACT.
+ */
+export function assertCaseStudyTextHasNoFact(cs: Pick<RequestCaseStudyUse, "shop_specific_principles" | "cases">, facts: FactsPack): void {
+  const texts = [...cs.shop_specific_principles, ...cs.cases.flatMap((c) => [...c.principles_to_bring, ...c.do_not_copy])];
+  for (const t of texts) {
+    const n = t.normalize("NFKC");
+    if (/[$€]/.test(n) || INVENTED_FACT_SIGNS.some(([, re]) => re.test(n))) throw new PromptStop("CASE_STUDY_TEXT_HAS_FACT");
+    for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && n.toLowerCase().includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("CASE_STUDY_TEXT_HAS_FACT");
+  }
+}
+
 function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewport; inventory: string[]; cs: RequestCaseStudyUse }): string {
   const { inputs, viewport, inventory, cs } = o;
   const { request, facts } = inputs;
@@ -619,6 +634,7 @@ function buildWholePagePlan(inputs: RequestInputs): RequestPlan {
   if (request.photo_inputs) throw new PromptStop("WHOLE_PAGE_PHOTO_INPUTS_REFUSED");
   if (request.max_images !== WHOLE_PAGE_IMAGES.total) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
   const cs = checkCaseStudyUse(request, inputs.caseStudy);
+  if (request.kind === "real_shop") assertCaseStudyTextHasNoFact(cs, facts);
   const inventory = wholePageInventory(facts);
   const viewports = {} as Record<ImageFirstViewport, PlannedViewport>;
   for (const viewport of ["desktop_1440", "mobile_390"] as const) {

@@ -217,6 +217,9 @@ export function validateImageFirst(e: RunEvidence): ImageFirstVerdict {
   // viewport is one picture of the whole page, its sections the model's own; its direction is bound by SHA only
   const wholePage = vps.length > 0 && vps.every((v) => r.viewports[v]!.mode === "whole_page");
   if (!wholePage && vps.some((v) => r.viewports[v]!.mode === "whole_page")) add("COMP_SECTION_SEQUENCE_INVALID", "layout_mixed");
+  // review L1: whole_page exists only in request mode (its plan's direction_id is "request-<request id>"); a pinned
+  // direction's comp is always the declared section sequence
+  if (vps.some((v) => r.viewports[v]!.mode === "whole_page") && !r.direction.direction_id.startsWith("request-")) add("COMP_SECTION_SEQUENCE_INVALID", "whole_page_not_request");
   // the chosen direction (only that object): bound by SHA, read for its section order
   let directionIds: string[] | null = null;
   if (!e.direction || !r.direction.direction_sha256) add("COMP_PROVENANCE_MISSING", "direction");

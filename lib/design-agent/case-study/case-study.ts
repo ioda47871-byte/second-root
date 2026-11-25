@@ -317,7 +317,21 @@ export type CaseStudyInspection = {
   owner_confirmed: boolean;
   record: CaseStudy;
   files: ViewedFile[];
+  /**
+   * DEV-303 §6.1 row 3 review M1: per counted case, the viewed files that MADE it count (a repository case: its listed
+   * files with the path and SHA-256 of its originals-index entry; a private case: its listed files whose SHA-256 is
+   * recorded for that id). Anything else listed under the case is evidence only, never an original to reuse.
+   */
+  counting_files: Record<string, { path: string; sha256: string }[]>;
 };
+
+/** The listed files of a counted case that are its verified originals (see CaseStudyInspection.counting_files). */
+function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, Set<string>>): { path: string; sha256: string }[] {
+  const entry = index.originals.find((o) => o.id === c.id);
+  if (entry) return c.files.filter((f) => entry.files.some((e) => e.path === f.path && e.sha256 === f.sha256)).map((f) => ({ path: f.path, sha256: f.sha256 }));
+  const known = recorded.get(c.id) ?? new Set<string>();
+  return c.files.filter((f) => known.has(f.sha256)).map((f) => ({ path: f.path, sha256: f.sha256 }));
+}
 
 /** Why a case does not count, or null when it counts (its files already verified). */
 function countReason(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, Set<string>>): NotCountedReason | null {
@@ -362,12 +376,15 @@ export async function inspectCaseStudy(bytes: Buffer, o: { repo: string }): Prom
   }
   const counted: string[] = [];
   const notCounted: CaseStudyInspection["not_counted"] = [];
+  const counting: CaseStudyInspection["counting_files"] = {};
   for (const c of record.cases) {
     const reason = countReason(c, index, recorded);
-    if (reason === null) counted.push(c.id);
-    else notCounted.push({ id: c.id, reason });
+    if (reason === null) {
+      counted.push(c.id);
+      counting[c.id] = countingFiles(c, index, recorded);
+    } else notCounted.push({ id: c.id, reason });
   }
-  return { shop_id: record.shop_id, case_study_sha256: sha256(bytes), counted, not_counted: notCounted, owner_confirmed: record.owner_confirmation?.confirmed === true, record, files };
+  return { shop_id: record.shop_id, case_study_sha256: sha256(bytes), counted, not_counted: notCounted, owner_confirmed: record.owner_confirmation?.confirmed === true, record, files, counting_files: counting };
 }
 
 /**

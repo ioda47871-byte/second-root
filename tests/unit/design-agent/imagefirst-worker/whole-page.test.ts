@@ -1,20 +1,22 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import type { CaseStudyInspection } from "@/lib/design-agent/case-study/case-study";
+import { inspectCaseStudy, type CaseStudyInspection } from "@/lib/design-agent/case-study/case-study";
 import { checkRunAttachments, generateImageOnce, generateImagesInOneRun } from "@/lib/design-agent/design-image/image-once";
 import { readImageFirstRun } from "@/lib/design-agent/image-first/builder";
-import { buildRequestPlan, parseRequest, PHOTO_LABEL, WHOLE_PAGE_IMAGES, WHOLE_PAGE_PROMPT_VERSION, wholePageInventory, type DesignRequest, type RequestCaseStudyUse, type RequestPlan } from "@/lib/design-agent/image-first/request-prompt";
+import { assertCaseStudyTextHasNoFact, buildRequestPlan, parseRequest, PHOTO_LABEL, WHOLE_PAGE_IMAGES, WHOLE_PAGE_PROMPT_VERSION, wholePageInventory, type DesignRequest, type RequestCaseStudyUse, type RequestPlan } from "@/lib/design-agent/image-first/request-prompt";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
-import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
-import { caseStudyUseOf, referenceRecordOf, selectReferenceImages } from "@/lib/design-agent/imagefirst-worker/request";
-import { runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
+import { IMAGE_TOOL_MAX_REFS, isReferenceName, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
+import { BUNDLE_MAX_REFERENCES, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
+import { SandboxError, stageReferenceBytes } from "@/lib/design-agent/sandbox";
+import { assertRealShopReferences, caseStudyUseOf, referenceRecordOf, selectReferenceImages, selectReferences } from "@/lib/design-agent/imagefirst-worker/request";
+import { FULL_PAGE_MAX_REFERENCES, runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import type { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
 import { colourPng } from "../phase2f/fixtures";
 import { cleanup as cleanupRuns, drawPart, makeRun } from "../image-first/fixtures";
-import { cleanupTemps, fakeCodex, sha, tmp } from "./support";
+import { CASE_STUDY_REPO_FILES, caseStudyObject, cleanupTemps, fakeCodex, REPO, sha, tmp } from "./support";
 
 // DEV-303 §6.1 row 3 (docs/design/image-first-production-flow.md §1 stage 2, §3.2, §3.5): the whole-page design of
 // request mode — its plan and prompt, the real_shop rule, the success-case reference pictures (≤ 5, absolute staged paths),
@@ -252,13 +254,15 @@ describe("DEV-303 §6.1 row 3 reference selection from the gate-checked case stu
   const GIF = Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(40, 3)]);
   const file = (case_id: string, path: string, bytes: Buffer | null) => ({ case_id, path, sha256: sha(bytes ?? path), bytes });
   const caseOf = (id: string) => ({ id, evidence_kind: "image" as const, files: [], observations: { composition: "x", information_design: "x", shop_character: "x", pc_sp: "x" }, principles_to_bring: [`原理 ${id}`], do_not_copy: [`写さない ${id}`] });
-  const inspection = (o: { counted: string[]; selected: string[]; files: ReturnType<typeof file>[] }) =>
+  /** `originals`: the files that made each case count (default: every listed file of a counted case). */
+  const inspection = (o: { counted: string[]; selected: string[]; files: ReturnType<typeof file>[]; originals?: ReturnType<typeof file>[] }) =>
     ({
       case_study_sha256: CS_SHA,
       counted: o.counted,
       files: o.files,
+      counting_files: Object.fromEntries(o.counted.map((id) => [id, (o.originals ?? o.files).filter((f) => f.case_id === id).map((f) => ({ path: f.path, sha256: f.sha256 }))])),
       record: { schema: "sr_case_study_v1", shop_id: SHOP, cases: o.counted.map(caseOf), shop_specific_principles: ["店の原理"], owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T00:00:00Z", selected_ids: o.selected, page_sha256: "0".repeat(64) } },
-    }) as unknown as Pick<CaseStudyInspection, "case_study_sha256" | "counted" | "record" | "files">;
+    }) as unknown as Pick<CaseStudyInspection, "case_study_sha256" | "counted" | "record" | "files" | "counting_files">;
 
   it("owner order, the first PNG / JPEG / WebP per case (never page HTML, a GIF or an archive), capped at IMAGE_TOOL_MAX_REFS", () => {
     const ids = ["CP-001", "CP-002", "CP-003", "CP-004", "CP-005", "CP-006", "CP-007"];
@@ -295,6 +299,37 @@ describe("DEV-303 §6.1 row 3 reference selection from the gate-checked case stu
     expect(use.references).toEqual(references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type })));
     expect(JSON.stringify(use)).not.toMatch(/private|design-library|\.html/);
     expect(referenceRecordOf(references)).toEqual(references.map((r) => ({ id: r.id, case_id: r.case_id, sha256: r.sha256 })));
+  });
+
+  it("review M1: only a counted case's verified originals are attached, never another image listed under it", () => {
+    const original = file("CP-001", "design-library/success-cases/assets/original.webp", WEBP);
+    const other = file("CP-001", "design-library/research/other.png", PNG);
+    const priv = file("CP-002", "/private/b/unrecorded.png", colourPng(13, 13));
+    const recorded = file("CP-002", "/private/b/recorded.jpg", JPEG);
+    const refs = selectReferenceImages(inspection({ counted: ["CP-001", "CP-002"], selected: ["CP-001", "CP-002"], files: [other, original, priv, recorded], originals: [original, recorded] }));
+    expect(refs.map((r) => [r.case_id, r.sha256, r.name])).toEqual([["CP-001", sha(WEBP), "ref-1.webp"], ["CP-002", sha(JPEG), "ref-2.jpg"]]);
+    // a counted case whose originals are not attachable pictures adds none (its other images never stand in)
+    expect(selectReferenceImages(inspection({ counted: ["CP-001"], selected: ["CP-001"], files: [other], originals: [] }))).toEqual([]);
+  });
+
+  it("review L3: a picture already chosen for an earlier case is skipped (the case's next original), never a stop", () => {
+    const shared = file("CP-001", "/private/a/shared.png", PNG);
+    const sharedAgain = { ...shared, case_id: "CP-002", path: "/private/b/shared.png" };
+    const next = file("CP-002", "/private/b/next.webp", WEBP);
+    const r = selectReferences(inspection({ counted: ["CP-001", "CP-002", "CP-003"], selected: ["CP-001", "CP-002", "CP-003"], files: [shared, sharedAgain, next, { ...shared, case_id: "CP-003", path: "/private/c/shared.png" }] }));
+    expect(r.references.map((x) => [x.case_id, x.sha256])).toEqual([["CP-001", sha(PNG)], ["CP-002", sha(WEBP)]]);
+    expect(r.usableCases).toBe(3);
+  });
+
+  it("review Q4: a real shop's whole page needs at least min(3, counted cases with an attachable original) references", () => {
+    expect(() => assertRealShopReferences([], 0)).toThrow(expect.objectContaining({ code: "REFERENCE_IMAGES_MISSING" }));
+    expect(() => assertRealShopReferences([1, 2], 3)).toThrow(expect.objectContaining({ code: "REFERENCE_IMAGES_TOO_FEW" }));
+    expect(() => assertRealShopReferences([1, 2], 2)).not.toThrow();
+    expect(() => assertRealShopReferences([1, 2, 3], 5)).not.toThrow();
+    // the duplicate case above: 3 usable cases, 2 distinct pictures — too few for a real shop
+    const shared = file("CP-001", "/private/a/shared.png", PNG);
+    const r = selectReferences(inspection({ counted: ["CP-001", "CP-002", "CP-003"], selected: ["CP-001", "CP-002", "CP-003"], files: [shared, { ...shared, case_id: "CP-002", path: "/private/b/s.png" }, file("CP-003", "/private/c/x.webp", WEBP)] }));
+    expect(() => assertRealShopReferences(r.references, r.usableCases)).toThrow(expect.objectContaining({ code: "REFERENCE_IMAGES_TOO_FEW" }));
   });
 
   it("a picture whose magic bytes are not its type is skipped; one over the input cap or with another SHA-256 stops", () => {
@@ -361,6 +396,8 @@ describe("DEV-303 §6.1 row 3 the comp check of a whole_page run: PC 1 + SP 1, o
         }
         r.generation.image_calls = 2;
         r.generation.image_completed = 2;
+        // review L1: whole_page is a request-mode record (its plan's direction_id is "request-<id>")
+        r.direction.direction_id = "request-req-test-w-1";
         extra.mutate?.(r);
       },
       mutateRead: (read) => {
@@ -395,5 +432,112 @@ describe("DEV-303 §6.1 row 3 the comp check of a whole_page run: PC 1 + SP 1, o
     expect((await verdict({ mutate: (r) => (r.generation.image_completed = 6) })).rejects).toContain("CODEX_IMAGE_COUNT_MISMATCH");
     expect((await verdict({ mutateRead: (read) => (read.parts[0]!.observed_section_ids = ["page"]) })).details).toContainEqual({ code: "COMP_HERO_ONLY", detail: "desktop_1440_sections_not_seen" });
     expect((await verdict({ mutateRead: (read) => (read.parts[1]!.footer_visible = false) })).details).toContainEqual({ code: "COMP_HERO_ONLY", detail: "mobile_390_no_footer" });
+    // review L1: a pinned direction's record (not request mode) never passes as whole_page
+    expect((await verdict({ mutate: (r) => (r.direction.direction_id = "t1-dummy-lamp-axis") })).details).toContainEqual({ code: "COMP_SECTION_SEQUENCE_INVALID", detail: "whole_page_not_request" });
+  });
+});
+
+describe("review M1 (integration): inspectCaseStudy names the files that made a case count; only those are attached", () => {
+  it("a non-index design-library image listed first under a counted case is never a reference", async () => {
+    const board = "design-library/research/quality-pipeline/poc/bicycle/impl/d1-a/assets/board.png";
+    const record = caseStudyObject(SHOP, { owner_confirmation: undefined });
+    const cases = record.cases as { id: string; files: { path: string; sha256: string }[] }[];
+    cases[0]!.files.unshift({ path: board, sha256: sha(readFileSync(resolve(REPO, board))) });
+    const i = await inspectCaseStudy(Buffer.from(JSON.stringify(record)), { repo: REPO });
+    expect(i.counted).toEqual(["CP-001", "CP-002", "CP-003"]);
+    expect(i.counting_files["CP-001"]).toEqual([{ path: CASE_STUDY_REPO_FILES[1], sha256: sha(readFileSync(resolve(REPO, CASE_STUDY_REPO_FILES[1]!))) }]);
+    const refs = selectReferenceImages(i);
+    expect(refs.map((r) => [r.case_id, r.sha256])).toEqual(["CP-001", "CP-002", "CP-003"].map((id, n) => [id, sha(readFileSync(resolve(REPO, CASE_STUDY_REPO_FILES[n + 1]!)))]));
+    expect(refs.map((r) => r.sha256)).not.toContain(sha(readFileSync(resolve(REPO, board))));
+  });
+});
+
+describe("review Q5: a real shop's case-study texts in the prompt carry no fact signs", () => {
+  it("digits, prices, years, history, people, awards, reservations or a facts value: CASE_STUDY_TEXT_HAS_FACT (real_shop only)", () => {
+    for (const bad of ["余白を3段で取る", "価格を大きく見せない", "創業の歴史を語る", "職人の顔を写さない", "受賞の印を写さない", "予約の導線を写さない", "500円の札", "$ の記号", "架空書店 しおり堂 の名前を大きく", "昭和の看板"]) {
+      const cs = { ...CS_USE, cases: [{ ...CS_USE.cases[0]!, do_not_copy: [bad] }, CS_USE.cases[1]!] };
+      expect(() => assertCaseStudyTextHasNoFact(cs, FACTS), bad).toThrow(expect.objectContaining({ code: "CASE_STUDY_TEXT_HAS_FACT" }));
+      expect(planCode(() => plan({ caseStudy: cs })), bad).toBe("CASE_STUDY_TEXT_HAS_FACT");
+      expect(planCode(() => plan({ caseStudy: { ...CS_USE, shop_specific_principles: [bad] } })), bad).toBe("CASE_STUDY_TEXT_HAS_FACT");
+      // a fictional (research) request is not held to it
+      expect(planCode(() => plan({ request: { ...REQUEST, kind: "fictional" } as DesignRequest, caseStudy: cs })), bad).toBe("ok");
+    }
+    expect(() => assertCaseStudyTextHasNoFact(CS_USE, FACTS)).not.toThrow();
+  });
+});
+
+describe("review L2: every restated reference limit equals IMAGE_TOOL_MAX_REFS", () => {
+  it("full-page-call, bundle and the reference names follow the one constant", () => {
+    expect([FULL_PAGE_MAX_REFERENCES, BUNDLE_MAX_REFERENCES]).toEqual([IMAGE_TOOL_MAX_REFS, IMAGE_TOOL_MAX_REFS]);
+    expect(isReferenceName(`ref-${IMAGE_TOOL_MAX_REFS}.png`)).toBe(true);
+    for (const bad of [`ref-${IMAGE_TOOL_MAX_REFS + 1}.png`, "ref-0.png", "ref-01.png", "ref-1.gif", "ref-1.jpeg", "../ref-1.png"]) expect(isReferenceName(bad), bad).toBe(false);
+  });
+});
+
+describe("review L5: stageReferenceBytes and the bundle's whole_page receipt checks", () => {
+  it("stageReferenceBytes refuses an unsafe directory, a bad name, a type mismatch and more than 5", async () => {
+    const png = colourPng(16, 16);
+    const code = (p: Promise<unknown>) => p.then(() => "ok", (e: unknown) => (e instanceof SandboxError ? e.code : String(e)));
+    const unsafe = join(tmp("sr-wp-stage-"), "has space");
+    mkdirSync(unsafe);
+    expect(await code(stageReferenceBytes(unsafe, [{ name: "ref-1.png", bytes: png }]))).toBe("CODEX_INPUT_REJECTED");
+    expect(existsSync(join(unsafe, "inputs", "ref-1.png"))).toBe(false);
+    const ok = tmp("sr-wp-stage-");
+    expect(await code(stageReferenceBytes(ok, [{ name: "ref-1.webp", bytes: png }]))).toBe("CODEX_INPUT_REJECTED");
+    expect(await code(stageReferenceBytes(tmp("sr-wp-stage-"), [{ name: "ref-6.png", bytes: png }]))).toBe("CODEX_INPUT_REJECTED");
+    expect(await code(stageReferenceBytes(tmp("sr-wp-stage-"), Array.from({ length: 6 }, (_, k) => ({ name: `ref-${k + 1}.png`, bytes: png }))))).toBe("CODEX_INPUT_REJECTED");
+    const good = tmp("sr-wp-stage-");
+    expect(await stageReferenceBytes(good, [{ name: "ref-1.png", bytes: png }])).toEqual([join(good, "inputs", "ref-1.png")]);
+  });
+
+  const RID = "req-test-shop-w-1";
+  /** A finished whole_page request run (PC 1 + SP 1) and its receipt, as request-cycle.ts / cycle.ts write them. */
+  function wholeRun(edit: (r: Record<string, unknown>) => void = () => undefined) {
+    const runs = tmp("sr-wp-runs-");
+    chmodSync(runs, 0o700);
+    const runDir = join(runs, `${RID}-20261125T010000Z`);
+    mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
+    chmodSync(runDir, 0o700);
+    const images = ["pc-1", "sp-1"].map((n, k) => {
+      const bytes = colourPng(512 + k, 768);
+      writeFileSync(join(runDir, "parts", `${n}.png`), bytes, { mode: 0o600 });
+      return { file: `parts/${n}.png`, sha256: sha(bytes), bytes: bytes.length };
+    });
+    const receipt: Record<string, unknown> = {
+      schema: "imagefirst_worker_receipt_v1", status: "succeeded", stop_code: null, stage: null, cli_exit: 0, cli_timed_out: false, interrupted: false,
+      shop: SHOP, direction: "request", approval_id: RID, plan_id: RID, commit: "c".repeat(40), packet_sha256: "a".repeat(64), plan_sha256: "b".repeat(64), prompt_sha256: "d".repeat(64), prompt_chars: 5000,
+      run_dir: runDir, images, stopped_images: [], counts: { pc: 1, sp: 1, total: 2, stopped: 0 }, verified: true,
+      timings: { started_at: "2026-11-25T01:00:00.000Z", finished_at: "2026-11-25T01:10:00.000Z", elapsed_ms: 600_000 },
+      mode: "request", kind: "real_shop", request_id: RID, request_sha256: "a".repeat(64), facts_sha256: "e".repeat(64), images_total: 2,
+      design_layout: "whole_page", reference_images: [{ id: "ref-1", case_id: "CP-001", sha256: "f".repeat(64) }],
+    };
+    edit(receipt);
+    const receiptPath = join(runs, `${RID}-20261125T010000Z.receipt.json`);
+    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+    return packBundle({ runDir, receiptPath, bundlesDir: join(tmp("sr-wp-bundles-"), "bundles"), now: () => Date.parse("2026-11-25T02:00:00Z") });
+  }
+  const codeOf = (p: Promise<unknown>) => p.then(() => "sealed", (e: { code?: string }) => e.code ?? String(e));
+
+  it("a whole_page receipt seals as PC 1 + SP 1; a malformed reference list or misplaced layout field is RECEIPT_INVALID", async () => {
+    expect((await wholeRun()).manifest.counts).toMatchObject({ pc: 1, sp: 1 });
+    const ref = { id: "ref-1", case_id: "CP-001", sha256: "f".repeat(64) };
+    for (const [why, edit] of [
+      ["extra key in an entry", (r: Record<string, unknown>) => (r.reference_images = [{ ...ref, name: "ref-1.png" }])],
+      ["a path field", (r: Record<string, unknown>) => (r.reference_images = [{ ...ref, path: "/private/x.png" }])],
+      ["out of order", (r: Record<string, unknown>) => (r.reference_images = [{ ...ref, id: "ref-2" }])],
+      ["too many", (r: Record<string, unknown>) => (r.reference_images = Array.from({ length: 6 }, (_, k) => ({ ...ref, id: `ref-${k + 1}` })))],
+      ["empty", (r: Record<string, unknown>) => (r.reference_images = [])],
+      ["reference_images without design_layout", (r: Record<string, unknown>) => delete r.design_layout],
+      ["design_layout without reference_images", (r: Record<string, unknown>) => delete r.reference_images],
+      ["another layout", (r: Record<string, unknown>) => (r.design_layout = "section_sequence")],
+      ["design_layout on a photo receipt", (r: Record<string, unknown>) => (r.request_stage = "photo_materials")],
+    ] as const) expect(await codeOf(wholeRun(edit)), why).toBe("RECEIPT_INVALID");
+    // design_layout on a non-request (pinned direction) receipt
+    const pinned = await codeOf(wholeRun((r) => {
+      for (const k of ["mode", "kind", "request_id", "request_sha256", "facts_sha256", "images_total"]) delete r[k];
+    }));
+    expect(pinned).toBe("RECEIPT_INVALID");
+    // the counts must be the layout's
+    expect(await codeOf(wholeRun((r) => delete r.design_layout && delete r.reference_images))).toBe("RECEIPT_NOT_SUCCEEDED");
   });
 });

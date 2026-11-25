@@ -119,7 +119,7 @@ const caseOf = (id: string, path: string) => ({
 export function pageShaOf(record: Record<string, unknown>): string {
   const cases = record.cases as { id: string; files: { path: string; sha256: string }[] }[];
   const files = cases.flatMap((c) => c.files.map((f) => ({ case_id: c.id, path: f.path, sha256: f.sha256, bytes: readFileSync(resolve(REPO, f.path)) })));
-  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files });
+  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files, counting_files: {} });
 }
 /** An owner-confirmed case study for `shopId` that counts CP-001..003 (the repository's images; the text is invented). */
 export function caseStudyObject(shopId: string, over: Record<string, unknown> = {}): Record<string, unknown> {

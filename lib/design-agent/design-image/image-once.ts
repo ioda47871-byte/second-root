@@ -16,7 +16,7 @@ import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent,
 import { SandboxError, stageInputBytes, stageReferenceBytes, type CodexSandbox } from "../sandbox";
 import { classifyAnswerText, deriveImageOutcome, parseCodexVersion, readSessionFacts, type AnswerTextCode, type CodeModeArgErrorKind, type ImageFailureReason, type ImageOutcome, type ToolMode } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
-import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN, REFERENCE_NAME_RE } from "../image-tool-limits";
+import { IMAGE_TOOL_MAX_REFS, isReferenceName, REFERENCE_DIR_TOKEN } from "../image-tool-limits";
 
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PNG_NAME = /^[A-Za-z0-9_.-]{1,120}\.png$/i;
@@ -125,7 +125,7 @@ export function checkRunAttachments(o: Pick<RunOptions, "prompt" | "inputImages"
   const refs = o.referenceImages ?? [];
   if ((o.inputImages?.length ?? 0) + refs.length > IMAGE_TOOL_MAX_REFS) throw new Error(`image run: at most ${IMAGE_TOOL_MAX_REFS} input and reference images in all`);
   const names = refs.map((r) => r.name);
-  if (names.some((n) => !REFERENCE_NAME_RE.test(n)) || new Set(names).size !== names.length) throw new Error("image run: reference names invalid");
+  if (names.some((n) => !isReferenceName(n)) || new Set(names).size !== names.length) throw new Error("image run: reference names invalid");
   const named = [...o.prompt.matchAll(new RegExp(`${REFERENCE_DIR_TOKEN}/([^\\s,"'\\]\\[]*)`, "g"))].map((m) => m[1]!);
   const bare = o.prompt.split(REFERENCE_DIR_TOKEN).length - 1;
   if (bare !== named.length || named.some((n) => !names.includes(n)) || names.some((n) => !named.includes(n))) throw new Error("image run: the prompt's reference paths do not match the reference images");

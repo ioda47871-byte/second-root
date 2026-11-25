@@ -18,5 +18,8 @@ export const IMAGE_TOOL_MAX_REFS = 5;
  * keep the token, never a path). A plain ASCII marker that no facts value, direction text or label can contain.
  */
 export const REFERENCE_DIR_TOKEN = "@@SR_REFERENCE_DIR@@";
-/** The staged name of the n-th reference picture (n = 1..IMAGE_TOOL_MAX_REFS), by content type. */
-export const REFERENCE_NAME_RE = /^ref-[1-5]\.(?:png|jpg|webp)$/;
+/** The staged name of the n-th reference picture (ref-<n>.<png|jpg|webp>, n = 1..IMAGE_TOOL_MAX_REFS), by content type. */
+export const isReferenceName = (name: string): boolean => {
+  const m = /^ref-([1-9][0-9]*)\.(?:png|jpg|webp)$/.exec(name);
+  return !!m && Number(m[1]) <= IMAGE_TOOL_MAX_REFS;
+};

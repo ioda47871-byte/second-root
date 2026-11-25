@@ -137,8 +137,12 @@
   使ってよいラベル、事例分析の `shop_specific_principles` と、数えた例ごとの `principles_to_bring` / `do_not_copy`、PC/SP の独立、
   日本語が情報の中心であること、写真の場所は単純な長方形・角丸の差し替え枠に「イメージ」と書くこと（写真そのもの・商品・料理・店内・建物・人物は描かない）、
   Identity Lock の行（事実を作らない）。
-- **成功例の参照画像**: ゲートを通った事例分析の、数えた例の原本（オーナーが選んだ順に、各例の最初の PNG / JPEG / WebP。頁の HTML・GIF・ZIP は使わない）を
-  最大 5 枚（画像ツールの上限 `IMAGE_TOOL_MAX_REFS`）。Codex の一時作業 dir の `inputs/ref-N.<ext>` に写し、`--image` で添付する。
+- **成功例の参照画像**: ゲートを通った事例分析の、数えた例の原本（オーナーが選んだ順に、各例の**その例を数えさせた原本**（索引の path と SHA-256、
+  または非公開の原本として記録された SHA-256）のうち最初の PNG / JPEG / WebP。例の下に並べた他の画像・頁の HTML・GIF・ZIP は使わない。
+  前の例で選んだ画像と同じ SHA-256 は飛ばし、その例の次の原本にする）を最大 5 枚（画像ツールの上限 `IMAGE_TOOL_MAX_REFS`）。
+  実店舗では、添付できる原本のある数えた例の数を n として、min(3, n) 枚以上が要る（0 枚は `REFERENCE_IMAGES_MISSING`、足りなければ
+  `REFERENCE_IMAGES_TOO_FEW`）。実店舗では、プロンプトに入る原理・写さないことの文に、数字・通貨・値段・年・歴史・人物・受賞・予約などの
+  事実らしい印や facts pack の値があれば止まる（`CASE_STUDY_TEXT_HAS_FACT`）。Codex の一時作業 dir の `inputs/ref-N.<ext>` に写し、`--image` で添付する。
   ツールの `referenced_image_paths` は**絶対パスだけ**を受けるので、計画のプロンプトは各参照を `@@SR_REFERENCE_DIR@@/ref-N.<ext>` と書き、
   実行の直前に image-once.ts がこの印を写した先の絶対パスに置き換える（置き換えるのは Codex に渡す文だけ。計画・その SHA-256・run の
   `prompts/batch.txt` は印のまま。パスはどの記録にも残らない）。印と参照画像が一致しない、または合わせて 6 枚以上の実行は、写す前に止まる。
