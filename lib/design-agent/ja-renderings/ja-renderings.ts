@@ -95,16 +95,31 @@ const nfkc = (s: string) => s.normalize("NFKC");
 /** The units a number may carry in a rendering when its digits are the source's (1987 → 1987年). */
 const NUMBER_UNIT = /^[0-9]+[年時月日]?$/;
 
+/** Kanji numerals; a run of two or more (or one with 数: 十数) is a number. */
+const KANJI_NUMBER_RUN = /[〇零一二三四五六七八九十百千万億]{2,}|[〇零一二三四五六七八九十百千万億]数/gu;
+/** One kanji numeral followed by a counter (三種, 七時, 二十席 is caught as a run) is a number too. */
+const KANJI_NUMBER_COUNTED = /[〇零一二三四五六七八九十百千万億](?=[種席名個品時分日週月回杯店階号番人冊枚本台軒年歳才円割度件皿つ])/gu;
+/** Letters a Japanese rendering may use: Han, Hiragana, Katakana (with ー), ASCII Latin. Any other letter is another script. */
+const OTHER_SCRIPT_LETTER = /(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ーA-Za-z])\p{L}/u;
+const latinWords = (s: string) => s.match(/[a-z][a-z'&.-]*[a-z]|[a-z]/g) ?? [];
+
 /**
- * The first fact a rendering adds to its source, as a category (never the text): a digit run the source lacks; an
- * invented-fact sign whose matched words the source lacks (a number with a unit is allowed when its digits are the
- * source's); a Latin-letter word the source lacks (a proper noun). null when it adds nothing.
+ * The first fact a rendering adds to its source, as a category (never the text). A tripwire for numbers, fact markers,
+ * other scripts and Latin words only (names, places and wording without a marker are the owner's review):
+ *   - `script`: a letter outside Han, Hiragana, Katakana and ASCII Latin (Мария, ΑΒΓ);
+ *   - `number`: a digit run, a kanji-numeral run (三十, 十数, 〇三) or a kanji numeral with a counter (七時) the source lacks;
+ *   - an invented-fact sign (copy-record INVENTED_FACT_SIGNS) whose matched words the source lacks (a number with a unit
+ *     is allowed when its digits are the source's);
+ *   - `proper_noun`: a Latin word that is not one of the source's words (whole words: "sour" is not "sourdough").
+ * null when it adds nothing.
  */
 export function addedFactCategory(source: string, ja: string): string | null {
   const src = nfkc(source).toLowerCase();
   const t = nfkc(ja);
+  if (OTHER_SCRIPT_LETTER.test(t)) return "script";
   const sourceRuns: string[] = src.match(/[0-9]+/g) ?? [];
   for (const run of t.match(/[0-9]+/g) ?? []) if (!sourceRuns.includes(run)) return "number";
+  for (const m of [...t.matchAll(KANJI_NUMBER_RUN), ...t.matchAll(KANJI_NUMBER_COUNTED)]) if (!src.includes(m[0])) return "number";
   for (const [category, re] of INVENTED_FACT_SIGNS) {
     for (const m of t.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`))) {
       const w = m[0];
@@ -114,7 +129,8 @@ export function addedFactCategory(source: string, ja: string): string | null {
       return category;
     }
   }
-  for (const word of t.match(/[A-Za-z][A-Za-z'&.-]*[A-Za-z]|[A-Za-z]/g) ?? []) if (word.length >= 2 && !src.includes(word.toLowerCase())) return "proper_noun";
+  const sourceWords = new Set(latinWords(src));
+  for (const word of latinWords(t.toLowerCase())) if (word.length >= 2 && !sourceWords.has(word)) return "proper_noun";
   return null;
 }
 
@@ -164,7 +180,7 @@ export function checkJaRenderings(bytes: Buffer, facts: FactsPack, o: { mode: "d
 export function jaRenderingDetailOf(error: unknown): JaRenderingDetail | null {
   if (!(error instanceof JaRenderingsStop) || !error.detail) return null;
   const d = error.detail;
-  const categories = [...INVENTED_FACT_SIGNS.map(([n]) => n), "number", "proper_noun"];
+  const categories = [...INVENTED_FACT_SIGNS.map(([n]) => n), "number", "proper_noun", "script"];
   if (!categories.includes(d.category) || d.field !== "ja_text" || !/^[a-z][a-z0-9_]{0,40}$/.test(d.fact_key)) return null;
   return { category: d.category, field: "ja_text", fact_key: d.fact_key };
 }

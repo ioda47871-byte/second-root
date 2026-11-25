@@ -155,7 +155,7 @@ export type CaseStudyRef = z.infer<typeof CaseStudyRef>;
  * DEV-303 §6.1 change 4: a whole_page design request's owner-approved Japanese renderings (`sr_ja_renderings_v1`,
  * lib/design-agent/ja-renderings/ja-renderings.ts): a plain file name in the shop's private directory next to the facts
  * pack, bound by its SHA-256. The worker and --validate-request run its gate check; the plan shows each rendered fact as
- * its approved Japanese with the original quoted as 原文.
+ * its approved Japanese only (the original stays out of the image prompt; the plan binds the renderings by SHA-256).
  */
 export const JaRenderingsRef = z.strictObject({
   path: z.string().regex(CASE_STUDY_NAME_RE).refine((p) => p !== "facts-pack.json", "ja_renderings_is_facts"),
@@ -681,11 +681,13 @@ function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewpor
   lines.push("商品・料理・店内・建物・人物の姿は描かない（描いたものが店の実物と取り違えられないように）。線画・図形・色の面・文字・写真の枠で組む。");
   lines.push("");
   lines.push("ページに載せる情報（順不同。区画の順はこの並びと関係がない。次の文字列だけを、一字一句そのまま。言い換え・要約・翻訳・分割をしない。どれもページのどこかに載せる）:");
-  // DEV-303 §6.1 change 4: a fact with an owner-approved Japanese rendering is shown as that Japanese, its original quoted
+  // DEV-303 §6.1 change 4: a fact with an owner-approved Japanese rendering is shown as that Japanese only. Its original
+  // stays out of the image prompt (review L3: never among the strings to write); the plan binds the renderings by SHA-256
+  // and the worker's gate check ties each rendering to its facts-pack value.
   const ja = o.ja ?? new Map<string, string>();
   const shown = new Set<string>();
   for (const key of inventory) {
-    const line = ja.has(key) ? `- 「${ja.get(key)!}」（オーナーが承認した日本語訳。原文: 「${value(key)}」。画像には日本語訳だけを書き、原文は書かない）` : `- 「${value(key)}」`;
+    const line = ja.has(key) ? `- 「${ja.get(key)!}」（オーナーが承認した日本語訳）` : `- 「${value(key)}」`;
     if (!shown.has(line)) lines.push(line);
     shown.add(line);
   }

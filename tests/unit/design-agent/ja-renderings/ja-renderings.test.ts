@@ -8,6 +8,7 @@ import { checkCopyRecord } from "@/lib/design-agent/quality-pipeline/copy-record
 import { checkCopyQualityReview, reviewCopyQuality } from "@/lib/design-agent/quality-pipeline/copy-quality-review";
 import type { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
 import { jaRenderingsMain } from "@/scripts/design-artifact/ja-renderings-check";
+import { CompCopyError, readRenderingsFile } from "@/scripts/design-artifact/comp-copy";
 import { fact, factsPack, idOf, proposal, shopFiles, type Item } from "../quality-pipeline/copy-quality-fixtures";
 
 // DEV-303 §6.1 change 4 (docs/design/image-first-production-flow.md §2 principle 6): owner-approved Japanese renderings
@@ -126,6 +127,25 @@ describe("a rendering never adds a fact (category, field and key reported; never
     expect(addedFactCategory("Made by the Kawasemi family.", "Kawasemi の家族が作っています。")).toBeNull();
     expect(addedFactCategory(DESC, ENTRIES[0]!.ja_text)).toBeNull();
   });
+  it("review M1: kanji numerals (a run, 十数, or one with a counter) are numbers unless the source holds the same", () => {
+    const BAKERY = "A small bakery making sourdough bread every morning.";
+    for (const ja of ["三十種類のパンを焼く小さな店です。", "二十席のある小さなパン屋です。", "十数種のパンを焼いています。", "午前七時に開店する小さなパン屋です。", "電話〇三ーの小さなパン屋です。", "三種のパンを焼いています。"]) expect(addedFactCategory(BAKERY, ja), ja).toBe("number");
+    expect(addedFactCategory(BAKERY, "毎朝サワードウのパンを焼く小さなパン屋です。")).toBeNull();
+    expect(addedFactCategory("三十種類のパン", "三十種類のパンがあります。")).toBeNull();
+  });
+  it("review M2: letters of another script are refused (script)", () => {
+    for (const ja of ["Мария のパン屋です。", "ΑΒΓ パン屋です。", "빵집입니다。"]) {
+      expect(addedFactCategory(DESC, ja), ja).toBe("script");
+      expect(stopOf(() => checkJaRenderings(bytesOf(record({}, [{ ...ENTRIES[0]!, ja_text: ja }])), FACTS, { mode: "draft" }))).toEqual({ code: "JA_RENDERING_ADDS_FACT", detail: { category: "script", field: "ja_text", fact_key: "description" } });
+    }
+    expect(addedFactCategory(DESC, "川辺の茶房（カワセミ）です。々ー")).toBeNull();
+  });
+  it("review L2: Latin words are compared as whole words of the source", () => {
+    expect(addedFactCategory("A sourdough bakery.", "sour なパン屋です。")).toBe("proper_noun");
+    expect(addedFactCategory("Start early.", "art のある店です。")).toBe("proper_noun");
+    expect(addedFactCategory("A sourdough bakery.", "sourdough のパン屋です。")).toBeNull();
+    expect(addedFactCategory("A Sourdough bakery.", "SOURDOUGH のパン屋です。")).toBeNull();
+  });
   it("the detail a refusal may print is allowlisted", () => {
     expect(jaRenderingDetailOf(new JaRenderingsStop("JA_RENDERING_ADDS_FACT", { category: "people", field: "ja_text", fact_key: "description" }))).toEqual({ category: "people", field: "ja_text", fact_key: "description" });
     expect(jaRenderingDetailOf(new JaRenderingsStop("JA_RENDERING_ADDS_FACT", { category: "free text", field: "ja_text", fact_key: "description" }))).toBeNull();
@@ -218,5 +238,29 @@ describe("the copy audit accepts an approved rendering bound to its fact, and st
     const other = bytesOf(record({ owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T04:00:00Z", entries_sha256: entriesSha256([ENTRIES[0]!]) } }, [ENTRIES[0]!]));
     expect(checkCopyQualityReview(review, { ...withJa, jaRenderings: other }).codes).toContain("REVIEW_STALE_JA_RENDERINGS");
     expect(checkCopyQualityReview(review, { factsPack: f.factsPack, copyRecord: f.copyRecord, pageHtml: f.pageHtml, pageCss: f.pageCss }).codes).toContain("REVIEW_STALE_JA_RENDERINGS");
+  });
+});
+
+describe("review L5: comp-copy reads the renderings record as the checker does", () => {
+  const codeOf = (f: () => unknown) => {
+    try {
+      f();
+      return "ok";
+    } catch (error) {
+      return error instanceof CompCopyError ? error.code : String(error);
+    }
+  };
+  it("outside the repository, a regular file, no link, within the size cap", async () => {
+    const { symlinkSync } = await import("node:fs");
+    const d = tmp();
+    const file = join(d, "ja-renderings.json");
+    writeFileSync(file, bytesOf(record()));
+    expect(readRenderingsFile(file).equals(bytesOf(record()))).toBe(true);
+    expect(codeOf(() => readRenderingsFile(resolve(REPO, "package.json")))).toBe("JA_RENDERINGS_RECORD_IN_REPO");
+    symlinkSync(file, join(d, "link.json"));
+    expect(codeOf(() => readRenderingsFile(join(d, "link.json")))).toBe("JA_RENDERINGS_RECORD_UNSAFE");
+    writeFileSync(join(d, "big.json"), Buffer.alloc(64 * 1024 + 1, 0x20));
+    expect(codeOf(() => readRenderingsFile(join(d, "big.json")))).toBe("JA_RENDERINGS_TOO_LARGE");
+    expect(codeOf(() => readRenderingsFile(join(d, "absent.json")))).toBe("JA_RENDERINGS_RECORD_MISSING");
   });
 });

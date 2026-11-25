@@ -504,7 +504,7 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(await deliver()).toBe("resolved");
   });
 
-  it("DEV-303 §6.1 change 4: approved Japanese renderings — gate-checked, shown with 原文 in the prompt, bound by SHA-256 in plan, receipt and record", async () => {
+  it("DEV-303 §6.1 change 4: approved Japanese renderings — gate-checked, shown (without the original) in the prompt, bound by SHA-256 in plan, receipt and record", async () => {
     const entries = [{ fact_key: "statement_1", source_text: "豆は架空の焙煎所から届きます", ja_text: "架空の焙煎所から豆が届きます" }];
     const jaRecord = (over: Record<string, unknown> = {}) => Buffer.from(`${JSON.stringify({ schema: "sr_ja_renderings_v1", shop_id: SHOP, entries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(entries) }, ...over }, null, 2)}\n`);
     const JA = jaRecord();
@@ -514,13 +514,24 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     const { report, run } = await w.cycle();
     expect(report.status).toBe("succeeded");
     const prompt = readFileSync(join(report.run_dir!, "prompts", "pc-1.txt"), "utf8");
-    expect(prompt).toContain("- 「架空の焙煎所から豆が届きます」（オーナーが承認した日本語訳。原文: 「豆は架空の焙煎所から届きます」。画像には日本語訳だけを書き、原文は書かない）");
+    expect(prompt).toContain("- 「架空の焙煎所から豆が届きます」（オーナーが承認した日本語訳）\n");
+    expect(prompt).not.toContain("豆は架空の焙煎所から届きます");
     const receipt = JSON.parse(readFileSync(report.receipt!, "utf8")) as WorkerReceipt;
     expect(receipt.ja_renderings_sha256).toBe(sha(JA));
     expect(run!.jaRenderingsSha256).toBe(sha(JA));
     expect(readFileSync(report.receipt!, "utf8")).not.toContain("ja-renderings.json");
     const plan = (await loadRequestRun({ requestFile: w.requestFile, requestSha256: sha(w.requestBytes), requestId: ID, home: w.home, repo: w.repo })).plan as RequestPlan;
     expect(plan.ja_renderings_sha256).toBe(sha(JA));
+    // review L4: the run keeps the renderings SHA-256 (no path, no text); delivery holds the receipt to it
+    const inputPath = join(report.run_dir!, "ja-renderings-input.json");
+    const inputOriginal = readFileSync(inputPath, "utf8");
+    expect(JSON.parse(inputOriginal)).toEqual({ schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: sha(JA) });
+    rmSync(inputPath);
+    writeFileSync(inputPath, JSON.stringify({ schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: sha("other") }), { mode: 0o600 });
+    expect(await codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }))).toBe("JA_RENDERINGS_INPUT_MISMATCH");
+    rmSync(inputPath);
+    expect(await codeOf(deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }))).toBe("JA_RENDERINGS_INPUT_MISMATCH");
+    writeFileSync(inputPath, inputOriginal, { mode: 0o600 });
     // sealed and delivered as a whole_page run with the field
     expect((await deliverReview({ approvalId: ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true })).status).toBe("delivered");
     // the real shop's private record keeps the SHA-256 only

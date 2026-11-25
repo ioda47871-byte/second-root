@@ -116,11 +116,6 @@ export async function readRequestFacts(request: ImagefirstRequest, places: { hom
 }
 
 /**
- * Issue #336: the design request's success-case analysis record, next to its facts pack (the same root and shop
- * directory, no link), bound by the request's SHA-256, of the request's shop, and passing the gate (case-study.ts).
- * null when the request names none (a fictional request; parseRequest already refused a real_shop one).
- */
-/**
  * DEV-303 §6.1 change 4: a refused renderings record as request mode's stop (the same JA_RENDERING* code), keeping the
  * category / field / key of an added fact for --validate-request (never the text).
  */
@@ -161,6 +156,11 @@ export async function readRequestJaRenderings(request: DesignRequest, facts: Fac
   }
 }
 
+/**
+ * Issue #336: the design request's success-case analysis record, next to its facts pack (the same root and shop
+ * directory, no link), bound by the request's SHA-256, of the request's shop, and passing the gate (case-study.ts).
+ * null when the request names none (a fictional request; parseRequest already refused a real_shop one).
+ */
 export async function readRequestCaseStudy(request: DesignRequest, places: { home: string; repo: string }): Promise<CheckedCaseStudy | null> {
   const ref = request.case_study;
   if (!ref) return null;

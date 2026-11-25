@@ -141,7 +141,8 @@ export type BundleCode =
   | "BUNDLE_SHA_MISMATCH"
   | "BUNDLE_RECORD_MISMATCH"
   | "BUNDLE_TERMS_INVALID"
-  | "REFERENCE_INPUTS_MISMATCH";
+  | "REFERENCE_INPUTS_MISMATCH"
+  | "JA_RENDERINGS_INPUT_MISMATCH";
 
 export class BundleStop extends Error {
   constructor(readonly code: BundleCode) {
@@ -308,6 +309,27 @@ function designImagesOf(r: Receipt): { readonly pc: number; readonly sp: number 
   return WHOLE_PAGE_IMAGES;
 }
 
+/**
+ * DEV-303 §6.1 change 4 (review L4): the receipt's ja_renderings_sha256 must equal the run directory's own
+ * ja-renderings-input.json (schema image_first_ja_renderings_input_v0, that SHA-256 and nothing else); a receipt
+ * without it needs a run without that file. JA_RENDERINGS_INPUT_MISMATCH otherwise.
+ */
+export async function checkJaRenderingsInput(runDir: string, receiptSha: unknown): Promise<void> {
+  const bytes = await readNoFollow(join(runDir, "ja-renderings-input.json"), 4 * 1024, { link: "JA_RENDERINGS_INPUT_MISMATCH", big: "JA_RENDERINGS_INPUT_MISMATCH" }, true);
+  if (receiptSha === undefined) {
+    if (bytes !== null) stop("JA_RENDERINGS_INPUT_MISMATCH");
+    return;
+  }
+  if (bytes === null) return stop("JA_RENDERINGS_INPUT_MISMATCH");
+  let f: Record<string, unknown>;
+  try {
+    f = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return stop("JA_RENDERINGS_INPUT_MISMATCH");
+  }
+  if (!f || typeof f !== "object" || Object.keys(f).sort().join(",") !== "ja_renderings_sha256,schema" || f.schema !== "image_first_ja_renderings_input_v0" || f.ja_renderings_sha256 !== receiptSha) stop("JA_RENDERINGS_INPUT_MISMATCH");
+}
+
 /** The run's reference-inputs.json (full-page-call.ts writes it for a whole_page run): small, ours, no link. */
 const REFERENCE_INPUTS_MAX_BYTES = 16 * 1024;
 /**
@@ -411,6 +433,7 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
   if (named !== root) stop("RECEIPT_RUN_DIR_MISMATCH");
   // review L4: the receipt's reference list is the run's own reference-inputs.json (or neither has one)
   await checkReferenceInputs(root, r.reference_images);
+  await checkJaRenderingsInput(root, r.ja_renderings_sha256);
 
   // ---- what may be there: exactly the receipt's parts, and the composites the caller named ----
   const composites: [string, string][] = [];

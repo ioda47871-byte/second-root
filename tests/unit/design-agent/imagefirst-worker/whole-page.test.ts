@@ -8,7 +8,7 @@ import { assertCaseStudyTextHasNoFact, buildRequestPlan, CASE_STUDY_TEXT_CATEGOR
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { validateImageFirst } from "@/lib/design-agent/image-first/validate";
 import { IMAGE_TOOL_MAX_REFS, isReferenceName, REFERENCE_DIR_TOKEN } from "@/lib/design-agent/image-tool-limits";
-import { BUNDLE_MAX_REFERENCES, checkReferenceInputs, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
+import { BUNDLE_MAX_REFERENCES, checkJaRenderingsInput, checkReferenceInputs, packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { SandboxError, stageReferenceBytes } from "@/lib/design-agent/sandbox";
 import { assertRealShopReferences, caseStudyUseOf, referenceRecordOf, refusalDetailOf, selectReferenceImages, selectReferences } from "@/lib/design-agent/imagefirst-worker/request";
 import { FULL_PAGE_MAX_REFERENCES, runRequestFullPageCall } from "@/lib/design-agent/phase2f-live/full-page-call";
@@ -363,12 +363,13 @@ describe("DEV-303 §6.1 change 4: owner-approved Japanese renderings in the whol
   const withJa = parseRequest(bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: JA_SHA } })), sha(bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: JA_SHA } }))), ID).request as DesignRequest;
   const planJa = (ja: typeof JA | null | undefined, request: DesignRequest = withJa) => buildRequestPlan({ request, requestSha256: "a".repeat(64), factsBytes: FACTS_BYTES, facts: FACTS, caseStudy: CS_USE, ...(ja === undefined ? {} : { jaRenderings: ja }) });
 
-  it("a rendered fact is shown as its approved Japanese with the original quoted as 原文 (both exact); others as before", () => {
+  it("a rendered fact is shown as its approved Japanese only (review L3: the original is not among the strings to write); others as before", () => {
     const p = planJa(JA);
     for (const vp of ["desktop_1440", "mobile_390"] as const) {
       const t = p.viewports[vp].parts[0]!.prompt;
-      expect(t).toContain(`- 「${JA_TEXT}」（オーナーが承認した日本語訳。原文: 「${SOURCE}」。画像には日本語訳だけを書き、原文は書かない）`);
-      expect(t).not.toContain(`- 「${SOURCE}」\n`);
+      expect(t).toContain(`- 「${JA_TEXT}」（オーナーが承認した日本語訳）\n`);
+      expect(t).not.toContain(SOURCE);
+      expect(t).not.toContain("原文");
       expect(t).toContain(`- 「${FACTS.facts.find((f) => f.key === "description")!.value}」`);
     }
     expect(p.ja_renderings_sha256).toBe(JA_SHA);
@@ -655,5 +656,28 @@ describe("review L4: the receipt's reference list is the run's own reference-inp
       ["no file", null, two],
       ["a file without a receipt list", doc(two), undefined],
     ] as const) expect(await codeOf(checkReferenceInputs(runDirWith(file), receipt)), why).toBe("REFERENCE_INPUTS_MISMATCH");
+  });
+});
+
+describe("review L4 (ja renderings): the receipt's renderings SHA-256 is the run's own ja-renderings-input.json", () => {
+  const dirWith = (file: unknown) => {
+    const dir = tmp("sr-wp-ja-");
+    if (file !== null) writeFileSync(join(dir, "ja-renderings-input.json"), typeof file === "string" ? file : JSON.stringify(file), { mode: 0o600 });
+    return dir;
+  };
+  const codeOf = (p: Promise<unknown>) => p.then(() => "ok", (e: { code?: string }) => e.code ?? String(e));
+  const doc = (s: string) => ({ schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: s });
+  it("equal passes; another SHA, an extra field, another schema, a missing or unexpected file is JA_RENDERINGS_INPUT_MISMATCH", async () => {
+    const s = sha("renderings");
+    expect(await codeOf(checkJaRenderingsInput(dirWith(doc(s)), s))).toBe("ok");
+    expect(await codeOf(checkJaRenderingsInput(dirWith(null), undefined))).toBe("ok");
+    for (const [why, file, receipt] of [
+      ["another SHA", doc(sha("other")), s],
+      ["extra field", { ...doc(s), path: "/x" }, s],
+      ["another schema", { ...doc(s), schema: "x" }, s],
+      ["not JSON", "{", s],
+      ["missing file", null, s],
+      ["file without a receipt SHA", doc(s), undefined],
+    ] as const) expect(await codeOf(checkJaRenderingsInput(dirWith(file), receipt)), why).toBe("JA_RENDERINGS_INPUT_MISMATCH");
   });
 });

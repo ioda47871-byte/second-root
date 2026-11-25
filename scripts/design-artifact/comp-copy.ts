@@ -27,8 +27,9 @@
  * The comp lane's own `--check-review` refuses a `show_owner` comp review whose copy is not at owner review
  * (comp-lane.ts checkReviewFile). Exit 0 / 1 as above, 2 for a usage or input error.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { JA_RENDERINGS_MAX_BYTES } from "../../lib/design-agent/ja-renderings/ja-renderings";
 import { compCopyGate, type CompCopyGate } from "../../lib/design-agent/quality-pipeline/comp-copy-gate";
 import { CopyQualityReview, MAX_COPY_REVISION_ROUNDS, reviewCopyQuality, type CopyQualityFiles, type PriorRound } from "../../lib/design-agent/quality-pipeline/copy-quality-review";
 
@@ -51,6 +52,55 @@ const parse = (b: Buffer): unknown => {
   }
 };
 
+const REPO = resolve(__dirname, "../..");
+const within = (child: string, parent: string) => {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
+
+/**
+ * Review L5: the shop's renderings record, read as ja-renderings-check.ts reads it: outside this repository (links
+ * resolved), a regular file opened without following a link, at most JA_RENDERINGS_MAX_BYTES. Fixed codes otherwise.
+ */
+export function readRenderingsFile(path: string, repoRoot: string = REPO): Buffer {
+  const full = resolve(path);
+  let real: string;
+  try {
+    real = realpathSync(full);
+  } catch {
+    throw new CompCopyError("JA_RENDERINGS_RECORD_MISSING");
+  }
+  const repo = (() => {
+    try {
+      return realpathSync(repoRoot);
+    } catch {
+      return resolve(repoRoot);
+    }
+  })();
+  if (within(real, repo) || within(full, resolve(repoRoot))) throw new CompCopyError("JA_RENDERINGS_RECORD_IN_REPO");
+  let fd: number;
+  try {
+    fd = openSync(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    throw new CompCopyError("JA_RENDERINGS_RECORD_UNSAFE");
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.nlink !== 1) throw new CompCopyError("JA_RENDERINGS_RECORD_UNSAFE");
+    if (st.size > JA_RENDERINGS_MAX_BYTES) throw new CompCopyError("JA_RENDERINGS_TOO_LARGE");
+    const buf = Buffer.alloc(st.size);
+    let off = 0;
+    while (off < st.size) {
+      const n = readSync(fd, buf, off, st.size - off, off);
+      if (n === 0) break;
+      off += n;
+    }
+    return buf.subarray(0, off);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** The current files of a comp with the facts pack given (bytes as read). */
 export function compFiles(dir: string, factsPath: string, jaRenderingsPath?: string): CopyQualityFiles {
   return {
@@ -58,7 +108,7 @@ export function compFiles(dir: string, factsPath: string, jaRenderingsPath?: str
     copyRecord: readFileSync(join(dir, "copy.json")),
     pageHtml: readFileSync(join(dir, "index.html")),
     pageCss: readFileSync(join(dir, "style.css")),
-    ...(jaRenderingsPath !== undefined ? { jaRenderings: readFileSync(jaRenderingsPath) } : {}),
+    ...(jaRenderingsPath !== undefined ? { jaRenderings: readRenderingsFile(jaRenderingsPath) } : {}),
   };
 }
 
