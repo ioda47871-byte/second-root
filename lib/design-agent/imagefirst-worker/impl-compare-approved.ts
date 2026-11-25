@@ -35,6 +35,8 @@ import { compareApprovedDesign, toApprovedImplInput, type ApprovedCompareReport 
 export const IMPL_COMPARE_SCHEMA = "sr_impl_compare_v1";
 /** The site files the renderer serves, and their caps (the implementation lane comparison's IMPL_COMPARE_LIMITS, restated). */
 export const SITE_LIMITS = { html: 384 * 1024, css: 256 * 1024, asset: 16 * 1024 * 1024, assets: 32 } as const;
+/** All the site files together (index.html, style.css and every asset): 64 MiB, so 32 large assets cannot add up. */
+export const SITE_TOTAL_MAX = 64 * 1024 * 1024;
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.png$/;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -45,6 +47,7 @@ export const IMPL_COMPARE_CODES = [
   "IMPL_SITE_UNSAFE",
   "IMPL_SITE_INVALID",
   "IMPL_SITE_TOO_LARGE",
+  "IMPL_SITE_TOTAL_TOO_LARGE",
   "IMPL_OUT_IN_REPO",
   "IMPL_OUT_NOT_EMPTY",
   "IMPL_CAPTURE_FAILED",
@@ -88,6 +91,19 @@ async function readFileNoFollow(path: string, max: number): Promise<Buffer | nul
   }
 }
 
+/** Opens a directory with O_DIRECTORY | O_NOFOLLOW (a link or a file is refused by the kernel, not only by lstat). */
+async function openDirNoFollow(path: string): Promise<"dir" | "missing" | "not_dir"> {
+  let h: Awaited<ReturnType<typeof open>> | null = null;
+  try {
+    h = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    return (await h.stat()).isDirectory() ? "dir" : "not_dir";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "not_dir";
+  } finally {
+    await h?.close().catch(() => undefined);
+  }
+}
+
 /** The implemented site folder: outside the repository, real (no link on the path), index.html + style.css + assets/*.png. */
 export async function readSite(siteDir: string, repo: string): Promise<Site> {
   const dir = resolve(siteDir);
@@ -96,26 +112,28 @@ export async function readSite(siteDir: string, repo: string): Promise<Site> {
   const realRepo = await realpath(repo).catch(() => resolve(repo));
   if (within(real, realRepo) || within(dir, resolve(repo))) stop("IMPL_SITE_IN_REPO");
   if (real !== dir) stop("IMPL_SITE_UNSAFE");
-  const info = await lstat(dir);
-  if (!info.isDirectory()) stop("IMPL_SITE_INVALID");
+  if ((await openDirNoFollow(dir)) !== "dir") stop("IMPL_SITE_INVALID");
   const html = await readFileNoFollow(join(dir, "index.html"), SITE_LIMITS.html);
   const css = await readFileNoFollow(join(dir, "style.css"), SITE_LIMITS.css);
   if (!html || !css) return stop("IMPL_SITE_INVALID");
+  let total = html.length + css.length;
   const files = [
     { path: "index.html", sha256: sha256(html), bytes: html.length },
     { path: "style.css", sha256: sha256(css), bytes: css.length },
   ];
   const assets = new Map<string, Buffer>();
   const assetsDir = join(dir, "assets");
-  const ai = await lstat(assetsDir).catch(() => null);
-  if (ai) {
-    if (ai.isSymbolicLink() || !ai.isDirectory()) stop("IMPL_SITE_UNSAFE");
+  const ai = await openDirNoFollow(assetsDir);
+  if (ai !== "missing") {
+    if (ai !== "dir") stop("IMPL_SITE_UNSAFE");
     const names = (await readdir(assetsDir)).sort();
     if (names.length > SITE_LIMITS.assets) stop("IMPL_SITE_TOO_LARGE");
     for (const name of names) {
       if (!ASSET_NAME.test(name)) stop("IMPL_SITE_INVALID");
       const b = await readFileNoFollow(join(assetsDir, name), SITE_LIMITS.asset);
       if (!b || !b.subarray(0, 8).equals(PNG_SIGNATURE)) return stop("IMPL_SITE_INVALID");
+      total += b.length;
+      if (total > SITE_TOTAL_MAX) stop("IMPL_SITE_TOTAL_TOO_LARGE");
       assets.set(`assets/${name}`, b);
       files.push({ path: `assets/${name}`, sha256: sha256(b), bytes: b.length });
     }
@@ -183,7 +201,7 @@ export type ImplCompareRecord = {
 };
 
 const MEASURED = ["page layout (grid SSIM)", "colour blocks", "edge density (edge IoU)", "page height ratio (an overview: expected to differ)", "horizontal overflow", "requests the page made that were not served (e.g. a missing picture)"];
-const NOT_MEASURED = ["section order, position, colour and size per section (a whole-page picture declares no section boxes)", "text content and Japanese wording (the copy audit and the owner)", "fine detail (the approved picture is the page drawn smaller)"];
+const NOT_MEASURED = ["section order, position, colour and size per section (a whole-page picture declares no section boxes)", "text content and Japanese wording (the copy audit and the owner)", "fine detail (the approved picture is the page drawn smaller)", "the page's true proportions in the page-level scores (the capture is squeezed to the design picture's aspect before they are computed; the heights are recorded as they are)"];
 
 // ---- the private review page ---------------------------------------------------------------------------------------
 

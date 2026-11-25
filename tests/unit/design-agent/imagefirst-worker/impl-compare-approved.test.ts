@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { VIEWING_PAGE_CSP } from "@/lib/design-agent/case-study/case-study";
 import { packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
-import { IMPL_COMPARE_SCHEMA, ImplCompareStop, renderImplComparePage, runImplCompare, type ImplCompareRecord } from "@/lib/design-agent/imagefirst-worker/impl-compare-approved";
+import { IMPL_COMPARE_SCHEMA, ImplCompareStop, renderImplComparePage, runImplCompare, SITE_LIMITS, SITE_TOTAL_MAX, type ImplCompareRecord } from "@/lib/design-agent/imagefirst-worker/impl-compare-approved";
+import { IMPL_COMPARE_LIMITS } from "@/lib/design-agent/impl-lane/impl-compare";
 import { implCompareMain } from "@/scripts/design-artifact/impl-compare-approved";
 import { colourPng } from "../phase2f/fixtures";
 
@@ -140,12 +141,34 @@ describe("DEV-303 §6.1 change 8: the implemented site against the approved whol
     writeFileSync(join(badAsset, "assets", "b.png"), "not a png");
     expect(await codeOf(runImplCompare({ ...base, siteDir: badAsset, outDir: join(tmp(), "o") }))).toBe("IMPL_SITE_INVALID");
     expect(await codeOf(runImplCompare({ ...base, siteDir: join(tmp(), "absent"), outDir: join(tmp(), "o") }))).toBe("IMPL_SITE_MISSING");
+    // the directories are opened with O_DIRECTORY | O_NOFOLLOW: a linked assets directory, a site that is a file
+    const linkedAssets = site();
+    rmSync(join(linkedAssets, "assets"), { recursive: true });
+    symlinkSync(join(site(), "assets"), join(linkedAssets, "assets"));
+    expect(await codeOf(runImplCompare({ ...base, siteDir: linkedAssets, outDir: join(tmp(), "o") }))).toBe("IMPL_SITE_UNSAFE");
+    const fileSite = join(tmp(), "site-file");
+    writeFileSync(fileSite, "x");
+    expect(await codeOf(runImplCompare({ ...base, siteDir: fileSite, outDir: join(tmp(), "o") }))).toBe("IMPL_SITE_INVALID");
+    // every file under its own cap, all together over the total cap (5 x 13 MiB > 64 MiB)
+    const heavy = site();
+    const big = Buffer.alloc(13 * 1024 * 1024);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(big);
+    for (let i = 0; i < 5; i++) writeFileSync(join(heavy, "assets", `heavy-${i}.png`), big);
+    expect(big.length).toBeLessThan(SITE_LIMITS.asset);
+    expect(5 * big.length).toBeGreaterThan(SITE_TOTAL_MAX);
+    expect(await codeOf(runImplCompare({ ...base, siteDir: heavy, outDir: join(tmp(), "o") }))).toBe("IMPL_SITE_TOTAL_TOO_LARGE");
+    rmSync(heavy, { recursive: true });
     expect(await codeOf(runImplCompare({ ...base, siteDir: site(), outDir: join(REPO, "tmp-impl-compare-out") }))).toBe("IMPL_OUT_IN_REPO");
     expect(existsSync(join(REPO, "tmp-impl-compare-out"))).toBe(false);
     const full = tmp();
     writeFileSync(join(full, "x"), "x");
     expect(await codeOf(runImplCompare({ ...base, siteDir: site(), outDir: full }))).toBe("IMPL_OUT_NOT_EMPTY");
     expect(await codeOf(runImplCompare({ ...base, browser: null, siteDir: site(), outDir: join(tmp(), "o") }))).toBe("IMPL_CAPTURE_FAILED");
+  });
+
+  it("the per-file site caps are the implementation lane comparison's; the total cap is 64 MiB", () => {
+    expect(SITE_LIMITS).toEqual({ html: IMPL_COMPARE_LIMITS.html, css: IMPL_COMPARE_LIMITS.css, asset: IMPL_COMPARE_LIMITS.asset, assets: IMPL_COMPARE_LIMITS.assets });
+    expect(SITE_TOTAL_MAX).toBe(64 * 1024 * 1024);
   });
 
   it("the review page escapes every text", () => {
