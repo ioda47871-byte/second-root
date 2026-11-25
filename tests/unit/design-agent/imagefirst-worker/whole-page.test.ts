@@ -428,7 +428,7 @@ describe("DEV-303 §6.1 row 3 the comp check of a whole_page run: PC 1 + SP 1, o
   const SP_BANDS = [{ id: "header", y0: 0, y1: 0.06 }, { id: "hero", y0: 0.06, y1: 0.5 }, { id: "info", y0: 0.5, y1: 0.7 }, { id: "story", y0: 0.7, y1: 0.94 }, { id: "footer", y0: 0.94, y1: 1 }];
   const whole = (extra: Parameters<typeof makeRun>[0] = {}) =>
     makeRun({
-      pictures: { "pc-01": drawPart(1024, 1536, ALL, "pc", 1), "sp-01": drawPart(1024, 1536, SP_BANDS, "sp", 2) },
+      pictures: { "pc-01": drawPart(512, 768, ALL, "pc", 1), "sp-01": drawPart(512, 768, SP_BANDS, "sp", 2), "pc-02": drawPart(512, 512, ALL, "pc"), "sp-02": drawPart(512, 512, ALL, "sp"), "sp-03": drawPart(512, 512, ALL, "sp") },
       ...extra,
       mutate: (r) => {
         for (const v of ["desktop_1440", "mobile_390"] as const) {
@@ -458,8 +458,8 @@ describe("DEV-303 §6.1 row 3 the comp check of a whole_page run: PC 1 + SP 1, o
     expect(v.rejects, JSON.stringify(v.details)).toEqual([]);
     expect(v.status).toBe("AWAITING_OWNER_EVALUATION");
     expect(v.parts.map((x) => [x.viewport, x.index, x.width, x.height])).toEqual([
-      ["desktop_1440", 1, 1024, 1536],
-      ["mobile_390", 1, 1024, 1536],
+      ["desktop_1440", 1, 512, 768],
+      ["mobile_390", 1, 512, 768],
     ]);
   });
 

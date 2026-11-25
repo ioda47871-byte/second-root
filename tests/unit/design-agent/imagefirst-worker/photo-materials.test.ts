@@ -236,6 +236,13 @@ async function stageOne() {
   const d1 = await deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true });
   return { w, one, files, d1, approved };
 }
+/**
+ * One stage-one world shared by the tests that only read it, or change a file and restore it before they end (test
+ * time: each stage one is a design run, its delivery and a materials run). The end-to-end test keeps its own world
+ * (it counts every run of its home).
+ */
+let sharedWorld: ReturnType<typeof stageOne> | undefined;
+const sharedStageOne = () => (sharedWorld ??= stageOne());
 
 describe("DEV-303 photo_materials request schema (strict; same unsafe-text filter as direction)", () => {
   it("accepts the documented materials request; one picture per listed material (max_images = materials)", () => {
@@ -501,7 +508,7 @@ describe("DEV-303 §6.1 change 6: a materials request runs only on the owner-app
   });
 
   it("review L1: another shop's or kind's design, a materials bundle, swapped record files or one linked record are refused", async () => {
-    const { w, approved } = await stageOne();
+    const { w, approved } = await sharedStageOne();
     const validate = async (over: Record<string, unknown>, id = "req-test-shop-p-photos-7") => {
       const r = w.place(photoRequest({ id, ...over }));
       return validateRequestFile({ file: r.file, home: w.h, repo: w.repo }).then(() => "ok", (e: { code?: string }) => e.code ?? String(e));
@@ -560,7 +567,7 @@ describe("DEV-303 §6.1 change 6: a materials request runs only on the owner-app
   });
 
   it("sealing and delivery hold the receipt to the run's own approved-design-input.json", async () => {
-    const { w, one } = await stageOne();
+    const { w, one } = await sharedStageOne();
     const input = join(one.report.run_dir!, "approved-design-input.json");
     const original = readFileSync(input, "utf8");
     const deliver = () => deliverReview({ approvalId: PHOTO_ID, runsDir: w.runsDir, stateDir: w.stateDir, now: () => NOW }, { fileAt: async () => null, onOriginDevelop: async () => true }).then((r) => r.status, (e: { code?: string }) => e.code ?? String(e));
@@ -665,10 +672,12 @@ describe("DEV-303 design → approval → materials → (research) design with p
   });
 
   it("refuses photo inputs that are missing, mismatched, linked, oversize or from another run; nothing invoked", async () => {
-    const { w, one, files } = await stageOne();
+    const { w, one, files } = await sharedStageOne();
     const photoRun = one.report.run_dir!;
     const tryWith = async (photo_inputs: unknown, id: string) => (await w.cycle(designRequest({ id, photo_inputs }))).report;
     const execs = () => w.fakes.reduce((n, f) => n + f.execs, 0);
+    // the shared world has its own runs already: nothing below may add one until the last, successful request
+    const before = execs();
     // no such run
     expect(await tryWith({ request_id: "req-test-shop-p-nothing-1", files: [files[0]] }, "req-test-shop-p-d-1")).toMatchObject({ status: "refused", code: "PHOTO_INPUT_RUN_MISSING", invoked: false });
     // a SHA-256 the run does not have
@@ -685,8 +694,11 @@ describe("DEV-303 design → approval → materials → (research) design with p
     rmSync(join(parts, "photo-1.png"));
     writeFileSync(join(parts, "photo-1.png"), readFileSync(keep));
     // a file grown past the cap (sparse; its size is checked before any read)
+    const photo2 = readFileSync(join(parts, "photo-2.png"));
     truncateSync(join(parts, "photo-2.png"), 21 * 1024 * 1024);
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[1]] }, "req-test-shop-p-d-5")).code).toBe("PHOTO_INPUT_TOO_LARGE");
+    rmSync(join(parts, "photo-2.png"));
+    writeFileSync(join(parts, "photo-2.png"), photo2);
     // the receipt says another shop / kind, or not succeeded
     const receipt = one.report.receipt!;
     const original = readFileSync(receipt, "utf8");
@@ -729,8 +741,8 @@ describe("DEV-303 design → approval → materials → (research) design with p
     rmSync(sealed);
     writeFileSync(sealed, keep3, { mode: 0o600 });
     rmSync(aside, { recursive: true });
-    // the approved design and the materials run only
-    expect(execs()).toBe(2);
+    // nothing ran for any of the refused requests
+    expect(execs()).toBe(before);
     // with everything restored, the first picture resolves again
     expect((await tryWith({ request_id: PHOTO_ID, files: [files[0]] }, "req-test-shop-p-d-10")).status).toBe("succeeded");
   });
@@ -749,7 +761,7 @@ describe("DEV-303 design → approval → materials → (research) design with p
     // the run of an unchecked request is refused before anything (a run never starts on unchecked inputs)
     expect((await w.cycle(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: f } }))).report).toMatchObject({ status: "refused", code: "PHOTO_INPUT_RUN_MISSING", invoked: false });
 
-    const { w: w2, files } = await stageOne();
+    const { w: w2, files } = await sharedStageOne();
     const good = w2.place(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: files.slice(0, 5) } }));
     expect(await validateRequestFile({ file: good.file, home: w2.h, repo: w2.repo })).toMatchObject({ photo_inputs: "checked" });
     // Issue #335: --validate-request names a request that would hand the image tool 6 reference pictures
@@ -830,7 +842,7 @@ describe("DEV-303 the audit CLI skips an image-materials bundle; the private rec
   };
 
   it("photo materials: --dry-run 'planned' and the run 'completed', audit skipped, exit 0, no claude, nothing written; a design run is audited as before", async () => {
-    const { w, d1 } = await stageOne();
+    const { w, d1 } = await sharedStageOne();
     const inbox = join(w.runsDir, "review-inbox");
     const before = readdirSync(inbox).sort();
     for (const [args, status] of [[[PHOTO_ID, "--dry-run"], "planned"], [[PHOTO_ID], "completed"]] as const) {

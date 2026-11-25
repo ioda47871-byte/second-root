@@ -539,31 +539,40 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ ja_renderings_sha256: sha(JA) });
     expect(readFileSync(path, "utf8")).not.toContain("焙煎所");
 
-    // refusals (validate and worker alike; nothing invoked)
-    const check = async (bytes: Buffer, over: Record<string, unknown> = {}) => {
-      const v = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(bytes) }, ...over }) });
-      writeFileSync(join(v.home, "second-root-shops", SHOP, "ja-renderings.json"), bytes);
-      const refused = await validateRequestFile({ file: v.requestFile, home: v.home, repo: v.repo }).then(() => null, (e: unknown) => e);
-      const cyc = await v.cycle();
-      expect(v.invoked).toEqual([]);
-      return { code: (refused as { code?: string } | null)?.code ?? "ok", detail: jaRenderingsRefusalDetailOf(refused), cycle: cyc.report.code };
+    // refusals, in ONE home (validate for every case; the worker for the first, nothing invoked)
+    const unconfirmed = jaRecord({ owner_confirmation: undefined });
+    const v = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(unconfirmed) } }) });
+    const jaPath = join(v.home, "second-root-shops", SHOP, "ja-renderings.json");
+    const placeJa = (bytes: Buffer | null) => {
+      rmSync(jaPath, { force: true });
+      if (bytes) writeFileSync(jaPath, bytes);
     };
-    expect(await check(jaRecord({ owner_confirmation: undefined }))).toMatchObject({ code: "JA_RENDERINGS_NOT_OWNER_CONFIRMED", cycle: "JA_RENDERINGS_NOT_OWNER_CONFIRMED" });
+    const check = async (bytes: Buffer | null, refSha: string) => {
+      placeJa(bytes);
+      const file = join(tmp("sr-req-ja-req-"), `${ID}.json`);
+      writeFileSync(file, bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: refSha } })));
+      const refused = await validateRequestFile({ file, home: v.home, repo: v.repo }).then(() => null, (e: unknown) => e);
+      return { code: (refused as { code?: string } | null)?.code ?? "ok", detail: jaRenderingsRefusalDetailOf(refused) };
+    };
+    expect(await check(unconfirmed, sha(unconfirmed))).toMatchObject({ code: "JA_RENDERINGS_NOT_OWNER_CONFIRMED" });
+    expect((await v.cycle()).report.code).toBe("JA_RENDERINGS_NOT_OWNER_CONFIRMED");
+    expect(v.invoked).toEqual([]);
     const badEntries = [{ ...entries[0]!, ja_text: "職人の焙煎所から豆が届きます" }];
-    expect(await check(jaRecord({ entries: badEntries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(badEntries) } }))).toEqual({ code: "JA_RENDERING_ADDS_FACT", detail: { category: "people", field: "ja_text", fact_key: "statement_1" }, cycle: "JA_RENDERING_ADDS_FACT" });
+    const bad = jaRecord({ entries: badEntries, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(badEntries) } });
+    expect(await check(bad, sha(bad))).toEqual({ code: "JA_RENDERING_ADDS_FACT", detail: { category: "people", field: "ja_text", fact_key: "statement_1" } });
     const wrongSource = [{ ...entries[0]!, source_text: "豆は届きます" }];
-    expect((await check(jaRecord({ entries: wrongSource, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(wrongSource) } }))).code).toBe("JA_RENDERINGS_SOURCE_MISMATCH");
-    // the request's SHA-256 is not the file's
-    const mismatch = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha("other") } }) });
-    writeFileSync(join(mismatch.home, "second-root-shops", SHOP, "ja-renderings.json"), JA);
-    expect(await codeOf(validateRequestFile({ file: mismatch.requestFile, home: mismatch.home, repo: mismatch.repo }))).toBe("JA_RENDERINGS_RECORD_SHA_MISMATCH");
-    // missing, or a link
-    const missing = world({ request: requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(JA) } }) });
-    expect(await codeOf(validateRequestFile({ file: missing.requestFile, home: missing.home, repo: missing.repo }))).toBe("JA_RENDERINGS_RECORD_MISSING");
+    const wrong = jaRecord({ entries: wrongSource, owner_confirmation: { confirmed: true, confirmed_at: "2026-11-25T03:00:00Z", entries_sha256: entriesSha256(wrongSource) } });
+    expect((await check(wrong, sha(wrong))).code).toBe("JA_RENDERINGS_SOURCE_MISMATCH");
+    // the request's SHA-256 is not the file's; missing; a link
+    expect((await check(JA, sha("other"))).code).toBe("JA_RENDERINGS_RECORD_SHA_MISMATCH");
+    expect((await check(null, sha(JA))).code).toBe("JA_RENDERINGS_RECORD_MISSING");
     const elsewhere = join(tmp("sr-req-ja-"), "ja.json");
     writeFileSync(elsewhere, JA);
-    symlinkSync(elsewhere, join(missing.home, "second-root-shops", SHOP, "ja-renderings.json"));
-    expect(await codeOf(validateRequestFile({ file: missing.requestFile, home: missing.home, repo: missing.repo }))).toBe("JA_RENDERINGS_RECORD_UNSAFE");
+    symlinkSync(elsewhere, jaPath);
+    const file = join(tmp("sr-req-ja-req-"), `${ID}.json`);
+    writeFileSync(file, bytesOf(requestObject({ ja_renderings: { path: "ja-renderings.json", sha256: sha(JA) } })));
+    expect(await codeOf(validateRequestFile({ file, home: v.home, repo: v.repo }))).toBe("JA_RENDERINGS_RECORD_UNSAFE");
+    expect(v.invoked).toEqual([]);
   });
 
   it("fictional: the fictional-shop check passes, the bundle is delivered and the research log intake accepts it", async () => {
