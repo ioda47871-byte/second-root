@@ -1200,7 +1200,10 @@ describe("isolation", () => {
   const src = (p: string) => readFileSync(resolve(fx.REPO, p), "utf8");
   const specifiers = (s: string) => [...s.matchAll(/^import[^;]*?from\s*["']([^"']+)["']/gm)].map((m) => m[1]).sort();
   it("the audit imports only zod, sha256, the existing checks and its page reader (no network, process, model or worker)", () => {
-    expect(specifiers(src("lib/design-agent/quality-pipeline/copy-quality-review.ts"))).toEqual(["./copy-quality-page", "./copy-record", "./facts-pack", "@/lib/sales/demo-version/copy-check", "@/lib/sales/demo-version/html-safety", "node:crypto", "zod"]);
+    // DEV-303 §6.1 change 4: the owner-approved Japanese renderings check (pure: zod, node:crypto and copy-record's signs)
+    expect(specifiers(src("lib/design-agent/quality-pipeline/copy-quality-review.ts"))).toEqual(["../ja-renderings/ja-renderings", "./copy-quality-page", "./copy-record", "./facts-pack", "@/lib/sales/demo-version/copy-check", "@/lib/sales/demo-version/html-safety", "node:crypto", "zod"]);
+    expect(specifiers(src("lib/design-agent/ja-renderings/ja-renderings.ts"))).toEqual(["../quality-pipeline/copy-record", "../quality-pipeline/facts-pack", "node:crypto", "zod"]);
+    expect(src("lib/design-agent/ja-renderings/ja-renderings.ts")).not.toMatch(/\bfetch\(|import\s*\(|require\s*\(|child_process|node:fs|anthropic|openai|codex|\/worker\//i);
     expect(specifiers(src("lib/design-agent/quality-pipeline/copy-quality-page.ts"))).toEqual(["@/lib/sales/demo-version/html-safety", "parse5"]);
     for (const p of ["lib/design-agent/quality-pipeline/copy-quality-review.ts", "lib/design-agent/quality-pipeline/copy-quality-page.ts"])
       expect(src(p)).not.toMatch(/\bfetch\(|import\s*\(|require\s*\(|child_process|anthropic|openai|codex|\/worker\//i);

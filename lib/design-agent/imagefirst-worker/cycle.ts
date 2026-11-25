@@ -150,6 +150,8 @@ export type RequestReceiptFields = {
   /** DEV-303 §6.1 change 6: only on a photo-materials run — its approved design (bundle id and SHA-256s) and the materials list's SHA-256. */
   approved_design?: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
   materials_sha256?: string;
+  /** DEV-303 §6.1 change 4: only on a whole_page run that used owner-approved Japanese renderings (that record's SHA-256). */
+  ja_renderings_sha256?: string;
 };
 
 export type CycleOptions = {

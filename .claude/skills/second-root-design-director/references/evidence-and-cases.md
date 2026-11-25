@@ -137,3 +137,20 @@
    (`WHOLE_PAGE_PHOTO_INPUTS_REFUSED`。順番はデザイン → 承認 → 素材)
 
 この記録の文面 (店の事実を含みうる) と確認ページは、リポジトリ・試験・Issue に入れない。
+
+### 英語などの事実を日本語で出すとき (オーナーが承認した日本語訳、DEV-303 §6.1 の 4)
+
+事実パックに英語でしかない事実 (英語の紹介文など) を、方向案・指示文・頁で日本語にして見せたいときは、自分で訳して
+事実として書かない。店ごとの非公開の `ja-renderings.json` (`sr_ja_renderings_v1`、事実パックの隣) に、
+`fact_key`・`source_text` (事実パックの値と完全に同じ)・`ja_text` (訳。1 行) を書き、
+`scripts/design-artifact/ja-renderings-check.ts --check <file> --facts <facts-pack.json> --draft` で確かめてからオーナーに見せる。
+訳は原文に無い数字 (算用数字・漢数字「三十」「七時」など)・値段・年・歴史・人物・受賞・評判・予約などや、
+漢字・ひらがな・カタカナ・ローマ字以外の文字、原文の単語に無いローマ字の語を足せない
+(`JA_RENDERING_ADDS_FACT`。区分・項目・key だけが出る)。この検査は数字・事実らしい印・日本語以外の文字・ローマ字の語だけを
+見る仕掛けで、印の無い名前・地名・営業の言い方 (「東京都渋谷区」「ジョン・スミス」「週末だけ営業」など) は止まらない。
+それらはオーナーの確認で見る。オーナーが訳を確認したと言ったときだけ、Claude が
+`owner_confirmation` (`confirmed: true`、`confirmed_at`、`entries_sha256` = 検査が出す値) を書く。これはオーナー本人の署名ではなく、
+「Claude が、オーナーがこの訳を確認したと記録した」証拠である。実店舗の whole_page の依頼には
+`ja_renderings: { path, sha256 }` を入れ、プロンプトには訳だけが出る (原文は入れない)。頁では copy.json の
+`claim_type: "approved_rendering"` の項目として置き、`comp-copy.ts ... --ja-renderings <file>` で監査する。
+訳の記録もリポジトリ・試験・Issue に入れない。

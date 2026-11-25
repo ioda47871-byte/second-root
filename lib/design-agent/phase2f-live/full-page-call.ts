@@ -373,7 +373,7 @@ export async function runRequestFullPageCall(i: RequestCallInput, d: Omit<FullPa
 }
 
 /** What the run after the checks needs of a plan (a pinned direction's PromptPlan, or DEV-303 a request's plan). */
-export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string; photo_inputs?: PhotoInputs; kind?: "real_shop" | "fictional"; layout?: "whole_page"; references?: PlanReference[] };
+export type RunnablePlan = Pick<PromptPlan, "viewports" | "batch" | "plan_sha256" | "shop" | "direction_id" | "direction_set_sha256" | "facts_sha256" | "direction_sha256"> & { direction_key: string; photo_inputs?: PhotoInputs; kind?: "real_shop" | "fictional"; layout?: "whole_page"; references?: PlanReference[]; ja_renderings_sha256?: string };
 type ExecuteInput = {
   plan: RunnablePlan;
   inputs: Pick<PromptInputs, "factsBytes" | "directionBytes">;
@@ -422,6 +422,8 @@ async function executeFullPageRun(i: ExecuteInput, d: Pick<FullPageCallDeps, "le
     if (i.photoInputs) await writeOnce(out("photo-inputs.json"), { schema: "image_first_photo_inputs_v0", ...i.photoInputs.meta });
     // DEV-303 §6.1 row 3: the reference pictures by id, case and SHA-256 only (never copied here, never a path)
     if (i.references) await writeOnce(out("reference-inputs.json"), { schema: "image_first_reference_inputs_v0", layout: "whole_page", references: i.references.map((r) => ({ id: r.id, case_id: r.case_id, sha256: r.sha256 })) });
+    // DEV-303 §6.1 change 4 (review L4): the owner-approved Japanese renderings the prompt used, by their SHA-256 only
+    if (plan.ja_renderings_sha256) await writeOnce(out("ja-renderings-input.json"), { schema: "image_first_ja_renderings_input_v0", ja_renderings_sha256: plan.ja_renderings_sha256 });
   } catch {
     await end("failed", "OUT_DIR_UNWRITABLE").catch(() => undefined);
     return { status: "stopped", code: "OUT_DIR_UNWRITABLE", stage: "call", aborted: false };

@@ -9,6 +9,10 @@
  *   creative_expression      original brand copy (tagline, metaphor, section heading). Allowed only in the
  *                            quality-first research lane, on fictional shops; always needs the owner's review.
  *   proposal_pending_review  copy proposed for a real shop; never shown as the shop's own words until reviewed.
+ *   approved_rendering       DEV-303 §6.1 change 4: the owner-approved Japanese rendering of ONE fact that the facts pack
+ *                            holds in another language (`sr_ja_renderings_v1`, lib/design-agent/ja-renderings). Its text
+ *                            must equal that rendering's ja_text for the fact's key exactly; without the checked
+ *                            renderings (the caller passes them) it is refused. A label of that key may introduce it.
  *
  * Creative copy must not invent facts: an address, hours, prices, ingredients, certification, health or efficacy,
  * history, people, reputation, awards, menus, reservation or stock, customer voices. The check below refuses the
@@ -25,7 +29,7 @@ const Line = (max: number) => z.string().trim().min(1).max(max);
 export const CopyItem = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9_-]{1,40}$/),
   text: Line(300),
-  claim_type: z.enum(["fact", "creative_expression", "proposal_pending_review"]),
+  claim_type: z.enum(["fact", "creative_expression", "proposal_pending_review", "approved_rendering"]),
   source_fact_ids: z.array(z.string().regex(/^F\d{1,3}$/)).max(8),
   owner_review_needed: z.boolean(),
   /** For facts only: a short label shown with the value, from LABELS_BY_KEY for the fact it introduces. */
@@ -89,7 +93,10 @@ export function factParts(value: string): Set<string> {
 }
 
 /** The record against the shop's facts (ids, values, SHA and shop). */
-export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: string; facts: ReadonlyArray<{ id: string; key?: string; value: string }> }): { ok: boolean; findings: CopyFinding[] } {
+/** DEV-303 §6.1 change 4: an owner-approved Japanese rendering the copy record may show (checked by the caller in gate mode). */
+export type ApprovedRendering = { fact_key: string; ja_text: string };
+
+export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: string; facts: ReadonlyArray<{ id: string; key?: string; value: string }>; renderings?: readonly ApprovedRendering[] }): { ok: boolean; findings: CopyFinding[] } {
   const parsed = CopyRecord.safeParse(raw);
   if (!parsed.success) return { ok: false, findings: [{ code: "COPY_SCHEMA", detail: parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }] };
   const r = parsed.data;
@@ -107,7 +114,14 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
     // bidi controls reorder what is drawn: a creative line reversed could show a word the record does not hold
     if (BIDI.test(i.text) || (i.label && BIDI.test(i.label))) f.push({ code: "COPY_BIDI_CONTROL", item: i.id });
     for (const s of i.source_fact_ids) if (!byId.has(s)) f.push({ code: "COPY_FACT_UNKNOWN", item: i.id, detail: s });
-    if (i.claim_type === "fact") {
+    if (i.claim_type === "approved_rendering") {
+      // exactly one fact, and the text is that fact's approved rendering (never any other text)
+      const fact = i.source_fact_ids.length === 1 ? o.facts.find((x) => x.id === i.source_fact_ids[0]) : undefined;
+      const key = fact?.key ?? "";
+      if (!fact) f.push({ code: "RENDERING_WITHOUT_ONE_FACT", item: i.id });
+      else if (!(o.renderings ?? []).some((r) => r.fact_key === key && norm(r.ja_text) === norm(i.text))) f.push({ code: "RENDERING_NOT_APPROVED", item: i.id });
+      if (i.label && !(LABELS_BY_KEY[key] ?? []).includes(i.label)) f.push({ code: "LABEL_NOT_ALLOWED", item: i.id, detail: i.label });
+    } else if (i.claim_type === "fact") {
       if (!i.source_fact_ids.length) f.push({ code: "FACT_WITHOUT_SOURCE", item: i.id });
       else if (!i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)))) f.push({ code: "FACT_TEXT_NOT_FROM_FACTS", item: i.id });
       // a label belongs to the fact it introduces: 所在地 to the address, 電話 to the phone
@@ -135,7 +149,7 @@ export function isFictionalShop(o: { shopId: string; facts: ReadonlyArray<{ key?
  * record's facts and labels are taken out: two creative items side by side can spell what neither does alone.
  */
 export function joinedTextsLookingLikeFact(blocks: readonly string[], r: CopyRecord): string[] {
-  const facts = r.items.filter((i) => i.claim_type === "fact").flatMap((i) => [norm(i.text), ...(i.label ? [norm(i.label)] : [])]).filter(Boolean).sort((a, b) => b.length - a.length);
+  const facts = r.items.filter((i) => i.claim_type === "fact" || i.claim_type === "approved_rendering").flatMap((i) => [norm(i.text), ...(i.label ? [norm(i.label)] : [])]).filter(Boolean).sort((a, b) => b.length - a.length);
   const out: string[] = [];
   for (const b of blocks) {
     let t = norm(b);
