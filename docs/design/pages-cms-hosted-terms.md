@@ -10,6 +10,7 @@
   商用利用・代理店の利用・店舗やサイトや利用者の数・上限は**どこにも書かれていない**。
 - **継続**: 運営側は「予告なく、理由を問わず」利用を止められる。規約の変更は重大なら 30 日前の通知に「合理的な努力」をする、だけ。
   サービス自体の変更・終了の通知期間は**書かれていない**。保証なし（AS IS）、責任の上限は支払額または 100 米ドル。準拠法はシンガポール。
+  （規約の対象は Website。hosted に適用されるかは不明＝§3-1。適用されないなら、hosted の条件は何も書かれていないことになる）
 - **データ**: GitHub App は repo の **Administration・Actions・Contents の読み書き**を求める（self-host 用の文書に書かれた権限。hosted の App が同じかは未確認）。
   アプリの DB には認証の情報（GitHub のトークンは暗号化）・協力者・設定・**内容のキャッシュ**が入る。原本は GitHub。
 - **逃げ道**: ソースは MIT ライセンスで、self-host（PostgreSQL・GitHub App・HTTPS）と Vercel への deploy の手順が公式にある。
@@ -23,10 +24,10 @@
 | 項目 | 公式の記載 | 出典 |
 |---|---|---|
 | 料金 | 「Yes, Pages CMS is 100% free, whether you want to use the online version」、Vercel への deploy・self-host も無料 | https://pagescms.org/ |
-| 運営者 | 作者は Ronan Berder（「My name is Ronan Berder」、フッター「© Ronan Berder」）。規約の「Company」は「Pages CMS」。法人名・所在地は **not stated** | https://pagescms.org/ ・ https://pagescms.org/terms |
+| 運営者 | 作者は Ronan Berder（「My name is Ronan Berder (@hunvreus). I live in Singapore.」、フッター「© Ronan Berder」）。規約の「Company」は「Pages CMS」、「Country」は Singapore。hosted の運営の主体（個人か法人か）・法人名・住所は **not stated** | https://pagescms.org/ ・ https://pagescms.org/terms |
 | 支援 | GitHub Sponsors への「Sponsor me」 | https://pagescms.org/ |
 | 規約の版 | 「Last updated: February 07, 2024」 | https://pagescms.org/terms |
-| 規約の対象 | 「"Service" refers to the Website」「"Website" refers to Pages CMS, accessible from https://pagescms.org」。app.pagescms.org への言及なし | https://pagescms.org/terms |
+| 規約の対象 | 「"Service" refers to the Website」「"Website" refers to Pages CMS, accessible from https://pagescms.org」。app.pagescms.org への言及なし。本文に「the Application」が 2 回出る（個人情報の節と準拠法の節）が、定義の節で定義されていない（汎用のひな形の文言と見られる。推論） | https://pagescms.org/terms |
 | 商用利用・数の上限 | 記載なし（**not stated**）。年齢は 18 歳以上と表明する | https://pagescms.org/terms |
 | 利用の停止 | 「We may terminate or suspend Your access immediately, without prior notice or liability, for any reason whatsoever」 | https://pagescms.org/terms |
 | 規約の変更 | 「If a revision is material We will make reasonable efforts to provide at least 30 days' notice」。重大かは運営の判断。使い続けると同意とみなす | https://pagescms.org/terms |
@@ -36,10 +37,10 @@
 | hosted の使い方 | app.pagescms.org を開き、GitHub でサインインし、repo を持つアカウントか組織に GitHub App を入れる | https://pagescms.org/docs/quick-start/ |
 | GitHub App の権限 | アカウント: Email addresses（読み）。repo: **Administration（読み書き）・Actions（読み書き）・Contents（読み書き）**・Checks（読み）・Commit statuses（読み）・Metadata（読み）。Webhook: Installation target・Repository・Push・Delete・Check run・Check suite・Status・Workflow run。**self-host で自分の App を作る手順の記載で、hosted の App の権限は not stated** | https://pagescms.org/docs/guides/installing/github-app/ |
 | DB に入るもの | 「stores app state in PostgreSQL: auth data, collaborators, parsed config, and cache metadata」「Content itself stays in GitHub」 | https://pagescms.org/docs/development/database/ |
-| 内容のキャッシュ | `cache_file` は「collection/media rows, file metadata, and cached content」。「GitHub as the source of truth and PostgreSQL as a read cache」 | https://pagescms.org/docs/development/caching/ |
+| 内容のキャッシュ | `cache_file` は「collection/media rows, file metadata, and cached content」。「GitHub as the source of truth and PostgreSQL as a read cache」。self-host の `FILE_TTL_MIN`（ファイルのキャッシュの寿命）の既定は 1440 分（`-1` で無期限）。**hosted の値は not stated** | https://pagescms.org/docs/development/caching/ ・ https://pagescms.org/docs/development/environment-variables/ |
 | トークン | `CRYPTO_KEY`:「Key used to encrypt GitHub tokens in the database」 | https://pagescms.org/docs/development/environment-variables/ |
 | 協力者 | GitHub のアカウントが無い人をメールで招く。協力者は DB に入る（`.pages.yml` ではない）。書き込みは GitHub App の installation token。人数の上限は **not stated** | https://pagescms.org/docs/configuration/collaborators/ |
-| ライセンス | 「Everything in this repo is released under the MIT License」。LICENSE は「Copyright 2025 Ronan Berder」 | https://github.com/pages-cms/pages-cms ・ https://raw.githubusercontent.com/pages-cms/pages-cms/main/LICENSE |
+| ライセンス | 「Everything in this repo is released under the MIT License」。LICENSE は「Copyright 2025 Ronan Berder」。pagescms.org がリンクする https://github.com/pages-cms/pages-cms は 2026-11-26 に **https://github.com/hunvreus/pagescms へ転送**され、README の clone のコマンドは `https://github.com/pagescms/pagescms.git` を使う（repo の正本の場所が文書の間でそろっていない） | https://github.com/hunvreus/pagescms ・ https://raw.githubusercontent.com/pages-cms/pages-cms/main/LICENSE |
 | self-host | PostgreSQL（`DATABASE_URL`）、`BETTER_AUTH_SECRET`・`CRYPTO_KEY`・`BASE_URL`、自分の GitHub App、HTTPS の公開 URL。メールは任意（Resend か SMTP） | https://pagescms.org/docs/guides/installing/self-host/ ・ https://pagescms.org/docs/development/environment-variables/ |
 | 版の変更の例 | 2.x への更新は DB・環境変数・GitHub App の権限の追加（Actions・Checks など）を要した。hosted の利用者への告知・日付は **not stated** | https://pagescms.org/docs/guides/upgrading-to-2/ |
 
@@ -54,6 +55,8 @@
 7. 運営の主体（個人か法人か）と、障害時の連絡の窓口。
 
 ## 4. リスクと対策
+
+規約の条項（予告なしの停止・30 日の通知・AS IS・100 USD）は、規約の対象が Website なので、hosted に適用されるかは不明（§3-1）。下の表は、適用される場合と、hosted の条件が何も無い場合の両方を想定する。
 
 | リスク | 影響 | 対策 |
 |---|---|---|
@@ -82,8 +85,10 @@
 > 1. 利用規約は app.pagescms.org（hosted のアプリ）にも適用されますか。別の条件はありますか。
 > 2. 制作会社が多数の店舗のために設定し、各店舗さま名義の GitHub アカウントで hosted のアプリを使っていただく形は、商用利用として認められますか。
 > 3. 利用者・repo・協力者の数や利用量に上限はありますか。将来の有料化の予定はありますか。
-> 4. サービスの大きな変更や終了のとき、どのくらい前に、どの方法で通知されますか。
-> 5. hosted の GitHub App が求める権限（Administration・Actions の読み書きなど）の用途と、hosted のデータベースに保存される内容（キャッシュ・トークン）の保存期間と削除の方法を教えてください。
+> 4. サービスの大きな変更や終了のとき、どのくらい前に、どの方法で通知されますか。そのとき、協力者の一覧などのデータを持ち出す方法はありますか。
+> 5. hosted の GitHub App が求める権限（Administration・Actions の読み書きなど）の用途と、hosted のデータベースに保存される内容（キャッシュ・トークン）の保存期間を教えてください。
+> 6. hosted のデータはどの国の、どの事業者の設備に保存されますか。GitHub App のアンインストールや退会の後、データは削除されますか。
+> 7. hosted のサービスを運営しているのは個人と法人のどちらですか（法人なら名称）。障害のときの連絡先はどちらですか。
 >
 > ご多忙のところ恐れ入りますが、よろしくお願いいたします。
 > 〔名義・連絡先〕
@@ -101,8 +106,10 @@
 > 1. Do the Terms apply to the hosted app at app.pagescms.org? Are there separate terms for it?
 > 2. Is it acceptable, as commercial use, for an agency to set up Pages CMS for many small shops, with each shop using the hosted app under its own GitHub account?
 > 3. Are there any limits on the number of users, repositories, or collaborators, or on usage? Are there plans for paid plans?
-> 4. How much notice, and through which channel, do you give before major changes to, or discontinuation of, the hosted service?
-> 5. What are the hosted GitHub App's permissions (e.g. Administration and Actions read/write) used for, and how long is data in the hosted database (cache, tokens) kept, and how can it be deleted?
+> 4. How much notice, and through which channel, do you give before major changes to, or discontinuation of, the hosted service? In that case, is there a way to export data such as the collaborator list?
+> 5. What are the hosted GitHub App's permissions (e.g. Administration and Actions read/write) used for, and how long is data in the hosted database (cache, tokens) kept?
+> 6. In which country, and with which provider, is hosted data stored? Is the data deleted after the GitHub App is uninstalled or a user leaves?
+> 7. Is the hosted service operated by an individual or a company (if a company, under what name)? Where should we report outages?
 >
 > Thank you for building Pages CMS.
 > [name / contact]
