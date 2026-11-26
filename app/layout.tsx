@@ -1,28 +1,14 @@
 import type { Metadata } from "next";
-import { Shippori_Mincho, Noto_Sans_JP, Zen_Maru_Gothic } from "next/font/google";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+// DEV-303: the faces next/font/google downloaded at build time (Shippori Mincho
+// 400/600, Noto Sans JP 400/500/600, Zen Maru Gothic 500/700) are committed in
+// app/_fonts/ (see PROVENANCE.md there) and loaded with next/font/local, so the
+// build needs no network. Same families, weights, unicode-range subsets, CSS
+// variables and fallback faces as before; only the Latin subsets used at first
+// view are preloaded (Shippori Mincho 600, Noto Sans JP), not 243 files.
+import { notoSansJP, shipporiMincho, zenMaruGothic } from "./_fonts/site-fonts.generated";
+import "./_fonts/fallback.css";
 import "./globals.css";
-
-const shipporiMincho = Shippori_Mincho({
-  weight: ["400", "600"],
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const notoSansJP = Noto_Sans_JP({
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
-  variable: "--font-body",
-  display: "swap",
-});
-
-const zenMaruGothic = Zen_Maru_Gothic({
-  weight: ["500", "700"],
-  subsets: ["latin"],
-  variable: "--font-label",
-  display: "swap",
-});
 
 const siteTitle = "Second Root — 名古屋・金山の地域店舗向けホームページ制作";
 const siteDescription =

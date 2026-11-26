@@ -1,0 +1,7 @@
+/* DEV-303: the metric-matched fallback faces next/font/google generated for the
+   official site's faces (copied verbatim from its build output), so the text
+   before a font arrives keeps the same size as before. site-fonts.generated.ts
+   names them. */
+@font-face{font-family:"Shippori Mincho Fallback";src:local("Times New Roman");ascent-override:98.59%;descent-override:24.48%;line-gap-override:0.00%;size-adjust:117.66%}
+@font-face{font-family:"Noto Sans JP Fallback";src:local("Arial");ascent-override:110.73%;descent-override:27.49%;line-gap-override:0.00%;size-adjust:104.76%}
+@font-face{font-family:"Zen Maru Gothic Fallback";src:local("Arial");ascent-override:117.00%;descent-override:29.05%;line-gap-override:0.00%;size-adjust:99.15%}
