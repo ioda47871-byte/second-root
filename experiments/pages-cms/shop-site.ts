@@ -5,7 +5,9 @@
  *
  *   id        a short name for reports and file names
  *   profile   the fixed shop name and the trade extensions the site turns on (content-model.ts ShopProfile)
- *   render    content + today → index.html and style.css (pure; escapes every text)
+ *   render    content + today → index.html and style.css (pure; escapes every text). DEV-364 PR 2b: an optional
+ *             slotOf(image) names the photo slot of a picture; the site marks that <img> with data-slot (nothing else)
+ *   spMaxWidth  the site's SP breakpoint (the slot CSS for SP goes under it)
  *   fixtures  the site's fictional Q1 test content
  */
 import { BAKERY_PROFILE, renderBakery } from "./bakery-site";
@@ -17,12 +19,13 @@ import { q1Fixtures, type Fixture } from "./fixtures";
 export type ShopSite = {
   id: string;
   profile: ShopProfile;
-  render: (content: ShopContent, today: string) => { html: string; css: string };
+  render: (content: ShopContent, today: string, slotOf?: (image: string) => string | undefined) => { html: string; css: string };
+  spMaxWidth: number;
   fixtures: () => Record<string, Fixture>;
 };
 
-export const BAKERY_SITE: ShopSite = { id: "bakery", profile: BAKERY_PROFILE, render: renderBakery, fixtures: q1Fixtures };
-export const CAFE_SITE: ShopSite = { id: "cafe", profile: CAFE_PROFILE, render: renderCafe, fixtures: cafeFixtures };
+export const BAKERY_SITE: ShopSite = { id: "bakery", profile: BAKERY_PROFILE, render: renderBakery, spMaxWidth: 600, fixtures: q1Fixtures };
+export const CAFE_SITE: ShopSite = { id: "cafe", profile: CAFE_PROFILE, render: renderCafe, spMaxWidth: 760, fixtures: cafeFixtures };
 
 /** Every fictional shop of the experiment, in report order. */
 export const SHOP_SITES: readonly ShopSite[] = [BAKERY_SITE, CAFE_SITE];

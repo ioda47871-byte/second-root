@@ -13,6 +13,12 @@
  * requests that left the site; it saves the page shot (taken at the page's own height, not fullPage: DEV-135).
  * Writes <out>/q1-report.json and <out>/<fixture>-<pc|sp>.png. Exit 0 when nothing was found, 1 otherwise.
  *
+ * DEV-364 PR 2b: when the build applied photo slots (photo-slots.ts), the page's pictures of each slot are measured
+ * at PC and SP: the rendered frame keeps the slot's aspect (Q1_SLOT_ASPECT), the picture has the slot's object-position
+ * with object-fit: cover (Q1_SLOT_POSITION), the declared subject point stays inside the visible crop for the
+ * picture's real size and the rendered box (Q1_SUBJECT_CROPPED), and every applied slot is on the page
+ * (Q1_SLOT_MISSING). Measurable means geometry: the subject is where the spec says it is, not found in the pixels.
+ *
  * The existing render helpers (phase2f render-prototype, comp-impl render) are pinned to their importers by the
  * owner-approved isolation tests, so this experiment uses Playwright and the unpinned DEV-098 frame wait directly.
  */
@@ -22,7 +28,8 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 import { chromium, type Browser } from "playwright";
 import { waitForFrame } from "../../lib/design-agent/frame-ready";
 import { buildSite } from "./build";
-import { Q1_TODAY, writeFixture } from "./fixtures";
+import { Q1_TODAY, solidPng, writeFixture } from "./fixtures";
+import { SLOT_ASPECTS, subjectVisible, type AppliedSlot } from "./photo-slots";
 import { SHOP_SITES } from "./shop-site";
 
 const REPO = resolve(__dirname, "../..");
@@ -30,11 +37,28 @@ const VIEWPORTS = { pc: { width: 1440, height: 900 }, sp: { width: 390, height: 
 const MAX_SHOT_HEIGHT = 16000;
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
 
-export type Q1Finding = { fixture: string; viewport: "pc" | "sp"; code: "Q1_OVERFLOW_X" | "Q1_BROKEN_IMAGE" | "Q1_OVERLAP" | "Q1_SMALL_TEXT" | "Q1_TEXT_CLIPPED" | "Q1_EXTERNAL_REQUEST"; detail: string };
+export type Q1Finding = { fixture: string; viewport: "pc" | "sp"; code:
+    | "Q1_OVERFLOW_X"
+    | "Q1_BROKEN_IMAGE"
+    | "Q1_OVERLAP"
+    | "Q1_SMALL_TEXT"
+    | "Q1_TEXT_CLIPPED"
+    | "Q1_EXTERNAL_REQUEST"
+    | "Q1_SLOT_ASPECT"
+    | "Q1_SLOT_POSITION"
+    | "Q1_SUBJECT_CROPPED"
+    | "Q1_SLOT_MISSING";
+  detail: string;
+};
 
 /** What the page reports about itself (runs in the page; JS on the page itself stays off). */
 const MEASURE = `(() => {
-  const out = { overflow: document.documentElement.scrollWidth - innerWidth, broken: [], overlap: [], small: [], clipped: [], height: document.documentElement.scrollHeight };
+  const out = { overflow: document.documentElement.scrollWidth - innerWidth, broken: [], overlap: [], small: [], clipped: [], slots: [], height: document.documentElement.scrollHeight };
+  for (const img of document.querySelectorAll("img[data-slot]")) {
+    const cs = getComputedStyle(img);
+    const r = img.getBoundingClientRect();
+    out.slots.push({ slot: img.getAttribute("data-slot"), position: cs.objectPosition, fit: cs.objectFit, w: r.width, h: r.height, nw: img.naturalWidth, nh: img.naturalHeight });
+  }
   for (const img of document.images) if (!img.complete || img.naturalWidth === 0) out.broken.push(img.getAttribute("src") || "");
   const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
   const items = [...document.querySelectorAll("[data-q1=item]")];
@@ -53,7 +77,28 @@ const MEASURE = `(() => {
   return out;
 })()`;
 
-export async function serveAndMeasure(browser: Browser, dist: string, fixture: string, view: "pc" | "sp", outDir: string): Promise<Q1Finding[]> {
+type SlotMeasure = { slot: string; position: string; fit: string; w: number; h: number; nw: number; nh: number };
+
+/** DEV-364 PR 2b: the applied slots against what the page shows at one width (pure; see the header). */
+export function slotFindings(fixture: string, view: "pc" | "sp", slots: readonly AppliedSlot[], measured: readonly SlotMeasure[]): Q1Finding[] {
+  const out: Q1Finding[] = [];
+  const add = (code: Q1Finding["code"], detail: string) => out.push({ fixture, viewport: view, code, detail });
+  for (const name of new Set(slots.map((a) => a.slot))) {
+    const want = slots.find((a) => a.slot === name)![view];
+    const shown = measured.filter((m) => m.slot === name);
+    if (shown.length === 0) add("Q1_SLOT_MISSING", name);
+    for (const m of shown) {
+      if (m.w <= 0 || m.h <= 0 || m.nw <= 0) continue; // not measurable (Q1_BROKEN_IMAGE covers a broken picture)
+      const ratio = SLOT_ASPECTS[want.aspect];
+      if (Math.abs(m.w / m.h - ratio) / ratio > 0.03) add("Q1_SLOT_ASPECT", `${name} ${(m.w / m.h).toFixed(3)} != ${want.aspect}`);
+      if (m.fit !== "cover" || m.position.trim() !== want.object_position) add("Q1_SLOT_POSITION", `${name} ${m.fit} ${m.position} != ${want.object_position}`);
+      if (!subjectVisible({ w: m.nw, h: m.nh }, { w: m.w, h: m.h }, m.position, want.subject)) add("Q1_SUBJECT_CROPPED", `${name} ${want.subject}`);
+    }
+  }
+  return out;
+}
+
+export async function serveAndMeasure(browser: Browser, dist: string, fixture: string, view: "pc" | "sp", outDir: string, slots: readonly AppliedSlot[] = []): Promise<Q1Finding[]> {
   const findings: Q1Finding[] = [];
   const ctx = await browser.newContext({ viewport: VIEWPORTS[view], javaScriptEnabled: false, deviceScaleFactor: 1 });
   try {
@@ -69,12 +114,13 @@ export async function serveAndMeasure(browser: Browser, dist: string, fixture: s
     });
     const page = await ctx.newPage();
     await page.goto("http://q1.invalid/index.html", { waitUntil: "load" });
-    const m = (await page.evaluate(MEASURE)) as { overflow: number; broken: string[]; overlap: string[]; small: string[]; clipped: string[]; height: number };
+    const m = (await page.evaluate(MEASURE)) as { overflow: number; broken: string[]; overlap: string[]; small: string[]; clipped: string[]; slots: SlotMeasure[]; height: number };
     if (m.overflow > 0) findings.push({ fixture, viewport: view, code: "Q1_OVERFLOW_X", detail: `${m.overflow}px` });
     for (const d of m.broken) findings.push({ fixture, viewport: view, code: "Q1_BROKEN_IMAGE", detail: d });
     for (const d of m.overlap) findings.push({ fixture, viewport: view, code: "Q1_OVERLAP", detail: d });
     for (const d of [...new Set(m.small)]) findings.push({ fixture, viewport: view, code: "Q1_SMALL_TEXT", detail: d });
     for (const d of m.clipped) findings.push({ fixture, viewport: view, code: "Q1_TEXT_CLIPPED", detail: d });
+    findings.push(...slotFindings(fixture, view, slots, m.slots));
     // the shot at the page's own height (DEV-135), after its first frame (DEV-098); no retry
     const height = Math.min(MAX_SHOT_HEIGHT, Math.max(VIEWPORTS[view].height, Math.ceil(m.height)));
     await page.setViewportSize({ width: VIEWPORTS[view].width, height });
@@ -97,6 +143,22 @@ export const CONTROL_PAGE = {
   css: "ul{list-style:none}.up{margin-top:-40px}.tiny{font-size:9px}.cut{width:80px;white-space:nowrap;overflow:hidden}.wide{width:3000px}.clipbox{width:80px;overflow:hidden}.inner{white-space:nowrap}",
 };
 
+/**
+ * DEV-364 PR 2b: the deliberately wrong slot page. A 3:1 picture in a 16:9 frame at object-position 100% 50%, while
+ * its slot says 1:1, 0% 50% and a subject on the left third; and a second slot that is not on the page. At PC and SP
+ * it must give Q1_SLOT_ASPECT, Q1_SLOT_POSITION, Q1_SUBJECT_CROPPED and Q1_SLOT_MISSING, and no Q1_BROKEN_IMAGE.
+ */
+export const SLOT_CONTROL = {
+  html: '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><h1>架空の店</h1><figure class="f"><img data-slot="wrong" src="media/wide.png" alt="試験" width="900" height="300"></figure></body></html>',
+  css: "body{margin:0;padding:16px}.f{margin:0;width:320px;aspect-ratio:16/9;overflow:hidden}.f img{width:100%;height:100%;display:block;object-fit:cover;object-position:100% 50%}",
+  media: { "media/wide.png": solidPng(900, 300, [120, 140, 160]) } as Record<string, Buffer>,
+  slots: [
+    { slot: "wrong", file: "wide.png", pc: { aspect: "1:1", object_position: "0% 50%", subject: "left-third" }, sp: { aspect: "1:1", object_position: "0% 50%", subject: "left-third" } },
+    { slot: "gone", file: "gone.png", pc: { aspect: "1:1", object_position: "50% 50%", subject: "center" }, sp: { aspect: "1:1", object_position: "50% 50%", subject: "center" } },
+  ] as AppliedSlot[],
+  present: ["Q1_SLOT_ASPECT", "Q1_SLOT_POSITION", "Q1_SUBJECT_CROPPED", "Q1_SLOT_MISSING"] as const,
+};
+
 export async function controlCheck(browser: Browser, work: string, outDir: string): Promise<Q1Finding["code"][]> {
   const dist = join(work, "control");
   await mkdir(dist, { recursive: true });
@@ -107,6 +169,17 @@ export async function controlCheck(browser: Browser, work: string, outDir: strin
   for (const view of ["pc", "sp"] as const) {
     const codes = new Set((await serveAndMeasure(browser, dist, `control-${view}`, view, outDir)).map((f) => f.code));
     for (const c of ["Q1_OVERFLOW_X", "Q1_BROKEN_IMAGE", "Q1_OVERLAP", "Q1_SMALL_TEXT", "Q1_TEXT_CLIPPED", "Q1_EXTERNAL_REQUEST"] as const) if (!codes.has(c)) missed.push(`${view}:${c}`);
+  }
+  // DEV-364 PR 2b: the slot control, at both widths
+  const slotDist = join(work, "control-slot");
+  await mkdir(join(slotDist, "media"), { recursive: true });
+  await writeFile(join(slotDist, "index.html"), SLOT_CONTROL.html);
+  await writeFile(join(slotDist, "style.css"), SLOT_CONTROL.css);
+  for (const [name, bytes] of Object.entries(SLOT_CONTROL.media)) await writeFile(join(slotDist, name), bytes);
+  for (const view of ["pc", "sp"] as const) {
+    const codes = new Set((await serveAndMeasure(browser, slotDist, `control-slot-${view}`, view, outDir, SLOT_CONTROL.slots)).map((f) => f.code));
+    for (const c of SLOT_CONTROL.present) if (!codes.has(c)) missed.push(`slot:${view}:${c}`);
+    if (codes.has("Q1_BROKEN_IMAGE")) missed.push(`slot:${view}:not Q1_BROKEN_IMAGE`);
   }
   return missed as Q1Finding["code"][];
 }
@@ -150,8 +223,8 @@ export async function runQ1(o: { outDir: string; browser: Browser; only?: string
         const repo = join(work, name, "repo");
         const dist = join(work, name, "dist");
         await writeFixture(repo, all[fixture]!);
-        await buildSite({ repo, outDir: dist, today: Q1_TODAY, site });
-        for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out)));
+        const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY, site });
+        for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out, built.slots)));
       }
     }
     await writeFile(join(out, "q1-report.json"), `${JSON.stringify({ schema: "pages_cms_q1_experiment_v0", fixtures: names, viewports: VIEWPORTS, findings }, null, 2)}\n`);

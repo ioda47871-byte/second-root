@@ -20,9 +20,10 @@ export const BAKERY_PROFILE: ShopProfile = { fixedName: "架空のパン屋 こ�
 const e = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const DAY_LABEL: Record<ShopInfo["hours"][number]["day"], string> = { mon: "月", tue: "火", wed: "水", thu: "木", fri: "金", sat: "土", sun: "日" };
 
-function item(m: MenuItem): string {
+function item(m: MenuItem, slotOf?: (image: string) => string | undefined): string {
+  const slot = m.image ? slotOf?.(m.image) : undefined;
   const pic = m.image
-    ? `<img src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="600" height="450">`
+    ? `<img ${slot ? `data-slot="${e(slot)}" ` : ""}src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="600" height="450">`
     : `<span class="noimg" aria-hidden="true">${e(m.name.slice(0, 1))}</span>`;
   return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><figure class="frame">${pic}${m.image && m.imageKind === "generated" ? '<figcaption class="cap">イメージ</figcaption>' : ""}</figure><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}${extras(m)}</div></li>`;
 }
@@ -49,10 +50,10 @@ function news(list: Announcement[]): string {
 }
 
 /** The page (pure). `today` (YYYY-MM-DD) decides which special closures are still ahead. */
-export function renderBakery(content: ShopContent, today: string): { html: string; css: string } {
+export function renderBakery(content: ShopContent, today: string, slotOf?: (image: string) => string | undefined): { html: string; css: string } {
   const v = viewOf(content);
   const menu = v.sections.length
-    ? v.sections.map((s) => `<section class="cat" data-q1="section"><h2>${e(s.category.name)}</h2><ul class="grid">${s.items.map(item).join("")}</ul></section>`).join("")
+    ? v.sections.map((s) => `<section class="cat" data-q1="section"><h2>${e(s.category.name)}</h2><ul class="grid">${s.items.map((m) => item(m, slotOf)).join("")}</ul></section>`).join("")
     : '<p class="empty">ただいまメニューを準備しています。</p>';
   const html = `<!doctype html>
 <html lang="ja">

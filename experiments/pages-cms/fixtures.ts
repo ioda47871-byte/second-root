@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import type { Announcement, Category, ImageKind, MenuItem, ShopInfo } from "./content-model";
 import { PROVENANCE_INDEX, PROVENANCE_SCHEMA, rightsFiles, type ProvenanceB } from "./provenance";
 import { GENERATED_RECORD, generatedRecord } from "./photos";
+import { PHOTO_SLOTS_FILE, PHOTO_SLOTS_SCHEMA, SLOT_ASPECTS, type ApprovedDesign, type PhotoSlots, type SlotView } from "./photo-slots";
 
 /** A solid-colour PNG (synthetic). */
 /**
@@ -54,7 +55,18 @@ export function solidPng(w: number, h: number, rgb: [number, number, number]): B
  * (DEV-364 PR 2a): the B pictures' rights records — the private records go OUTSIDE the repository, next to it
  * (provenanceDirOf), and the index into it.
  */
-export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[]; media: Record<string, Buffer>; generated?: string[]; rights?: ProvenanceB[] };
+export type Fixture = {
+  shop: ShopInfo;
+  categories: Category[];
+  menu: MenuItem[];
+  news: Announcement[];
+  media: Record<string, Buffer>;
+  generated?: string[];
+  rights?: ProvenanceB[];
+  /** DEV-364 PR 2b: the material id of each handed-over generated file (written into the handover record), and the photo-slot spec. */
+  materials?: Record<string, string>;
+  slots?: PhotoSlots;
+};
 
 /** Where a fixture's private B records go: a folder next to the fixture's repository, never inside it. */
 export const provenanceDirOf = (repo: string) => join(repo, "..", "provenance");
@@ -162,6 +174,13 @@ function makeFixtures(): Record<string, Fixture> {
   trade.menu = trade.menu.map((m, k) => ({ ...m, priceDisplay: prices[k]!, ...(k % 2 === 0 ? { allergens: ["小麦", "乳", "卵"], shelfLife: k === 0 ? "当日中" : "翌日まで" } : {}) }));
   f["trade-extensions"] = trade;
   f["photos-large-odd"] = photoVariety(base(6), "item");
+  // DEV-364 PR 2b: the generated pictures (3:2, 3:1, 1:1, 2.8:1) in the bakery's 4:3 cards, each with its slot
+  f["photo-slots"] = withPhotoSlots(photoVariety(base(6), "slot"), "4:3", [
+    { material: "loaf-crumb", position: "50% 30%", subject: "top" },
+    { material: "bake-board", position: "75% 50%", subject: "right-third" },
+    { material: "flour-dust", position: "50% 50%", subject: "center" },
+    { material: "tray-row", position: "25% 50%", subject: "left-third" },
+  ]);
   return f;
 }
 
@@ -214,7 +233,12 @@ export async function writeFixture(dir: string, fx: Fixture): Promise<void> {
   for (const m of fx.menu) await writeFile(join(dir, "content", "menu", `${m.id}.json`), json(m));
   for (const n of fx.news) await writeFile(join(dir, "content", "news", `${n.id}.json`), json(n));
   for (const [name, bytes] of Object.entries(fx.media)) await writeFile(join(dir, "media", name), bytes);
-  if (fx.generated) await writeFile(join(dir, GENERATED_RECORD), json(generatedRecord(Object.fromEntries(fx.generated.map((n) => [n, fx.media[n]!])))));
+  if (fx.generated) {
+    const record = generatedRecord(Object.fromEntries(fx.generated.map((n) => [n, fx.media[n]!])));
+    record.files = record.files.map((f) => (fx.materials?.[f.file] ? { ...f, material_id: fx.materials[f.file] } : f));
+    await writeFile(join(dir, GENERATED_RECORD), json(record));
+  }
+  if (fx.slots) await writeFile(join(dir, PHOTO_SLOTS_FILE), json(fx.slots));
   if (fx.rights?.length) {
     const files = rightsFiles(fx.rights);
     await writeFile(join(dir, PROVENANCE_INDEX), json(files.index));
@@ -224,3 +248,39 @@ export async function writeFixture(dir: string, fx: Fixture): Promise<void> {
 }
 
 export const Q1_TODAY = "2026-12-01";
+
+/**
+ * DEV-364 PR 2b: a fictional first approval (no real design run) and its approved image sizes, for the photo-slot
+ * fixtures and tests.
+ */
+export const FICTIONAL_APPROVAL: ApprovedDesign = {
+  bundle_id: "req-fictional-design-01",
+  bundle_sha256: "a".repeat(64),
+  review_file: "review-fictional-01.json",
+  approval_file: "approval-fictional-01.json",
+  approval_sha256: "b".repeat(64),
+};
+export const FICTIONAL_APPROVED_IMAGE = { pc: { width: 1440, height: 3000 }, sp: { width: 390, height: 2400 } } as const;
+
+/** A box of the given aspect in the approved image (0..1), `width` of the image wide, at (x, y). */
+export function boxFor(view: "pc" | "sp", aspect: keyof typeof SLOT_ASPECTS, width: number, x = 0.05, y = 0.3): SlotView["box"] {
+  const img = FICTIONAL_APPROVED_IMAGE[view];
+  return { x, y, w: width, h: (width * img.width) / SLOT_ASPECTS[aspect] / img.height };
+}
+
+/**
+ * The photo-slot fixture: the photo variety (pictures of every ratio) with its generated pictures handed over as named
+ * materials and one slot per material — the same object-position and subject at PC and SP, the frame's aspect being
+ * the site's own (4:3 cards for the bakery, 1:1 thumbnails for the café).
+ */
+export function withPhotoSlots(fx: Fixture, aspect: keyof typeof SLOT_ASPECTS, plan: { material: string; position: string; subject: SlotView["subject"] }[]): Fixture {
+  const generated = fx.generated ?? [];
+  const materials = Object.fromEntries(generated.map((file, k) => [file, plan[k % plan.length]!.material]));
+  const view = (v: "pc" | "sp", p: (typeof plan)[number]): SlotView => ({ box: boxFor(v, aspect, v === "pc" ? 0.2 : 0.42), aspect, shape: "rect", object_position: p.position, subject: p.subject, text_gap: "adjacent" });
+  const used = plan.slice(0, generated.length);
+  return {
+    ...fx,
+    materials,
+    slots: { schema: PHOTO_SLOTS_SCHEMA, approved_design: FICTIONAL_APPROVAL, slots: used.map((p) => ({ id: `slot-${p.material}`, role: "product", material_ids: [p.material], pc: view("pc", p), sp: view("sp", p) })) },
+  };
+}
