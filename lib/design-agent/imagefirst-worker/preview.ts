@@ -68,7 +68,11 @@ export type PreviewIndex = {
   approval_id: string;
   plan_id: string;
   commit: string;
-  /** DEV-303 (PR #362 review Low 3): only on a synthetic rehearsal bundle's previews (never a generated design). */
+  /**
+   * DEV-303 (PR #362 review Low 3): only on a synthetic rehearsal bundle's previews (never a generated design).
+   * Informational only (the reader sees the banner): every real refusal (research log, audit, worker delivery, materials
+   * run) reads the VERIFIED bundle manifest's `synthetic`, never this field.
+   */
   synthetic?: true;
   limits: { max_side: number; max_bytes: number };
   previews: PreviewEntry[];

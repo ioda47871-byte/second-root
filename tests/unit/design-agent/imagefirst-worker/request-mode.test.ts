@@ -597,6 +597,18 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
     const entry = await entryFromInbox({ repo: REPO, inbox, bundleId: id, shop: "hoshigama", direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-20T02:00:00Z" });
     expect(entry).toMatchObject({ entry_id: id, shop: "hoshigama", fictional: true, provenance: { approval_id: id, plan_id: id } });
     expect(await codeOf(entryFromInbox({ repo: REPO, inbox, bundleId: id, shop: "bicycle", direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-20T02:00:00Z" }))).toBe("INTAKE_SHOP_MISMATCH");
+    // PR #366 review Low 1: the previews are the verified bundle's — another bundle SHA-256 in INDEX.json, or a preview
+    // whose source SHA-256 is not the bundle file's, is refused (INDEX.json restored after each)
+    const indexPath = join(inbox, "previews", id, "INDEX.json");
+    const original = readFileSync(indexPath);
+    const ix = JSON.parse(original.toString("utf8")) as { bundle_sha256: string; previews: { source_sha256: string }[] };
+    const intake = () => codeOf(entryFromInbox({ repo: REPO, inbox, bundleId: id, shop: "hoshigama", direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-20T02:00:00Z" }));
+    for (const edited of [{ ...ix, bundle_sha256: "e".repeat(64) }, { ...ix, previews: ix.previews.map((x, n) => (n === 0 ? { ...x, source_sha256: "e".repeat(64) } : x)) }]) {
+      writeFileSync(indexPath, JSON.stringify(edited), { mode: 0o600 });
+      expect(await intake()).toBe("INTAKE_PREVIEWS_NOT_FROM_BUNDLE");
+      writeFileSync(indexPath, original, { mode: 0o600 });
+    }
+    expect(await intake()).toBe("resolved");
   });
 
   it("local-shops root (the clone's gitignored .local-shops; fictional only) works and leaves the tree clean", async () => {

@@ -193,6 +193,10 @@ describe("DEV-303 rehearsal follow-ups (PR #362 review Lows)", () => {
     const copy = join(tmp("sr-rehearsal-intake-"), "review-inbox");
     cpSync(inbox, copy, { recursive: true });
     for (const d of [copy, join(copy, ID), join(copy, ID, "parts"), join(copy, "previews"), join(copy, "previews", ID)]) chmodSync(d, 0o700);
+    // positive control (PR #366 review Low 2): the untouched private copy verifies, and the intake refuses it only for the
+    // marker — so the stop below comes from the edited manifest, not from the copy
+    expect((await verifyBundleDir(join(copy, ID))).manifest.synthetic).toBe(true);
+    expect(await codeOf(entryFromInbox({ repo: REPO, inbox: copy, bundleId: ID, shop: REHEARSAL_SHOP, direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-26T02:00:00Z" }))).toBe("SYNTHETIC_NOT_LOGGED");
     const manifest = JSON.parse(readFileSync(join(copy, ID, "manifest.json"), "utf8")) as Record<string, unknown>;
     delete manifest.synthetic;
     writeFileSync(join(copy, ID, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });

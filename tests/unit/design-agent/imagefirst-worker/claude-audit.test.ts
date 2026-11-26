@@ -438,7 +438,13 @@ describe("PR #311 review: the audit tier, swapped bytes, ownership seams, writes
 
   it("L1 / L2: after the marker, an unsafe audits directory or a failed write is stopped (AUDIT_DIR_UNSAFE / AUDIT_WRITE_FAILED), never refused", async () => {
     const a = setup();
-    a.opts.testSeams = { beforeWrite: () => void mkdirSync(join(a.d.inbox, "audits"), { mode: 0o755 }) };
+    // the mode set explicitly (mkdir's mode is masked by the umask: under a strict one the directory would come out 0700)
+    a.opts.testSeams = {
+      beforeWrite: () => {
+        mkdirSync(join(a.d.inbox, "audits"));
+        chmodSync(join(a.d.inbox, "audits"), 0o755);
+      },
+    };
     const ra = await runClaudeAudit(a.opts);
     expect(ra).toMatchObject({ status: "stopped", code: "AUDIT_DIR_UNSAFE", calls: 2 });
     const b = setup();
