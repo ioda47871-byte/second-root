@@ -745,7 +745,7 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     // Second Root's delivery build, with the private folder (and no customer picture, which it never places): the
     // full B record (a role, a source, a permission)
     const delivery = await deliveryRepo();
-    const secondRoot = await buildSite({ repo: delivery, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(delivery) });
+    const secondRoot = await buildSite({ repo: delivery, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(delivery), delivery: true });
     expect(secondRoot.provenance.find((p) => p.class === "B")!.record).toMatchObject({ class: "B", provided_by: "店主", permission: { confirmed_at: "2026-11-26", confirmed_by: "Second Root 担当" } });
     expect(secondRoot.provenance.some((p) => p.class === "C")).toBe(false);
     // the index and the private records are nowhere in the CMS configuration
@@ -827,9 +827,14 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     expect(await code(buildSite({ repo: both, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_CLASS_MIXED");
   });
 
-  it("review #371 L3: Second Root's delivery build never places a customer's picture (C)", async () => {
+  it("review #371 L3: Second Root's delivery build never places a customer's picture (C); delivery is explicit", async () => {
     const repo = await photosRepo();
-    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo) }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO");
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo), delivery: true }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO");
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, delivery: true }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO");
+    // review #371 Low: an audit with the private folder but without delivery keeps the customer's legitimate C pictures
+    const audit = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo) });
+    expect(audit.provenance.filter((p) => p.class === "C").length).toBeGreaterThan(0);
+    expect(audit.provenance.find((p) => p.class === "B")!.record).toMatchObject({ class: "B", provided_by: "店主" });
     // the customer's own build (no private folder) shows C as usual
     expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("ok");
   });
@@ -841,10 +846,14 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     expect(PROVENANCE_ROLES).toEqual(["店主", "店長", "スタッフ", "撮影者", "Second Root 担当"]);
     for (const who of ["山田太郎", "店主（山田）", "Owner", "owner@example.invalid"]) expect(ProvenanceB.safeParse({ ...ok, provided_by: who }).success, who).toBe(false);
     expect(ProvenanceB.safeParse({ ...ok, permission: { ...ok.permission, confirmed_by: "田中さん" } }).success).toBe(false);
-    for (const text of ["店主の携帯 090-1234-5678 で受領", "LINE ID: kasou_pan で受領", "@kasou_pan から受領", "山田様より受領", "田中さん撮影", "mail owner@example.invalid"])
+    for (const text of ["店主の携帯 090-1234-5678 で受領", "LINE ID: kasou_pan で受領", "@kasou_pan から受領", "山田様より受領", "田中さん撮影", "mail owner@example.invalid",
+      // review #371 Low: the reviewer's missed examples (NFKC, hiragana names, any follower, handles without @)
+      "山田さんから受領", "やまださんが撮影", "店主の携帯 ０９０−１２３４−５６７８ で受領", "Instagram yamada_t から受領", "ｙａｍａｄａ＿ｔ から受領", "店主 ＠kasou_pan"])
       expect(ProvenanceB.safeParse({ ...ok, source: text }).success, text).toBe(false);
     expect(ProvenanceB.safeParse({ ...ok, permission: { ...ok.permission, scope: "鈴木氏の許可の範囲で掲載" } }).success).toBe(false);
-    for (const text of ["店が撮影した写真（架空の試験用）", "店頭で撮影した 2026 年秋の写真"]) expect(ProvenanceB.safeParse({ ...ok, source: text }).success, text).toBe(true);
+    // a heuristic, not a reliable block: it errs strict (an ordinary word with 様 or さん is refused) ...
+    for (const text of ["模様のある皿の写真", "皆さんに見てほしい写真"]) expect(ProvenanceB.safeParse({ ...ok, source: text }).success, text).toBe(false);
+    for (const text of ["店が撮影した写真（架空の試験用）", "店頭で撮影した 2026 年秋の写真", "２０２６年１１月の店頭の写真"]) expect(ProvenanceB.safeParse({ ...ok, source: text }).success, text).toBe(true);
     expect(ProvenanceB.safeParse({ ...ok, source: "https://example.invalid/photo" }).success).toBe(false);
     expect(ProvenanceB.safeParse({ ...ok, permission: { ...ok.permission, confirmed_at: "11/26" } }).success).toBe(false);
     expect(ProvenanceB.safeParse({ ...ok, facts_check: { shown_as_fact: true, confirmed: false } }).success).toBe(false);

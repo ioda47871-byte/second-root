@@ -20,8 +20,8 @@
  *                  pages_cms). No per-update owner approval: the automatic checks only (photos.ts limits; Q1); the
  *                  build writes its record from those check results. No イメージ label. Chosen explicitly only.
  *
- * Second Root places A or B, never C: its delivery build (given the private folder) refuses a C picture
- * (CONTENT_DELIVERY_CUSTOMER_PHOTO). The class is a property of the picture's bytes, never of the item (review #371
+ * Second Root places A or B, never C: its delivery build (the explicit delivery: true; the private folder alone is an
+ * audit, which keeps legitimate C pictures) refuses a C picture (CONTENT_DELIVERY_CUSTOMER_PHOTO). The class is a property of the picture's bytes, never of the item (review #371
  * M1): a picture whose SHA-256 is in the handover record of generated materials is refused when marked B or C
  * (CONTENT_GENERATED_AS_SHOP); a picture in the B index must be B everywhere, the same bytes may not be shown with two
  * classes on one page, and no SHA-256 may be in both the handover record and the B index (CONTENT_PHOTO_CLASS_MIXED).
@@ -41,18 +41,22 @@ const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** review #371 L1: who provided / who confirmed — a role from a fixed list, never a person. */
 export const PROVENANCE_ROLES = ["店主", "店長", "スタッフ", "撮影者", "Second Root 担当"] as const;
 /**
- * review #371 L1: free text that must not carry a person's contact or name: a phone number, a LINE ID or @handle, an
- * e-mail address, a link, or an honorific after a name (様・さん・氏・くん・ちゃん followed by a particle, punctuation,
- * 撮影 / 提供 or the end). A heuristic on the strict side: a word such as 「模様が」 is refused too.
+ * review #371 L1 and its Low: free text that should not carry a person's contact or name. Matched after NFKC
+ * normalisation (full-width digits, letters and ＠ become ASCII): a phone number (any dash or minus sign between the
+ * groups), a LINE ID, an @handle, a handle after an SNS name (「Instagram yamada_t」) or any ASCII word with an
+ * underscore, an e-mail address, a link, or a name with an honorific (様・さん・氏・くん・ちゃん after kana, kanji or
+ * a letter, whatever follows). A heuristic, NOT a reliable block: it errs strict (「模様」「仕様」「皆さん」 are refused
+ * too) and it still misses a bare name or a handle written without these signs. The role lists are the real guard.
  */
-const PERSONAL = /[<>@]|https?:|www\.|\d{2,4}[-‐－ ]?\d{2,4}[-‐－ ]?\d{3,4}|\bline\s*(?:id)?\s*[:：]|[ァ-ヶ一-龯A-Za-z]\s*(?:様|さん|氏|くん|ちゃん)(?=[よがのはをにへともで、。・\s）)]|撮影|提供|$)/i;
+const PERSONAL =
+  /[<>@]|https?:|www\.|\d{2,4}[-‐‑‒–—―−ー\s]?\d{2,4}[-‐‑‒–—―−ー\s]?\d{3,4}|\bline\s*(?:id)?\s*[:：]|\b(?:instagram|insta|ig|twitter|tiktok|facebook|threads|line|youtube)\b\s*[:：]?\s*[a-z0-9._]{2,}|\b[a-z][a-z0-9]*_[a-z0-9_]*|[ぁ-んァ-ヶ一-龯A-Za-z]\s*(?:様|さん|氏|くん|ちゃん)/i;
 /** A role or a short plain phrase; no link, markup or e-mail address (a role, never a person's contact). */
 const Plain = (max: number) =>
   z
     .string()
     .min(1)
     .max(max)
-    .refine((s) => s === s.trim() && !PERSONAL.test(s), "plain_text");
+    .refine((s) => s === s.trim() && !PERSONAL.test(s.normalize("NFKC")), "plain_text");
 
 export const ProvenanceA = z.strictObject({
   schema: z.literal(PROVENANCE_SCHEMA),

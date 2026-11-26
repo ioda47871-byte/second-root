@@ -34,15 +34,17 @@ export type BuildResult = { html: string; css: string; media: string[]; photos: 
  * extensions) and page code. `today` decides which closures are still ahead. The 総額表示 report rides along: advice only, it never
  * stops the build and never changes a price.
  */
-/** provenanceDir (DEV-364 PR 2a): the private folder (outside the repository) of the B pictures' rights records. */
-export async function buildSite(o: { repo: string; outDir: string; today: string; site?: ShopSite; provenanceDir?: string }): Promise<BuildResult> {
+/** provenanceDir (DEV-364 PR 2a): the private folder (outside the repository) of the B pictures' rights records.
+ * delivery: Second Root's delivery build (refuses customer pictures, class C); separate from provenanceDir so an audit
+ * with the private folder keeps legitimate C pictures (review #371 Low). */
+export async function buildSite(o: { repo: string; outDir: string; today: string; site?: ShopSite; provenanceDir?: string; delivery?: boolean }): Promise<BuildResult> {
   const site = o.site ?? BAKERY_SITE;
   const content = await loadContent(o.repo, site.profile);
   const existing = await lstat(o.outDir).catch(() => null);
   if (existing && (!existing.isDirectory() || (await readdir(o.outDir)).length > 0)) throw new BuildError("BUILD_OUT_NOT_EMPTY", basename(o.outDir));
   const { html, css } = site.render(content, o.today);
   const photos = await checkPhotos(o.repo, content, site.profile);
-  const provenance = await photoProvenance(o.repo, content, photos, o.provenanceDir ? { provenanceDir: o.provenanceDir } : {});
+  const provenance = await photoProvenance(o.repo, content, photos, { ...(o.provenanceDir ? { provenanceDir: o.provenanceDir } : {}), ...(o.delivery ? { delivery: true } : {}) });
   const named = photos.map((p) => p.file);
   await mkdir(join(o.outDir, "media"), { recursive: true });
   for (const n of named) await copyFile(join(o.repo, "media", n), join(o.outDir, "media", n));

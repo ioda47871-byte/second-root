@@ -77,9 +77,10 @@ export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" |
  * DEV-364 PR 2a: the provenance of every picture the page shows. A: its record from the handover entry when it names the
  * material and the materials approval (else null — the handover did not record them); B: its rights record from the
  * private folder (or CONTENT_PHOTO_RIGHTS_MISSING); C: the record of the automatic checks it passed. Run after
- * checkPhotos (which has refused B / C pictures that are delivered generated materials).
+ * checkPhotos (which has refused B / C pictures that are delivered generated materials). delivery: true is Second
+ * Root's delivery build, which refuses C (CONTENT_DELIVERY_CUSTOMER_PHOTO); provenanceDir alone does not imply it.
  */
-export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string } = {}): Promise<PhotoProvenance[]> {
+export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string; delivery?: boolean } = {}): Promise<PhotoProvenance[]> {
   if (o.provenanceDir) await assertOutsideRepo(o.provenanceDir, repo);
   const handover = await loadGeneratedEntries(repo);
   const index = await loadProvenanceIndex(repo);
@@ -95,8 +96,9 @@ export async function photoProvenance(repo: string, content: ShopContent, photos
     const seen = classOfSha.get(sha256);
     if (seen && seen !== cls) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", `menu/${m.id}`);
     classOfSha.set(sha256, cls);
-    // review #371 L3: Second Root's delivery build (it is given the private folder) never places a customer's picture
-    if (o.provenanceDir && cls === "C") throw new ContentError("CONTENT_DELIVERY_CUSTOMER_PHOTO", `menu/${m.id}`);
+    // review #371 L3: Second Root's delivery build never places a customer's picture. Delivery is its own explicit
+    // option: an audit given the private folder (without delivery) keeps the customer's legitimate C pictures.
+    if (o.delivery && cls === "C") throw new ContentError("CONTENT_DELIVERY_CUSTOMER_PHOTO", `menu/${m.id}`);
   }
   const out: PhotoProvenance[] = [];
   for (const m of shown) {
