@@ -263,6 +263,9 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 - **止まるもの**: JPEG・WebP の写真（`STAGE_ASSET_NOT_PNG`。impl-compare-approved は PNG の assets しか出さないので、今は比べられない＝既知の穴）、
   書き換えの後も `/media/` が残る（CSS の `url()` など。`STAGE_MEDIA_REFERENCE`）、頁のファイルが無い（`STAGE_DIST_INVALID`）、出力先がリポジトリの中・空でない。
 - 試験: `tests/unit/experiments/pages-cms-gates.test.ts`（架空のデータ、段 6 は本物の Chromium）。
+- **出自の印**（DEV-364、`quality-proof-plan.md` §2.10・§6 の 3b）: 写した場所は IMAGE_FIRST の成果物なので、`sr-origin.json`（`sr_build_origin_v1`）も index.html の隣に書く。
+  `package-local.ts` の既存の形（`--source`・`--copy`）はこの印のある場所を断る（`IMAGE_FIRST_OUTPUT`）。IMAGE_FIRST の頁を包装するのは、第 2 承認が要る IMAGE_FIRST の形だけ（後の PR、import の変更にオーナーの承認が要る）。
+  印は間違いを防ぐ仕掛けで、消せば効かない。検査は index.html・style.css・assets/ だけを読むので、印は検査の結果を変えない。試験: `tests/unit/demo-version-package/origin-marker.test.ts`。
 
 ## 8. §6.1 の順との対応
 

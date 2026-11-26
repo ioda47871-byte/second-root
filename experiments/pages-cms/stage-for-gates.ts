@@ -11,6 +11,14 @@
  * Both checks then run on the staged folder exactly as they run on a hand-made implementation, through their own
  * modules or CLIs — no gate module is imported here and no import pin changes.
  *
+ * DEV-364 (origin marker, quality-proof-plan §2.10 / §6 row 3b): the staged folder is an IMAGE_FIRST build output, so
+ * stageForGates also writes ORIGIN_MARKER (sr-origin.json, sr_build_origin_v1) next to index.html. The existing
+ * packaging modes of scripts/sales/demo-version/package-local.ts (--source, --copy) refuse a folder that holds it: an
+ * IMAGE_FIRST page is packaged only by the IMAGE_FIRST mode, which needs the second approval (a later PR). The marker is
+ * a TRIPWIRE against a mistake, NOT tamper-proof: anyone can delete it. What actually binds a shared or delivered page
+ * to its approval is the page's SHA-256 in the second approval (final-approval.ts) and, later, the DB send gate. The
+ * gates read only index.html, style.css and assets/, so the marker changes nothing they check.
+ *
  * Stops (StageError): STAGE_DIST_INVALID (no index.html / style.css, a link, an odd file name), STAGE_MEDIA_REFERENCE
  * (the page still names /media/ after the rewrite, e.g. a CSS url() or a srcset the rewrite does not cover),
  * STAGE_ASSET_NOT_PNG (impl-compare-approved serves PNG assets only: a JPEG / WebP picture cannot be compared yet —
@@ -39,7 +47,11 @@ async function regularFile(path: string, what: string): Promise<Buffer> {
   return readFile(path);
 }
 
-export type Staged = { dir: string; rewrites: number; assets: string[] };
+export type Staged = { dir: string; rewrites: number; assets: string[]; marker: string };
+
+/** The origin marker's file name (package-local.ts restates it; a test keeps the two equal) and its content. */
+export const ORIGIN_MARKER = "sr-origin.json";
+export const originMarker = () => `${JSON.stringify({ schema: "sr_build_origin_v1", origin: "image_first", tripwire_only: true, note: "Package only with the IMAGE_FIRST mode (second approval). This marker prevents mistakes; it is not tamper-proof." }, null, 2)}\n`;
 
 /** Stages <dist> as an implementation-lane folder in <outDir> (outside the repository, empty or absent). */
 export async function stageForGates(o: { dist: string; outDir: string }): Promise<Staged> {
@@ -65,5 +77,6 @@ export async function stageForGates(o: { dist: string; outDir: string }): Promis
   await writeFile(join(out, "index.html"), staged, { mode: 0o600 });
   await writeFile(join(out, "style.css"), css, { mode: 0o600 });
   for (const [name, bytes] of files) await writeFile(join(out, "assets", name), bytes, { mode: 0o600 });
-  return { dir: out, rewrites, assets: files.map(([n]) => `assets/${n}`) };
+  await writeFile(join(out, ORIGIN_MARKER), originMarker(), { mode: 0o600 });
+  return { dir: out, rewrites, assets: files.map(([n]) => `assets/${n}`), marker: ORIGIN_MARKER };
 }

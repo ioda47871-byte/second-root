@@ -48,9 +48,16 @@
  * renders are compared pixel by pixel with the research renders (desktop_1440.png, mobile_390.png). Prints ids, hashes,
  * sizes and modes only (never a path of the inputs, an owner, a consent record or a provenance).
  * Exit 0 on success, 1 when a check fails, 2 for a usage error.
+ *
+ * DEV-364 (origin marker, quality-proof-plan §2.10 / §6 row 3b): --source and --copy refuse a folder holding the
+ * IMAGE_FIRST origin marker (sr-origin.json, written by the IMAGE_FIRST staging: experiments/pages-cms/stage-for-gates.ts)
+ * with FAIL IMAGE_FIRST_OUTPUT, before anything is read or rendered. An IMAGE_FIRST page is packaged only by its own mode,
+ * which needs the second approval (a later PR). The marker is a TRIPWIRE against a mistake, NOT tamper-proof (deleting
+ * it defeats it); the real binding is the page's SHA-256 in the second approval and, later, the DB send gate. A folder
+ * without the marker is packaged exactly as before.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
@@ -60,6 +67,17 @@ import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, rea
 
 const REPO = resolve(__dirname, "../../..");
 const DEFAULT_SOURCE = "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v9";
+/** The IMAGE_FIRST origin marker's file name (stage-for-gates.ts ORIGIN_MARKER, restated: no new import here). */
+export const IMAGE_FIRST_ORIGIN_MARKER = "sr-origin.json";
+/** Whether a folder holds the marker (any kind of entry by that name, a link included: lstat, never followed). */
+const hasOriginMarker = (dir: string) => {
+  try {
+    lstatSync(join(dir, IMAGE_FIRST_ORIGIN_MARKER));
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * DEV-139 (PR #288 review M1): the programmatic entry. `seams` is for in-process tests only (the CLI below passes none):
@@ -96,6 +114,12 @@ export async function main(argv: string[], seams: PackageLocalSeams = {}): Promi
   if (insideRepo(out) || (pngOut && insideRepo(pngOut))) {
     err_("refused: write the package outside the repository\n");
     return 2;
+  }
+  // DEV-364: the IMAGE_FIRST output is never packaged by --source / --copy (a tripwire; see the header)
+  const plainDir = copyDir ? resolve(copyDir) : page ? null : resolve(REPO, source);
+  if (plainDir && hasOriginMarker(plainDir)) {
+    out_(`${JSON.stringify({ status: "FAIL", code: "IMAGE_FIRST_OUTPUT" })}\n`);
+    return 1;
   }
   try {
     let html: string;

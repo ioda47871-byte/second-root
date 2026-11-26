@@ -11,7 +11,7 @@ import { CAFE_SITE } from "@/experiments/pages-cms/shop-site";
 import { stageForGates } from "@/experiments/pages-cms/stage-for-gates";
 import { packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
-import { approvedFinal, checkFinalApproval, COMPOSITION_ROUTE_RULE, FINAL_AXES, type FinalInputs, measuredCompositionChange, writeFinalReviewPage } from "@/lib/design-agent/imagefirst-worker/final-approval";
+import { approvedFinal, checkFinalApproval, COMPOSITION_ROUTE_RULE, FINAL_AXES, type FinalInputs, implRecordConsistent, measuredCompositionChange, writeFinalReviewPage } from "@/lib/design-agent/imagefirst-worker/final-approval";
 import * as libRecords from "@/lib/design-agent/imagefirst-worker/photo-records";
 import { THRESHOLDS } from "@/lib/design-agent/impl-lane/compare";
 import * as expProvenance from "@/experiments/pages-cms/provenance";
@@ -291,6 +291,8 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
       out2.mockRestore();
     }
     expect(parseFinalApprovalArgs(["--check", ...args.slice(0, 6)])).toBeNull();
+    // #373 re-review Low 1: the CLI always asks for the materials records
+    expect(parseFinalApprovalArgs(["--check", ...args.slice(0, 6), ...args.slice(12)])).toBeNull();
     expect(parseFinalApprovalArgs(["--check", "--page", ...args])).toBeNull();
     expect(parseFinalApprovalArgs(["--check", ...args, "--materials-bundle", "x"])).toBeNull();
   });
@@ -353,6 +355,8 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
     // the slot spec changed (still bound to the same approval) or bound to another approval
     await tamper(w.inputs.slotsPath, addText, "FINAL_SLOTS_MISMATCH");
     await tamper(w.inputs.slotsPath, (b) => Buffer.from(b.toString("utf8").replace(/"approval_sha256": "[0-9a-f]+"/, `"approval_sha256": "${"f".repeat(64)}"`)), "FINAL_SLOTS_MISMATCH");
+    // #373 re-review Low 2: the record's PC number lowered under the threshold without its code
+    await tamper(join(w.implDir, "record.json"), (b) => Buffer.from(b.toString("utf8").replace(/"ssim": [0-9.]+/, '"ssim": 0.5')), "FINAL_IMPL_COMPARE_INVALID");
     // the comparison record rewritten
     await tamper(join(w.implDir, "record.json"), addText, "FINAL_IMPL_COMPARE_MISMATCH");
   });
@@ -365,7 +369,7 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
     // the design still passes its own gate, but its approval SHA-256 changed: the slot spec (and all else) names the old one
     expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("MATERIALS_DESIGN_MISMATCH");
     // without the materials records (no A picture left to bind) the slot spec is the next binding to fail
-    expect(await codeOf(checkFinalApproval({ design: w.inputs.design, slotsPath: w.inputs.slotsPath, provenanceDir: w.inputs.provenanceDir, siteDir: w.inputs.siteDir, implCompareDir: w.inputs.implCompareDir, reviewPath, approvalPath, repo: REPO, mode: "draft" }))).toBe("FINAL_SLOTS_MISMATCH");
+    expect(await codeOf(checkFinalApproval({ ...w.inputs, materials: { none: true }, reviewPath, approvalPath, repo: REPO, mode: "draft" }))).toBe("FINAL_SLOTS_MISMATCH");
     // the design's approval with a non-approve decision fails the first gate itself (its code passes through)
     write(path, Buffer.from(before.toString("utf8").replace('"decision": "approve"', '"decision": "revise"')));
     expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("DESIGN_NOT_APPROVED");
@@ -375,7 +379,8 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
 
   it("refuses inputs it cannot bind: no materials records for an A picture, a missing provenance record, records or the page inside the repository", async () => {
     const { reviewPath, approvalPath, draft } = await recordDecision(w);
-    const noMaterials: FinalInputs = { design: w.inputs.design, slotsPath: w.inputs.slotsPath, provenanceDir: w.inputs.provenanceDir, siteDir: w.inputs.siteDir, implCompareDir: w.inputs.implCompareDir };
+    // #373 re-review Low 1: "no materials" is an explicit statement; an A picture then stops
+    const noMaterials: FinalInputs = { ...w.inputs, materials: { none: true } };
     expect(await codeOf(approvedFinal({ ...noMaterials, reviewPath, approvalPath, repo: REPO }))).toBe("FINAL_MATERIALS_RECORDS_MISSING");
     expect(await codeOf(approvedFinal({ ...w.inputs, provenanceDir: tmp(), reviewPath, approvalPath, repo: REPO }))).toBe("FINAL_PROVENANCE_MISSING");
     // review #373 L4: the provenance and comparison folders and the captures are ours and private
@@ -409,6 +414,16 @@ describe("review #373 M2: a composition change the comparison measures routes ba
     expect(measuredCompositionChange(rec())).toBeNull();
     expect(measuredCompositionChange(rec({}, { differences: ["PC_PAGE_LAYOUT", "PC_PAGE_HEIGHT"] }))).toEqual(["PC_PAGE_LAYOUT"]);
     expect(measuredCompositionChange(rec({ status: "partial" }, {}, { code: "RENDER_FAILED", page: null }))).toEqual(["STATUS_PARTIAL", "SP_RENDER_FAILED", "SP_NOT_MEASURED"]);
+    // #373 re-review Low 2: the number routes back even without its code
+    expect(measuredCompositionChange(rec({}, {}, { page: { ssim: 0.79, colour_blocks: 0.9, edges_iou: 0.8, height_ratio: 0.4 } }))).toEqual(["SP_PAGE_LAYOUT"]);
+    // ... and a record whose codes and numbers disagree is not consistent
+    const ok = rec({ differences: ["PC_PAGE_HEIGHT", "PC_PAGE_HEIGHT"] });
+    expect(implRecordConsistent(ok)).toBe(true);
+    const low = { ssim: 0.7, colour_blocks: 0.9, edges_iou: 0.8, height_ratio: 0.4 };
+    expect(implRecordConsistent(rec({ differences: ["PC_PAGE_HEIGHT", "PC_PAGE_HEIGHT"] }, { page: low }))).toBe(false);
+    expect(implRecordConsistent(rec({ differences: ["PC_PAGE_HEIGHT", "PC_PAGE_LAYOUT", "PC_PAGE_HEIGHT"] }, { page: low, differences: ["PC_PAGE_HEIGHT", "PC_PAGE_LAYOUT"] }))).toBe(true);
+    expect(implRecordConsistent(rec({ differences: ["PC_PAGE_LAYOUT", "PC_PAGE_HEIGHT"] }, { differences: ["PC_PAGE_LAYOUT"] }))).toBe(false);
+    expect(implRecordConsistent(rec({ differences: [] }))).toBe(false);
     // the threshold is the implementation lane's own (DEV-131), restated
     expect(COMPOSITION_ROUTE_RULE.pageSsim).toBe(THRESHOLDS.pageSsim);
   });
