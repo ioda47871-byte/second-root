@@ -50,9 +50,9 @@ const ID: Field = { name: "id", label: "ID（自動）", type: "uuid", readonly:
 
 /** The configuration as data (what `.pages.yml` holds). */
 /** The CMS pattern for a phone number (the build checks it fully: content-model.ts phoneOk). */
-const PHONE = { regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,30})?$", message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）" };
+const PHONE = { regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,24})?$", message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）" };
 /** The CMS pattern for an address (no markup; the build checks it fully: addressOk). */
-const ADDRESS = { regex: "^(?![\\s\\S]*([Hh][Tt][Tt][Pp][Ss]?:|[Ww][Ww][Ww]\\.|:\\/\\/))[^<>]{0,120}$", message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存のときに除きます" };
+const ADDRESS = { regex: "^(?![\\s\\S]*([Hh][Tt][Tt][Pp][Ss]?:|[Ww][Ww][Ww]\\.|:\\/\\/))[^<>]{0,120}$", message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存されたまま残り、構築のときに除きます" };
 
 /** The trade extensions' editor fields (only the ones the shop turns on are in its .pages.yml). */
 const EXTENSION_FIELDS: Record<TradeExtension, Field> = {
@@ -124,7 +124,7 @@ export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) 
           // owner decision 2026-11-26: the name stays fixed; address and phone are editable with validation
           { name: "name", label: "店名（変更できません）", type: "string", readonly: true },
           { name: "address", label: "住所", type: "string", pattern: ADDRESS, options: { maxlength: 120 } },
-          { name: "phone", label: "電話", type: "string", pattern: PHONE, options: { maxlength: 20 } },
+          { name: "phone", label: "電話", type: "string", pattern: PHONE, options: { maxlength: 24 } },
           {
             name: "hours",
             label: "営業時間（曜日ごと）",

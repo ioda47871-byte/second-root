@@ -88,14 +88,17 @@ export async function serveAndMeasure(browser: Browser, dist: string, fixture: s
  * The control: a deliberately broken page (too wide, a missing picture, overlapping items, tiny and cut-off text, an
  * outside request) must give every finding code, or the checks are not working and the run stops (Q1_CONTROL_MISSED).
  */
+/** The deliberately broken control page (shared with the render-helper path, q1-render.ts). */
+export const CONTROL_PAGE = {
+  html: '<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="https://example.invalid/x.css"></head><body><ul><li data-q1="item"><h3>試験</h3><p class="price">1円</p></li><li data-q1="item" class="up"><h3>重なり</h3></li></ul><p class="tiny">小さい字</p><p class="cut">切れてしまうとても長い文章です切れてしまうとても長い文章です</p><div class="clipbox"><p class="inner">箱に切られるとても長い文章です箱に切られるとても長い文章です</p></div><img src="media/absent.png" alt=""><div class="wide">広い</div></body></html>',
+  css: "ul{list-style:none}.up{margin-top:-40px}.tiny{font-size:9px}.cut{width:80px;white-space:nowrap;overflow:hidden}.wide{width:3000px}.clipbox{width:80px;overflow:hidden}.inner{white-space:nowrap}",
+};
+
 export async function controlCheck(browser: Browser, work: string, outDir: string): Promise<Q1Finding["code"][]> {
   const dist = join(work, "control");
   await mkdir(dist, { recursive: true });
-  await writeFile(
-    join(dist, "index.html"),
-    '<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="https://example.invalid/x.css"></head><body><ul><li data-q1="item"><h3>試験</h3><p class="price">1円</p></li><li data-q1="item" class="up"><h3>重なり</h3></li></ul><p class="tiny">小さい字</p><p class="cut">切れてしまうとても長い文章です切れてしまうとても長い文章です</p><img src="media/absent.png" alt=""><div class="wide">広い</div></body></html>',
-  );
-  await writeFile(join(dist, "style.css"), "ul{list-style:none}.up{margin-top:-40px}.tiny{font-size:9px}.cut{width:80px;white-space:nowrap;overflow:hidden}.wide{width:3000px}");
+  await writeFile(join(dist, "index.html"), CONTROL_PAGE.html);
+  await writeFile(join(dist, "style.css"), CONTROL_PAGE.css);
   const codes = new Set((await serveAndMeasure(browser, dist, "control", "pc", outDir)).map((f) => f.code));
   return (["Q1_OVERFLOW_X", "Q1_BROKEN_IMAGE", "Q1_OVERLAP", "Q1_SMALL_TEXT", "Q1_TEXT_CLIPPED", "Q1_EXTERNAL_REQUEST"] as const).filter((c) => !codes.has(c));
 }
