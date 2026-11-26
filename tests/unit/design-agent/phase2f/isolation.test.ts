@@ -249,7 +249,7 @@ describe("DEV-303 Pages CMS Q1: experiments/ takes only renderPrototype from pha
   });
   it("the whole script: exactly these modules, read and compare only (no process, network, model or Codex)", () => {
     const source = readFileSync(resolve(REPO, PAGES_CMS_Q1), "utf8");
-    expect(specifiers(source).sort()).toEqual(["../../lib/design-agent/phase2f/render-prototype", "./build", "./content-model", "./fixtures", "./q1-check", "node:fs/promises", "node:os", "node:path", "playwright"]);
+    expect(specifiers(source).sort()).toEqual(["../../lib/design-agent/phase2f/render-prototype", "./build", "./content-model", "./fixtures", "./q1-check", "./shop-site", "node:fs/promises", "node:os", "node:path", "playwright"]);
     expect(source.replace(/require\.main === module/g, "")).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|phase2f\/(runner|prompt)|anthropic|openai|\bspawn\(|execFile|execSync|\bfetch\(|codex/i);
   });
 });

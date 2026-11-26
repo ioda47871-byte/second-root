@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,8 @@ import { Q1_TODAY, q1Fixtures, writeFixture } from "@/experiments/pages-cms/fixt
 import { checkPagesConfig, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
 import { classifyPrice, priceAmounts, priceDisplayReport } from "@/experiments/pages-cms/price-display";
 import { safeOutDir } from "@/experiments/pages-cms/q1-check";
+import { BAKERY_SITE, CAFE_SITE, SHOP_SITES } from "@/experiments/pages-cms/shop-site";
+import { FACTS_MAX, factsOf } from "@/experiments/pages-cms/q1-render";
 
 // DEV-303 §6.1 rows 10–12 and §3.7 Q1, first experiment (docs/design/pages-cms-implementation-plan.md): the shared
 // content model, the generated Pages CMS configuration and the static build of ONE fictional bakery. FICTIONAL and
@@ -319,6 +322,28 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
       ["400円（税込）/ 500円（税別）", "tax_excluded_only"],
       // review L1
       ["500円 税込価格は店頭で", "no_tax_wording"],
+      // PR (3): 税込 among other words in the bracket; lists sharing the last 円 and tax words; 本体価格 … 税込 …
+      ["1,000円（10%税込）", "tax_included"],
+      ["1,100円（税込・10%）", "tax_included"],
+      ["864円（税込8%）", "tax_included"],
+      ["1,000円（2名分・税込）", "tax_included"],
+      ["S400/M500/L600円（税込）", "tax_included"],
+      ["S 400 M 500 L 600（税込）", "tax_included"],
+      ["1,000〜1,500円+税", "tax_excluded_only"],
+      ["本体価格1,000円 税込1,100円", "tax_included"],
+      ["380〜520円（税込）", "tax_included"],
+      // review #363 M1: a tax rate after 税別 / 税抜 is not a base price
+      ["1,000円（税別10%）", "tax_excluded_only"],
+      ["1,000円（税抜8%）", "tax_excluded_only"],
+      ["1,000円（税別・10%）", "tax_excluded_only"],
+      ["1,080円（税抜1000）", "tax_included"],
+      // review #363 L2: a time is not an amount
+      ["10:00〜 500円（税込）", "tax_included"],
+      ["11:30〜14:00 ランチ 900円（税込）", "tax_included"],
+      // review #363 L3: unclear forms stay on the safe side (the owner checks them)
+      ["1,000円 ドリンク付き（税込）", "no_tax_wording"],
+      ["1,000円（税込、2個で1,800円）", "no_tax_wording"],
+      ["ランチ1,000円/ディナー1,500円（税込）", "no_tax_wording"],
     ];
     expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
     expect(priceAmounts("S 400円（税込）/ M 500円（税別）").map((a) => [a.text, a.class])).toEqual([
@@ -329,6 +354,16 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     const menu = loaded.menu.map((m, k) => (k === 0 ? { ...m, priceDisplay: "S 400円（税込）/ M 500円（税別）/ L 600円" } : m));
     const finding = priceDisplayReport({ categories: loaded.categories, menu }).findings.find((f) => f.item === "item-1")!;
     expect([finding.class, finding.amounts]).toEqual(["tax_excluded_only", ["500円", "600円"]]);
+    // PR (3): a list's members without 円 are named too, with the class of the member that carries the 円 and tax words
+    expect(priceAmounts("1,000〜1,500円+税").map((a) => [a.text, a.class])).toEqual([
+      ["1,000", "excluded"],
+      ["1,500円", "excluded"],
+    ]);
+    expect(priceAmounts("S400/M500/L600円（税込）").map((a) => a.class)).toEqual(["included", "included", "included"]);
+    expect(priceAmounts("本体価格1,000円 税込1,100円").map((a) => [a.text, a.class])).toEqual([
+      ["1,000円", "paired"],
+      ["1,100円", "included"],
+    ]);
   });
 
   it("review #360 L3: the Q1 output folder is resolved itself; a link into the repository (or anywhere) is refused", async () => {
@@ -353,5 +388,95 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     const longest = "+81 (0)3 1234 5678"; // 18 characters: well inside
     expect([longest.length <= PHONE_MAX, phoneOk(longest)]).toEqual([true, true]);
     expect(phoneOk("0".repeat(3) + "1".repeat(PHONE_MAX))).toBe(false);
+  });
+});
+
+describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-bakery fictional shop (the café)", () => {
+  const sha = (html: string, css: string) => createHash("sha256").update(html).update("\0").update(css).digest("hex");
+  const buildOf = async (site: (typeof SHOP_SITES)[number], name: string) => {
+    const repo = join(tmp(), "repo");
+    await writeFixture(repo, site.fixtures()[name]!);
+    return { repo, r: await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site }) };
+  };
+
+  it("the bakery's output through the interface is byte-identical to before the interface (html + css per fixture)", async () => {
+    // recorded with the bakery-only build at 12d30f4c (#360 head), before the interface existed
+    const before: Record<string, string> = {
+      "items-0": "c8ee9d4930bf06d447350509c96b50d03423aab2c37471934a898f41688c3bff",
+      "items-3": "8a8b4513599d1fbf69517cabb16643764a1d4085ed2ffb306b505c403df1e183",
+      "items-10": "d3f074366d9b0295f659bd3583e7bb52833dd1f4410be6aabbe2f9d68222aa74",
+      "items-50": "b40f23ec01e71a445c70b2b057640c904c1fab7690914f3278b510a1fdd687a8",
+      "long-text": "23618d63ef9548055a7429586a9bcaa8c5437455fa048f357920a4c00ec9de5f",
+      "hidden-soldout-reorder": "10346a9fc2cae88092050d40c592b568f337b1aa3739aad96089c80a297fa959",
+      "hours-closures": "79b4555895a9aa939069ab7f6ca9f72cc588d13e1a8944157cd13093ae3ac803",
+      "news-1": "e30fe4a291d1f0667d660a68c43b080ae0882fe3751f235595577ea6a89d47c6",
+      "news-many": "4722d2deba5d7904912ed32ddf57ff254a5f32513e542513612d513c78c2f988",
+      "trade-extensions": "d1bb7d41d12b9da905fe0ede54d759d6399211d3e8f899d76b6b1c6f347a3b34",
+    };
+    const now: Record<string, string> = {};
+    for (const name of Object.keys(BAKERY_SITE.fixtures())) {
+      const viaInterface = (await buildOf(BAKERY_SITE, name)).r;
+      const viaDefault = await buildSite({ repo: (await buildOf(BAKERY_SITE, name)).repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+      expect(viaDefault.html).toBe(viaInterface.html);
+      now[name] = sha(viaInterface.html, viaInterface.css);
+    }
+    expect(now).toEqual(before);
+  });
+
+  it("the café builds every one of its fixtures with its own composition, its sizes, its fixed name and no bakery extension", async () => {
+    for (const name of Object.keys(CAFE_SITE.fixtures())) {
+      const { r } = await buildOf(CAFE_SITE, name);
+      expect(r.html).not.toMatch(/<script|javascript:|https?:\/\//i);
+      expect(r.html).toContain("架空のカフェ 木洩れ日珈琲");
+      expect(r.html).toContain("提案用デモ（架空の店）");
+      expect(r.html).toContain("写真はイメージです。");
+    }
+    const { r } = await buildOf(CAFE_SITE, "items-3");
+    // a different composition from the bakery (a price list and a side column, not a card grid and a dark hero)
+    expect(r.html).toContain('<ul class="list">');
+    expect(r.html).toContain('<aside class="side">');
+    expect(r.html).not.toMatch(/class="grid"|class="hero"/);
+    expect(r.html).toContain('<li><span class="size">S</span><span class="yen">450円（税込）</span></li>');
+    expect(r.css).not.toBe(BAKERY_SITE.render(await loadContent((await buildOf(BAKERY_SITE, "items-3")).repo), Q1_TODAY).css);
+    // the café turns on sizes only: an allergen list is refused, and its fixed name is held
+    const { repo } = await buildOf(CAFE_SITE, "items-3");
+    const file = join(repo, "content", "menu", "cafe-1.json");
+    writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), allergens: ["乳"] }));
+    await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site: CAFE_SITE })).rejects.toMatchObject({ code: "CONTENT_EXTENSION_OFF" });
+    const bakeryRepo = (await buildOf(BAKERY_SITE, "items-3")).repo;
+    await expect(buildSite({ repo: bakeryRepo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site: CAFE_SITE })).rejects.toMatchObject({ code: "CONTENT_FIXED_CHANGED" });
+  });
+
+  it("the café's 総額表示 report checks each size's price text; its committed cafe.pages.yml shows sizes and not the bakery's fields", async () => {
+    const { r } = await buildOf(CAFE_SITE, "sizes-prices");
+    expect(r.price_report.findings.map((f) => [f.item, f.field, f.class, f.amounts])).toEqual([
+      ["cafe-1", "sizes.1.priceDisplay", "tax_excluded_only", ["500円"]],
+      ["cafe-2", "sizes.0.priceDisplay", "no_tax_wording", ["¥900"]],
+    ]);
+    const yml = readFileSync(join(__dirname, "../../../experiments/pages-cms/cafe.pages.yml"), "utf8");
+    expect(yml).toBe(pagesYaml({ extensions: CAFE_SITE.profile.extensions }));
+    expect(yml).toContain('name: "sizes"');
+    expect(yml).not.toMatch(/name: "allergens"|name: "shelfLife"/);
+    expect(SHOP_SITES.map((s) => s.id)).toEqual(["bakery", "cafe"]);
+    // the phone checks' facts: distinct, the shop's details first, within the measure's limit of 200
+    const content = await loadContent((await buildOf(CAFE_SITE, "items-50")).repo, CAFE_SITE.profile);
+    const { facts, truncated } = factsOf(content);
+    expect([facts.length <= FACTS_MAX, new Set(facts).size === facts.length, facts[0], truncated]).toEqual([true, true, "架空のカフェ 木洩れ日珈琲", 0]);
+  });
+
+  it("review #363 L1: the facts come from what the page shows, in page order; what is still cut is counted", async () => {
+    const content = await loadContent((await buildOf(CAFE_SITE, "items-3")).repo, CAFE_SITE.profile);
+    const item = (k: number, visible: boolean) => ({ ...content.menu[2]!, id: `big-${k}`, name: `大きな一覧の品 ${k}`, priceDisplay: `${100 + k}円（税込）`, sizes: undefined, visible, displayOrder: k });
+    // 200 items: the first 150 hidden, the last 50 shown — every shown one is covered
+    const hiddenFirst = factsOf({ ...content, menu: Array.from({ length: 200 }, (_, k) => item(k, k >= 150)) });
+    expect(hiddenFirst.facts).toContain("大きな一覧の品 199");
+    expect(hiddenFirst.facts).not.toContain("大きな一覧の品 0");
+    expect(hiddenFirst.truncated).toBe(0);
+    // 200 items all shown: 3 shop details + 400 distinct texts; the cut is reported, never silent
+    const allShown = factsOf({ ...content, menu: Array.from({ length: 200 }, (_, k) => item(k, true)) });
+    expect([allShown.facts.length, allShown.truncated]).toEqual([FACTS_MAX, 3 + 400 - FACTS_MAX]);
+    // items in a hidden category do not use the budget either
+    const hiddenCategory = factsOf({ ...content, categories: content.categories.map((c) => ({ ...c, visible: c.id !== content.menu[2]!.category })), menu: Array.from({ length: 200 }, (_, k) => item(k, true)) });
+    expect(hiddenCategory.facts.some((f) => f.startsWith("大きな一覧の品"))).toBe(false);
   });
 });

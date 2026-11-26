@@ -11,7 +11,8 @@
  *
  *   npx tsx experiments/pages-cms/q1-render.ts --out <empty dir outside the repository>
  *
- * For every Q1 fixture (fixtures.ts) built with the fictional bakery's page code it runs BOTH this path and the
+ * For every Q1 fixture of every fictional shop site (shop-site.ts SHOP_SITES: the bakery and the café), built with
+ * that site's own page code, it runs BOTH this path and the
  * direct-Playwright path (q1-check.ts serveAndMeasure) and writes <out>/q1-compare.json (per fixture and width: the
  * codes each path found) and <out>/render-<fixture>-<pc|sp>.png. Exit 0 when no fixture has a finding in either path,
  * 1 otherwise.
@@ -31,9 +32,10 @@ import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
 import { buildSite } from "./build";
-import { loadContent } from "./content-model";
-import { Q1_TODAY, q1Fixtures, writeFixture } from "./fixtures";
+import { loadContent, viewOf, type ShopContent } from "./content-model";
+import { Q1_TODAY, writeFixture } from "./fixtures";
 import { CONTROL_PAGE, safeOutDir, serveAndMeasure } from "./q1-check";
+import { SHOP_SITES } from "./shop-site";
 
 /** What the render-helper path reports for one width (codes of its own vocabulary). */
 export type RenderQ1 = { pc: string[]; sp: string[] };
@@ -126,7 +128,22 @@ export async function runControls(browser: Browser, work: string, outDir: string
   return results;
 }
 
-export type CompareRow = { fixture: string; viewport: "pc" | "sp"; render: string[]; direct: string[] };
+/**
+ * The phone checks' facts (texts that are the shop's facts, not labels): distinct, shop details first, at most
+ * FACTS_MAX (visible items only, in page order) — the shop-CSS measure accepts at most 200 (page-scripts MeasureSchema `present`); more would make the
+ * phone check fail (SP_CHECK_FAILED), which the café's 50-item fixture showed before the list was made distinct.
+ */
+export const FACTS_MAX = 200;
+export function factsOf(content: ShopContent): { facts: string[]; truncated: number } {
+  // review #363 L1: only what the page shows, in page order (viewOf: visible items in visible categories), so hidden
+  // items do not use the budget; whatever is still cut is counted and recorded (facts_truncated)
+  const v = viewOf(content);
+  const items = v.sections.flatMap((s) => s.items);
+  const all = [...new Set([v.shop.name, v.shop.address, v.shop.phone, ...items.flatMap((m) => [m.name, m.priceDisplay, ...(m.sizes ?? []).flatMap((s) => [s.label, s.priceDisplay])])].filter(Boolean))];
+  return { facts: all.slice(0, FACTS_MAX), truncated: Math.max(0, all.length - FACTS_MAX) };
+}
+
+export type CompareRow = { fixture: string; viewport: "pc" | "sp"; render: string[]; direct: string[]; facts_truncated: number };
 
 export async function runQ1Compare(o: { outDir: string; browser: Browser }): Promise<{ rows: CompareRow[]; controls: ControlResult[] }> {
   const out = await safeOutDir(o.outDir);
@@ -137,19 +154,23 @@ export async function runQ1Compare(o: { outDir: string; browser: Browser }): Pro
     if (missed.length) throw new Error(`Q1_RENDER_CONTROL_MISSED ${missed.join(",")}`);
 
     const rows: CompareRow[] = [];
-    for (const [name, fx] of Object.entries(q1Fixtures())) {
-      const repo = join(work, name, "repo");
-      const dist = join(work, name, "dist");
-      await writeFixture(repo, fx);
-      const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY });
-      const content = await loadContent(repo);
-      const media = new Map<string, Buffer>();
-      for (const m of built.media) media.set(`media/${m}`, await readFile(join(dist, "media", m)));
-      const facts = [content.shop.name, content.shop.address, content.shop.phone, ...content.menu.flatMap((m) => [m.name, m.priceDisplay])].filter(Boolean);
-      const render = await renderQ1(o.browser, { html: built.html, css: built.css }, media, facts, content.shop.name, out, name);
-      for (const view of ["pc", "sp"] as const) {
-        const direct = [...new Set((await serveAndMeasure(o.browser, dist, name, view, out)).map((f) => f.code))].sort();
-        rows.push({ fixture: name, viewport: view, render: render[view], direct });
+    // PR (3): every fictional shop's site with its own fixtures ("<site>-<fixture>")
+    for (const site of SHOP_SITES) {
+      for (const [fixture, fx] of Object.entries(site.fixtures())) {
+        const name = `${site.id}-${fixture}`;
+        const repo = join(work, name, "repo");
+        const dist = join(work, name, "dist");
+        await writeFixture(repo, fx);
+        const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY, site });
+        const content = await loadContent(repo, site.profile);
+        const media = new Map<string, Buffer>();
+        for (const m of built.media) media.set(`media/${m}`, await readFile(join(dist, "media", m)));
+        const { facts, truncated } = factsOf(content);
+        const render = await renderQ1(o.browser, { html: built.html, css: built.css }, media, facts, content.shop.name, out, name);
+        for (const view of ["pc", "sp"] as const) {
+          const direct = [...new Set((await serveAndMeasure(o.browser, dist, name, view, out)).map((f) => f.code))].sort();
+          rows.push({ fixture: name, viewport: view, render: render[view], direct, facts_truncated: truncated });
+        }
       }
     }
     await writeFile(join(out, "q1-compare.json"), `${JSON.stringify({ schema: "pages_cms_q1_compare_v1", controls, rows }, null, 2)}\n`);

@@ -34,54 +34,92 @@ const DIGITS_RE = /[0-9０-９][0-9０-９,，.．]*/g;
 const COUNTER_AFTER = /^\s*(?:点|個|枚|本|名|人|組|品|種|切|入|g|ｇ|kg|ml|ｍｌ|cc|cm|mm|年|月|日|時|分|歳|%|％|号|番|階|丁目|番地|cal|kcal)/i;
 /** A text that is only numbers, separators, size labels and tax words is a list of amounts (「400 / 500」「S 400 / M 500（税別）」). */
 const ONLY_AMOUNTS = /^(?:[\s0-9０-９,，.．/／・、〜~～\-()（）:：|｜+＋]|[A-Za-zＡ-Ｚａ-ｚ]{1,3}(?![A-Za-z])|[大中小並特]|税込み?|税抜き?|税別|外税|内税|本体|tax|サイズ)+$/i;
-const NUM = String.raw`(?:[¥￥]\s*)?[0-9０-９〇一二三四五六七八九十百千万壱弐参]`;
+/**
+ * A real amount after a 税抜 / 税別 / 本体 label (review #363 M1): ¥ + digits, digits + 円, kanji + 円, or digits not
+ * followed by % (「（税別10%）」 is a tax rate, not a base price).
+ */
+const NUM = String.raw`(?:[¥￥]\s*[0-9０-９]|[0-9０-９][0-9０-９,，.．]*\s*円|[〇一二三四五六七八九十百千万壱弐参]+\s*円|[0-9０-９][0-9０-９,，]*(?![0-9０-９,，.．]*\s*[%％]))`;
 const INCLUDED_BEFORE = /(?:税込み?(?:価格)?|内税|総額)\s*[:：]?\s*$/;
 /**
  * Directly after the amount: （税込）/（税込価格）/（込）/（税・サ込）, or 税込 / 内税 not followed by more words (review L1:
  * 「500円 税込価格は店頭で」 is not a tax-inclusive amount), or — review #360 M2 — a bracket naming the tax-exclusive
  * base price with its amount (「1,080円（税抜1,000円）」: the 1,080円 is the total).
  */
-const INCLUDED_AFTER = new RegExp(String.raw`^\s*(?:[（(]\s*(?:税込み?(?:価格)?|内税|込|税[・･]?サ(?:ービス料)?込み?)\s*[）)]|(?:税込み?|内税)(?![価はがをのでもにと])|[（(]\s*(?:税抜き?|税別|本体)\s*[:：]?\s*${NUM})`);
+const INCLUDED_AFTER = new RegExp(String.raw`^\s*(?:[（(]\s*(?:税込み?(?:価格)?|内税|込|税[・･]?サ(?:ービス料)?込み?)\s*[）)]|(?:税込み?|内税)(?![価はがをのでもにと])(?!\s*[:：]?\s*${NUM})|[（(]\s*(?:税抜き?|税別|本体)(?:価格)?\s*[:：]?\s*${NUM})`);
+/**
+ * PR (3): a bracket right after the amount that says 税込 among other words — 「（10%税込）」「（税込・10%）」「（税込8%）」
+ * 「（2名分・税込）」 — counts as tax-inclusive when it names no other amount and no tax-exclusive word.
+ */
+function includedBracketAfter(after: string): boolean {
+  const m = /^\s*[（(]([^（）()]{1,30})[）)]/.exec(after);
+  if (!m) return false;
+  const inner = m[1]!;
+  return /税込|内税|税[・･]?サ(?:ービス料)?込/.test(inner) && !/税抜|税別|外税/.test(inner) && !/[¥￥]|[0-9０-９〇一二三四五六七八九十百千万]\s*円/.test(inner);
+}
 /** Directly after: 税別 / 税抜 / 外税 (unless an amount follows: that is the base price of the amount before) / +税 / +tax. */
 const EXCLUDED_AFTER = new RegExp(String.raw`^\s*(?:[（(]\s*)?(?:(?:税別|税抜き?|外税)(?!\s*[:：]?\s*${NUM})|[+＋]\s*(?:税|tax)|plus\s*tax|tax\s*excl)`, "i");
-const EXCLUDED_BEFORE = /(?:税別|税抜き?|外税|本体)\s*[:：]?\s*$/;
+const EXCLUDED_BEFORE = /(?:税別|税抜き?|外税|本体)(?:価格)?\s*[:：]?\s*$/;
+/** What may stand between members of one list of amounts that share the last one's 円 and tax words (「S400/M500/L600円（税込）」). */
+const SERIES_GAP = /^(?:[\s/／・、,，〜~～\-|｜]|[A-Za-zＡ-Ｚａ-ｚ]{1,3}(?![A-Za-z])|[大中小並特])+$/;
 const EXCLUDED_ANYWHERE = /税別|税抜き?|外税|[+＋]\s*(?:税|tax)|税\s*[+＋]|plus\s*tax|tax\s*excl/i;
 const GAP_CHARS = String.raw`[\s／/・、,，()（）〜~～\-ー:：|｜]`;
-const GAP_WORDS = String.raw`(?:本体|税別|税抜き?|外税|税込み?(?:価格)?|内税|総額|[+＋]\s*(?:税|tax))`;
+const GAP_WORDS = String.raw`(?:本体(?:価格)?|税別|税抜き?|外税|税込み?(?:価格)?|内税|総額|[+＋]\s*(?:税|tax))`;
 /** What may stand between an amount and the included amount after it that pairs with it (「1,000円+税（税込1,100円）」). */
 const PAIR_GAP = new RegExp(String.raw`^${GAP_CHARS}*(?:${GAP_WORDS}${GAP_CHARS}*)*$`, "i");
 /**
  * Review #360 M2: the total written first — 「税込1,080円（本体1,000円）」「1,080円（税込）本体1,000円」「1,080円（税抜1,000円）」:
  * an amount labelled as the base price right after an included amount pairs with it backwards.
  */
-const PAIR_GAP_BACK = new RegExp(String.raw`^${GAP_CHARS}*(?:${GAP_WORDS}${GAP_CHARS}*)*(?:本体|税抜き?|税別)\s*[:：]?\s*$`);
+const PAIR_GAP_BACK = new RegExp(String.raw`^${GAP_CHARS}*(?:${GAP_WORDS}${GAP_CHARS}*)*(?:本体|税抜き?|税別)(?:価格)?\s*[:：]?\s*$`);
 
 export type PriceAmount = { text: string; class: AmountClass };
+type Found = { text: string; start: number; end: number; strong: boolean };
 
 /** Every amount in a price text, each with its own class. */
 export function priceAmounts(text: string): PriceAmount[] {
   const t = text.trim();
-  const strong = [...t.matchAll(STRONG_RE)].map((m) => ({ text: m[0], start: m.index!, end: m.index! + m[0].length }));
+  const strong: Found[] = [...t.matchAll(STRONG_RE)].map((m) => ({ text: m[0], start: m.index!, end: m.index! + m[0].length, strong: true }));
   const inStrong = (i: number) => strong.some((a) => i >= a.start && i < a.end);
   const listOnly = ONLY_AMOUNTS.test(t);
-  const weak = [...t.matchAll(DIGITS_RE)]
-    .map((m) => ({ text: m[0], start: m.index!, end: m.index! + m[0].length }))
+  const candidates: Found[] = [...t.matchAll(DIGITS_RE)]
+    .map((m) => ({ text: m[0], start: m.index!, end: m.index! + m[0].length, strong: false }))
     .filter((a) => !inStrong(a.start) && !COUNTER_AFTER.test(t.slice(a.end)))
-    .filter((a) => {
-      if (listOnly) return true;
-      const before = t.slice(0, a.start);
-      const after = t.slice(a.end);
-      // a digit run counts when a tax word is directly next to it
-      return INCLUDED_BEFORE.test(before) || INCLUDED_AFTER.test(after) || EXCLUDED_AFTER.test(after) || EXCLUDED_BEFORE.test(before);
-    });
-  const found = [...strong, ...weak].sort((a, b) => a.start - b.start);
+    // review #363 L2: a time (「10:00〜」) is not an amount
+    .filter((a) => !/[0-9０-９]\s*[:：]\s*$/.test(t.slice(0, a.start)) && !/^\s*[:：]\s*[0-9０-９]/.test(t.slice(a.end)));
+  const adjacent = (a: Found) => {
+    const before = t.slice(0, a.start);
+    const after = t.slice(a.end);
+    return INCLUDED_BEFORE.test(before) || INCLUDED_AFTER.test(after) || includedBracketAfter(after) || EXCLUDED_AFTER.test(after) || EXCLUDED_BEFORE.test(before);
+  };
+  // a digit run counts when the text is a list of numbers, when a tax word is directly next to it, or (PR 3) when it
+  // leads, through list separators and size labels only, to an amount that counts (「S400/M500/L600円」「1,000〜1,500円」)
+  const kept = new Set(candidates.filter((a) => listOnly || adjacent(a)));
+  const all = [...strong, ...candidates].sort((a, b) => a.start - b.start);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let i = all.length - 2; i >= 0; i--) {
+      const a = all[i]!;
+      const next = all[i + 1]!;
+      if (a.strong || kept.has(a) || !(next.strong || kept.has(next))) continue;
+      if (SERIES_GAP.test(t.slice(a.end, next.start))) {
+        kept.add(a);
+        changed = true;
+      }
+    }
+  }
+  const found = all.filter((a) => a.strong || kept.has(a));
   const classes: AmountClass[] = found.map((a) => {
     const before = t.slice(0, a.start);
     const after = t.slice(a.end);
-    if (INCLUDED_BEFORE.test(before) || INCLUDED_AFTER.test(after)) return "included";
+    if (INCLUDED_BEFORE.test(before) || INCLUDED_AFTER.test(after) || includedBracketAfter(after)) return "included";
     if (EXCLUDED_AFTER.test(after) || EXCLUDED_BEFORE.test(before)) return "excluded";
     return "bare";
   });
+  // PR (3): a number written without 円 in a list takes the class of the next member (its 円 and tax words are shared)
+  for (let i = found.length - 2; i >= 0; i--) {
+    if (found[i]!.strong || classes[i] !== "bare") continue;
+    if (SERIES_GAP.test(t.slice(found[i]!.end, found[i + 1]!.start))) classes[i] = classes[i + 1]!;
+  }
   for (let i = found.length - 2; i >= 0; i--) {
     if (classes[i] === "included") continue;
     const next = classes[i + 1];

@@ -7,6 +7,7 @@
  *
  * Limits (review L5): "cut off" is horizontal only (vertical clipping is not detected), and overlap covers the menu
  * items only (not other sections).
+ * PR (3): the fixtures of every fictional shop site (shop-site.ts SHOP_SITES), each built with its own page code.
  * Per fixture and width it records: horizontal overflow, broken pictures, overlapping boxes (menu items with each
  * other, and the texts inside one item), unreadable text (font smaller than 12px, or text cut off by its box), and
  * requests that left the site; it saves the page shot (taken at the page's own height, not fullPage: DEV-135).
@@ -21,7 +22,8 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 import { chromium, type Browser } from "playwright";
 import { waitForFrame } from "../../lib/design-agent/frame-ready";
 import { buildSite } from "./build";
-import { Q1_TODAY, q1Fixtures, writeFixture } from "./fixtures";
+import { Q1_TODAY, writeFixture } from "./fixtures";
+import { SHOP_SITES } from "./shop-site";
 
 const REPO = resolve(__dirname, "../..");
 const VIEWPORTS = { pc: { width: 1440, height: 900 }, sp: { width: 390, height: 844 } } as const;
@@ -126,21 +128,31 @@ export async function safeOutDir(outDir: string): Promise<string> {
   return out;
 }
 
+/**
+ * Runs the direct checks over every site's fixtures. Since PR (3) fixtures are named "<site>-<fixture>" (e.g.
+ * "bakery-items-50", "cafe-sizes-prices") in the report, in the file names and in `only`.
+ */
 export async function runQ1(o: { outDir: string; browser: Browser; only?: string[] }): Promise<{ fixtures: string[]; findings: Q1Finding[] }> {
   const out = await safeOutDir(o.outDir);
   const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1-"));
   try {
     const missed = await controlCheck(o.browser, work, out);
     if (missed.length > 0) throw new Error(`Q1_CONTROL_MISSED ${missed.join(",")}`);
-    const all = q1Fixtures();
-    const names = Object.keys(all).filter((n) => !o.only || o.only.includes(n));
+    // PR (3): every fictional shop's site, each with its own fixtures ("<site>-<fixture>" in the report and file names)
+    const names: string[] = [];
     const findings: Q1Finding[] = [];
-    for (const name of names) {
-      const repo = join(work, name, "repo");
-      const dist = join(work, name, "dist");
-      await writeFixture(repo, all[name]!);
-      await buildSite({ repo, outDir: dist, today: Q1_TODAY });
-      for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out)));
+    for (const site of SHOP_SITES) {
+      const all = site.fixtures();
+      for (const fixture of Object.keys(all)) {
+        const name = `${site.id}-${fixture}`;
+        if (o.only && !o.only.includes(name)) continue;
+        names.push(name);
+        const repo = join(work, name, "repo");
+        const dist = join(work, name, "dist");
+        await writeFixture(repo, all[fixture]!);
+        await buildSite({ repo, outDir: dist, today: Q1_TODAY, site });
+        for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out)));
+      }
     }
     await writeFile(join(out, "q1-report.json"), `${JSON.stringify({ schema: "pages_cms_q1_experiment_v0", fixtures: names, viewports: VIEWPORTS, findings }, null, 2)}\n`);
     return { fixtures: names, findings };
