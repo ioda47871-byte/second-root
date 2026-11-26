@@ -8,6 +8,8 @@ import { packBundle, verifyBundleDir } from "@/lib/design-agent/imagefirst-worke
 import { gitCommitState } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
 import { approvedDesignRun, checkDesignApproval, writeDesignReviewPage } from "@/lib/design-agent/imagefirst-worker/design-approval";
+import type { AuditMaterial } from "@/lib/design-agent/imagefirst-worker/audit-rubric";
+import { runClaudeAudit } from "@/lib/design-agent/imagefirst-worker/claude-audit";
 import { runImplCompare } from "@/lib/design-agent/imagefirst-worker/impl-compare-approved";
 import { approveRehearsal, REHEARSAL_COMMIT, REHEARSAL_FACTS, REHEARSAL_ID, REHEARSAL_SHOP, sealRehearsal } from "@/lib/design-agent/imagefirst-worker/rehearsal";
 import { loadRequestRun, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
@@ -171,5 +173,45 @@ describe("DEV-303 rehearsal: a synthetic whole_page bundle through stages 3 → 
     const val = run(join(REPO, "tests/unit/design-agent/imagefirst-worker/fixtures/worker-cli-entry.ts"), ["0::/\n", "--validate-request", approved.materials_request], { HOME: home });
     expect(val.status).toBe(0);
     expect(JSON.parse(val.stdout.trim())).toMatchObject({ status: "valid", stage: "photo_materials", rehearsal_only: true });
+  });
+});
+
+describe("DEV-303 rehearsal follow-ups (PR #362 review Lows)", () => {
+  it("the previews INDEX says synthetic; the Claude audit refuses the bundle before any model call", async () => {
+    const { home, inbox } = await sealed();
+    const ix = JSON.parse(readFileSync(join(inbox, "previews", ID, "INDEX.json"), "utf8")) as { synthetic?: boolean };
+    expect(ix.synthetic).toBe(true);
+    expect(readFileSync(join(inbox, "previews", ID, "INDEX.md"), "utf8")).toContain("SYNTHETIC rehearsal bundle");
+    const material: AuditMaterial = { direction: { id: "x", concept: "x", protect: [] }, facts: [] };
+    const audit = runClaudeAudit({ approvalId: ID, runsDir: join(home, "sr-runs"), stateDir: join(home, "rehearsal-work", "state"), material, claudeBin: "/nonexistent/claude", env: {}, jailIdle: async () => true, dryRun: true, now: () => T0 });
+    expect(await codeOf(audit)).toBe("AUDIT_SYNTHETIC_BUNDLE");
+    expect(existsSync(join(home, "sr-runs", "review-inbox", "audits"))).toBe(false);
+  });
+
+  it("the research log verifies the bundle: a copy whose manifest drops the marker is not logged", async () => {
+    const { inbox } = await sealed();
+    const copy = join(tmp("sr-rehearsal-intake-"), "review-inbox");
+    cpSync(inbox, copy, { recursive: true });
+    for (const d of [copy, join(copy, ID), join(copy, ID, "parts"), join(copy, "previews"), join(copy, "previews", ID)]) chmodSync(d, 0o700);
+    const manifest = JSON.parse(readFileSync(join(copy, ID, "manifest.json"), "utf8")) as Record<string, unknown>;
+    delete manifest.synthetic;
+    writeFileSync(join(copy, ID, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(join(copy, ID, "manifest.json"), 0o600);
+    expect(await codeOf(entryFromInbox({ repo: REPO, inbox: copy, bundleId: ID, shop: REHEARSAL_SHOP, direction: "request", iteration: 0, parentEntryId: null, now: "2026-11-26T02:00:00Z" }))).toBe("INTAKE_BUNDLE_UNVERIFIED");
+  });
+
+  it("with HOME pointed at a temp dir, the account's real home is still refused (and so is that HOME)", async () => {
+    const before = process.env.HOME;
+    const fake = tmp("sr-rehearsal-fakehome-");
+    process.env.HOME = fake;
+    try {
+      expect(homedir()).toBe(fake);
+      expect(await codeOf(sealRehearsal({ home: userInfo().homedir, repo: REPO }))).toBe("REHEARSAL_HOME_IS_REAL_HOME");
+      expect(await codeOf(sealRehearsal({ home: fake, repo: REPO }))).toBe("REHEARSAL_HOME_IS_REAL_HOME");
+    } finally {
+      if (before === undefined) delete process.env.HOME;
+      else process.env.HOME = before;
+    }
+    expect(process.env.HOME).toBe(before);
   });
 });

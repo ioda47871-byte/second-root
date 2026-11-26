@@ -270,6 +270,7 @@
    出力には prompt が引く facts の値が入る（オーナーの確認用。リポジトリに置かない）。
    plan は CLI を動かした checkout から作られ、出力の `commit`・`on_origin_develop`・`clean` がその checkout を示す（読むだけの git）。worker は自分の clone の origin/develop で plan を作るので、
    **origin/develop にある、変更の無い checkout（`on_origin_develop: true`・`clean: true`）から出し、承認の前に、出た `plan_sha256` を worker の precheck（`--request … --precheck`）か run の receipt の `plan_sha256` と照らす**。
+   `on_origin_develop` は手元の `origin/develop` の ref と比べるだけなので、出す前に `git fetch --no-tags origin develop:refs/remotes/origin/develop` で最新にし、`git checkout --detach origin/develop` などで HEAD をそこに合わせる（古い ref のままだと、古い develop でも `true` になる）。
    違えば承認しない。また、この CLI は動かした user の HOME（facts pack・事例分析・デザインが名指す素材の段の run の receipt）を読むので、worker の user（またはその HOME）で動かす。
    依頼 ID は二度と使えない。あとは root の timer が上限の中で動かす（A）。
 4. 届いたら `~/sr-runs/review-inbox/<依頼 ID>` を見る（実店舗の記録は `~/second-root-shops/<shop_id>/runs/` に入り、研究ログには書かない）。PC と SP の画像を**参考として**見て、頁 `comp/` を書く（workflow §3。

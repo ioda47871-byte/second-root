@@ -68,6 +68,8 @@ export type PreviewIndex = {
   approval_id: string;
   plan_id: string;
   commit: string;
+  /** DEV-303 (PR #362 review Low 3): only on a synthetic rehearsal bundle's previews (never a generated design). */
+  synthetic?: true;
   limits: { max_side: number; max_bytes: number };
   previews: PreviewEntry[];
 };
@@ -164,6 +166,7 @@ function renderIndexMd(ix: PreviewIndex): string {
   const lines = [
     `# IMAGE_FIRST review previews — ${ix.bundle_id}`,
     "",
+    ...(ix.synthetic ? ["**SYNTHETIC rehearsal bundle (合成・リハーサル): locally drawn pictures, not a generated design. Do not review or log it as one.**", ""] : []),
     "Derived, downscaled copies for reading in a Claude session. **Not the originals.** The originals are the verified bundle",
     `\`../../${ix.bundle_id}/\` (check it with \`cd ../../${ix.bundle_id} && sha256sum -c SHA256SUMS\` and \`sha256sum manifest.json\`).`,
     "",
@@ -233,6 +236,7 @@ export async function verifyPreviewsDetailed(dir: string, o: { bundle_sha256?: s
     return stop("PREVIEW_INDEX_INVALID");
   }
   if (!ix || ix.schema !== PREVIEW_SCHEMA || typeof ix.bundle_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(ix.bundle_sha256) || !Array.isArray(ix.previews) || ix.previews.length === 0) stop("PREVIEW_INDEX_INVALID");
+  if (ix.synthetic !== undefined && ix.synthetic !== true) stop("PREVIEW_INDEX_INVALID");
   if (o.bundle_sha256 !== undefined && o.bundle_sha256 !== ix.bundle_sha256) stop("PREVIEWS_CONFLICT");
   const names = ix.previews.map((p) => p?.file);
   if (names.some((n) => typeof n !== "string" || !NAME_RE.test(n)) || new Set(names).size !== names.length) stop("PREVIEW_INDEX_INVALID");
@@ -340,6 +344,7 @@ export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewRes
     approval_id: m.approval_id,
     plan_id: m.plan_id,
     commit: m.commit,
+    ...(m.synthetic === true ? { synthetic: true as const } : {}),
     limits: { max_side: PREVIEW_LIMITS.maxSide, max_bytes: PREVIEW_LIMITS.maxBytes },
     previews,
   };
