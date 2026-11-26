@@ -15,6 +15,9 @@
  *
  * The handover record is written at delivery (Second Root lists every generated material it hands over, by file and
  * SHA-256). It is not in .pages.yml, so the CMS cannot edit it; a shop's own photo has another SHA-256 and is free.
+ * Limits: it matches exact bytes only (a re-encoded or edited copy of a generated picture is not caught), and it
+ * guards against a relabel in the CMS, not against edits made in the repository itself. A shop whose profile says
+ * generated materials were delivered (ShopProfile.generatedDelivered) must have the record, or the build stops.
  *
  * A stopped build keeps the last good publish (Cloudflare Pages, Q2). The same limits are written as hints in the
  * CMS (pages-config.ts PHOTO_HINT); Pages CMS itself has no size limit option, so the build is what enforces them.
@@ -24,7 +27,7 @@ import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { ContentError, type ShopContent, viewOf } from "./content-model";
+import { ContentError, type ShopContent, type ShopProfile, viewOf } from "./content-model";
 import { imageMeta, type ImageMeta } from "./image-meta";
 
 export const PHOTO_LIMITS = { bytes: 2 * 1024 * 1024, maxSide: 4096, maxPixels: 16_000_000, minSide: 320, maxRatio: 3 } as const;
@@ -47,7 +50,7 @@ export function checkPhoto(file: string, bytes: Buffer): PhotoCheck {
 }
 
 /** Every picture the page shows (visible items in visible categories), checked; the media/ file names in order. */
-export async function checkPhotos(repo: string, content: ShopContent): Promise<PhotoCheck[]> {
+export async function checkPhotos(repo: string, content: ShopContent, profile?: ShopProfile): Promise<PhotoCheck[]> {
   const shown = viewOf(content).sections.flatMap((s) => s.items).filter((m) => m.image);
   const names = [...new Set(shown.map((m) => m.image.replace(/^\/media\//, "")))].sort();
   const out: PhotoCheck[] = [];
@@ -59,7 +62,7 @@ export async function checkPhotos(repo: string, content: ShopContent): Promise<P
     out.push(checkPhoto(n, await readFile(path)));
   }
   // review #365 M1: a delivered generated material stays labelled whatever the item says
-  const generated = await loadGeneratedRecord(repo);
+  const generated = await loadGeneratedRecord(repo, profile?.generatedDelivered === true);
   const shaOf = new Map(out.map((p) => [p.file, p.sha256]));
   for (const m of shown) if (m.imageKind === "shop" && generated.has(shaOf.get(m.image.replace(/^\/media\//, ""))!)) throw new ContentError("CONTENT_GENERATED_AS_SHOP", `menu/${m.id}`);
   return out;
@@ -73,10 +76,20 @@ const GeneratedRecord = z.strictObject({
 });
 export type GeneratedRecord = z.infer<typeof GeneratedRecord>;
 
-/** The SHA-256s of the delivered generated materials; none when the shop has no record (nothing generated delivered). */
-export async function loadGeneratedRecord(repo: string): Promise<Set<string>> {
-  const bytes = await readFile(join(repo, GENERATED_RECORD)).catch(() => null);
-  if (bytes === null) return new Set();
+/**
+ * The SHA-256s of the delivered generated materials. Only a file that does not exist (ENOENT) means "no record";
+ * a directory, a permission error or any other read error is CONTENT_INVALID (#365 re-review). A shop whose profile
+ * says generated materials were delivered must have the record (CONTENT_GENERATED_RECORD_MISSING).
+ */
+export async function loadGeneratedRecord(repo: string, delivered = false): Promise<Set<string>> {
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(join(repo, GENERATED_RECORD));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new ContentError("CONTENT_INVALID", GENERATED_RECORD);
+    if (delivered) throw new ContentError("CONTENT_GENERATED_RECORD_MISSING", GENERATED_RECORD);
+    return new Set();
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(bytes.toString("utf8"));

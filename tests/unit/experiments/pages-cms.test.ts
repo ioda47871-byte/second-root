@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { addressOk, ContentError, loadContent, PHONE_MAX, phoneOk, viewOf } from
 import { PHOTO_VARIETY, Q1_TODAY, q1Fixtures, solidPng, writeFixture } from "@/experiments/pages-cms/fixtures";
 import { imageMeta } from "@/experiments/pages-cms/image-meta";
 import { checkPagesConfig, PHOTO_HINT, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
-import { checkPhoto, GENERATED_RECORD, PHOTO_LIMITS } from "@/experiments/pages-cms/photos";
+import { checkPhoto, GENERATED_RECORD, loadGeneratedRecord, PHOTO_LIMITS } from "@/experiments/pages-cms/photos";
 import { classifyPrice, priceAmounts, priceDisplayReport } from "@/experiments/pages-cms/price-display";
 import { safeOutDir } from "@/experiments/pages-cms/q1-check";
 import { BAKERY_SITE, CAFE_SITE, SHOP_SITES } from "@/experiments/pages-cms/shop-site";
@@ -655,6 +655,25 @@ describe("DEV-303 Pages CMS (4): photos — header-only size limits, generated v
     writeFileSync(join(repo, GENERATED_RECORD), "{}");
     await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY })).rejects.toMatchObject({ code: "CONTENT_INVALID" });
     for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions })).not.toMatch(/generated-materials/);
+  });
+
+  it("#365 re-review: only a missing record means none; any other read error stops; a shop that received generated materials must have it", async () => {
+    const code = (p: Promise<unknown>) => p.then(() => "ok", (e: unknown) => (e instanceof ContentError ? e.code : String(e)));
+    const repo = join(tmp(), "repo");
+    await writeFixture(repo, BAKERY_SITE.fixtures()["items-3"]!);
+    expect(await code(loadGeneratedRecord(repo))).toBe("ok");
+    expect(await code(loadGeneratedRecord(repo, true))).toBe("CONTENT_GENERATED_RECORD_MISSING");
+    // the shop profile's flag reaches the build
+    await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site: { ...BAKERY_SITE, profile: { ...BAKERY_SITE.profile, generatedDelivered: true } } })).rejects.toMatchObject({ code: "CONTENT_GENERATED_RECORD_MISSING" });
+    // a directory in its place, or an unreadable file, is not "no record"
+    mkdirSync(join(repo, GENERATED_RECORD));
+    expect(await code(loadGeneratedRecord(repo))).toBe("CONTENT_INVALID");
+    rmSync(join(repo, GENERATED_RECORD), { recursive: true });
+    writeFileSync(join(repo, GENERATED_RECORD), JSON.stringify({ schema: "generated_materials_v1", files: [] }));
+    chmodSync(join(repo, GENERATED_RECORD), 0o000);
+    if (process.getuid?.() !== 0) expect(await code(loadGeneratedRecord(repo))).toBe("CONTENT_INVALID");
+    chmodSync(join(repo, GENERATED_RECORD), 0o600);
+    expect(await code(loadGeneratedRecord(repo, true))).toBe("ok");
   });
 
   it("review #365 L3: an upper-case extension (a phone's IMG_0001.JPG) is accepted, its bytes still decide the type", async () => {
