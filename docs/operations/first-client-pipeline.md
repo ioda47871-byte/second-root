@@ -264,6 +264,13 @@
    方向性、`facts_ref.root: second-root-shops` と facts の SHA-256、`layout: "whole_page"`、`max_images: 2`、`codex_runs: 1`、
    オーナーが確認した事例分析の `case_study`。§E）。置く前に
    `node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --validate-request <file>` で確かめる（root は拾った依頼を断られても回数に数える）。
+   オーナーが送る中身を見るときは、同じ CLI の `--print-plan <file>`（DEV-303、2026-11-26。offline・読むだけ・jail の中でも動く・Codex を呼ばない）で、
+   1 回の Codex の run に渡すバッチの prompt（`sent.prompt`。参照の画像は `@@SR_REFERENCE_DIR@@/ref-N.<ext>` と書かれ、実行の直前に一時作業 dir の `inputs` の絶対パスに置き換わる）、
+   添付の順・参照の id と事例・SHA-256・置かれるパス（`sent.attachments`）、entry に渡す固定値（`entry_pins`）、plan の全体と `plan_sha256`（`--validate-request`・worker・entry と同じ値）を出す。
+   出力には prompt が引く facts の値が入る（オーナーの確認用。リポジトリに置かない）。
+   plan は CLI を動かした checkout から作られ、出力の `commit`・`on_origin_develop`・`clean` がその checkout を示す（読むだけの git）。worker は自分の clone の origin/develop で plan を作るので、
+   **origin/develop にある、変更の無い checkout（`on_origin_develop: true`・`clean: true`）から出し、承認の前に、出た `plan_sha256` を worker の precheck（`--request … --precheck`）か run の receipt の `plan_sha256` と照らす**。
+   違えば承認しない。また、この CLI は動かした user の HOME（facts pack・事例分析・デザインが名指す素材の段の run の receipt）を読むので、worker の user（またはその HOME）で動かす。
    依頼 ID は二度と使えない。あとは root の timer が上限の中で動かす（A）。
 4. 届いたら `~/sr-runs/review-inbox/<依頼 ID>` を見る（実店舗の記録は `~/second-root-shops/<shop_id>/runs/` に入り、研究ログには書かない）。PC と SP の画像を**参考として**見て、頁 `comp/` を書く（workflow §3。
    写真の枠に置けるのは §C の条件を満たす素材の段の画像だけ。デザインの段の画像そのものを頁に入れない。画像に描かれた商品・店内・人を事実として書かない。文字は facts pack の値だけ）。

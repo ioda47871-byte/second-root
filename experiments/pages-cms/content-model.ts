@@ -45,6 +45,8 @@ const IsoDate = z
 /** Text the customer types that the page shows: no markup and no link (the page escapes anyway; links are not content). */
 const NO_LINK_OR_MARKUP = /[<>]|https?:|www\.|:\/\//i;
 
+/** The longest phone text, as typed and after normalising (the CMS maxlength and the build agree on it). */
+export const PHONE_MAX = 24;
 /**
  * A Japanese phone number as shops write it: digits with optional hyphens, spaces or parentheses, 10 or 11 digits
  * starting with 0 (or +81 and 9–10 digits). Owner decision 2026-11-26: editable, with input validation.
@@ -53,7 +55,7 @@ export function phoneOk(input: string): boolean {
   const s = normalizePhone(input);
   if (s === "") return true;
   // only digits and the separators; + only as "+81" at the start; starts and ends with a digit (or "(" first)
-  if (!/^(\+81|[0-9(])[0-9()\- ]*[0-9]$/.test(s) || s.length > 24) return false;
+  if (!/^(\+81|[0-9(])[0-9()\- ]*[0-9]$/.test(s) || s.length > PHONE_MAX) return false;
   if (s.indexOf("+", 1) >= 0) return false;
   // brackets: balanced, not nested, not empty
   let open = false;
@@ -159,7 +161,7 @@ export const ShopInfo = z.strictObject({
     .transform((v) => v.trim())
     .refine(addressOk, "address_invalid")
     .default(""),
-  phone: Line(30)
+  phone: Line(PHONE_MAX)
     .transform(normalizePhone)
     .refine(phoneOk, "phone_invalid")
     .default(""),

@@ -1,13 +1,14 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { BAKERY_PROFILE, renderBakery } from "@/experiments/pages-cms/bakery-site";
 import { BuildError, buildSite, writePagesYaml } from "@/experiments/pages-cms/build";
-import { addressOk, ContentError, loadContent, phoneOk, viewOf } from "@/experiments/pages-cms/content-model";
+import { addressOk, ContentError, loadContent, PHONE_MAX, phoneOk, viewOf } from "@/experiments/pages-cms/content-model";
 import { Q1_TODAY, q1Fixtures, writeFixture } from "@/experiments/pages-cms/fixtures";
 import { checkPagesConfig, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
-import { classifyPrice, priceDisplayReport } from "@/experiments/pages-cms/price-display";
+import { classifyPrice, priceAmounts, priceDisplayReport } from "@/experiments/pages-cms/price-display";
+import { safeOutDir } from "@/experiments/pages-cms/q1-check";
 
 // DEV-303 §6.1 rows 10–12 and §3.7 Q1, first experiment (docs/design/pages-cms-implementation-plan.md): the shared
 // content model, the generated Pages CMS configuration and the static build of ONE fictional bakery. FICTIONAL and
@@ -287,5 +288,70 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
       ["価格は店頭で（税込）", "no_amount"],
     ];
     expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
+  });
+
+  it("owner request 2026-11-26: every amount in one text is checked on its own; the report names the amounts not shown tax-inclusive", async () => {
+    const cases: [string, string][] = [
+      ["S 400円（税込）/ M 500円（税別）", "tax_excluded_only"],
+      ["S 400円（税込）/ M 500円", "no_tax_wording"],
+      ["S 400円（税込）/ M 500円（税込）", "tax_included"],
+      ["本体1,000円（税込1,080円）", "tax_included"],
+      ["380円〜520円（税込）", "tax_included"],
+      ["税込価格 1,080円", "tax_included"],
+      ["1,080円（税込価格）", "tax_included"],
+      ["1,080円（税・サ込）", "tax_included"],
+      ["総額 3点で1,000円（税別）", "tax_excluded_only"],
+      ["480", "no_tax_wording"],
+      // review #360 M1: amounts without 円 / ¥ next to a tax word, or a text of numbers only
+      ["1,000（税別）", "tax_excluded_only"],
+      ["S 400 / M 500（税別）", "tax_excluded_only"],
+      ["400 / 500", "no_tax_wording"],
+      ["1,080（税込）", "tax_included"],
+      ["10個入り 1,000円（税込）", "tax_included"],
+      ["2026年限定 500円", "no_tax_wording"],
+      // review #360 M2: compliant forms with the base price shown too, either order
+      ["1,000円+税（税込1,100円）", "tax_included"],
+      ["480円+tax / 528円（税込）", "tax_included"],
+      ["1,080円（税抜1,000円）", "tax_included"],
+      ["税込1,080円（本体1,000円）", "tax_included"],
+      ["1,080円（税込）本体1,000円", "tax_included"],
+      // two sizes are not a base price and its total
+      ["400円（税込）/ 500円（税別）", "tax_excluded_only"],
+      // review L1
+      ["500円 税込価格は店頭で", "no_tax_wording"],
+    ];
+    expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
+    expect(priceAmounts("S 400円（税込）/ M 500円（税別）").map((a) => [a.text, a.class])).toEqual([
+      ["400円", "included"],
+      ["500円", "excluded"],
+    ]);
+    const loaded = await loadContent(await fixtureRepo("trade-extensions"));
+    const menu = loaded.menu.map((m, k) => (k === 0 ? { ...m, priceDisplay: "S 400円（税込）/ M 500円（税別）/ L 600円" } : m));
+    const finding = priceDisplayReport({ categories: loaded.categories, menu }).findings.find((f) => f.item === "item-1")!;
+    expect([finding.class, finding.amounts]).toEqual(["tax_excluded_only", ["500円", "600円"]]);
+  });
+
+  it("review #360 L3: the Q1 output folder is resolved itself; a link into the repository (or anywhere) is refused", async () => {
+    const base = tmp();
+    const link = join(base, "out-link");
+    symlinkSync(join(__dirname, "../../.."), link);
+    await expect(safeOutDir(link)).rejects.toThrow(/Q1_OUT_IN_REPO_OR_LINKED/);
+    const elsewhere = join(base, "real");
+    mkdirSync(elsewhere);
+    const link2 = join(base, "out-link-2");
+    symlinkSync(elsewhere, link2);
+    await expect(safeOutDir(link2)).rejects.toThrow(/Q1_OUT_IN_REPO_OR_LINKED/);
+    await expect(safeOutDir(join(__dirname, "q1-out-should-not-exist"))).rejects.toThrow(/Q1_OUT_IN_REPO/);
+    expect(existsSync(join(__dirname, "q1-out-should-not-exist"))).toBe(false);
+    expect(await safeOutDir(join(base, "fresh"))).toBe(join(base, "fresh"));
+  });
+
+  it("the phone length: the CMS maxlength, its pattern and the build agree (PHONE_MAX)", () => {
+    const phone = pagesConfig().content.find((c) => c.name === "shop")!.fields.find((f) => f.name === "phone") as { options: { maxlength: number }; pattern: { regex: string } };
+    expect(phone.options.maxlength).toBe(PHONE_MAX);
+    expect(phone.pattern.regex).toContain(`{10,${PHONE_MAX}}`);
+    const longest = "+81 (0)3 1234 5678"; // 18 characters: well inside
+    expect([longest.length <= PHONE_MAX, phoneOk(longest)]).toEqual([true, true]);
+    expect(phoneOk("0".repeat(3) + "1".repeat(PHONE_MAX))).toBe(false);
   });
 });

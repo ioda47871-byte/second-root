@@ -139,17 +139,17 @@ content:
         type: "string"
         pattern:
           regex: "^(?![\\s\\S]*([Hh][Tt][Tt][Pp][Ss]?:|[Ww][Ww][Ww]\\.|:\\/\\/))[^<>]{0,120}$"
-          message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存のときに除きます"
+          message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存されたまま残り、構築のときに除きます"
         options:
           maxlength: 120
       - name: "phone"
         label: "電話"
         type: "string"
         pattern:
-          regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,30})?$"
+          regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,24})?$"
           message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）"
         options:
-          maxlength: 20
+          maxlength: 24
       - name: "hours"
         label: "営業時間（曜日ごと）"
         type: "object"

@@ -57,7 +57,8 @@ export type RequestCycleDeps = {
 /** The report (the CLI's one stdout line) and, once the request was read, what the CLI needs for the hand-off and record. */
 export type RequestCycleResult = {
   /** photo_files: DEV-303 a succeeded photo-materials run's pictures (names and SHA-256), what a design request's photo_inputs names. */
-  report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[] };
+  /** plan_sha256: PR #361 review M1, on a precheck's "would_run" only (the owner compares it with `--print-plan`). */
+  report: CycleReport & { mode: "request"; kind?: ImagefirstRequest["kind"]; stage?: "photo_materials"; photo_files?: { name: string; sha256: string }[]; plan_sha256?: string };
   /** caseStudySha256: Issue #336 the checked case study's SHA-256 (request.ts readRequestCaseStudy), null when the run has none. */
   /** referenceImages: DEV-303 §6.1 row 3 a whole_page run's reference pictures (id, case_id, sha256), null otherwise. */
   run: { request: ImagefirstRequest; requestSha256: string; factsSha256: string; planSha256: string; commit: string; caseStudySha256: string | null; referenceImages: ReferenceRecord[] | null; approvedDesign: ApprovedDesignRecord | null; materialsSha256: string | null; jaRenderingsSha256: string | null } | null;
@@ -159,7 +160,7 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
   if (precheckOnly) {
     if (!(await privateOrMissing(o.stateDir)) || !(await privateOrMissing(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE");
     if (!(await privateOrMissing(o.runsDir))) return refuse("RUNS_DIR_UNSAFE");
-    return { report: { mode: "request", status: "would_run", code: null, invoked: false, approval_id: id, kind }, run };
+    return { report: { mode: "request", status: "would_run", code: null, invoked: false, approval_id: id, kind, plan_sha256: inputs.plan.plan_sha256 }, run };
   }
   if (!(await privateDir(o.stateDir)) || !(await privateDir(join(o.stateDir, "claims")))) return refuse("CLAIMS_DIR_UNSAFE");
   if (!(await privateDir(o.runsDir))) return refuse("RUNS_DIR_UNSAFE");
