@@ -79,6 +79,12 @@
  * {"status":"refused","code":<fixed code>} exit 2 (CASE_STUDY_TEXT_HAS_FACT adds "detail": {category, field, case_id},
  * never the text). No claim, no ledger, no write, no network, no Codex.
  *
+ * `--print-plan <file>` (DEV-303, owner goal 2026-11-26; offline, side-effect-free, any shell, the jail included): the same
+ * checks, then exactly what the request's ONE Codex run would be sent (request.ts printRequestPlan): the batch prompt, the
+ * attachments in exec order (reference ids, SHA-256, staged paths), the entry's pins and the whole plan; plan_sha256 is
+ * the one --validate-request, the worker and the entry compute. Pretty JSON {"status":"plan",...} exit 0, or the same
+ * refusal line as --validate-request exit 2. It holds the facts values the prompt quotes (for the owner's review).
+ *
  * DEV-303 (owner decision 2026-11-24), two stages: a request with stage "photo_materials" makes 1..6 picture materials
  * in ONE Codex run (its line adds "stage" and, succeeded, "photo_files": [{name, sha256}]); they are sealed and handed to
  * the review inbox like a design (~/sr-runs/review-inbox/<id>, marked image_material / イメージ素材, at most 6 pictures).
@@ -97,7 +103,7 @@ import { appendFile } from "node:fs/promises";
 import { deliverAfterRun, deliverReview, ReviewStop } from "../../lib/design-agent/imagefirst-worker/deliver-review";
 import { jailIdle, ownJailUnit } from "../../lib/design-agent/imagefirst-worker/jail-state";
 import { checkRealApprovalId, exitCodeOf, GENERATE_ENTRY, GRANT_ENV, gitCommitState, grantFromEnv, isRequestRunId, precheckExitOf, precheckImagefirstCycle, runImagefirstCycle, tsEntry, WORKER_STOP } from "../../lib/design-agent/imagefirst-worker/cycle";
-import { jaRenderingsRefusalDetailOf, REAL_SHOP_RECORD_SCHEMA, recordUseOf, refusalDetailOf, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
+import { jaRenderingsRefusalDetailOf, printRequestPlan, REAL_SHOP_RECORD_SCHEMA, recordUseOf, refusalDetailOf, REQUEST_FILE_ENV, validateRequestFile, writeRealShopRecord } from "../../lib/design-agent/imagefirst-worker/request";
 import { precheckRequestCycle, runRequestCycle, type RequestCycleResult } from "../../lib/design-agent/imagefirst-worker/request-cycle";
 import { defaultLedgerDir, openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -150,12 +156,14 @@ function requestArgs(argv: readonly string[], env: NodeJS.ProcessEnv): RequestAr
 export async function main(readCgroup?: () => Promise<string>): Promise<number> {
   // the arguments: none, --precheck (Issue #302 P1, the automatic start asks before it uses root's marker), or
   // --deliver-review <approval id> (Issue #302 P3 follow-up: re-send a finished run's sealed bundle to the review inbox)
-  // DEV-303: the offline request validator (reads only; before every place, lock and guard)
-  if (process.argv[2] === "--validate-request") {
+  // DEV-303: the offline request validator (reads only; before every place, lock and guard). DEV-303 (owner goal
+  // 2026-11-26): --print-plan, the same checks plus exactly what the one Codex run would be sent (request.ts printRequestPlan)
+  if (process.argv[2] === "--validate-request" || process.argv[2] === "--print-plan") {
     if (process.argv.length !== 4) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
     try {
-      const v = await validateRequestFile({ file: process.argv[3]!, home: homedir(), repo: REPO });
-      say({ status: "valid", code: null, ...v });
+      const o = { file: process.argv[3]!, home: homedir(), repo: REPO };
+      if (process.argv[2] === "--print-plan") process.stdout.write(`${JSON.stringify({ status: "plan", code: null, ...(await printRequestPlan(o)) }, null, 2)}\n`);
+      else say({ status: "valid", code: null, ...(await validateRequestFile(o)) });
       return 0;
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code;

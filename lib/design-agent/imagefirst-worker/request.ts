@@ -36,7 +36,7 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy, type CaseStudyInspection, type ViewedFile } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
 import { buildPhotoPlan, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, CASE_STUDY_TEXT_FIELDS, CaseStudyTextStop, FACTS_MAX_BYTES, type CaseStudyTextField, isPhotoRequest, layoutOf, materialsBytes, parseRequest, parseRequestFacts, PHOTO_FILE_RE, type ApprovedDesignUse, type DesignReference, type PhotoMaterialsRequest, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
-import { IMAGE_TOOL_MAX_REFS } from "../image-tool-limits";
+import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "../image-tool-limits";
 import { checkJaRenderings, JA_RENDERINGS_MAX_BYTES, jaRenderingDetailOf, JaRenderingsStop, type CheckedJaRenderings, type JaRenderingDetail } from "../ja-renderings/ja-renderings";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
 import { assertFictionalShop, FICTIONAL_SHOPS } from "../research-log/shops";
@@ -488,13 +488,22 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] } }> {
+export type RequestValidation = { request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] } };
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<RequestValidation> {
+  return validationOf(await loadRequestFileOffline(o));
+}
+
+/** The request file as --validate-request and --print-plan read it (named <id>.json; its own bytes' SHA-256), loaded and checked. */
+async function loadRequestFileOffline(o: { file: string; home: string; repo: string }): Promise<RequestRunInputs> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
   const requestId = name.slice(0, -".json".length);
   const bytes = await readChecked(file, REQUEST_MAX_BYTES, { unsafe: "REQUEST_FILE_UNSAFE", big: "REQUEST_TOO_LARGE", missing: "REQUEST_FILE_MISSING" });
-  const run = await loadRequestRun({ requestFile: file, requestSha256: createHash("sha256").update(bytes).digest("hex"), requestId, home: o.home, repo: o.repo, photoInputs: "if_present" });
+  return loadRequestRun({ requestFile: file, requestSha256: createHash("sha256").update(bytes).digest("hex"), requestId, home: o.home, repo: o.repo, photoInputs: "if_present" });
+}
+
+function validationOf(run: RequestRunInputs): RequestValidation {
   return {
     request_id: run.request.id,
     kind: run.request.kind,
@@ -507,6 +516,56 @@ export async function validateRequestFile(o: { file: string; home: string; repo:
     ...(run.jaRenderings ? { ja_renderings: { sha256: run.jaRenderings.sha256, keys: run.jaRenderings.entries.map((e) => e.fact_key) } } : {}),
     ...(run.references ? { layout: "whole_page" as const, reference_images: referenceRecordOf(run.references) } : {}),
     ...(run.approvedDesign && "materials_sha256" in run.plan ? { approved_design: approvedDesignRecordOf(run.approvedDesign), materials_sha256: run.plan.materials_sha256 } : {}),
+  };
+}
+
+/**
+ * DEV-303 (owner goal 2026-11-26, the first real whole-page generation's review): `--print-plan <file>` — exactly what
+ * the request's ONE Codex run would be sent, built by the same loadRequestRun as --validate-request, the worker and the
+ * entry (so plan_sha256 is theirs). Offline and read only, like validateRequestFile: no claim, no ledger, no write, no
+ * network, no Codex.
+ *
+ *   sent.prompt       the pinned batch prompt (the codex exec's stdin); each reference is named in it as
+ *                     `<reference_dir_token>/ref-N.<ext>` and the image call replaces the token with the absolute staged
+ *                     directory (`<codex work dir>/inputs`, a fresh temporary directory per run) right before the exec.
+ *   sent.attachments  the `--image` files in exec order (photo inputs first, staged as photo-<n>.png, then the references
+ *                     under their own names), each with its SHA-256, media type, size and staged path.
+ *   entry_pins        what the worker passes the entry to re-check (request-cycle.ts requestArgv).
+ *   plan              the whole plan object (per-picture prompts included); plan_sha256 is its canonical form's SHA-256.
+ *
+ * A design request's photo inputs whose photo-materials run is not there yet are "unchecked": their attachments are not
+ * listed (attachments_complete: false). The output holds the facts values the prompt quotes: it is for the owner's review.
+ */
+export const PLAN_PRINT_SCHEMA = "sr_imagefirst_plan_print_v1";
+/** Where the image call stages a run's attachments (inside the run's fresh temporary Codex work dir; sandbox.ts). */
+export const STAGED_INPUTS_DIR = "<codex work dir>/inputs";
+export type PlanAttachment = { order: number; kind: "photo_input" | "reference"; name: string; staged_name: string; staged_path: string; sha256: string; media_type: string; bytes: number; id?: string; case_id?: string; image?: string };
+export type RequestPlanPrint = RequestValidation & {
+  schema: typeof PLAN_PRINT_SCHEMA;
+  codex_invoked: false;
+  sent: { codex_runs: 1; max_images: number; prompt_sha256: string; prompt_chars: number; prompt: string; reference_dir_token: string | null; staged_dir: string; attachments: PlanAttachment[]; attachments_complete: boolean };
+  entry_pins: { expected_plan_sha256: string; expected_prompt_sha256: string; expected_prompt_chars: number };
+  plan: RequestPlan | PhotoPlan;
+};
+
+export async function printRequestPlan(o: { file: string; home: string; repo: string }): Promise<RequestPlanPrint> {
+  const run = await loadRequestFileOffline(o);
+  const plan = run.plan;
+  const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+  const attachments: PlanAttachment[] = [];
+  const add = (a: Omit<PlanAttachment, "order" | "staged_path">) => attachments.push({ order: attachments.length + 1, ...a, staged_path: `${STAGED_INPUTS_DIR}/${a.staged_name}` });
+  // the exec order (the image call's one exec): the input images (stageInputBytes renames them photo-<n>.png), then the references
+  if (Array.isArray(run.photos)) run.photos.forEach((p, n) => add({ kind: "photo_input", name: p.name, staged_name: `photo-${n + 1}.png`, sha256: sha(p.bytes), media_type: "image/png", bytes: p.bytes.length }));
+  for (const r of run.references ?? []) add({ kind: "reference", id: r.id, case_id: r.case_id, name: r.name, staged_name: r.name, sha256: sha(r.bytes), media_type: r.media_type, bytes: r.bytes.length });
+  for (const r of run.approvedDesign?.references ?? []) add({ kind: "reference", id: r.id, image: r.image, name: r.name, staged_name: r.name, sha256: sha(r.bytes), media_type: "image/png", bytes: r.bytes.length });
+  const hasRefs = attachments.some((a) => a.kind === "reference");
+  return {
+    schema: PLAN_PRINT_SCHEMA,
+    ...validationOf(run),
+    codex_invoked: false,
+    sent: { codex_runs: 1, max_images: plan.batch.images, prompt_sha256: plan.batch.sha256, prompt_chars: plan.batch.chars, prompt: plan.batch.prompt, reference_dir_token: hasRefs ? REFERENCE_DIR_TOKEN : null, staged_dir: STAGED_INPUTS_DIR, attachments, attachments_complete: run.photos !== "unchecked" },
+    entry_pins: { expected_plan_sha256: plan.plan_sha256, expected_prompt_sha256: plan.batch.sha256, expected_prompt_chars: plan.batch.chars },
+    plan,
   };
 }
 
