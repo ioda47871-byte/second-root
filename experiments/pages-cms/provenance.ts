@@ -20,9 +20,14 @@
  *                  pages_cms). No per-update owner approval: the automatic checks only (photos.ts limits; Q1); the
  *                  build writes its record from those check results. No イメージ label. Chosen explicitly only.
  *
- * Second Root places A or B, never C. A picture whose SHA-256 is in the handover record of generated materials is
- * refused when marked B or C (CONTENT_GENERATED_AS_SHOP; exact bytes only — a converted copy is not caught, a known
- * limit). The transform / pairing record (sr_photo_transform_v1) is a later PR.
+ * Second Root places A or B, never C: its delivery build (given the private folder) refuses a C picture
+ * (CONTENT_DELIVERY_CUSTOMER_PHOTO). The class is a property of the picture's bytes, never of the item (review #371
+ * M1): a picture whose SHA-256 is in the handover record of generated materials is refused when marked B or C
+ * (CONTENT_GENERATED_AS_SHOP); a picture in the B index must be B everywhere, the same bytes may not be shown with two
+ * classes on one page, and no SHA-256 may be in both the handover record and the B index (CONTENT_PHOTO_CLASS_MIXED).
+ * All by exact bytes: a converted copy is not caught (a known limit). The transform / pairing record
+ * (sr_photo_transform_v1) is a later PR. The A record's materials approval SHA-256 and the C record's commit are
+ * optional (the handover may not name the approval; the customer's build may not know its commit).
  */
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -33,13 +38,21 @@ import { ContentError } from "./content-model";
 export const PROVENANCE_SCHEMA = "sr_photo_provenance_v1";
 const SHA = z.string().regex(/^[0-9a-f]{64}$/);
 const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** review #371 L1: who provided / who confirmed — a role from a fixed list, never a person. */
+export const PROVENANCE_ROLES = ["店主", "店長", "スタッフ", "撮影者", "Second Root 担当"] as const;
+/**
+ * review #371 L1: free text that must not carry a person's contact or name: a phone number, a LINE ID or @handle, an
+ * e-mail address, a link, or an honorific after a name (様・さん・氏・くん・ちゃん followed by a particle, punctuation,
+ * 撮影 / 提供 or the end). A heuristic on the strict side: a word such as 「模様が」 is refused too.
+ */
+const PERSONAL = /[<>@]|https?:|www\.|\d{2,4}[-‐－ ]?\d{2,4}[-‐－ ]?\d{3,4}|\bline\s*(?:id)?\s*[:：]|[ァ-ヶ一-龯A-Za-z]\s*(?:様|さん|氏|くん|ちゃん)(?=[よがのはをにへともで、。・\s）)]|撮影|提供|$)/i;
 /** A role or a short plain phrase; no link, markup or e-mail address (a role, never a person's contact). */
 const Plain = (max: number) =>
   z
     .string()
     .min(1)
     .max(max)
-    .refine((s) => s === s.trim() && !/[<>@]|https?:|www\./i.test(s), "plain_text");
+    .refine((s) => s === s.trim() && !PERSONAL.test(s), "plain_text");
 
 export const ProvenanceA = z.strictObject({
   schema: z.literal(PROVENANCE_SCHEMA),
@@ -52,9 +65,9 @@ export const ProvenanceB = z.strictObject({
   schema: z.literal(PROVENANCE_SCHEMA),
   class: z.literal("B"),
   sha256: SHA,
-  provided_by: Plain(40),
+  provided_by: z.enum(PROVENANCE_ROLES),
   source: Plain(120),
-  permission: z.strictObject({ scope: Plain(200), confirmed_at: IsoDate, confirmed_by: Plain(40) }),
+  permission: z.strictObject({ scope: Plain(200), confirmed_at: IsoDate, confirmed_by: z.enum(PROVENANCE_ROLES) }),
   facts_check: z.strictObject({ shown_as_fact: z.boolean(), confirmed: z.boolean() }).refine((f) => !f.shown_as_fact || f.confirmed, "facts_unconfirmed"),
 });
 export const ProvenanceC = z.strictObject({
@@ -117,8 +130,14 @@ export async function loadRightsRecord(index: Map<string, string>, dir: string |
   const recordSha = index.get(sha256);
   if (!recordSha) throw new ContentError("CONTENT_PHOTO_RIGHTS_MISSING", file);
   if (!dir) return null;
-  const bytes = await readFile(join(dir, `${sha256}.json`)).catch(() => null);
-  if (bytes === null || sha256Of(bytes) !== recordSha) throw new ContentError("CONTENT_PHOTO_RIGHTS_MISSING", file);
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(join(dir, `${sha256}.json`));
+  } catch (error) {
+    // review #371 L2: only a missing record is "missing"; any other read error is not a pass either way
+    throw new ContentError((error as NodeJS.ErrnoException).code === "ENOENT" ? "CONTENT_PHOTO_RIGHTS_MISSING" : "CONTENT_INVALID", file);
+  }
+  if (sha256Of(bytes) !== recordSha) throw new ContentError("CONTENT_PHOTO_RIGHTS_MISSING", file);
   let raw: unknown;
   try {
     raw = JSON.parse(bytes.toString("utf8"));

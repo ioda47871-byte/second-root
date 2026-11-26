@@ -137,6 +137,12 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
     Second Root の構築（非公開の場所を渡す）は記録の全文と索引の一致まで確かめる。索引に無い B、記録が無い・書き換えられた B は `CONTENT_PHOTO_RIGHTS_MISSING`。
   - C の記録: 構築が自動の検査（形式・大きさ・寸法・比）の結果から書く（オーナーの承認は求めない）。
   - `CONTENT_GENERATED_AS_SHOP` は B と C の両方に効く（バイトの完全な一致だけ。変換した写しは見つからない＝既知の限界）。`materials-impl-check` など他の検査は変えていない。
+  - **区分は写真のバイトに属する**（PR #371 のレビュー M1、オーナーの「A/B/C を混ぜない」）: B の索引にある写真はどこでも B（A や C、以前の `shop` にすると `CONTENT_PHOTO_CLASS_MIXED`）。
+    同じ写真を頁の中で 2 つの区分で出す、生成素材の記録と B の索引の両方に同じ SHA-256 がある、も `CONTENT_PHOTO_CLASS_MIXED`。
+  - **Second Root の納品の構築**（非公開の場所を渡す構築）は C の写真を断る（`CONTENT_DELIVERY_CUSTOMER_PHOTO`。「C は置かない」を手順でなく構築で守る）。
+    非公開の場所がリポジトリの中なら `CONTENT_PROVENANCE_IN_REPO`。記録が読めない（存在しない以外の失敗）は `CONTENT_INVALID`。
+  - B の `provided_by`・`confirmed_by` は役割の一覧（店主・店長・スタッフ・撮影者・Second Root 担当）だけ。出典・範囲の文に電話番号・LINE ID・メール・リンク・敬称つきの名前を書くと断る
+    （推測の検査で、厳しめの側に倒れる）。A の素材の承認の SHA-256 と C の commit は任意（`quality-proof-plan.md` §3.2 も合わせた）。
   - CMS の選択肢は変えていない（PR 5）。CMS の「店の写真」は C になる。B は納品のときに Second Root が content に書く値で、CMS の選択肢には無い（PR 5 で表示を決める）。変換の記録 `sr_photo_transform_v1` は後の PR。
 - **顧客が「店の写真」に変えても外れない**（PR #365 のレビュー M1、決定: 顧客に任せず構築で守る）: 納品のときに、渡した生成素材を
   `content/generated-materials.json`（`generated_materials_v1`: ファイル名と SHA-256）に書く。この記録は `.pages.yml` に入れないので CMS からは直せない。

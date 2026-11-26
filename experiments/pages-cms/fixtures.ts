@@ -13,6 +13,12 @@ import { PROVENANCE_INDEX, PROVENANCE_SCHEMA, rightsFiles, type ProvenanceB } fr
 import { GENERATED_RECORD, generatedRecord } from "./photos";
 
 /** A solid-colour PNG (synthetic). */
+/**
+ * review #371 M1: each fixture item gets its own bytes (a colour one step apart per item), so two items never share a
+ * picture by accident — the provenance class belongs to the bytes, and A / B / C may not share them.
+ */
+export const uniqueColour = (rgb: readonly [number, number, number], k: number): [number, number, number] => [rgb[0], rgb[1], (rgb[2] + k) % 256];
+
 export function solidPng(w: number, h: number, rgb: [number, number, number]): Buffer {
   const crcTable = Array.from({ length: 256 }, (_, n) => {
     let c = n;
@@ -83,7 +89,7 @@ function items(n: number): { menu: MenuItem[]; media: Record<string, Buffer> } {
   const menu = Array.from({ length: n }, (_, k) => {
     const shape = k % 4 === 3 ? null : SHAPES[k % 3]!;
     const file = shape ? `item-${k + 1}.png` : "";
-    if (shape) media[file] = solidPng(shape[0], shape[1], COLOURS[k % 3]!);
+    if (shape) media[file] = solidPng(shape[0], shape[1], uniqueColour(COLOURS[k % 3]!, k));
     return {
       id: `item-${k + 1}`,
       name: `試験の商品 ${k + 1}`,
@@ -192,9 +198,9 @@ export function fictionalRights(bytes: Buffer): ProvenanceB {
     schema: PROVENANCE_SCHEMA,
     class: "B",
     sha256: createHash("sha256").update(bytes).digest("hex"),
-    provided_by: "店主（架空）",
+    provided_by: "店主",
     source: "店が撮影した写真（架空の試験用）",
-    permission: { scope: "提案用デモと納品後の店舗サイトでの掲載（架空）", confirmed_at: "2026-11-26", confirmed_by: "Second Root の担当（架空）" },
+    permission: { scope: "提案用デモと納品後の店舗サイトでの掲載（架空）", confirmed_at: "2026-11-26", confirmed_by: "Second Root 担当" },
     facts_check: { shown_as_fact: false, confirmed: false },
   };
 }

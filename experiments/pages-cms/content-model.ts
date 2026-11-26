@@ -213,7 +213,10 @@ export class ContentError extends Error {
       | "CONTENT_PHOTO_RATIO"
       | "CONTENT_GENERATED_AS_SHOP"
       | "CONTENT_GENERATED_RECORD_MISSING"
-      | "CONTENT_PHOTO_RIGHTS_MISSING",
+      | "CONTENT_PHOTO_RIGHTS_MISSING"
+      | "CONTENT_PHOTO_CLASS_MIXED"
+      | "CONTENT_DELIVERY_CUSTOMER_PHOTO"
+      | "CONTENT_PROVENANCE_IN_REPO",
     readonly file: string,
   ) {
     super(`${code} ${file}`);

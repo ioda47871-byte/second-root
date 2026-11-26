@@ -26,8 +26,8 @@
  * The page frames crop with object-fit: cover, so any ratio within the limit keeps the layout.
  */
 import { createHash } from "node:crypto";
-import { lstat, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { ContentError, type ShopContent, type ShopProfile, viewOf } from "./content-model";
 import { imageMeta, type ImageMeta } from "./image-meta";
@@ -80,11 +80,26 @@ export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" |
  * checkPhotos (which has refused B / C pictures that are delivered generated materials).
  */
 export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string } = {}): Promise<PhotoProvenance[]> {
+  if (o.provenanceDir) await assertOutsideRepo(o.provenanceDir, repo);
   const handover = await loadGeneratedEntries(repo);
   const index = await loadProvenanceIndex(repo);
   const shaOf = new Map(photos.map((p) => [p.file, p.sha256]));
+  const shown = viewOf(content).sections.flatMap((s) => s.items).filter((x) => x.image);
+  // review #371 M1 (owner rule: A / B / C never mixed): the class belongs to the picture's bytes, not to the item
+  for (const e of handover) if (index.has(e.sha256)) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", e.file);
+  const classOfSha = new Map<string, "A" | "B" | "C">();
+  for (const m of shown) {
+    const sha256 = shaOf.get(m.image.replace(/^\/media\//, ""))!;
+    const cls = CLASS_OF[m.imageKind];
+    if (index.has(sha256) && cls !== "B") throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", `menu/${m.id}`);
+    const seen = classOfSha.get(sha256);
+    if (seen && seen !== cls) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", `menu/${m.id}`);
+    classOfSha.set(sha256, cls);
+    // review #371 L3: Second Root's delivery build (it is given the private folder) never places a customer's picture
+    if (o.provenanceDir && cls === "C") throw new ContentError("CONTENT_DELIVERY_CUSTOMER_PHOTO", `menu/${m.id}`);
+  }
   const out: PhotoProvenance[] = [];
-  for (const m of viewOf(content).sections.flatMap((s) => s.items).filter((x) => x.image)) {
+  for (const m of shown) {
     const file = m.image.replace(/^\/media\//, "");
     const sha256 = shaOf.get(file)!;
     const cls = CLASS_OF[m.imageKind];
@@ -97,6 +112,17 @@ export async function photoProvenance(repo: string, content: ShopContent, photos
     }
   }
   return out;
+}
+
+/** review #371 L2: the private provenance folder is never inside the shop repository (links resolved). */
+async function assertOutsideRepo(dir: string, repo: string): Promise<void> {
+  const real = await realpath(resolve(dir)).catch(() => resolve(dir));
+  const realRepo = await realpath(resolve(repo)).catch(() => resolve(repo));
+  const inside = (p: string, r: string) => {
+    const rel = relative(r, p);
+    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  };
+  if (inside(real, realRepo) || inside(resolve(dir), resolve(repo))) throw new ContentError("CONTENT_PROVENANCE_IN_REPO", "provenanceDir");
 }
 
 /** The handover record of delivered generated materials (written at delivery; not editable in the CMS). */

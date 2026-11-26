@@ -7,7 +7,7 @@ import { BAKERY_PROFILE, renderBakery } from "@/experiments/pages-cms/bakery-sit
 import { BuildError, buildSite, writePagesYaml } from "@/experiments/pages-cms/build";
 import { addressOk, ContentError, loadContent, PHONE_MAX, phoneOk, viewOf } from "@/experiments/pages-cms/content-model";
 import { fictionalRights, PHOTO_VARIETY, provenanceDirOf, Q1_TODAY, q1Fixtures, solidPng, writeFixture } from "@/experiments/pages-cms/fixtures";
-import { Provenance, PROVENANCE_INDEX, ProvenanceB } from "@/experiments/pages-cms/provenance";
+import { Provenance, PROVENANCE_INDEX, PROVENANCE_ROLES, ProvenanceB } from "@/experiments/pages-cms/provenance";
 import { imageMeta } from "@/experiments/pages-cms/image-meta";
 import { checkPagesConfig, PHOTO_HINT, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
 import { checkPhoto, GENERATED_RECORD, loadGeneratedRecord, PHOTO_LIMITS } from "@/experiments/pages-cms/photos";
@@ -709,6 +709,12 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     await writeFixture(repo, patch ? patch(fx) : fx);
     return repo;
   };
+  /** The fixture as Second Root delivers it: A and B only (the customer's picture, item-5, becomes a generated one). */
+  const deliveryRepo = async () => {
+    const repo = await photosRepo();
+    setKind(repo, "item-5", "generated");
+    return repo;
+  };
   const setKind = (repo: string, id: string, imageKind: string) => {
     const file = join(repo, "content", "menu", `${id}.json`);
     writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), imageKind }));
@@ -736,10 +742,12 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     expect(customerBuild.provenance.find((p) => p.class === "C")!.record).toMatchObject({ class: "C", uploaded_via: "pages_cms", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } });
     // A: the handover in this fixture did not name the material and its approval, so no A record (null, said so)
     expect(customerBuild.provenance.filter((p) => p.class === "A").every((p) => p.record === null)).toBe(true);
-    // Second Root's build, with the private folder: the full B record (a role, a source, a permission)
-    const secondRoot = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo) });
-    expect(secondRoot.provenance.find((p) => p.class === "B")!.record).toMatchObject({ class: "B", provided_by: "店主（架空）", permission: { confirmed_at: "2026-11-26" } });
-    expect(secondRoot.html).toBe(customerBuild.html);
+    // Second Root's delivery build, with the private folder (and no customer picture, which it never places): the
+    // full B record (a role, a source, a permission)
+    const delivery = await deliveryRepo();
+    const secondRoot = await buildSite({ repo: delivery, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(delivery) });
+    expect(secondRoot.provenance.find((p) => p.class === "B")!.record).toMatchObject({ class: "B", provided_by: "店主", permission: { confirmed_at: "2026-11-26", confirmed_by: "Second Root 担当" } });
+    expect(secondRoot.provenance.some((p) => p.class === "C")).toBe(false);
     // the index and the private records are nowhere in the CMS configuration
     for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions })).not.toMatch(/photo-provenance|provenance/);
   });
@@ -756,15 +764,24 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
   it("refused: a B picture without a rights record (not in the index; on Second Root's build, a missing or altered private record)", async () => {
     const noIndex = await photosRepo((fx) => ({ ...fx, rights: undefined }));
     expect(await code(buildSite({ repo: noIndex, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_RIGHTS_MISSING");
-    const repo = await photosRepo();
+    const repo = await deliveryRepo();
     const dir = provenanceDirOf(repo);
     const recordFile = join(dir, readdirSync(dir)[0]!);
     const original = readFileSync(recordFile, "utf8");
     // altered after the index was written (the index binds the record's SHA-256)
-    writeFileSync(recordFile, original.replace("店主（架空）", "店長（架空）"));
+    writeFileSync(recordFile, original.replace('"provided_by": "店主"', '"provided_by": "店長"'));
     expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: dir }))).toBe("CONTENT_PHOTO_RIGHTS_MISSING");
     rmSync(recordFile);
     expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: dir }))).toBe("CONTENT_PHOTO_RIGHTS_MISSING");
+    // review #371 L2: a record that cannot be read (a directory in its place) is not "missing"
+    mkdirSync(recordFile);
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: dir }))).toBe("CONTENT_INVALID");
+    // review #371 L2: the private folder is never inside the repository (links resolved)
+    mkdirSync(join(repo, "private"));
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: join(repo, "private") }))).toBe("CONTENT_PROVENANCE_IN_REPO");
+    const link = join(tmp(), "link-into-repo");
+    symlinkSync(repo, link);
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: link }))).toBe("CONTENT_PROVENANCE_IN_REPO");
     // a broken index is not "no index"
     writeFileSync(join(repo, PROVENANCE_INDEX), "{");
     expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_INVALID");
@@ -778,10 +795,56 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     }
   });
 
+  it("review #371 M1: the class belongs to the picture's bytes — never mixed", async () => {
+    // B (item-3) relabelled C through the CMS's 店の写真, or with the earlier value `shop`
+    for (const kind of ["customer_cms", "shop"]) {
+      const repo = await photosRepo();
+      setKind(repo, "item-3", kind);
+      expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY })), kind).toBe("CONTENT_PHOTO_CLASS_MIXED");
+    }
+    // B marked A: a real photo would get イメージ
+    const asA = await photosRepo();
+    setKind(asA, "item-3", "generated");
+    expect(await code(buildSite({ repo: asA, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_CLASS_MIXED");
+    // the B bytes also shown as C by another item
+    const twice = await photosRepo();
+    const b = JSON.parse(readFileSync(join(twice, "content", "menu", "item-3.json"), "utf8")) as { image: string };
+    const other = join(twice, "content", "menu", "item-5.json");
+    writeFileSync(other, JSON.stringify({ ...(JSON.parse(readFileSync(other, "utf8")) as object), image: b.image, imageKind: "customer_cms" }));
+    expect(await code(buildSite({ repo: twice, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_CLASS_MIXED");
+    // generated bytes shown as A and as C, with no handover record to say they are generated
+    const noRecord = await photosRepo((fx) => ({ ...fx, generated: undefined }));
+    const a = JSON.parse(readFileSync(join(noRecord, "content", "menu", "item-1.json"), "utf8")) as { image: string };
+    const c = join(noRecord, "content", "menu", "item-5.json");
+    writeFileSync(c, JSON.stringify({ ...(JSON.parse(readFileSync(c, "utf8")) as object), image: a.image, imageKind: "customer_cms" }));
+    expect(await code(buildSite({ repo: noRecord, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_CLASS_MIXED");
+    // one SHA-256 in both the handover record of generated materials and the B index
+    const both = await photosRepo();
+    const index = JSON.parse(readFileSync(join(both, PROVENANCE_INDEX), "utf8")) as { b: { sha256: string; record_sha256: string }[] };
+    const gen = JSON.parse(readFileSync(join(both, GENERATED_RECORD), "utf8")) as { files: { sha256: string }[] };
+    index.b.push({ sha256: gen.files[0]!.sha256, record_sha256: "0".repeat(64) });
+    writeFileSync(join(both, PROVENANCE_INDEX), JSON.stringify(index));
+    expect(await code(buildSite({ repo: both, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_CLASS_MIXED");
+  });
+
+  it("review #371 L3: Second Root's delivery build never places a customer's picture (C)", async () => {
+    const repo = await photosRepo();
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo) }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO");
+    // the customer's own build (no private folder) shows C as usual
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("ok");
+  });
+
   it("the B record's schema: a role not a contact, a permission with its date and confirmer, facts shown only when confirmed", () => {
     const ok = fictionalRights(solidPng(800, 600, [1, 2, 3]));
     expect(ProvenanceB.safeParse(ok).success).toBe(true);
-    expect(ProvenanceB.safeParse({ ...ok, provided_by: "owner@example.invalid" }).success).toBe(false);
+    // review #371 L1: roles from a fixed list; no phone number, LINE ID, e-mail, link or name with an honorific
+    expect(PROVENANCE_ROLES).toEqual(["店主", "店長", "スタッフ", "撮影者", "Second Root 担当"]);
+    for (const who of ["山田太郎", "店主（山田）", "Owner", "owner@example.invalid"]) expect(ProvenanceB.safeParse({ ...ok, provided_by: who }).success, who).toBe(false);
+    expect(ProvenanceB.safeParse({ ...ok, permission: { ...ok.permission, confirmed_by: "田中さん" } }).success).toBe(false);
+    for (const text of ["店主の携帯 090-1234-5678 で受領", "LINE ID: kasou_pan で受領", "@kasou_pan から受領", "山田様より受領", "田中さん撮影", "mail owner@example.invalid"])
+      expect(ProvenanceB.safeParse({ ...ok, source: text }).success, text).toBe(false);
+    expect(ProvenanceB.safeParse({ ...ok, permission: { ...ok.permission, scope: "鈴木氏の許可の範囲で掲載" } }).success).toBe(false);
+    for (const text of ["店が撮影した写真（架空の試験用）", "店頭で撮影した 2026 年秋の写真"]) expect(ProvenanceB.safeParse({ ...ok, source: text }).success, text).toBe(true);
     expect(ProvenanceB.safeParse({ ...ok, source: "https://example.invalid/photo" }).success).toBe(false);
     expect(ProvenanceB.safeParse({ ...ok, permission: { ...ok.permission, confirmed_at: "11/26" } }).success).toBe(false);
     expect(ProvenanceB.safeParse({ ...ok, facts_check: { shown_as_fact: true, confirmed: false } }).success).toBe(false);
