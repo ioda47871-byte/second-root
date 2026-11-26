@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,8 @@ import { Q1_TODAY, q1Fixtures, writeFixture } from "@/experiments/pages-cms/fixt
 import { checkPagesConfig, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
 import { classifyPrice, priceAmounts, priceDisplayReport } from "@/experiments/pages-cms/price-display";
 import { safeOutDir } from "@/experiments/pages-cms/q1-check";
+import { BAKERY_SITE, CAFE_SITE, SHOP_SITES } from "@/experiments/pages-cms/shop-site";
+import { FACTS_MAX, factsOf } from "@/experiments/pages-cms/q1-render";
 
 // DEV-303 §6.1 rows 10–12 and §3.7 Q1, first experiment (docs/design/pages-cms-implementation-plan.md): the shared
 // content model, the generated Pages CMS configuration and the static build of ONE fictional bakery. FICTIONAL and
@@ -373,5 +376,79 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     const longest = "+81 (0)3 1234 5678"; // 18 characters: well inside
     expect([longest.length <= PHONE_MAX, phoneOk(longest)]).toEqual([true, true]);
     expect(phoneOk("0".repeat(3) + "1".repeat(PHONE_MAX))).toBe(false);
+  });
+});
+
+describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-bakery fictional shop (the café)", () => {
+  const sha = (html: string, css: string) => createHash("sha256").update(html).update("\0").update(css).digest("hex");
+  const buildOf = async (site: (typeof SHOP_SITES)[number], name: string) => {
+    const repo = join(tmp(), "repo");
+    await writeFixture(repo, site.fixtures()[name]!);
+    return { repo, r: await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site }) };
+  };
+
+  it("the bakery's output through the interface is byte-identical to before the interface (html + css per fixture)", async () => {
+    // recorded with the bakery-only build at 12d30f4c (#360 head), before the interface existed
+    const before: Record<string, string> = {
+      "items-0": "c8ee9d4930bf06d447350509c96b50d03423aab2c37471934a898f41688c3bff",
+      "items-3": "8a8b4513599d1fbf69517cabb16643764a1d4085ed2ffb306b505c403df1e183",
+      "items-10": "d3f074366d9b0295f659bd3583e7bb52833dd1f4410be6aabbe2f9d68222aa74",
+      "items-50": "b40f23ec01e71a445c70b2b057640c904c1fab7690914f3278b510a1fdd687a8",
+      "long-text": "23618d63ef9548055a7429586a9bcaa8c5437455fa048f357920a4c00ec9de5f",
+      "hidden-soldout-reorder": "10346a9fc2cae88092050d40c592b568f337b1aa3739aad96089c80a297fa959",
+      "hours-closures": "79b4555895a9aa939069ab7f6ca9f72cc588d13e1a8944157cd13093ae3ac803",
+      "news-1": "e30fe4a291d1f0667d660a68c43b080ae0882fe3751f235595577ea6a89d47c6",
+      "news-many": "4722d2deba5d7904912ed32ddf57ff254a5f32513e542513612d513c78c2f988",
+      "trade-extensions": "d1bb7d41d12b9da905fe0ede54d759d6399211d3e8f899d76b6b1c6f347a3b34",
+    };
+    const now: Record<string, string> = {};
+    for (const name of Object.keys(BAKERY_SITE.fixtures())) {
+      const viaInterface = (await buildOf(BAKERY_SITE, name)).r;
+      const viaDefault = await buildSite({ repo: (await buildOf(BAKERY_SITE, name)).repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+      expect(viaDefault.html).toBe(viaInterface.html);
+      now[name] = sha(viaInterface.html, viaInterface.css);
+    }
+    expect(now).toEqual(before);
+  });
+
+  it("the café builds every one of its fixtures with its own composition, its sizes, its fixed name and no bakery extension", async () => {
+    for (const name of Object.keys(CAFE_SITE.fixtures())) {
+      const { r } = await buildOf(CAFE_SITE, name);
+      expect(r.html).not.toMatch(/<script|javascript:|https?:\/\//i);
+      expect(r.html).toContain("架空のカフェ 木洩れ日珈琲");
+      expect(r.html).toContain("提案用デモ（架空の店）");
+      expect(r.html).toContain("写真はイメージです。");
+    }
+    const { r } = await buildOf(CAFE_SITE, "items-3");
+    // a different composition from the bakery (a price list and a side column, not a card grid and a dark hero)
+    expect(r.html).toContain('<ul class="list">');
+    expect(r.html).toContain('<aside class="side">');
+    expect(r.html).not.toMatch(/class="grid"|class="hero"/);
+    expect(r.html).toContain('<li><span class="size">S</span><span class="yen">450円（税込）</span></li>');
+    expect(r.css).not.toBe(BAKERY_SITE.render(await loadContent((await buildOf(BAKERY_SITE, "items-3")).repo), Q1_TODAY).css);
+    // the café turns on sizes only: an allergen list is refused, and its fixed name is held
+    const { repo } = await buildOf(CAFE_SITE, "items-3");
+    const file = join(repo, "content", "menu", "cafe-1.json");
+    writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), allergens: ["乳"] }));
+    await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site: CAFE_SITE })).rejects.toMatchObject({ code: "CONTENT_EXTENSION_OFF" });
+    const bakeryRepo = (await buildOf(BAKERY_SITE, "items-3")).repo;
+    await expect(buildSite({ repo: bakeryRepo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site: CAFE_SITE })).rejects.toMatchObject({ code: "CONTENT_FIXED_CHANGED" });
+  });
+
+  it("the café's 総額表示 report checks each size's price text; its committed cafe.pages.yml shows sizes and not the bakery's fields", async () => {
+    const { r } = await buildOf(CAFE_SITE, "sizes-prices");
+    expect(r.price_report.findings.map((f) => [f.item, f.field, f.class, f.amounts])).toEqual([
+      ["cafe-1", "sizes.1.priceDisplay", "tax_excluded_only", ["500円"]],
+      ["cafe-2", "sizes.0.priceDisplay", "no_tax_wording", ["¥900"]],
+    ]);
+    const yml = readFileSync(join(__dirname, "../../../experiments/pages-cms/cafe.pages.yml"), "utf8");
+    expect(yml).toBe(pagesYaml({ extensions: CAFE_SITE.profile.extensions }));
+    expect(yml).toContain('name: "sizes"');
+    expect(yml).not.toMatch(/name: "allergens"|name: "shelfLife"/);
+    expect(SHOP_SITES.map((s) => s.id)).toEqual(["bakery", "cafe"]);
+    // the phone checks' facts: distinct, the shop's details first, within the measure's limit of 200
+    const content = await loadContent((await buildOf(CAFE_SITE, "items-50")).repo, CAFE_SITE.profile);
+    const facts = factsOf(content);
+    expect([facts.length <= FACTS_MAX, new Set(facts).size === facts.length, facts[0]]).toEqual([true, true, "架空のカフェ 木洩れ日珈琲"]);
   });
 });
