@@ -22,7 +22,7 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm, rmdir } from "node:f
 import { basename, dirname, join } from "node:path";
 import sharp from "sharp";
 import { checkPng, PngError } from "../design-image/png";
-import { BundleStop, verifyBundleDir, type ExpectedRecord } from "./bundle";
+import { BundleStop, verifyBundleDir, type ExpectedRecord, type VerifiedBundle } from "./bundle";
 
 const MiB = 1024 * 1024;
 
@@ -316,21 +316,10 @@ async function existingPreviews(final: string, want: PreviewIndex, wait: { total
 }
 
 /**
- * Verifies the bundle, builds its previews in memory, then writes them and INDEX; or, when the directory exists, confirms
- * it holds exactly these previews (a concurrent builder's result included) and reports "duplicate".
+ * The previews index (and preview bytes) a verified bundle must have: deterministic, built in memory, nothing written.
+ * buildPreviews writes it; the research-log intake (PR #367 review Low) requires the inbox's INDEX.json to equal it.
  */
-export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewResult> {
-  let verified;
-  try {
-    verified = await verifyBundleDir(o.bundleDir, { expected: o.expected });
-  } catch (error) {
-    if (error instanceof BundleStop) return stop("BUNDLE_UNVERIFIED");
-    throw error;
-  }
-  const parent = dirname(o.outDir);
-  if (!(await ownPrivateDir(parent))) stop("PREVIEWS_DIR_UNSAFE");
-  const final = join(await realpath(parent), basename(o.outDir));
-  const wait = o.wait ?? PREVIEW_WAIT;
+export async function expectedPreviewIndex(verified: VerifiedBundle): Promise<{ index: PreviewIndex; files: { name: string; bytes: Buffer }[] }> {
   const m = verified.manifest;
   const previews: PreviewEntry[] = [];
   const files: { name: string; bytes: Buffer }[] = [];
@@ -352,6 +341,26 @@ export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewRes
     limits: { max_side: PREVIEW_LIMITS.maxSide, max_bytes: PREVIEW_LIMITS.maxBytes },
     previews,
   };
+  return { index, files };
+}
+
+/**
+ * Verifies the bundle, builds its previews in memory, then writes them and INDEX; or, when the directory exists, confirms
+ * it holds exactly these previews (a concurrent builder's result included) and reports "duplicate".
+ */
+export async function buildPreviews(o: BuildPreviewsOptions): Promise<PreviewResult> {
+  let verified;
+  try {
+    verified = await verifyBundleDir(o.bundleDir, { expected: o.expected });
+  } catch (error) {
+    if (error instanceof BundleStop) return stop("BUNDLE_UNVERIFIED");
+    throw error;
+  }
+  const parent = dirname(o.outDir);
+  if (!(await ownPrivateDir(parent))) stop("PREVIEWS_DIR_UNSAFE");
+  const final = join(await realpath(parent), basename(o.outDir));
+  const wait = o.wait ?? PREVIEW_WAIT;
+  const { index, files } = await expectedPreviewIndex(verified);
   if (await lstat(final).then(() => true, () => false)) return existingPreviews(final, index, wait);
   const tmp = join(dirname(final), `.tmp-previews-${randomBytes(6).toString("hex")}`);
   try {

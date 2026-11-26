@@ -10,7 +10,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { verifyBundleDir } from "../imagefirst-worker/bundle";
+import { verifyBundleDir, type VerifiedBundle } from "../imagefirst-worker/bundle";
+import { expectedPreviewIndex, verifyPreviews } from "../imagefirst-worker/preview";
 import { assertFictionalShop } from "./shops";
 import { LogStop } from "./store";
 import { Sha, Slug, type ResearchEntry } from "./schema";
@@ -67,7 +68,7 @@ const RequestManifest = z.object({ bundle_id: Slug, mode: z.literal("request"), 
  * Returns the verified bundle's SHA-256 and its files' SHA-256s (PR #366 review Low 1: the previews are tied to them);
  * null for a fixed approval id's run (not checked here, as before).
  */
-async function assertLoggableRun(o: IntakeInput): Promise<{ bundle_sha256: string; files: Map<string, string> } | null> {
+async function assertLoggableRun(o: IntakeInput): Promise<{ bundle_sha256: string; files: Map<string, string>; bundle: VerifiedBundle } | null> {
   if (APPROVAL_RUN_ID.test(o.bundleId)) return null;
   const bytes = await readFile(join(o.inbox, o.bundleId, "manifest.json")).catch(() => {
     throw new LogStop("INTAKE_MANIFEST_MISSING", `${o.bundleId}/manifest.json is missing (a request run is logged from its sealed bundle)`);
@@ -92,7 +93,7 @@ async function assertLoggableRun(o: IntakeInput): Promise<{ bundle_sha256: strin
   if (verified.bundle_id !== o.bundleId || verified.mode !== "request" || verified.kind !== "fictional" || verified.synthetic !== undefined || verified.image_material !== undefined || verified.shop !== o.shop) {
     throw new LogStop("INTAKE_BUNDLE_UNVERIFIED", `${o.bundleId}/manifest.json is not the verified bundle's`);
   }
-  return { bundle_sha256: bundle.bundle_sha256, files: new Map(verified.files.map((f) => [f.path, f.sha256])) };
+  return { bundle_sha256: bundle.bundle_sha256, files: new Map(verified.files.map((f) => [f.path, f.sha256])), bundle };
 }
 
 /** Builds (does not write) the entry. Throws LogStop with a fixed code on any disagreement. */
@@ -109,6 +110,19 @@ export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
   const bound = await assertLoggableRun(o);
   // PR #366 review Low 1: a request run's previews are the verified bundle's (its SHA-256, each source file's SHA-256)
   if (bound && idx.data.bundle_sha256 !== bound.bundle_sha256) throw new LogStop("INTAKE_PREVIEWS_NOT_FROM_BUNDLE", "INDEX.json names another bundle SHA-256 than the verified bundle's");
+  if (bound) {
+    // PR #367 review Low: exactly the previews of the verified bundle — the files, their SHA-256s and INDEX.md as
+    // preview.ts verifies them, and the index rebuilt in memory from the verified bundle (as preview.ts existingPreviews
+    // does), field for field: a partial or hand-made set never enters the log
+    let have;
+    try {
+      have = await verifyPreviews(dir, { bundle_sha256: bound.bundle_sha256 });
+    } catch {
+      throw new LogStop("INTAKE_PREVIEWS_NOT_FROM_BUNDLE", "the previews do not verify (files, SHA-256s, INDEX.md)");
+    }
+    const want = (await expectedPreviewIndex(bound.bundle)).index;
+    if (JSON.stringify(have) !== JSON.stringify(want)) throw new LogStop("INTAKE_PREVIEWS_NOT_FROM_BUNDLE", "INDEX.json is not the index rebuilt from the verified bundle");
+  }
 
   const previews: ResearchEntry["provenance"]["previews"] = [];
   for (const p of idx.data.previews) {

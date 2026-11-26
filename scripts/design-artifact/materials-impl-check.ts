@@ -56,12 +56,12 @@ export async function materialsMain(argv: string[], repoRoot: string = REPO): Pr
     if (a.page) {
       const c = await checkMaterialsApproval({ ...common, mode: "draft" });
       const w = await writeMaterialsReviewPage(c.review, c.run, { outDir: a["--out"]!, repo: repoRoot });
-      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, request_id: c.request_id });
+      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, request_id: c.request_id, ...(c.synthetic ? { synthetic: true } : {}) });
       return 0;
     }
     if (!a["--materials-approval"]) {
       const c = await checkMaterialsApproval({ ...common, mode: "draft" });
-      say({ status: "draft", request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, page_sha256: c.page_sha256, verdicts: c.verdicts, design: { request_id: c.design.request_id, approval_sha256: c.design.approval_sha256 } });
+      say({ status: "draft", request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, page_sha256: c.page_sha256, verdicts: c.verdicts, design: { request_id: c.design.request_id, approval_sha256: c.design.approval_sha256 }, ...(c.synthetic ? { synthetic: true } : {}) });
       return 0;
     }
     const approved = await approvedMaterials({ ...common, approvalPath: a["--materials-approval"] });

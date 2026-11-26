@@ -9,16 +9,18 @@ import { Q1_TODAY, solidPng, writeFixture } from "@/experiments/pages-cms/fixtur
 import { CAFE_SITE } from "@/experiments/pages-cms/shop-site";
 import { StageError, stageForGates } from "@/experiments/pages-cms/stage-for-gates";
 import { packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
-import { checkDesignApproval } from "@/lib/design-agent/imagefirst-worker/design-approval";
+import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
 import { runImplCompare } from "@/lib/design-agent/imagefirst-worker/impl-compare-approved";
-import { approvedMaterials, materialsReviewPageSha256, parseMaterialsReview, readDeliveredMaterials } from "@/lib/design-agent/imagefirst-worker/materials-approval";
+import { approvedMaterials, checkMaterialsApproval, materialsReviewPageSha256, parseMaterialsReview, readDeliveredMaterials } from "@/lib/design-agent/imagefirst-worker/materials-approval";
 import { checkMaterialsInSite } from "@/lib/design-agent/imagefirst-worker/materials-impl-check";
 import { approveRehearsal, REHEARSAL_ID, REHEARSAL_SHOP, sealRehearsal } from "@/lib/design-agent/imagefirst-worker/rehearsal";
 
 // DEV-303 Pages CMS PR (5): the CMS build output (dist/ with /media/*) staged into the implementation-lane shape and
 // checked by the two existing gates — materials-impl-check (only approved materials, byte-identical, labelled イメージ)
 // and impl-compare-approved (against the SYNTHETIC rehearsal design; advice only). FICTIONAL data only: the café of
-// the Pages CMS experiment, the rehearsal's synthetic design, an invented materials run. Real Chromium for stage 6.
+// the Pages CMS experiment, the rehearsal's synthetic design, an invented non-synthetic design, invented materials runs.
+// Materials made for the synthetic design are refused by the gate (PR #362 Low 4); the positive materials path runs on
+// the invented non-synthetic design. Real Chromium for stage 6.
 
 vi.setConfig({ testTimeout: 60_000 });
 const REPO = resolve(__dirname, "../../..");
@@ -45,15 +47,63 @@ const MAT_ID = "req-cafe-materials-bridge-1";
 /** The materials the café shows: invented pictures (a 3:2 and a square), as an approved materials run would hold them. */
 const PICTURES = { "photo-1.png": solidPng(768, 512, [120, 84, 60]), "photo-3.png": solidPng(600, 600, [214, 196, 160]) };
 
-/** The rehearsal's synthetic approved design (shop "cafe", fictional), and a materials run sealed for it. */
-async function approvedChain() {
+type DesignRecords = { bundleDir: string; reviewPath: string; approvalPath: string };
+type DesignBinding = { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
+
+/** The rehearsal's SYNTHETIC approved design (shop "cafe", fictional). */
+async function rehearsalDesign(): Promise<{ design: DesignRecords; binding: DesignBinding; home: string }> {
   const home = tmp("sr-gates-home-");
   const r = await sealRehearsal({ home, repo: REPO, now: () => T0 });
   const bundleDir = join(home, "sr-runs", "review-inbox", REHEARSAL_ID);
   const draft = await checkDesignApproval({ bundleDir, reviewPath: r.review, repo: REPO, mode: "draft" });
   const a = await approveRehearsal({ home, repo: REPO, pageSha256: draft.page_sha256, now: () => T0 + 60_000 });
-  const design = { bundleDir, reviewPath: r.review, approvalPath: a.approval };
+  return { design: { bundleDir, reviewPath: r.review, approvalPath: a.approval }, binding: { bundle_id: REHEARSAL_ID, bundle_sha256: r.bundle_sha256, review_sha256: draft.review_sha256, approval_sha256: a.approval_sha256 }, home };
+}
 
+/**
+ * A FICTIONAL, NON-synthetic approved whole-page design of the café (invented pictures, a sealed request-mode bundle, a
+ * five-axis review and an approval bound to its page): what the positive materials path is built on (PR #362 Low 4).
+ */
+const DESIGN_ID = "req-cafe-design-bridge-1";
+async function fictionalDesign(): Promise<{ design: DesignRecords; binding: DesignBinding }> {
+  const runs = tmp("sr-gates-druns-");
+  const runDir = join(runs, `${DESIGN_ID}-20261126T010000Z`);
+  mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
+  chmodSync(runDir, 0o700);
+  const images = (["pc", "sp"] as const).map((view, n) => {
+    const bytes = solidPng(1024, 1536, [200 - n * 40, 180, 150]);
+    writeFileSync(join(runDir, "parts", `${view}-1.png`), bytes, { mode: 0o600 });
+    return { file: `parts/${view}-1.png`, sha256: sha(bytes), bytes: bytes.length };
+  });
+  const references = [{ id: "ref-1", case_id: "CP-001", sha256: sha("invented reference") }];
+  writeFileSync(join(runDir, "reference-inputs.json"), JSON.stringify({ schema: "image_first_reference_inputs_v0", layout: "whole_page", references }), { mode: 0o600 });
+  const receipt = {
+    schema: "imagefirst_worker_receipt_v1", status: "succeeded", stop_code: null, stage: null, cli_exit: 0, cli_timed_out: false, interrupted: false,
+    shop: REHEARSAL_SHOP, direction: "request", approval_id: DESIGN_ID, plan_id: DESIGN_ID, commit: "c".repeat(40), packet_sha256: "a".repeat(64), plan_sha256: "b".repeat(64), prompt_sha256: "d".repeat(64), prompt_chars: 4000,
+    run_dir: runDir, images, stopped_images: [], verified: true,
+    timings: { started_at: "2026-11-26T01:00:00.000Z", finished_at: "2026-11-26T01:05:00.000Z", elapsed_ms: 300_000 },
+    mode: "request", kind: "fictional", request_id: DESIGN_ID, request_sha256: "a".repeat(64), facts_sha256: "e".repeat(64), images_total: 2,
+    counts: { pc: 1, sp: 1, total: 2, stopped: 0 }, design_layout: "whole_page", reference_images: references,
+  };
+  const receiptPath = join(runs, "design.receipt.json");
+  writeFileSync(receiptPath, JSON.stringify(receipt), { mode: 0o600 });
+  const sealed = await packBundle({ runDir, receiptPath, bundlesDir: join(tmp("sr-gates-dinbox-"), "review-inbox"), now: () => T0 });
+  expect(sealed.manifest.synthetic).toBeUndefined();
+  const recs = tmp("sr-gates-drec-");
+  const pick = (view: "pc" | "sp") => images.filter((i) => i.file.startsWith(`parts/${view}-`)).map((i) => ({ file: i.file, sha256: i.sha256 }));
+  const axis = { verdict: "pass", evidence: [{ image: "pc", region: "ページ全体", note: "試験用の根拠（架空）" }] };
+  const review = bytesOf({ schema: "sr_design_review_v1", request_id: DESIGN_ID, bundle_sha256: sealed.bundle_sha256, images: { pc: pick("pc"), sp: pick("sp") }, axes: Object.fromEntries(DESIGN_AXES.map((a) => [a, axis])), reviewer: "independent-subagent", reviewed_at: "2026-11-26T01:10:00Z" });
+  const reviewPath = join(recs, "design.review.json");
+  writeFileSync(reviewPath, review, { mode: 0o600 });
+  const draft = await checkDesignApproval({ bundleDir: sealed.dir, reviewPath, repo: REPO, mode: "draft" });
+  const approval = bytesOf({ schema: "sr_design_approval_v1", request_id: DESIGN_ID, bundle_sha256: sealed.bundle_sha256, approved_images: { pc: pick("pc"), sp: pick("sp") }, review_sha256: draft.review_sha256, page_sha256: draft.page_sha256, decision: "approve", decided_at: "2026-11-26T01:20:00Z" });
+  const approvalPath = join(recs, "design.approval.json");
+  writeFileSync(approvalPath, approval, { mode: 0o600 });
+  return { design: { bundleDir: sealed.dir, reviewPath, approvalPath }, binding: { bundle_id: DESIGN_ID, bundle_sha256: sealed.bundle_sha256, review_sha256: draft.review_sha256, approval_sha256: sha(approval) } };
+}
+
+/** A materials run sealed for the given approved design, its review and approval (the records approvedMaterials reads). */
+async function materialsFor(design: DesignRecords, approved_design: DesignBinding) {
   const runs = tmp("sr-gates-runs-");
   const runDir = join(runs, `${MAT_ID}-20261126T020000Z`);
   mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
@@ -62,7 +112,6 @@ async function approvedChain() {
     writeFileSync(join(runDir, "parts", name), bytes, { mode: 0o600 });
     return { file: `parts/${name}`, sha256: sha(bytes), bytes: bytes.length };
   });
-  const approved_design = { bundle_id: REHEARSAL_ID, bundle_sha256: r.bundle_sha256, review_sha256: draft.review_sha256, approval_sha256: a.approval_sha256 };
   const materials_sha256 = "9".repeat(64);
   writeFileSync(join(runDir, "approved-design-input.json"), JSON.stringify({ schema: "image_first_approved_design_input_v0", ...approved_design, materials_sha256 }), { mode: 0o600 });
   const receipt = {
@@ -83,12 +132,17 @@ async function approvedChain() {
     reviewer: "independent-subagent", reviewed_at: "2026-11-26T03:00:00Z",
   });
   const reviewPath = join(recs, "materials.review.json");
-  writeFileSync(reviewPath, review);
+  writeFileSync(reviewPath, review, { mode: 0o600 });
   const pageSha = materialsReviewPageSha256(parseMaterialsReview(review), await readDeliveredMaterials(sealed.dir));
   const approvalPath = join(recs, "materials.approval.json");
-  writeFileSync(approvalPath, bytesOf({ schema: "sr_materials_approval_v1", request_id: MAT_ID, bundle_sha256: sealed.bundle_sha256, review_sha256: sha(review), page_sha256: pageSha, approved_materials: images.map((i) => ({ file: i.file, sha256: i.sha256 })), decision: "approve", decided_at: "2026-11-26T04:00:00Z" }));
-  const approved = await approvedMaterials({ design, bundleDir: sealed.dir, reviewPath, approvalPath, repo: REPO });
-  return { design, approved, home };
+  writeFileSync(approvalPath, bytesOf({ schema: "sr_materials_approval_v1", request_id: MAT_ID, bundle_sha256: sealed.bundle_sha256, review_sha256: sha(review), page_sha256: pageSha, approved_materials: images.map((i) => ({ file: i.file, sha256: i.sha256 })), decision: "approve", decided_at: "2026-11-26T04:00:00Z" }), { mode: 0o600 });
+  return { design, bundleDir: sealed.dir, reviewPath, approvalPath, repo: REPO };
+}
+
+/** The positive path: approved materials of the fictional, non-synthetic design. */
+async function approvedChain() {
+  const d = await fictionalDesign();
+  return { approved: await approvedMaterials(await materialsFor(d.design, d.binding)) };
 }
 
 /** The café's dist with the approved pictures as its generated materials (unchanged bytes), staged for the gates. */
@@ -116,7 +170,16 @@ describe("DEV-303 Pages CMS (5): the CMS build checked by the existing gates thr
     expect(existsSync(join(dist, "assets"))).toBe(false);
   });
 
-  it("materials-impl-check on the staged café: the approved pictures are used, labelled イメージ, nothing else", async () => {
+  it("PR #362 Low 4: materials made for the SYNTHETIC rehearsal design are never approved (draft says synthetic; the gate refuses)", async () => {
+    const r = await rehearsalDesign();
+    const m = await materialsFor(r.design, r.binding);
+    const draft = await checkMaterialsApproval({ ...m, mode: "draft" });
+    expect(draft.synthetic).toBe(true);
+    const refused = await approvedMaterials(m).then(() => "ok", (e: { code?: string }) => e.code ?? String(e));
+    expect(refused).toBe("MATERIALS_DESIGN_SYNTHETIC");
+  });
+
+  it("materials-impl-check on the staged café (materials of a fictional, non-synthetic design): the approved pictures are used, labelled イメージ, nothing else", async () => {
     const { approved } = await approvedChain();
     const { staged } = await cafeStaged();
     const r = await checkMaterialsInSite({ approved, siteDir: staged.dir, repo: REPO });
@@ -136,7 +199,7 @@ describe("DEV-303 Pages CMS (5): the CMS build checked by the existing gates thr
   });
 
   it("impl-compare-approved on the staged café against the synthetic rehearsal design: a record (advice only, marked synthetic)", async () => {
-    const { design, home } = await approvedChain();
+    const { design, home } = await rehearsalDesign();
     const { staged } = await cafeStaged();
     const c = await runImplCompare({ ...design, siteDir: staged.dir, outDir: join(home, "impl-compare"), repo: REPO, browser, now: () => T0 + 600_000 });
     expect(c.record).toMatchObject({ request_id: REHEARSAL_ID, synthetic: true, advisory: true, passing: false });
