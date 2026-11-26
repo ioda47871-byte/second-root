@@ -2,11 +2,12 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { renderBakery } from "@/experiments/pages-cms/bakery-site";
+import { BAKERY_PROFILE, renderBakery } from "@/experiments/pages-cms/bakery-site";
 import { BuildError, buildSite, writePagesYaml } from "@/experiments/pages-cms/build";
-import { ContentError, loadContent, viewOf } from "@/experiments/pages-cms/content-model";
+import { addressOk, ContentError, loadContent, phoneOk, viewOf } from "@/experiments/pages-cms/content-model";
 import { Q1_TODAY, q1Fixtures, writeFixture } from "@/experiments/pages-cms/fixtures";
 import { checkPagesConfig, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
+import { classifyPrice, priceDisplayReport } from "@/experiments/pages-cms/price-display";
 
 // DEV-303 §6.1 rows 10–12 and §3.7 Q1, first experiment (docs/design/pages-cms-implementation-plan.md): the shared
 // content model, the generated Pages CMS configuration and the static build of ONE fictional bakery. FICTIONAL and
@@ -128,7 +129,7 @@ describe("DEV-303 Pages CMS experiment: the generated .pages.yml", () => {
     // nothing editable points at the page code, the CSS, the build or the configuration itself
     expect(JSON.stringify(config)).not.toMatch(/style\.css|index\.html|\.pages\.yml|build|dist|package\.json/);
     const shop = config.content.find((c) => c.name === "shop")!;
-    expect(shop.fields.filter((f) => "readonly" in f && f.readonly).map((f) => f.name)).toEqual(["name", "address", "phone"]);
+    expect(shop.fields.filter((f) => "readonly" in f && f.readonly).map((f) => f.name)).toEqual(["name"]);
     // review M2: the category reference stores the category's id and shows its name field ({name} would be the entry's file name)
     const category = config.content.find((c) => c.name === "menu")!.fields.find((f) => f.name === "category")!;
     expect(category.options).toEqual({ collection: "categories", value: "{fields.id}", label: "{fields.name}" });
@@ -147,5 +148,144 @@ describe("DEV-303 Pages CMS experiment: the generated .pages.yml", () => {
     // every content path of the configuration exists in a built shop repository
     for (const c of pagesConfig().content) expect(existsSync(join(repo, c.path))).toBe(true);
     expect(existsSync(join(repo, pagesConfig().media.input))).toBe(true);
+  });
+});
+
+describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed name, validated address / phone, hours, trade extensions, 総額表示 report", () => {
+  const code = (p: Promise<unknown>) => p.then(() => "ok", (e: unknown) => (e instanceof ContentError || e instanceof BuildError ? e.code : String(e)));
+  const editShop = async (patch: Record<string, unknown>) => {
+    const repo = await fixtureRepo("items-3");
+    const file = join(repo, "content", "shop.json");
+    writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), ...patch }));
+    return repo;
+  };
+
+  it("address and phone are validated (editable); the name stays the shop's fixed name", async () => {
+    for (const ok of ["", "03-1234-5678", "0312345678", "090-1234-5678", "(03) 1234-5678", "+81-3-1234-5678", "0120-123-456", "+81 (0)3-1234-5678", "０３－１２３４－５６７８", "（03）1234-5678", " 03-1234-5678　"])
+      expect(phoneOk(ok), ok).toBe(true);
+    for (const bad of ["1234", "03-1234-567", "03--1234-5678", "tel:0312345678", "03-1234-5678 内線2", "+1-555-123-4567", "090-1234-56789", "03+1234-5678", "-03-1234-5678", "03-1234-5678-", "(03 1234-5678", "03) 1234-5678", "((03)) 1234-5678", "000-0000-0000", "+81-0-0000-0000"])
+      expect(phoneOk(bad), bad).toBe(false);
+    for (const ok of ["", "架空県架空市1-2-3 架空ビル2階"]) expect(addressOk(ok), ok).toBe(true);
+    for (const bad of [" ", "架空市 ", "https://example.invalid", "<b>架空市</b>", "www.example.invalid"]) expect(addressOk(bad), bad).toBe(false);
+    // review M2 / L1: the stored values are normalised at load (trimmed; the phone in ASCII)
+    const normal = await loadContent(await editShop({ address: "架空県架空市1-2-3　", phone: "０３－１２３４－５６７８" }), BAKERY_PROFILE);
+    expect([normal.shop.address, normal.shop.phone]).toEqual(["架空県架空市1-2-3", "03-1234-5678"]);
+    expect(await code(loadContent(await editShop({ phone: "03-1234-567" }), BAKERY_PROFILE))).toBe("CONTENT_INVALID");
+    expect(await code(loadContent(await editShop({ address: "www.example.invalid" }), BAKERY_PROFILE))).toBe("CONTENT_INVALID");
+    expect(await code(loadContent(await editShop({ address: "架空県架空市9-9", phone: "03-9999-0000" }), BAKERY_PROFILE))).toBe("ok");
+    expect(await code(buildSite({ repo: await editShop({ name: "別の店" }), outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_FIXED_CHANGED");
+  });
+
+  it("hours: both times on an open day, opening before closing, each day once; closures on real dates", async () => {
+    const hours = (h: unknown[]) => editShop({ hours: h });
+    expect(await code(loadContent(await hours([{ day: "mon", closed: false, open: "18:00", close: "08:00" }])))).toBe("CONTENT_INVALID");
+    expect(await code(loadContent(await hours([{ day: "mon", closed: false, open: "08:00", close: "" }])))).toBe("CONTENT_INVALID");
+    expect(await code(loadContent(await hours([{ day: "mon", open: "08:00", close: "18:00" }, { day: "mon", closed: true }])))).toBe("CONTENT_INVALID");
+    expect(await code(loadContent(await hours([{ day: "tue", closed: true }, { day: "wed", open: "", close: "" }])))).toBe("ok");
+    expect(await code(loadContent(await editShop({ specialClosures: [{ date: "2026-02-30" }] })))).toBe("CONTENT_INVALID");
+    expect(await code(loadContent(await editShop({ specialClosures: [{ date: "2028-02-29", note: "" }] })))).toBe("ok");
+    // review L5: each closure date once
+    expect(await code(loadContent(await editShop({ specialClosures: [{ date: "2026-12-29" }, { date: "2026-12-29", note: "重複" }] })))).toBe("CONTENT_INVALID");
+  });
+
+  it("trade extensions are optional and per shop: the bakery shows allergens and shelf life; sizes (a cafe's) are refused here", async () => {
+    const repo = await fixtureRepo("trade-extensions");
+    const r = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+    expect(r.html).toContain("<dt>アレルゲン</dt><dd>小麦・乳・卵</dd>");
+    expect(r.html).toContain("<dt>日持ち</dt><dd>当日中</dd>");
+    // review L6: the extension texts are escaped like every other text
+    const evil = await fixtureRepo("trade-extensions");
+    const evilFile = join(evil, "content", "menu", "item-1.json");
+    writeFileSync(evilFile, JSON.stringify({ ...(JSON.parse(readFileSync(evilFile, "utf8")) as object), allergens: ["<script>", '"><img src=x>'], shelfLife: "<b>当日</b>" }));
+    const escaped = (await buildSite({ repo: evil, outDir: join(tmp(), "dist"), today: Q1_TODAY })).html;
+    expect(escaped).not.toMatch(/<script>|<img src=x>|<b>当日/);
+    expect(escaped).toContain("<dd>&lt;script&gt;・&quot;&gt;&lt;img src=x&gt;</dd>");
+    expect(escaped).toContain("<dd>&lt;b&gt;当日&lt;/b&gt;</dd>");
+    const file = join(repo, "content", "menu", "item-1.json");
+    writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), sizes: [{ label: "大", priceDisplay: "500円（税込）" }] }));
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_EXTENSION_OFF");
+    expect(await code(loadContent(repo, { ...BAKERY_PROFILE, extensions: [...BAKERY_PROFILE.extensions, "sizes"] }))).toBe("ok");
+    // the CMS shows exactly the turned-on extensions
+    const menuFields = (ext: Parameters<typeof pagesConfig>[0]) => pagesConfig(ext).content.find((c) => c.name === "menu")!.fields.map((f) => f.name);
+    expect(menuFields({}).filter((n) => ["sizes", "allergens", "shelfLife"].includes(n))).toEqual([]);
+    expect(menuFields({ extensions: BAKERY_PROFILE.extensions }).slice(-2)).toEqual(["allergens", "shelfLife"]);
+    expect(checkPagesConfig(pagesConfig({ extensions: ["sizes", "allergens", "shelfLife"] }))).toEqual([]);
+  });
+
+  it("the committed bakery.pages.yml is exactly what the generator writes for the bakery (regenerate it when the model changes)", () => {
+    expect(readFileSync(join(__dirname, "../../../experiments/pages-cms/bakery.pages.yml"), "utf8")).toBe(pagesYaml({ extensions: BAKERY_PROFILE.extensions }));
+  });
+
+  it("the .pages.yml: name read-only; address and phone editable with a pattern that never accepts what the build refuses on these samples", () => {
+    const shop = pagesConfig().content.find((c) => c.name === "shop")!.fields as { name: string; readonly?: boolean; pattern?: { regex: string } }[];
+    const field = (n: string) => shop.find((f) => f.name === n)!;
+    expect([field("name").readonly, field("address").readonly, field("phone").readonly]).toEqual([true, undefined, undefined]);
+    const phone = new RegExp(field("phone").pattern!.regex);
+    const address = new RegExp(field("address").pattern!.regex);
+    for (const s of ["", "03-1234-5678", "(03) 1234-5678", "+81-3-1234-5678"]) expect(phone.test(s) && phoneOk(s), s).toBe(true);
+    for (const s of ["tel:0312345678", "03-1234-5678 内線2"]) expect(phone.test(s) || phoneOk(s), s).toBe(false);
+    // full-width input the build normalises is accepted by the hint too
+    expect(phone.test("０３－１２３４－５６７８") && phoneOk("０３－１２３４－５６７８")).toBe(true);
+    expect(address.test("架空県架空市1-2-3") && !address.test("<b>x</b>")).toBe(true);
+    // review M2: links are refused by both; surrounding spaces (incl. U+3000) are trimmed at load, so both accept them
+    for (const s of ["www.example.invalid", "架空市 https://example.invalid", "WWW.EXAMPLE.INVALID", "架空市 ftp://x"]) expect([address.test(s), addressOk(s.trim())], s).toEqual([false, false]);
+    for (const s of ["架空県架空市1-2-3　", " 架空県架空市1-2-3"]) expect([address.test(s), addressOk(s.trim())], s).toEqual([true, true]);
+  });
+
+  it("the 総額表示 report classifies price texts and never changes them; it never stops the build", async () => {
+    expect(["324円（税込）", "本体1,000円（税込1,080円）", "1,080円(税込み)", "総額 550円", "300円（税別）", "300円+税", "¥1,280", "280円", "時価", "店頭にて", ""].map(classifyPrice)).toEqual([
+      "tax_included",
+      "tax_included",
+      "tax_included",
+      "tax_included",
+      "tax_excluded_only",
+      "tax_excluded_only",
+      "no_tax_wording",
+      "no_tax_wording",
+      "no_amount",
+      "no_amount",
+      "empty",
+    ]);
+    const repo = await fixtureRepo("trade-extensions");
+    const r = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+    expect(r.price_report).toMatchObject({ status: "owner_check", counts: { tax_included: 2, tax_excluded_only: 1, no_tax_wording: 1, no_amount: 1, empty: 1 } });
+    expect(r.price_report.findings.map((f) => [f.item, f.class, f.text])).toEqual([
+      ["item-2", "tax_excluded_only", "300円（税別）"],
+      ["item-3", "no_tax_wording", "¥1,280"],
+    ]);
+    // the page shows the texts exactly as written
+    expect(r.html).toContain("300円（税別）");
+    // hidden items are not shown, so not reported; sizes are reported per size
+    const loaded = await loadContent(repo);
+    const menu = loaded.menu.map((m, k) => (k === 1 ? { ...m, visible: false } : k === 2 ? { ...m, priceDisplay: "500円（税込）", sizes: [{ label: "大", priceDisplay: "700円" }] } : m));
+    expect(priceDisplayReport({ categories: loaded.categories, menu }).findings.map((f) => [f.item, f.field])).toEqual([["item-3", "sizes.0.priceDisplay"]]);
+    // review L3: an item in a hidden category is not on the page, so not reported (as viewOf)
+    const hiddenCat = loaded.categories.map((c) => (c.id === menu[2]!.category ? { ...c, visible: false } : c));
+    expect(priceDisplayReport({ categories: hiddenCat, menu }).findings).toEqual([]);
+  });
+
+  it("review M1 / L2: 込み alone and an unattached 総額 / 税込 do not count; tax-exclusive texts stay tax_excluded_only; kanji, full-width and ranges", () => {
+    const cases: [string, string][] = [
+      ["1,000円（税別・送料込み）", "tax_excluded_only"],
+      ["3,000円（要申込み）", "no_tax_wording"],
+      ["総額表示は店頭で 500円（税別）", "tax_excluded_only"],
+      ["800円（税抜）税込価格は店頭で", "tax_excluded_only"],
+      ["1,200円（サービス料込み）", "no_tax_wording"],
+      ["送料込み 2,000円", "no_tax_wording"],
+      ["800円（税抜）／880円（税込）", "tax_included"],
+      ["税込880円", "tax_included"],
+      ["880円税込", "tax_included"],
+      ["500円（込）", "tax_included"],
+      ["千円（税別）", "tax_excluded_only"],
+      ["千円（税込）", "tax_included"],
+      ["千円", "no_tax_wording"],
+      ["¥480+tax", "tax_excluded_only"],
+      ["３２４円（税込）", "tax_included"],
+      ["￥１，２８０", "no_tax_wording"],
+      ["380〜520円（税込）", "tax_included"],
+      ["380〜520円", "no_tax_wording"],
+      ["価格は店頭で（税込）", "no_amount"],
+    ];
+    expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
   });
 });

@@ -1,8 +1,13 @@
 /**
  * DEV-303 §6.1 row 11, first experiment: the Pages CMS configuration (`.pages.yml` at the shop repository's root),
  * generated from the content model (content-model.ts). Only the information the customer may update is editable
- * (menu items with prices and photos, categories, weekly hours and special closures, announcements); the shop's
- * name / address / phone are shown read-only, and nothing reaches the page code, the CSS or the build settings.
+ * (menu items with prices and photos, categories, weekly hours and special closures, announcements, and — owner
+ * decision 2026-11-26 — the address and phone with validation, plus the trade extensions the shop turns on); only the
+ * shop's name is shown read-only, and nothing reaches the page code, the CSS or the build settings.
+ *
+ * `pattern` regex flavour: Pages CMS does not document it (its own examples include a PCRE-style "(?s)"), so the
+ * patterns here use only what JavaScript and PCRE share (character classes, anchors, a negative lookahead). They are
+ * input hints; the build's check (content-model.ts) is the one that decides.
  *
  * Written against the Pages CMS configuration docs as read on 2026-11-26 (https://pagescms.org/docs/configuration/,
  * .../configuration/media/, .../configuration/content/, .../configuration/content/fields/ and the per-type pages
@@ -14,6 +19,7 @@
  * GitHub App: owner approval).
  */
 import { z } from "zod";
+import type { TradeExtension } from "./content-model";
 
 type Field = {
   name: string;
@@ -43,7 +49,29 @@ const HHMM = { regex: "^(([01][0-9]|2[0-3]):[0-5][0-9])?$", message: "08:30 の�
 const ID: Field = { name: "id", label: "ID（自動）", type: "uuid", readonly: true, hidden: true };
 
 /** The configuration as data (what `.pages.yml` holds). */
-export function pagesConfig() {
+/** The CMS pattern for a phone number (the build checks it fully: content-model.ts phoneOk). */
+const PHONE = { regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,30})?$", message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）" };
+/** The CMS pattern for an address (no markup; the build checks it fully: addressOk). */
+const ADDRESS = { regex: "^(?![\\s\\S]*([Hh][Tt][Tt][Pp][Ss]?:|[Ww][Ww][Ww]\\.|:\\/\\/))[^<>]{0,120}$", message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存のときに除きます" };
+
+/** The trade extensions' editor fields (only the ones the shop turns on are in its .pages.yml). */
+const EXTENSION_FIELDS: Record<TradeExtension, Field> = {
+  sizes: {
+    name: "sizes",
+    label: "サイズと価格",
+    type: "object",
+    list: { max: 6, collapsible: { collapsed: true, summary: "{label} {priceDisplay}" } },
+    fields: [
+      { name: "label", label: "サイズ", type: "string", required: true, options: { maxlength: 20 } },
+      { name: "priceDisplay", label: "価格の表示", type: "string", description: "頁にそのまま出ます（税込の総額で書きます）", options: { maxlength: 40 } },
+    ],
+  },
+  allergens: { name: "allergens", label: "アレルゲン（店で確かめたもの）", type: "string", list: { max: 10 }, options: { maxlength: 20 } },
+  shelfLife: { name: "shelfLife", label: "日持ち", type: "string", options: { maxlength: 40 } },
+};
+
+/** The configuration as data (what `.pages.yml` holds), for a shop with the given trade extensions turned on. */
+export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) {
   const menuFields: Field[] = [
     ID,
     { name: "name", label: "商品名", type: "string", required: true, options: { maxlength: 80 } },
@@ -55,6 +83,7 @@ export function pagesConfig() {
     { name: "soldOut", label: "売り切れ", type: "boolean", default: false },
     { name: "visible", label: "公開する", type: "boolean", default: true },
     { name: "displayOrder", label: "並び順（小さいほど上）", type: "number", default: 0, options: { min: 0, max: 9999 } },
+    ...(o.extensions ?? []).map((x) => EXTENSION_FIELDS[x]),
   ];
   return {
     media: { input: "media", output: "/media", extensions: ["jpg", "jpeg", "png", "webp"], rename: "safe" },
@@ -92,9 +121,10 @@ export function pagesConfig() {
         format: "json",
         operations: { delete: false },
         fields: [
-          { name: "name", label: "店名", type: "string", readonly: true },
-          { name: "address", label: "住所", type: "string", readonly: true },
-          { name: "phone", label: "電話", type: "string", readonly: true },
+          // owner decision 2026-11-26: the name stays fixed; address and phone are editable with validation
+          { name: "name", label: "店名（変更できません）", type: "string", readonly: true },
+          { name: "address", label: "住所", type: "string", pattern: ADDRESS, options: { maxlength: 120 } },
+          { name: "phone", label: "電話", type: "string", pattern: PHONE, options: { maxlength: 20 } },
           {
             name: "hours",
             label: "営業時間（曜日ごと）",
@@ -268,4 +298,4 @@ export function toYaml(value: unknown, indent = 0): string {
   return `${pad}${scalar(value)}\n`;
 }
 
-export const pagesYaml = () => `# Generated from the content model (experiments/pages-cms). Edit the model, not this file.\n${toYaml(pagesConfig())}`;
+export const pagesYaml = (o: { extensions?: readonly TradeExtension[] } = {}) => `# Generated from the content model (experiments/pages-cms). Edit the model, not this file.\n${toYaml(pagesConfig(o))}`;

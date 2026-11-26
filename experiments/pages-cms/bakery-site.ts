@@ -8,8 +8,14 @@
  * Output: index.html + style.css (static; no script; pictures under /media/; links only in-page). Every picture frame
  * is a plain rectangle with a fixed aspect (object-fit: cover), so a replaced picture of any shape keeps the layout.
  */
-import type { Announcement, MenuItem, ShopInfo } from "./content-model";
+import type { Announcement, MenuItem, ShopInfo, ShopProfile } from "./content-model";
 import { viewOf, type ShopContent } from "./content-model";
+
+/**
+ * What this shop's page code declares (owner decision 2026-11-26): its name is fixed (the brand is this code), and it
+ * turns on the bakery's optional extensions (allergens, shelf life). Sizes are a cafe's; this shop does not use them.
+ */
+export const BAKERY_PROFILE: ShopProfile = { fixedName: "架空のパン屋 こむぎ舎", extensions: ["allergens", "shelfLife"] };
 
 const e = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const DAY_LABEL: Record<ShopInfo["hours"][number]["day"], string> = { mon: "月", tue: "火", wed: "水", thu: "木", fri: "金", sat: "土", sun: "日" };
@@ -18,7 +24,13 @@ function item(m: MenuItem): string {
   const pic = m.image
     ? `<img src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="600" height="450">`
     : `<span class="noimg" aria-hidden="true">${e(m.name.slice(0, 1))}</span>`;
-  return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><div class="frame">${pic}</div><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}</div></li>`;
+  return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><div class="frame">${pic}</div><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}${extras(m)}</div></li>`;
+}
+
+/** The bakery's extensions, in its own words; nothing when the item has none. */
+function extras(m: MenuItem): string {
+  const rows = [m.shelfLife ? `<dt>日持ち</dt><dd>${e(m.shelfLife)}</dd>` : "", m.allergens?.length ? `<dt>アレルゲン</dt><dd>${m.allergens.map(e).join("・")}</dd>` : ""].join("");
+  return rows ? `<dl class="extra">${rows}</dl>` : "";
 }
 
 function hours(shop: ShopInfo, today: string): string {
@@ -86,6 +98,7 @@ h2{font-size:clamp(22px,3vw,30px);margin:56px 0 20px;border-bottom:1px solid #b9
 .badge{display:inline-block;margin:8px 0 0;padding:2px 10px;background:#7a2e1f;color:#fff;font-size:14px}
 .soldout .frame{opacity:.55}
 .desc{margin:8px 0 0;font-size:15px}
+.extra{margin:8px 0 0;font-size:14px;display:grid;grid-template-columns:auto 1fr;gap:2px 10px}.extra dt{color:#6b5a4c}.extra dd{margin:0}
 .empty{margin:48px 0;font-size:16px}
 .news ul{list-style:none;margin:0;padding:0}
 .news li{padding:14px 0;border-bottom:1px dashed #c8b6a1}

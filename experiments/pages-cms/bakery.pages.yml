@@ -1,0 +1,262 @@
+# Generated from the content model (experiments/pages-cms). Edit the model, not this file.
+media:
+  input: "media"
+  output: "/media"
+  extensions: ["jpg", "jpeg", "png", "webp"]
+  rename: "safe"
+content:
+  - name: "menu"
+    label: "メニュー"
+    type: "collection"
+    path: "content/menu"
+    format: "json"
+    filename: "{id}.json"
+    view:
+      fields: ["name", "priceDisplay", "soldOut", "visible"]
+      primary: "name"
+      sort: ["displayOrder", "name"]
+      default:
+        sort: "displayOrder"
+        order: "asc"
+    fields:
+      - name: "id"
+        label: "ID（自動）"
+        type: "uuid"
+        readonly: true
+        hidden: true
+      - name: "name"
+        label: "商品名"
+        type: "string"
+        required: true
+        options:
+          maxlength: 80
+      - name: "category"
+        label: "分類"
+        type: "reference"
+        required: true
+        options:
+          collection: "categories"
+          value: "{fields.id}"
+          label: "{fields.name}"
+      - name: "priceDisplay"
+        label: "価格の表示"
+        type: "string"
+        description: "頁にそのまま出ます（例: 480円（税込）、時価）"
+        options:
+          maxlength: 40
+      - name: "description"
+        label: "説明"
+        type: "text"
+        options:
+          maxlength: 400
+      - name: "image"
+        label: "写真"
+        type: "image"
+        options:
+          extensions: ["jpg", "jpeg", "png", "webp"]
+      - name: "imageAlt"
+        label: "写真の説明（読み上げ用）"
+        type: "string"
+        options:
+          maxlength: 120
+      - name: "soldOut"
+        label: "売り切れ"
+        type: "boolean"
+        default: false
+      - name: "visible"
+        label: "公開する"
+        type: "boolean"
+        default: true
+      - name: "displayOrder"
+        label: "並び順（小さいほど上）"
+        type: "number"
+        default: 0
+        options:
+          min: 0
+          max: 9999
+      - name: "allergens"
+        label: "アレルゲン（店で確かめたもの）"
+        type: "string"
+        list:
+          max: 10
+        options:
+          maxlength: 20
+      - name: "shelfLife"
+        label: "日持ち"
+        type: "string"
+        options:
+          maxlength: 40
+  - name: "categories"
+    label: "分類"
+    type: "collection"
+    path: "content/categories"
+    format: "json"
+    filename: "{id}.json"
+    view:
+      fields: ["name", "visible"]
+      primary: "name"
+      sort: ["displayOrder", "name"]
+      default:
+        sort: "displayOrder"
+        order: "asc"
+    fields:
+      - name: "id"
+        label: "ID（自動）"
+        type: "uuid"
+        readonly: true
+        hidden: true
+      - name: "name"
+        label: "分類名"
+        type: "string"
+        required: true
+        options:
+          maxlength: 40
+      - name: "displayOrder"
+        label: "並び順"
+        type: "number"
+        default: 0
+        options:
+          min: 0
+          max: 9999
+      - name: "visible"
+        label: "公開する"
+        type: "boolean"
+        default: true
+  - name: "shop"
+    label: "営業時間・臨時休業"
+    type: "file"
+    path: "content/shop.json"
+    format: "json"
+    operations:
+      delete: false
+    fields:
+      - name: "name"
+        label: "店名（変更できません）"
+        type: "string"
+        readonly: true
+      - name: "address"
+        label: "住所"
+        type: "string"
+        pattern:
+          regex: "^(?![\\s\\S]*([Hh][Tt][Tt][Pp][Ss]?:|[Ww][Ww][Ww]\\.|:\\/\\/))[^<>]{0,120}$"
+          message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存のときに除きます"
+        options:
+          maxlength: 120
+      - name: "phone"
+        label: "電話"
+        type: "string"
+        pattern:
+          regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,30})?$"
+          message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）"
+        options:
+          maxlength: 20
+      - name: "hours"
+        label: "営業時間（曜日ごと）"
+        type: "object"
+        list:
+          max: 7
+          collapsible:
+            collapsed: true
+            summary: "{day} {open}–{close}"
+        fields:
+          - name: "day"
+            label: "曜日"
+            type: "select"
+            required: true
+            options:
+              values:
+                - name: "mon"
+                  label: "月"
+                - name: "tue"
+                  label: "火"
+                - name: "wed"
+                  label: "水"
+                - name: "thu"
+                  label: "木"
+                - name: "fri"
+                  label: "金"
+                - name: "sat"
+                  label: "土"
+                - name: "sun"
+                  label: "日"
+          - name: "closed"
+            label: "定休日"
+            type: "boolean"
+            default: false
+          - name: "open"
+            label: "開店"
+            type: "string"
+            pattern:
+              regex: "^(([01][0-9]|2[0-3]):[0-5][0-9])?$"
+              message: "08:30 のように 24 時間で書きます（空なら表示しません）"
+          - name: "close"
+            label: "閉店"
+            type: "string"
+            pattern:
+              regex: "^(([01][0-9]|2[0-3]):[0-5][0-9])?$"
+              message: "08:30 のように 24 時間で書きます（空なら表示しません）"
+      - name: "hoursNote"
+        label: "営業時間の補足"
+        type: "string"
+        options:
+          maxlength: 120
+      - name: "specialClosures"
+        label: "臨時休業"
+        type: "object"
+        list:
+          max: 60
+          collapsible:
+            collapsed: true
+            summary: "{date} {note}"
+        fields:
+          - name: "date"
+            label: "日付"
+            type: "date"
+            required: true
+            options:
+              format: "yyyy-MM-dd"
+          - name: "note"
+            label: "理由など"
+            type: "string"
+            options:
+              maxlength: 80
+  - name: "news"
+    label: "お知らせ"
+    type: "collection"
+    path: "content/news"
+    format: "json"
+    filename: "{id}.json"
+    view:
+      fields: ["title", "publishedAt", "visible"]
+      primary: "title"
+      sort: ["publishedAt"]
+      default:
+        sort: "publishedAt"
+        order: "desc"
+    fields:
+      - name: "id"
+        label: "ID（自動）"
+        type: "uuid"
+        readonly: true
+        hidden: true
+      - name: "title"
+        label: "見出し"
+        type: "string"
+        required: true
+        options:
+          maxlength: 80
+      - name: "body"
+        label: "本文"
+        type: "text"
+        options:
+          maxlength: 1000
+      - name: "publishedAt"
+        label: "日付"
+        type: "date"
+        required: true
+        options:
+          format: "yyyy-MM-dd"
+      - name: "visible"
+        label: "公開する"
+        type: "boolean"
+        default: true

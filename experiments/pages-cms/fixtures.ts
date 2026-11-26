@@ -45,7 +45,7 @@ export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]
 const SHOP: ShopInfo = {
   name: "架空のパン屋 こむぎ舎",
   address: "架空県架空市1-2-3（試験用）",
-  phone: "000-0000-0000",
+  phone: "03-0000-0000",
   hours: (["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const).map((day) => (day === "wed" ? { day, closed: true, open: "", close: "" } : { day, closed: false, open: "08:00", close: "18:00" })),
   hoursNote: "",
   specialClosures: [],
@@ -138,6 +138,11 @@ function makeFixtures(): Record<string, Fixture> {
     visible: k !== 3,
   }));
   f["news-many"] = many;
+  // the bakery's optional extensions (allergens, shelf life) and every price-text class of the 総額表示 report
+  const trade = base(6);
+  const prices = ["324円（税込）", "300円（税別）", "¥1,280", "時価", "", "本体1,000円（税込1,080円）"];
+  trade.menu = trade.menu.map((m, k) => ({ ...m, priceDisplay: prices[k]!, ...(k % 2 === 0 ? { allergens: ["小麦", "乳", "卵"], shelfLife: k === 0 ? "当日中" : "翌日まで" } : {}) }));
+  f["trade-extensions"] = trade;
   return f;
 }
 
