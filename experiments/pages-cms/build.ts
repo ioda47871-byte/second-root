@@ -45,7 +45,7 @@ export async function buildSite(o: { repo: string; outDir: string; today: string
   for (const n of named) await copyFile(join(o.repo, "media", n), join(o.outDir, "media", n));
   await writeFile(join(o.outDir, "index.html"), html);
   await writeFile(join(o.outDir, "style.css"), css);
-  return { html, css, media: named, price_report: priceDisplayReport(content.menu) };
+  return { html, css, media: named, price_report: priceDisplayReport(content) };
 }
 
 /** Writes the generated .pages.yml at the repository root (the CMS configuration, derived from the content model). */

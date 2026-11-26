@@ -49,11 +49,45 @@ const NO_LINK_OR_MARKUP = /[<>]|https?:|www\.|:\/\//i;
  * A Japanese phone number as shops write it: digits with optional hyphens, spaces or parentheses, 10 or 11 digits
  * starting with 0 (or +81 and 9–10 digits). Owner decision 2026-11-26: editable, with input validation.
  */
-export function phoneOk(s: string): boolean {
+export function phoneOk(input: string): boolean {
+  const s = normalizePhone(input);
   if (s === "") return true;
-  if (!/^\+?[0-9()\- ]{10,20}$/.test(s) || /[()\- ]{2,}/.test(s.replace(/\) /g, ")"))) return false;
-  const digits = s.replace(/[^0-9]/g, "");
-  return s.startsWith("+81") ? /^81[1-9]\d{8,9}$/.test(digits) : /^0\d{9,10}$/.test(digits);
+  // only digits and the separators; + only as "+81" at the start; starts and ends with a digit (or "(" first)
+  if (!/^(\+81|[0-9(])[0-9()\- ]*[0-9]$/.test(s) || s.length > 24) return false;
+  if (s.indexOf("+", 1) >= 0) return false;
+  // brackets: balanced, not nested, not empty
+  let open = false;
+  for (const c of s) {
+    if (c === "(") {
+      if (open) return false;
+      open = true;
+    } else if (c === ")") {
+      if (!open) return false;
+      open = false;
+    }
+  }
+  if (open || /\(\)/.test(s)) return false;
+  // no two separators in a row (a bracket next to a space or hyphen is fine)
+  if (/[\- ]{2,}/.test(s)) return false;
+  // "+81 (0)3-..." : the trunk 0 in brackets after the country code is dropped
+  const body = s.startsWith("+81") ? s.slice(3).replace(/^[ -]?\(0\)/, "") : s;
+  const digits = body.replace(/[^0-9]/g, "");
+  if (/^0+$/.test(digits)) return false;
+  return s.startsWith("+81") ? /^[1-9]\d{8,9}$/.test(digits) : /^0\d{9,10}$/.test(digits);
+}
+/**
+ * Full-width digits and separators as Japanese keyboards type them become their ASCII forms (the shop is not asked
+ * to retype them); surrounding spaces (incl. the full-width space) are trimmed.
+ */
+export function normalizePhone(s: string): string {
+  return s
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[－‐‑–—−]/g, "-")
+    .replace(/＋/g, "+")
+    .replace(/（/g, "(")
+    .replace(/）/g, ")")
+    .replace(/　/g, " ")
+    .trim();
 }
 /** An address line: at most 120 characters, not only spaces, no link or markup. */
 export const addressOk = (s: string) => s === "" || (s.trim().length > 0 && s === s.trim() && !NO_LINK_OR_MARKUP.test(s));
@@ -119,15 +153,28 @@ export const ShopInfo = z.strictObject({
   /** Owner decision 2026-11-26: the shop name (and the brand expression, which is the page code) stays fixed. */
   name: Line(60),
   /** Owner decision 2026-11-26: editable, with input validation. */
-  address: Line(120).refine(addressOk, "address_invalid").default(""),
-  phone: Line(20).refine(phoneOk, "phone_invalid").default(""),
+  // review M2 / L1: normalised at load (surrounding spaces, incl. the full-width one, trimmed; the phone's
+  // full-width digits and separators made ASCII), then checked
+  address: Line(120)
+    .transform((v) => v.trim())
+    .refine(addressOk, "address_invalid")
+    .default(""),
+  phone: Line(30)
+    .transform(normalizePhone)
+    .refine(phoneOk, "phone_invalid")
+    .default(""),
   hours: z
     .array(Hours)
     .max(7)
     .refine((list) => new Set(list.map((h) => h.day)).size === list.length, "hours_day_twice")
     .default([]),
   hoursNote: Line(120).default(""),
-  specialClosures: z.array(z.strictObject({ date: IsoDate, note: Line(80).default("") })).max(60).default([]),
+  // review L5: each date once (a closed day's leftover open / close times are allowed and ignored by the page)
+  specialClosures: z
+    .array(z.strictObject({ date: IsoDate, note: Line(80).default("") }))
+    .max(60)
+    .refine((list) => new Set(list.map((c) => c.date)).size === list.length, "closure_date_twice")
+    .default([]),
 });
 export type ShopInfo = z.infer<typeof ShopInfo>;
 

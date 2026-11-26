@@ -45,7 +45,7 @@ export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]
 const SHOP: ShopInfo = {
   name: "架空のパン屋 こむぎ舎",
   address: "架空県架空市1-2-3（試験用）",
-  phone: "000-0000-0000",
+  phone: "03-0000-0000",
   hours: (["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const).map((day) => (day === "wed" ? { day, closed: true, open: "", close: "" } : { day, closed: false, open: "08:00", close: "18:00" })),
   hoursNote: "",
   specialClosures: [],

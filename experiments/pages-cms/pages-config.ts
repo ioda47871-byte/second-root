@@ -1,8 +1,13 @@
 /**
  * DEV-303 §6.1 row 11, first experiment: the Pages CMS configuration (`.pages.yml` at the shop repository's root),
  * generated from the content model (content-model.ts). Only the information the customer may update is editable
- * (menu items with prices and photos, categories, weekly hours and special closures, announcements); the shop's
- * name / address / phone are shown read-only, and nothing reaches the page code, the CSS or the build settings.
+ * (menu items with prices and photos, categories, weekly hours and special closures, announcements, and — owner
+ * decision 2026-11-26 — the address and phone with validation, plus the trade extensions the shop turns on); only the
+ * shop's name is shown read-only, and nothing reaches the page code, the CSS or the build settings.
+ *
+ * `pattern` regex flavour: Pages CMS does not document it (its own examples include a PCRE-style "(?s)"), so the
+ * patterns here use only what JavaScript and PCRE share (character classes, anchors, a negative lookahead). They are
+ * input hints; the build's check (content-model.ts) is the one that decides.
  *
  * Written against the Pages CMS configuration docs as read on 2026-11-26 (https://pagescms.org/docs/configuration/,
  * .../configuration/media/, .../configuration/content/, .../configuration/content/fields/ and the per-type pages
@@ -45,9 +50,9 @@ const ID: Field = { name: "id", label: "ID（自動）", type: "uuid", readonly:
 
 /** The configuration as data (what `.pages.yml` holds). */
 /** The CMS pattern for a phone number (the build checks it fully: content-model.ts phoneOk). */
-const PHONE = { regex: "^(\\+?[0-9()\\- ]{10,20})?$", message: "例: 03-1234-5678（数字と - だけ。空なら表示しません）" };
+const PHONE = { regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,30})?$", message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）" };
 /** The CMS pattern for an address (no markup; the build checks it fully: addressOk). */
-const ADDRESS = { regex: "^[^<>]{0,120}$", message: "住所は 120 字まで。記号 < > とリンクは書けません" };
+const ADDRESS = { regex: "^(?![\\s\\S]*([Hh][Tt][Tt][Pp][Ss]?:|[Ww][Ww][Ww]\\.|:\\/\\/))[^<>]{0,120}$", message: "住所は 120 字まで。記号 < > とリンク（http・www）は書けません。前後の空白は保存のときに除きます" };
 
 /** The trade extensions' editor fields (only the ones the shop turns on are in its .pages.yml). */
 const EXTENSION_FIELDS: Record<TradeExtension, Field> = {

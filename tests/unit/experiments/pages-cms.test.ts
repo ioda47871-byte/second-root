@@ -161,10 +161,15 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
   };
 
   it("address and phone are validated (editable); the name stays the shop's fixed name", async () => {
-    for (const ok of ["", "03-1234-5678", "0312345678", "090-1234-5678", "(03) 1234-5678", "+81-3-1234-5678", "0120-123-456"]) expect(phoneOk(ok), ok).toBe(true);
-    for (const bad of ["1234", "03-1234-567", "03--1234-5678", "tel:0312345678", "03-1234-5678 内線2", "+1-555-123-4567", "090-1234-56789"]) expect(phoneOk(bad), bad).toBe(false);
+    for (const ok of ["", "03-1234-5678", "0312345678", "090-1234-5678", "(03) 1234-5678", "+81-3-1234-5678", "0120-123-456", "+81 (0)3-1234-5678", "０３－１２３４－５６７８", "（03）1234-5678", " 03-1234-5678　"])
+      expect(phoneOk(ok), ok).toBe(true);
+    for (const bad of ["1234", "03-1234-567", "03--1234-5678", "tel:0312345678", "03-1234-5678 内線2", "+1-555-123-4567", "090-1234-56789", "03+1234-5678", "-03-1234-5678", "03-1234-5678-", "(03 1234-5678", "03) 1234-5678", "((03)) 1234-5678", "000-0000-0000", "+81-0-0000-0000"])
+      expect(phoneOk(bad), bad).toBe(false);
     for (const ok of ["", "架空県架空市1-2-3 架空ビル2階"]) expect(addressOk(ok), ok).toBe(true);
-    for (const bad of [" ", "架空市 ", "https://example.invalid", "<b>架空市</b>"]) expect(addressOk(bad), bad).toBe(false);
+    for (const bad of [" ", "架空市 ", "https://example.invalid", "<b>架空市</b>", "www.example.invalid"]) expect(addressOk(bad), bad).toBe(false);
+    // review M2 / L1: the stored values are normalised at load (trimmed; the phone in ASCII)
+    const normal = await loadContent(await editShop({ address: "架空県架空市1-2-3　", phone: "０３－１２３４－５６７８" }), BAKERY_PROFILE);
+    expect([normal.shop.address, normal.shop.phone]).toEqual(["架空県架空市1-2-3", "03-1234-5678"]);
     expect(await code(loadContent(await editShop({ phone: "03-1234-567" }), BAKERY_PROFILE))).toBe("CONTENT_INVALID");
     expect(await code(loadContent(await editShop({ address: "www.example.invalid" }), BAKERY_PROFILE))).toBe("CONTENT_INVALID");
     expect(await code(loadContent(await editShop({ address: "架空県架空市9-9", phone: "03-9999-0000" }), BAKERY_PROFILE))).toBe("ok");
@@ -179,6 +184,8 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     expect(await code(loadContent(await hours([{ day: "tue", closed: true }, { day: "wed", open: "", close: "" }])))).toBe("ok");
     expect(await code(loadContent(await editShop({ specialClosures: [{ date: "2026-02-30" }] })))).toBe("CONTENT_INVALID");
     expect(await code(loadContent(await editShop({ specialClosures: [{ date: "2028-02-29", note: "" }] })))).toBe("ok");
+    // review L5: each closure date once
+    expect(await code(loadContent(await editShop({ specialClosures: [{ date: "2026-12-29" }, { date: "2026-12-29", note: "重複" }] })))).toBe("CONTENT_INVALID");
   });
 
   it("trade extensions are optional and per shop: the bakery shows allergens and shelf life; sizes (a cafe's) are refused here", async () => {
@@ -186,6 +193,14 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     const r = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
     expect(r.html).toContain("<dt>アレルゲン</dt><dd>小麦・乳・卵</dd>");
     expect(r.html).toContain("<dt>日持ち</dt><dd>当日中</dd>");
+    // review L6: the extension texts are escaped like every other text
+    const evil = await fixtureRepo("trade-extensions");
+    const evilFile = join(evil, "content", "menu", "item-1.json");
+    writeFileSync(evilFile, JSON.stringify({ ...(JSON.parse(readFileSync(evilFile, "utf8")) as object), allergens: ["<script>", '"><img src=x>'], shelfLife: "<b>当日</b>" }));
+    const escaped = (await buildSite({ repo: evil, outDir: join(tmp(), "dist"), today: Q1_TODAY })).html;
+    expect(escaped).not.toMatch(/<script>|<img src=x>|<b>当日/);
+    expect(escaped).toContain("<dd>&lt;script&gt;・&quot;&gt;&lt;img src=x&gt;</dd>");
+    expect(escaped).toContain("<dd>&lt;b&gt;当日&lt;/b&gt;</dd>");
     const file = join(repo, "content", "menu", "item-1.json");
     writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), sizes: [{ label: "大", priceDisplay: "500円（税込）" }] }));
     expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_EXTENSION_OFF");
@@ -209,7 +224,12 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     const address = new RegExp(field("address").pattern!.regex);
     for (const s of ["", "03-1234-5678", "(03) 1234-5678", "+81-3-1234-5678"]) expect(phone.test(s) && phoneOk(s), s).toBe(true);
     for (const s of ["tel:0312345678", "03-1234-5678 内線2"]) expect(phone.test(s) || phoneOk(s), s).toBe(false);
+    // full-width input the build normalises is accepted by the hint too
+    expect(phone.test("０３－１２３４－５６７８") && phoneOk("０３－１２３４－５６７８")).toBe(true);
     expect(address.test("架空県架空市1-2-3") && !address.test("<b>x</b>")).toBe(true);
+    // review M2: links are refused by both; surrounding spaces (incl. U+3000) are trimmed at load, so both accept them
+    for (const s of ["www.example.invalid", "架空市 https://example.invalid", "WWW.EXAMPLE.INVALID", "架空市 ftp://x"]) expect([address.test(s), addressOk(s.trim())], s).toEqual([false, false]);
+    for (const s of ["架空県架空市1-2-3　", " 架空県架空市1-2-3"]) expect([address.test(s), addressOk(s.trim())], s).toEqual([true, true]);
   });
 
   it("the 総額表示 report classifies price texts and never changes them; it never stops the build", async () => {
@@ -236,7 +256,36 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     // the page shows the texts exactly as written
     expect(r.html).toContain("300円（税別）");
     // hidden items are not shown, so not reported; sizes are reported per size
-    const menu = (await loadContent(repo)).menu.map((m, k) => (k === 1 ? { ...m, visible: false } : k === 2 ? { ...m, priceDisplay: "500円（税込）", sizes: [{ label: "大", priceDisplay: "700円" }] } : m));
-    expect(priceDisplayReport(menu).findings.map((f) => [f.item, f.field])).toEqual([["item-3", "sizes.0.priceDisplay"]]);
+    const loaded = await loadContent(repo);
+    const menu = loaded.menu.map((m, k) => (k === 1 ? { ...m, visible: false } : k === 2 ? { ...m, priceDisplay: "500円（税込）", sizes: [{ label: "大", priceDisplay: "700円" }] } : m));
+    expect(priceDisplayReport({ categories: loaded.categories, menu }).findings.map((f) => [f.item, f.field])).toEqual([["item-3", "sizes.0.priceDisplay"]]);
+    // review L3: an item in a hidden category is not on the page, so not reported (as viewOf)
+    const hiddenCat = loaded.categories.map((c) => (c.id === menu[2]!.category ? { ...c, visible: false } : c));
+    expect(priceDisplayReport({ categories: hiddenCat, menu }).findings).toEqual([]);
+  });
+
+  it("review M1 / L2: 込み alone and an unattached 総額 / 税込 do not count; tax-exclusive texts stay tax_excluded_only; kanji, full-width and ranges", () => {
+    const cases: [string, string][] = [
+      ["1,000円（税別・送料込み）", "tax_excluded_only"],
+      ["3,000円（要申込み）", "no_tax_wording"],
+      ["総額表示は店頭で 500円（税別）", "tax_excluded_only"],
+      ["800円（税抜）税込価格は店頭で", "tax_excluded_only"],
+      ["1,200円（サービス料込み）", "no_tax_wording"],
+      ["送料込み 2,000円", "no_tax_wording"],
+      ["800円（税抜）／880円（税込）", "tax_included"],
+      ["税込880円", "tax_included"],
+      ["880円税込", "tax_included"],
+      ["500円（込）", "tax_included"],
+      ["千円（税別）", "tax_excluded_only"],
+      ["千円（税込）", "tax_included"],
+      ["千円", "no_tax_wording"],
+      ["¥480+tax", "tax_excluded_only"],
+      ["３２４円（税込）", "tax_included"],
+      ["￥１，２８０", "no_tax_wording"],
+      ["380〜520円（税込）", "tax_included"],
+      ["380〜520円", "no_tax_wording"],
+      ["価格は店頭で（税込）", "no_amount"],
+    ];
+    expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
   });
 });
