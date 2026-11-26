@@ -53,9 +53,13 @@ Reserved Font Name.
 
 ## Regenerating
 
-Regenerating needs network access to Google Fonts and the npm registry. If
-Google now serves other bytes, the `--check` step and the unit test fail. In
-that case, compare the new files and their rendering before accepting them.
+Regenerating needs network access to Google Fonts and the npm registry.
+`--packs` rewrites `manifest.json` from what Google serves. So if Google
+now serves other bytes, `--check` still passes, because it compares the files
+with the new manifest. What fails is the test "the committed font files are
+the pinned set" in `tests/unit/design-agent/demo-fonts-local.test.ts`: it pins one sha256 over all the
+font files (`fontsDigest`). Compare the new files and their rendering (PC and
+SP screenshots) before you update that pin on purpose.
 
 ```sh
 mkdir -p /tmp/sr-font-packs && cd /tmp/sr-font-packs

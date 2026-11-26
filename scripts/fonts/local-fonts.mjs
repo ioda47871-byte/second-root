@@ -4,7 +4,10 @@
 // A target's font files are the exact bytes next/font/google downloaded: the
 // same Google Fonts CSS2 request (URL and User-Agent as in next/font) and the
 // woff2 unicode-range subsets it lists, unmodified. Each file's sha256 is in the
-// target's manifest.json. The license text and copyright notice of each family
+// target's manifest.json. `--check` compares the committed files with the
+// manifest; a regeneration (`--packs`) rewrites the manifest from what Google
+// serves, so if Google serves other bytes, --check still passes and it is the
+// digest pinned in the unit tests (fontsDigest) that fails. The license text and copyright notice of each family
 // (SIL Open Font License 1.1) come from a pinned @fontsource tarball, checked
 // against its sha256 and npm integrity. The generated module has one
 // next/font/local call per unicode-range subset, in Google's order and with
@@ -51,6 +54,7 @@ export function parseGoogleCss(css) {
 /**
  * One self-hosted font set.
  * cfg: { fontsDir, manifestPath, modulePath, fontsPathFromModule ("fonts" or ""), header: string[],
+ *        rootFiles: the only files allowed directly in fontsDir (the rest are family directories),
  *        manifestTop: object, families: [{ dir, family, exportName, variable, google, license, ... }],
  *        preload(fam, face): boolean, manifestFamily(fam): object (the fields kept in the manifest) }
  */
@@ -115,8 +119,12 @@ export function fontTarget(cfg) {
         if (buf.length !== face.bytes || sha256(buf) !== face.sha256) problems.push(`${rel} does not match the manifest`);
       }
     }
+    const rootFiles = new Set(cfg.rootFiles);
     for (const d of readdirSync(cfg.fontsDir, { withFileTypes: true })) {
-      if (!d.isDirectory()) continue;
+      if (!d.isDirectory()) {
+        if (!rootFiles.has(d.name)) problems.push(`unlisted file ${d.name}`);
+        continue;
+      }
       for (const f of readdirSync(join(cfg.fontsDir, d.name))) if (!listed.has(`${d.name}/${f}`)) problems.push(`unlisted file ${d.name}/${f}`);
     }
     return problems;
@@ -180,6 +188,16 @@ export function fontTarget(cfg) {
   }
 
   return { renderModule, formatManifest, checkCommitted, generate };
+}
+
+/**
+ * One sha256 over a manifest's font files: the sorted unique "<dir>/<file> <sha256>" lines.
+ * The unit tests pin it, so a regeneration that gets other bytes from Google (which rewrites
+ * the manifest, and so still passes --check) fails until the pin is deliberately updated.
+ */
+export function fontsDigest(manifest) {
+  const lines = new Set(manifest.families.flatMap((f) => f.faces.map((x) => `${f.dir}/${x.file} ${x.sha256}`)));
+  return sha256(Buffer.from([...lines].sort().join("\n")));
 }
 
 /** The command line shared by the generators: --packs <dir> (network) or --check (offline). */

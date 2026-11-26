@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FAMILIES, MANIFEST_PATH, MODULE_PATH, checkCommitted, formatManifest, renderModule } from "../../scripts/fonts/generate-site-fonts.mjs";
+import { FAMILIES, MANIFEST_PATH, MODULE_PATH, checkCommitted, fontsDigest, formatManifest, renderModule } from "../../scripts/fonts/generate-site-fonts.mjs";
 
 // DEV-303 (PR B): the official site's faces are committed files loaded with
 // next/font/local (no Google Fonts download at build time). The generated module
@@ -14,12 +14,20 @@ type Family = { dir: string; family: string; exportName: string; variable: strin
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as { families: Family[] };
 const byVar = new Map(manifest.families.map((f) => [f.variable, f]));
 const fontsDir = join(MANIFEST_PATH, "..");
+const fallbackRules = (css: string) => [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]!.replace(/\s*([;:])\s*/g, "$1").trim().replace(/;$/, ""));
 
 describe("official site fonts, self-hosted with next/font/local (DEV-303)", () => {
   it("regenerating from the manifest is byte-identical, and every committed file matches it", () => {
     expect(readFileSync(MODULE_PATH, "utf8")).toBe(renderModule(manifest));
     expect(readFileSync(MANIFEST_PATH, "utf8")).toBe(formatManifest(manifest));
     expect(checkCommitted()).toEqual([]);
+  });
+
+  it("the committed font files are the pinned set (the bytes next/font/google emitted in a develop build, 2026-11-26)", () => {
+    // `--packs` rewrites the manifest from what Google serves, so --check alone would accept other
+    // bytes. Update this pin only on purpose, after comparing the new files and their rendering.
+    expect(fontsDigest(manifest)).toBe("c622456a4f0f1aab6c8eed3721deaf6e55615b36a6150528b2bf695476de1975");
+    expect(new Set(manifest.families.flatMap((f) => f.faces.map((x) => `${f.dir}/${x.file}`))).size).toBe(612);
   });
 
   it("the manifest is the generator's families: next/font/google's requests, pinned license packages", () => {
@@ -90,6 +98,12 @@ describe("official site fonts, self-hosted with next/font/local (DEV-303)", () =
     expect(layout).toContain("${shipporiMincho.variable} ${notoSansJP.variable} ${zenMaruGothic.variable}");
     const generated = readFileSync(MODULE_PATH, "utf8");
     const fallback = readFileSync(join(fontsDir, "fallback.css"), "utf8");
+    // the metrics next/font/google generated (develop build, 2026-11-26), exactly
+    expect(fallbackRules(fallback)).toEqual([
+      'font-family:"Shippori Mincho Fallback";src:local("Times New Roman");ascent-override:98.59%;descent-override:24.48%;line-gap-override:0.00%;size-adjust:117.66%',
+      'font-family:"Noto Sans JP Fallback";src:local("Arial");ascent-override:110.73%;descent-override:27.49%;line-gap-override:0.00%;size-adjust:104.76%',
+      'font-family:"Zen Maru Gothic Fallback";src:local("Arial");ascent-override:117.00%;descent-override:29.05%;line-gap-override:0.00%;size-adjust:99.15%',
+    ]);
     for (const f of manifest.families) {
       expect(generated).toContain(`export const ${f.exportName} = localFont(`);
       expect(generated).toContain(`variable: "${f.variable}", fallback: ["\\"${f.family} Fallback\\""]`);
@@ -101,20 +115,30 @@ describe("official site fonts, self-hosted with next/font/local (DEV-303)", () =
 describe("no next/font/google anywhere (DEV-303)", () => {
   it("no source file imports next/font/google: the build fetches no font from Google", () => {
     const root = process.cwd();
+    // every top-level folder except dependencies, build output, VCS and agent worktrees
+    const IGNORE = new Set(["node_modules", ".next", ".git", ".claude", ".vercel", "playwright-report", "test-results", "blob-report", "coverage"]);
+    const IMPORT = /(?:\bfrom\s*|\bimport\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["']next\/font\/google["']/;
     const offenders: string[] = [];
+    let scanned = 0;
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
-        if (["node_modules", ".next", ".git", ".claude"].includes(name)) continue;
+        if (IGNORE.has(name)) continue;
         const path = join(dir, name);
-        if (statSync(path).isDirectory()) walk(path);
-        else if (/\.(m?[jt]sx?|cjs)$/.test(name)) {
-          const text = readFileSync(path, "utf8");
-          if (/(from\s+|import\s*\(\s*|require\s*\(\s*)["']next\/font\/google["']/.test(text)) offenders.push(path.slice(root.length + 1));
+        const st = statSync(path);
+        if (st.isDirectory()) walk(path);
+        else if (/\.(m?[jt]sx?|c[jt]s)$/.test(name)) {
+          scanned++;
+          if (IMPORT.test(readFileSync(path, "utf8"))) offenders.push(path.slice(root.length + 1));
         }
       }
     };
-    for (const dir of ["app", "components", "lib", "scripts", "tests"]) walk(join(root, dir));
-    for (const file of readdirSync(root)) if (/\.(m?[jt]sx?|cjs)$/.test(file) && /(from\s+|require\s*\(\s*)["']next\/font\/google["']/.test(readFileSync(join(root, file), "utf8"))) offenders.push(file);
+    walk(root);
+    expect(scanned).toBeGreaterThan(500);
     expect(offenders).toEqual([]);
+    // the pattern itself catches every form
+    // (the module name is assembled so that this file does not match itself)
+    const mod = ["next", "font", "google"].join("/");
+    for (const line of [`import { Inter } from "${mod}";`, `import '${mod}';`, `const f = await import("${mod}");`, `require("${mod}")`, `export { Inter } from "${mod}";`]) expect(IMPORT.test(line), line).toBe(true);
+    expect(IMPORT.test(`// ${mod} used to download`)).toBe(false);
   });
 });
