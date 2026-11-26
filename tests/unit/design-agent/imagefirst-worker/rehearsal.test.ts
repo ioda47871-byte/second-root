@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -25,10 +25,15 @@ import { cleanupTemps, ENV, NOW, REPO, sha, tmp, workerRepo } from "./support";
 
 vi.setConfig({ testTimeout: 120_000 });
 let browser: Browser | null = null;
+// CI runs with umask 022 (this machine's is stricter): every file and directory the module and this test make must be
+// private by an explicit mode, never by the umask. The whole file runs under 022 to show it.
+let umaskBefore: number | undefined;
 beforeAll(async () => {
+  umaskBefore = process.umask(0o022);
   browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }).catch(() => null);
 });
 afterAll(async () => {
+  if (umaskBefore !== undefined) process.umask(umaskBefore);
   await browser?.close();
   cleanupTemps();
 });
@@ -122,14 +127,24 @@ describe("DEV-303 rehearsal: a synthetic whole_page bundle through stages 3 → 
     }
     const copy = join(tmp("sr-rehearsal-copy-"), ID);
     cpSync(join(inbox, ID), copy, { recursive: true });
+    // the copy private as the sealed one (cpSync makes directories by the umask): only the marker differs below
+    for (const d of [copy, join(copy, "parts")]) chmodSync(d, 0o700);
+    expect(statSync(copy).mode & 0o777).toBe(0o700);
     const manifest = JSON.parse(readFileSync(join(copy, "manifest.json"), "utf8")) as Record<string, unknown>;
     delete manifest.synthetic;
-    writeFileSync(join(copy, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    writeFileSync(join(copy, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(join(copy, "manifest.json"), 0o600);
+    // the unchanged copy verifies (so the stop below is the missing marker, not the copy's modes)
+    const intact = join(tmp("sr-rehearsal-intact-"), ID);
+    cpSync(join(inbox, ID), intact, { recursive: true });
+    for (const d of [intact, join(intact, "parts")]) chmodSync(d, 0o700);
+    expect((await verifyBundleDir(intact)).manifest.synthetic).toBe(true);
     expect(await codeOf(verifyBundleDir(copy))).toBe("BUNDLE_RECEIPT_MISMATCH");
   });
 
   it("the rehearsal home: never the real home, never in the repository, empty for a seal", async () => {
     expect(await codeOf(sealRehearsal({ home: homedir(), repo: REPO }))).toBe("REHEARSAL_HOME_IS_REAL_HOME");
+    expect(await codeOf(sealRehearsal({ home: userInfo().homedir, repo: REPO }))).toBe("REHEARSAL_HOME_IS_REAL_HOME");
     expect(await codeOf(sealRehearsal({ home: join(REPO, "lib"), repo: REPO }))).toBe("REHEARSAL_HOME_IN_REPO");
     expect(await codeOf(sealRehearsal({ home: "relative/home", repo: REPO }))).toBe("REHEARSAL_HOME_INVALID");
     const used = tmp("sr-rehearsal-used-");

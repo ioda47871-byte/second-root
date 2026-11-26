@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
 import { packBundle, verifyBundleDir } from "./bundle";
@@ -184,8 +184,15 @@ async function rehearsalHome(home: string, repo: string, fresh: boolean): Promis
   if (!isAbsolute(home)) return stop("REHEARSAL_HOME_INVALID");
   const real = await realpath(home).catch(() => null);
   if (real === null) return stop("REHEARSAL_HOME_MISSING");
-  const realHome = await realpath(homedir()).catch(() => homedir());
-  if (real === realHome) stop("REHEARSAL_HOME_IS_REAL_HOME");
+  // the HOME variable's home and the account's own (a changed HOME must not open the real inbox)
+  const homes = [homedir(), (() => {
+    try {
+      return userInfo().homedir;
+    } catch {
+      return null;
+    }
+  })()].filter((h): h is string => typeof h === "string" && h.length > 0);
+  for (const h of homes) if (real === (await realpath(h).catch(() => resolve(h)))) stop("REHEARSAL_HOME_IS_REAL_HOME");
   const realRepo = await realpath(repo).catch(() => resolve(repo));
   if (within(real, realRepo) || within(realRepo, real)) stop("REHEARSAL_HOME_IN_REPO");
   const info = await lstat(real);
