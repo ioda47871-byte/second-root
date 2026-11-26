@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -211,7 +211,7 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     const view = (v: "pc" | "sp") => ({ box: boxFor(v, "4:3", v === "pc" ? 0.2 : 0.42), aspect: "4:3", shape: "rect", object_position: "50% 50%", subject: "center", text_gap: "adjacent" });
     const delivered = approved.materials.map((m) => ({ file: FILE_OF[m.id]!, sha256: m.sha256, material_id: m.id, materials_approval_sha256: approved.approval_sha256 }));
     const slots = delivered.map((m) => ({ id: `slot-${m.material_id}`, role: "product", material_ids: [m.material_id], pc: view("pc"), sp: view("sp") }));
-    await writeDelivery({ repo, provenanceDir: prov, approval, materials: delivered, slots });
+    await writeDelivery({ repo, provenanceDir: prov, approval, approvedMaterials: { approval_sha256: approved.approval_sha256, sha256s: approved.materials.map((m) => m.sha256) }, materials: delivered, slots });
     step("6", "delivery: handover record (material ids), photo-slot spec, A provenance", "real", "written", "the writer takes values the design and materials gates verified");
 
     // 7. the build (Claude's page code for this shop; here the fictional bakery's hand-written page) and its gates
@@ -289,26 +289,59 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     for (const f of [reviewPath, approvalPath, mReviewPath, mApprovalPath, fReviewPath, fApprovalPath]) expect(readFileSync(f, "utf8"), f).toContain("モック／架空");
   });
 
-  it("the delivery writer refuses what it cannot bind: another picture, an unbound slot, a bad rights record, a provenance folder in the repository", async () => {
+  it("the delivery writer refuses what it cannot bind (PR #376 review M1-M3 included)", async () => {
     const repo = join(tmp(), "repo");
     await bakeryRepo(repo);
     const approval = { bundle_id: DESIGN_ID, bundle_sha256: "a".repeat(64), review_file: `${DESIGN_ID}.review.json`, approval_file: `${DESIGN_ID}.approval.json`, approval_sha256: "b".repeat(64) };
-    const ok = [{ file: "photo-1.png", sha256: sha(PICTURES["photo-1.png"]!), material_id: "crust-texture", materials_approval_sha256: "c".repeat(64) }];
+    const MA = "c".repeat(64);
+    const shaOf = (f: string) => sha(PICTURES[f]!);
+    const verified = { approval_sha256: MA, sha256s: [shaOf("photo-1.png"), shaOf("photo-3.png")] };
+    const ok = [{ file: "photo-1.png", sha256: shaOf("photo-1.png"), material_id: "crust-texture", materials_approval_sha256: MA }];
+    const both = [...ok, { file: "photo-3.png", sha256: shaOf("photo-3.png"), material_id: "flour-board", materials_approval_sha256: MA }];
     const view = (v: "pc" | "sp") => ({ box: boxFor(v, "4:3", v === "pc" ? 0.2 : 0.42), aspect: "4:3", shape: "rect", object_position: "50% 50%", subject: "center", text_gap: "adjacent" });
     const slot = { id: "slot-crust", role: "product", material_ids: ["crust-texture"], pc: view("pc"), sp: view("sp") };
     const code = (p: Promise<unknown>) => p.then(() => "ok", (e: unknown) => (e instanceof DeliveryError ? e.code : String(e)));
-    expect(await code(writeDelivery({ repo, provenanceDir: join(tmp(), "p"), approval, materials: [{ ...ok[0]!, sha256: "d".repeat(64) }], slots: [slot] }))).toBe("DELIVERY_PICTURE_MISMATCH");
-    expect(await code(writeDelivery({ repo, provenanceDir: join(tmp(), "p"), approval, materials: ok, slots: [{ ...slot, material_ids: ["flour-board"] }] }))).toBe("DELIVERY_SLOTS_UNBOUND");
-    expect(await code(writeDelivery({ repo, provenanceDir: join(tmp(), "p"), approval, materials: ok, slots: [{ ...slot, pc: { ...view("pc"), text_gap: "overlay" } }] }))).toBe("DELIVERY_SLOTS_INVALID");
-    expect(await code(writeDelivery({ repo, provenanceDir: join(repo, "private"), approval, materials: ok, slots: [slot] }))).toBe("DELIVERY_PROVENANCE_IN_REPO");
+    const deliver = (over: Partial<Parameters<typeof writeDelivery>[0]> = {}) => writeDelivery({ repo, provenanceDir: join(tmp(), "p"), approval, approvedMaterials: verified, materials: ok, slots: [slot], ...over });
+    expect(await code(deliver({ materials: [{ ...ok[0]!, sha256: "d".repeat(64) }], approvedMaterials: { ...verified, sha256s: [...verified.sha256s, "d".repeat(64)] } }))).toBe("DELIVERY_PICTURE_MISMATCH");
+    expect(await code(deliver({ slots: [{ ...slot, material_ids: ["flour-board"] }] }))).toBe("DELIVERY_SLOTS_UNBOUND");
+    expect(await code(deliver({ slots: [{ ...slot, pc: { ...view("pc"), text_gap: "overlay" } }] }))).toBe("DELIVERY_SLOTS_INVALID");
+    // M1: the provenance folder itself, resolved: inside the repository, through a link into it, or a link anywhere
+    expect(await code(deliver({ provenanceDir: join(repo, "private") }))).toBe("DELIVERY_PROVENANCE_IN_REPO");
+    mkdirSync(join(repo, "private-target"));
+    const linkIn = join(tmp(), "prov-link");
+    symlinkSync(join(repo, "private-target"), linkIn);
+    expect(await code(deliver({ provenanceDir: linkIn }))).toBe("DELIVERY_PROVENANCE_IN_REPO");
+    const linkOut = join(tmp(), "prov-link-out");
+    symlinkSync(tmp(), linkOut);
+    expect(await code(deliver({ provenanceDir: linkOut }))).toBe("DELIVERY_PROVENANCE_UNSAFE");
+    // M3: an unapproved picture, an invented approval SHA-256, a file name / material id outside the record's form
+    writeFileSync(join(repo, "media", "photo-9.png"), solidPng(500, 500, [9, 9, 9]));
+    expect(await code(deliver({ materials: [{ file: "photo-9.png", sha256: sha(readFileSync(join(repo, "media", "photo-9.png"))), material_id: "crust-texture", materials_approval_sha256: MA }] }))).toBe("DELIVERY_MATERIAL_NOT_APPROVED");
+    expect(await code(deliver({ materials: [{ ...ok[0]!, materials_approval_sha256: "e".repeat(64) }] }))).toBe("DELIVERY_MATERIAL_NOT_APPROVED");
+    expect(await code(deliver({ materials: [{ ...ok[0]!, file: "../photo-1.png" }] }))).toBe("DELIVERY_RECORD_INVALID");
+    expect(await code(deliver({ materials: [{ ...ok[0]!, material_id: "Crust" }] }))).toBe("DELIVERY_RECORD_INVALID");
+    // M2: the record must cover every shown generated picture (no record left, only one of the two delivered)
+    unlinkSync(join(repo, "content", "generated-materials.json"));
+    expect(await code(deliver())).toBe("DELIVERY_RECORD_INCOMPLETE");
+    // the reviewer's probe: deliver both, re-deliver with fewer materials, relabel the dropped one → still caught
+    expect(await code(deliver({ materials: both, slots: [slot] }))).toBe("ok");
+    expect(await code(deliver({ materials: ok }))).toBe("ok");
+    const record = JSON.parse(readFileSync(join(repo, "content", "generated-materials.json"), "utf8")) as { files: { file: string; material_id?: string }[] };
+    expect(record.files.map((f) => [f.file, f.material_id])).toEqual([["photo-1.png", "crust-texture"], ["photo-3.png", "flour-board"]]);
+    const item2 = join(repo, "content", "menu", "item-2.json");
+    writeFileSync(item2, bytesOf({ ...(JSON.parse(readFileSync(item2, "utf8")) as object), imageKind: "customer_cms" }));
+    expect(await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }).then(() => "ok", (e: { code?: string }) => e.code ?? String(e))).toBe("CONTENT_GENERATED_AS_SHOP");
+    writeFileSync(item2, bytesOf({ ...(JSON.parse(readFileSync(item2, "utf8")) as object), imageKind: "generated" }));
+    // a re-delivery that disagrees with a recorded entry (another material id for the same file) is refused
+    expect(await code(deliver({ materials: [{ ...ok[0]!, material_id: "other-id" }], slots: [{ ...slot, material_ids: ["other-id"] }] }))).toBe("DELIVERY_RECORD_CONFLICT");
     // a shop photo (B): a valid rights record of its own picture is written (index + private record); another picture's is refused
     writeFileSync(join(repo, "media", "shop-1.png"), solidPng(640, 480, [10, 20, 30]));
     const rights = fictionalRights(readFileSync(join(repo, "media", "shop-1.png")));
-    expect(await code(writeDelivery({ repo, provenanceDir: join(tmp(), "p"), approval, materials: ok, slots: [slot], shopPhotos: [{ file: "shop-1.png", rights: { ...rights, sha256: "e".repeat(64) } }] }))).toBe("DELIVERY_RIGHTS_INVALID");
+    expect(await code(deliver({ shopPhotos: [{ file: "shop-1.png", rights: { ...rights, sha256: "e".repeat(64) } }] }))).toBe("DELIVERY_RIGHTS_INVALID");
     const prov = join(tmp(), "p");
-    const w = await writeDelivery({ repo, provenanceDir: prov, approval, materials: ok, slots: [slot], shopPhotos: [{ file: "shop-1.png", rights }] });
+    const w = await deliver({ provenanceDir: prov, shopPhotos: [{ file: "shop-1.png", rights }] });
     expect(w.written).toEqual(["content/generated-materials.json", "content/photo-slots.json", "content/photo-provenance.json"]);
     expect(JSON.parse(readFileSync(join(prov, `${rights.sha256}.json`), "utf8"))).toMatchObject({ class: "B", provided_by: "店主" });
-    expect(JSON.parse(readFileSync(join(prov, `${ok[0]!.sha256}.json`), "utf8"))).toEqual({ schema: "sr_photo_provenance_v1", class: "A", sha256: ok[0]!.sha256, material_id: "crust-texture", materials_approval_sha256: "c".repeat(64) });
+    expect(JSON.parse(readFileSync(join(prov, `${ok[0]!.sha256}.json`), "utf8"))).toEqual({ schema: "sr_photo_provenance_v1", class: "A", sha256: ok[0]!.sha256, material_id: "crust-texture", materials_approval_sha256: MA });
   });
 });
