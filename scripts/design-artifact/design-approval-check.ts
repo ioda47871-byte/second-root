@@ -54,11 +54,11 @@ export async function designApprovalMain(argv: string[], repoRoot: string = REPO
       // exactly the bytes whose SHA-256 is printed as review_sha256
       const c = await checkDesignApproval({ bundleDir: args.bundle, reviewPath: args.review, repo: repoRoot, mode: "draft" });
       const w = await writeDesignReviewPage(c.review, c.run, { outDir: args.out, repo: repoRoot });
-      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, request_id: c.request_id, bundle_sha256: c.bundle_sha256, verdicts: c.verdicts });
+      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, request_id: c.request_id, bundle_sha256: c.bundle_sha256, verdicts: c.verdicts, ...(c.run.synthetic ? { synthetic: true } : {}) });
       return 0;
     }
     const c = await checkDesignApproval({ bundleDir: args.bundle, reviewPath: args.review, repo: repoRoot, mode: args.draft ? "draft" : "gate", ...(args.approval ? { approvalPath: args.approval } : {}) });
-    say({ status: "passed", mode: args.draft ? "draft" : "gate", request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, page_sha256: c.page_sha256, verdicts: c.verdicts, approval: c.approval });
+    say({ status: "passed", mode: args.draft ? "draft" : "gate", request_id: c.request_id, bundle_sha256: c.bundle_sha256, review_sha256: c.review_sha256, page_sha256: c.page_sha256, verdicts: c.verdicts, approval: c.approval, ...(c.run.synthetic ? { synthetic: true } : {}) });
     return 0;
   } catch (error) {
     if (!(error instanceof DesignApprovalStop)) throw error;

@@ -48,7 +48,7 @@ const STAMP = "\\d{8}T\\d{6}Z";
 /**
  * Fixed codes only: this module's own (APPROVAL_ID_INVALID, APPROVAL_ID_RESERVED, JAIL_ACTIVE, JAIL_STATE_UNKNOWN,
  * REVIEW_LOCKED, REVIEW_LOCK_FAILED, RUNS_DIR_UNSAFE, RECEIPT_MISSING, RECEIPT_AMBIGUOUS, RECEIPT_UNSAFE, RECEIPT_INVALID,
- * RECEIPT_NOT_SUCCEEDED, RECEIPT_ALLOWLIST_MISMATCH, RUN_NOT_IN_APPROVAL_WINDOW, APPROVAL_MISMATCH, PLAN_MISMATCH,
+ * RECEIPT_NOT_SUCCEEDED, RECEIPT_SYNTHETIC, RECEIPT_ALLOWLIST_MISMATCH, RUN_NOT_IN_APPROVAL_WINDOW, APPROVAL_MISMATCH, PLAN_MISMATCH,
  * PACKET_MISMATCH, SEALED_BUNDLE_MISMATCH), the approval reader's (PACKET_UNREADABLE, PACKET_NOT_APPROVED, ...), and the
  * reused modules' (bundle.ts BundleStop, local-inbox.ts InboxStop, preview.ts PreviewStop, transport.ts DeliveryStop).
  */
@@ -135,6 +135,7 @@ type Receipt = {
   approved_design?: unknown;
   materials_sha256?: unknown;
   ja_renderings_sha256?: unknown;
+  synthetic?: unknown;
   counts?: { pc?: unknown; sp?: unknown; total?: unknown; stopped?: unknown; photo?: unknown } | null;
   timings?: { started_at?: unknown; finished_at?: unknown } | null;
 };
@@ -220,6 +221,8 @@ async function checkReceipt(r: Receipt, approvalId: string, runDir: string, stat
  */
 async function checkRequestReceipt(r: Receipt, id: string, runDir: string, stateDir: string, d: DeliverReviewDeps): Promise<ExpectedRecord> {
   if (!r || typeof r !== "object" || r.schema !== "imagefirst_worker_receipt_v1" || r.mode !== "request") stop("RECEIPT_INVALID");
+  // DEV-303 (owner goal 2026-11-26): the worker never writes a synthetic receipt; a rehearsal bundle is never delivered here
+  if (r.synthetic !== undefined) stop("RECEIPT_SYNTHETIC");
   if (r.approval_id !== id || r.request_id !== id || r.plan_id !== id || typeof r.commit !== "string" || !/^[0-9a-f]{40}$/.test(r.commit)) stop("RECEIPT_INVALID");
   if (typeof r.request_sha256 !== "string" || r.request_sha256 !== r.packet_sha256 || (r.kind !== "real_shop" && r.kind !== "fictional") || r.direction !== "request") stop("RECEIPT_INVALID");
   if (typeof r.run_dir !== "string" || (await realpath(r.run_dir).catch(() => null)) !== runDir) stop("RECEIPT_INVALID");

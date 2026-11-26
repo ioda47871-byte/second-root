@@ -193,8 +193,11 @@ export function parseDesignApproval(bytes: Buffer): DesignApproval {
 
 /** One design image of the delivered run, its bytes as the bundle verified them. */
 export type RunImage = { file: string; sha256: string; bytes: Buffer };
-/** shop / kind (DEV-303 §6.1 change 6): the bundle manifest's, so a later stage can hold the run to its own shop. */
-export type DeliveredRun = { request_id: string; bundle_sha256: string; shop: string; kind: "real_shop" | "fictional" | null; images: { pc: RunImage[]; sp: RunImage[] } };
+/**
+ * shop / kind (DEV-303 §6.1 change 6): the bundle manifest's, so a later stage can hold the run to its own shop.
+ * synthetic (DEV-303, owner goal 2026-11-26): only on a synthetic rehearsal bundle (rehearsal.ts; never generated).
+ */
+export type DeliveredRun = { request_id: string; bundle_sha256: string; shop: string; kind: "real_shop" | "fictional" | null; synthetic?: true; images: { pc: RunImage[]; sp: RunImage[] } };
 
 /** The delivered design run: the sealed bundle verifies, it is a design (not image materials), its PC / SP parts. */
 export async function readDeliveredRun(bundleDir: string): Promise<DeliveredRun> {
@@ -214,7 +217,7 @@ export async function readDeliveredRun(bundleDir: string): Promise<DeliveredRun>
       .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
   const images = { pc: of("pc"), sp: of("sp") };
   if (images.pc.length === 0 || images.sp.length === 0 || images.pc.length + images.sp.length !== parts.length) stop("DESIGN_BUNDLE_NOT_A_DESIGN");
-  return { request_id: v.manifest.bundle_id, bundle_sha256: v.bundle_sha256, shop: v.manifest.shop, kind: v.manifest.kind ?? null, images };
+  return { request_id: v.manifest.bundle_id, bundle_sha256: v.bundle_sha256, shop: v.manifest.shop, kind: v.manifest.kind ?? null, ...(v.manifest.synthetic === true ? { synthetic: true as const } : {}), images };
 }
 
 const sameImages = (a: DesignImages, run: DeliveredRun["images"]) =>
@@ -268,7 +271,7 @@ code { font-size: 0.75rem; }
 <h1>${e(review.request_id)} — デザイン審査（非公開・ローカル）</h1>
 <p>bundle SHA-256: <code>${e(run.bundle_sha256)}</code>。審査: ${e(review.reviewer)}（${e(review.reviewed_at)}）。審査は助言で、判定はオーナーが下す。生成の成功だけでは次の段へ進まない。</p>
 <p>オーナーが承認・要修正・却下を決めたら、Claude がその旨を承認の記録に書く（このページの index.html の SHA-256 を page_sha256 に、審査の記録の SHA-256 を review_sha256 に）。これはオーナー本人の署名ではない。</p>
-<div class="figs">${figures}</div>
+${run.synthetic ? `<p class="synthetic" style="border: 2px dashed var(--fail); padding: 8px 12px;"><strong>合成（リハーサル）: この run は生成の結果ではない。手元で描いた合成画像で、承認しても本当のデザインの承認にはならない。</strong></p>\n` : ""}<div class="figs">${figures}</div>
 ${axes}
 </main>
 </body>
@@ -368,10 +371,10 @@ export async function checkDesignApproval(o: { bundleDir: string; reviewPath: st
 }
 
 /** What a later stage (change 6: materials after approval) receives: the approved run, its images and the records' SHA-256s. */
-export type ApprovedDesignRun = { request_id: string; bundle_sha256: string; shop: string; kind: "real_shop" | "fictional" | null; review_sha256: string; approval_sha256: string; page_sha256: string; images: { pc: RunImage[]; sp: RunImage[] } };
+export type ApprovedDesignRun = { request_id: string; bundle_sha256: string; shop: string; kind: "real_shop" | "fictional" | null; synthetic?: true; review_sha256: string; approval_sha256: string; page_sha256: string; images: { pc: RunImage[]; sp: RunImage[] } };
 
 /** The approved design run, or a DesignApprovalStop: the gate check above (decision approve, no axis fail). */
 export async function approvedDesignRun(o: { bundleDir: string; reviewPath: string; approvalPath: string; repo: string }): Promise<ApprovedDesignRun> {
   const c = await checkDesignApproval({ ...o, mode: "gate" });
-  return { request_id: c.request_id, bundle_sha256: c.bundle_sha256, shop: c.run.shop, kind: c.run.kind, review_sha256: c.review_sha256, approval_sha256: c.approval!.sha256, page_sha256: c.page_sha256, images: c.run.images };
+  return { request_id: c.request_id, bundle_sha256: c.bundle_sha256, shop: c.run.shop, kind: c.run.kind, ...(c.run.synthetic ? { synthetic: true as const } : {}), review_sha256: c.review_sha256, approval_sha256: c.approval!.sha256, page_sha256: c.page_sha256, images: c.run.images };
 }

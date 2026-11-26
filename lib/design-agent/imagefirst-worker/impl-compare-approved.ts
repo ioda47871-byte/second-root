@@ -179,6 +179,8 @@ export type ImplCompareRecord = {
   passing: false;
   status: ApprovedCompareReport["status"];
   request_id: string;
+  /** DEV-303 (owner goal 2026-11-26): only when the approved run is a synthetic rehearsal bundle (never a generated design). */
+  synthetic?: true;
   approved: { bundle_sha256: string; review_sha256: string; approval_sha256: string };
   site: { files: { path: string; sha256: string; bytes: number }[] };
   viewports: Record<
@@ -285,6 +287,7 @@ export async function runImplCompare(o: { bundleDir: string; reviewPath: string;
     passing: false,
     status: report.status,
     request_id: a.request_id,
+    ...(a.synthetic ? { synthetic: true as const } : {}),
     approved: { bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256 },
     site: { files: site.files },
     viewports,
