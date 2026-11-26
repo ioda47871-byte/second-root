@@ -4,6 +4,11 @@
  * PC 1440 and SP 390 (JS off, every request outside the built site blocked).
  *
  *   npx tsx experiments/pages-cms/q1-check.ts --out <empty dir outside the repository>
+ *   npx tsx experiments/pages-cms/q1-check.ts --out <dir> --repo <a shop repository> --site <bakery|cafe>
+ *
+ * DEV-364 P0: --repo checks ONE given shop repository (content/ + media/, e.g. after a Pages CMS update) instead of the
+ * built-in fixtures: it is built with the named site's page code (its photo slots applied) and measured at PC and SP,
+ * after the same controls. The repository is only read.
  *
  * Limits (review L5): "cut off" is horizontal only (vertical clipping is not detected), and overlap covers the menu
  * items only (not other sections).
@@ -244,16 +249,49 @@ export async function runQ1(o: { outDir: string; browser: Browser; only?: string
   }
 }
 
+/**
+ * DEV-364 P0: the direct checks on ONE given shop repository, built here (into a temporary folder that is removed) with
+ * the named site's page code, measured at PC and SP after the controls. Reported as "<site>-<name>".
+ */
+export async function runQ1OnRepo(o: { outDir: string; browser: Browser; repo: string; siteId: string; name?: string }): Promise<{ fixture: string; findings: Q1Finding[] }> {
+  const site = SHOP_SITES.find((s) => s.id === o.siteId);
+  if (!site) throw new Error("Q1_SITE_UNKNOWN");
+  const out = await safeOutDir(o.outDir);
+  const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1-repo-"));
+  try {
+    const missed = await controlCheck(o.browser, work, out);
+    if (missed.length > 0) throw new Error(`Q1_CONTROL_MISSED ${missed.join(",")}`);
+    const name = `${site.id}-${o.name ?? "repo"}`;
+    const dist = join(work, "dist");
+    const built = await buildSite({ repo: resolve(o.repo), outDir: dist, today: Q1_TODAY, site });
+    const findings: Q1Finding[] = [];
+    for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out, built.slots)));
+    await writeFile(join(out, "q1-report.json"), `${JSON.stringify({ schema: "pages_cms_q1_experiment_v0", fixtures: [name], viewports: VIEWPORTS, findings }, null, 2)}\n`);
+    return { fixture: name, findings };
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+}
+
 if (require.main === module) {
   const i = process.argv.indexOf("--out");
   const outDir = i > 0 ? process.argv[i + 1] : undefined;
-  if (!outDir) {
+  const ri = process.argv.indexOf("--repo");
+  const si = process.argv.indexOf("--site");
+  const repoArg = ri > 0 ? process.argv[ri + 1] : undefined;
+  const siteArg = si > 0 ? process.argv[si + 1] : undefined;
+  if (!outDir || (ri > 0) !== (si > 0) || (ri > 0 && (!repoArg || !siteArg))) {
     process.stdout.write('{"status":"refused","code":"ARGS_INVALID"}\n');
     process.exit(2);
   }
   (async () => {
     const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
     try {
+      if (repoArg && siteArg) {
+        const one = await runQ1OnRepo({ outDir, browser, repo: repoArg, siteId: siteArg });
+        process.stdout.write(`${JSON.stringify({ status: one.findings.length ? "findings" : "clean", fixtures: 1, findings: one.findings }, null, 2)}\n`);
+        process.exit(one.findings.length ? 1 : 0);
+      }
       const r = await runQ1({ outDir, browser });
       process.stdout.write(`${JSON.stringify({ status: r.findings.length ? "findings" : "clean", fixtures: r.fixtures.length, findings: r.findings }, null, 2)}\n`);
       process.exit(r.findings.length ? 1 : 0);
