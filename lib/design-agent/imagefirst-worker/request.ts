@@ -532,7 +532,14 @@ function validationOf(run: RequestRunInputs): RequestValidation {
  *                     under their own names), each with its SHA-256, media type, size and staged path.
  *   entry_pins        what the worker passes the entry to re-check (request-cycle.ts requestArgv).
  *   plan              the whole plan object (per-picture prompts included); plan_sha256 is its canonical form's SHA-256.
+ *   commit / on_origin_develop / clean
+ *                     the checkout the print was built from (PR #361 review M1: read-only git, injected by the CLI). The
+ *                     worker builds its plan in its own clone at origin/develop, so the print is the worker's only from a
+ *                     clean checkout at origin/develop; the owner still compares plan_sha256 with the worker's precheck /
+ *                     receipt before approving.
  *
+ * It reads the caller's HOME (the facts pack, the case study, and the photo-materials run a design names): run it as the
+ * worker's user, or with that HOME.
  * A design request's photo inputs whose photo-materials run is not there yet are "unchecked": their attachments are not
  * listed (attachments_complete: false). The output holds the facts values the prompt quotes: it is for the owner's review.
  */
@@ -540,29 +547,49 @@ export const PLAN_PRINT_SCHEMA = "sr_imagefirst_plan_print_v1";
 /** Where the image call stages a run's attachments (inside the run's fresh temporary Codex work dir; sandbox.ts). */
 export const STAGED_INPUTS_DIR = "<codex work dir>/inputs";
 export type PlanAttachment = { order: number; kind: "photo_input" | "reference"; name: string; staged_name: string; staged_path: string; sha256: string; media_type: string; bytes: number; id?: string; case_id?: string; image?: string };
+/** HEAD, origin/develop and a clean tree, as the worker's gitCommitState reads them (structural; this module starts no process). */
+export type PlanCheckout = { head: string | null; base: string | null; clean: boolean };
 export type RequestPlanPrint = RequestValidation & {
   schema: typeof PLAN_PRINT_SCHEMA;
   codex_invoked: false;
+  commit: string | null;
+  on_origin_develop: boolean;
+  clean: boolean;
   sent: { codex_runs: 1; max_images: number; prompt_sha256: string; prompt_chars: number; prompt: string; reference_dir_token: string | null; staged_dir: string; attachments: PlanAttachment[]; attachments_complete: boolean };
   entry_pins: { expected_plan_sha256: string; expected_prompt_sha256: string; expected_prompt_chars: number };
   plan: RequestPlan | PhotoPlan;
 };
 
-export async function printRequestPlan(o: { file: string; home: string; repo: string }): Promise<RequestPlanPrint> {
-  const run = await loadRequestFileOffline(o);
-  const plan = run.plan;
+/**
+ * The `--image` attachments of a loaded run in exec order (the image call's one exec): the input images first
+ * (stageInputBytes renames them photo-<n>.png in the given order), then the references under their own names (a whole
+ * page's success-case originals, or a materials run's approved PC / SP pictures, always PNG). Unchecked photo inputs list
+ * nothing. Pure.
+ */
+export function planAttachmentsOf(run: Pick<RequestRunInputs, "photos" | "references" | "approvedDesign">): PlanAttachment[] {
   const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
   const attachments: PlanAttachment[] = [];
   const add = (a: Omit<PlanAttachment, "order" | "staged_path">) => attachments.push({ order: attachments.length + 1, ...a, staged_path: `${STAGED_INPUTS_DIR}/${a.staged_name}` });
-  // the exec order (the image call's one exec): the input images (stageInputBytes renames them photo-<n>.png), then the references
   if (Array.isArray(run.photos)) run.photos.forEach((p, n) => add({ kind: "photo_input", name: p.name, staged_name: `photo-${n + 1}.png`, sha256: sha(p.bytes), media_type: "image/png", bytes: p.bytes.length }));
   for (const r of run.references ?? []) add({ kind: "reference", id: r.id, case_id: r.case_id, name: r.name, staged_name: r.name, sha256: sha(r.bytes), media_type: r.media_type, bytes: r.bytes.length });
   for (const r of run.approvedDesign?.references ?? []) add({ kind: "reference", id: r.id, image: r.image, name: r.name, staged_name: r.name, sha256: sha(r.bytes), media_type: "image/png", bytes: r.bytes.length });
+  return attachments;
+}
+
+export async function printRequestPlan(o: { file: string; home: string; repo: string; checkout: () => Promise<PlanCheckout> }): Promise<RequestPlanPrint> {
+  const run = await loadRequestFileOffline(o);
+  const plan = run.plan;
+  const attachments = planAttachmentsOf(run);
   const hasRefs = attachments.some((a) => a.kind === "reference");
+  const c = await o.checkout().catch(() => null);
+  const commit = c?.head && /^[0-9a-f]{40}$/.test(c.head) ? c.head : null;
   return {
     schema: PLAN_PRINT_SCHEMA,
     ...validationOf(run),
     codex_invoked: false,
+    commit,
+    on_origin_develop: commit !== null && c?.base === commit,
+    clean: c?.clean === true,
     sent: { codex_runs: 1, max_images: plan.batch.images, prompt_sha256: plan.batch.sha256, prompt_chars: plan.batch.chars, prompt: plan.batch.prompt, reference_dir_token: hasRefs ? REFERENCE_DIR_TOKEN : null, staged_dir: STAGED_INPUTS_DIR, attachments, attachments_complete: run.photos !== "unchecked" },
     entry_pins: { expected_plan_sha256: plan.plan_sha256, expected_prompt_sha256: plan.batch.sha256, expected_prompt_chars: plan.batch.chars },
     plan,

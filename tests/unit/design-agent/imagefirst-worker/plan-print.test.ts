@@ -72,6 +72,10 @@ const REFS = ["CP-001", "CP-002", "CP-003"].map((case_id, n) => {
   return { id: `ref-${n + 1}`, case_id, name: `ref-${n + 1}.webp`, sha256: sha(bytes), bytes: bytes.length };
 });
 
+const HEAD = "c".repeat(40);
+/** A clean checkout at origin/develop (the CLI reads it with git; injected here). */
+const AT_DEVELOP = async () => ({ head: HEAD, base: HEAD, clean: true });
+
 /** A home with the shop's private files, and the request outside the repository (where Claude writes it before validating). */
 function world() {
   const home = tmp("sr-plan-home-");
@@ -87,9 +91,9 @@ function world() {
 describe("DEV-303 --print-plan: exactly what the one Codex run of a whole_page request would be sent (offline)", () => {
   it("the prompt, the references (ids, SHA-256, staged paths) and the pins; plan_sha256 is --validate-request's", async () => {
     const w = world();
-    const p = await printRequestPlan({ file: w.file, home: w.home, repo: REPO });
+    const p = await printRequestPlan({ file: w.file, home: w.home, repo: REPO, checkout: AT_DEVELOP });
     const v = await validateRequestFile({ file: w.file, home: w.home, repo: REPO });
-    expect(p).toMatchObject({ schema: PLAN_PRINT_SCHEMA, codex_invoked: false, ...v });
+    expect(p).toMatchObject({ schema: PLAN_PRINT_SCHEMA, codex_invoked: false, commit: HEAD, on_origin_develop: true, clean: true, ...v });
     expect(p.plan_sha256).toBe(v.plan_sha256);
     expect(p.plan.plan_sha256).toBe(v.plan_sha256);
     expect(v).toMatchObject({ request_id: ID, kind: "real_shop", stage: "design", layout: "whole_page", request_sha256: sha(REQUEST), facts_sha256: sha(FACTS_BYTES) });
@@ -108,9 +112,21 @@ describe("DEV-303 --print-plan: exactly what the one Codex run of a whole_page r
     const plan = p.plan as { viewports: Record<string, { parts: { name: string; prompt: string }[] }> };
     expect(Object.values(plan.viewports).flatMap((vp) => vp.parts.map((x) => x.name))).toEqual(["pc-1", "sp-1"]);
     // deterministic, and nothing was written
-    expect((await printRequestPlan({ file: w.file, home: w.home, repo: REPO })).plan_sha256).toBe(p.plan_sha256);
+    expect((await printRequestPlan({ file: w.file, home: w.home, repo: REPO, checkout: AT_DEVELOP })).plan_sha256).toBe(p.plan_sha256);
     expect(readdirSync(w.home)).toEqual(["second-root-shops"]);
     expect(readdirSync(join(w.home, "second-root-shops", SHOP)).sort()).toEqual([CASE_STUDY_FILE, "facts-pack.json"].sort());
+  });
+
+  it("PR #361 review M1: names the checkout it was built from (another commit, a dirty tree, unreadable git)", async () => {
+    const w = world();
+    const of = async (checkout: () => Promise<{ head: string | null; base: string | null; clean: boolean }>) => {
+      const p = await printRequestPlan({ file: w.file, home: w.home, repo: REPO, checkout });
+      return [p.commit, p.on_origin_develop, p.clean];
+    };
+    expect(await of(async () => ({ head: HEAD, base: "d".repeat(40), clean: true }))).toEqual([HEAD, false, true]);
+    expect(await of(async () => ({ head: HEAD, base: HEAD, clean: false }))).toEqual([HEAD, true, false]);
+    expect(await of(async () => ({ head: null, base: null, clean: false }))).toEqual([null, false, false]);
+    expect(await of(async () => Promise.reject(new Error("git failed")))).toEqual([null, false, false]);
   });
 
   it("refuses with the same fixed codes as --validate-request", async () => {
@@ -118,8 +134,8 @@ describe("DEV-303 --print-plan: exactly what the one Codex run of a whole_page r
     const codeOf = (q: Promise<unknown>) => q.then(() => "resolved", (e: unknown) => (e instanceof PromptStop ? e.code : String(e)));
     const misnamed = join(dirname(w.file), "req-test-shop-p-2.json");
     writeFileSync(misnamed, REQUEST);
-    expect(await codeOf(printRequestPlan({ file: misnamed, home: w.home, repo: REPO }))).toBe("REQUEST_ID_MISMATCH");
-    expect(await codeOf(printRequestPlan({ file: w.file, home: tmp("sr-plan-empty-"), repo: REPO }))).toBe("FACTS_MISSING");
+    expect(await codeOf(printRequestPlan({ file: misnamed, home: w.home, repo: REPO, checkout: AT_DEVELOP }))).toBe("REQUEST_ID_MISMATCH");
+    expect(await codeOf(printRequestPlan({ file: w.file, home: tmp("sr-plan-empty-"), repo: REPO, checkout: AT_DEVELOP }))).toBe("FACTS_MISSING");
   });
 
   it("the CLI (inside a requester jail unit too): pretty JSON, plan_sha256 = --validate-request's; refusals as one line; nothing written", () => {
@@ -128,8 +144,12 @@ describe("DEV-303 --print-plan: exactly what the one Codex run of a whole_page r
     const cli = (args: string[], home = w.home) => spawnSync(process.execPath, ["--import", "tsx", ENTRY, "0::/system.slice/sr-jail-claude.service\n", ...args], { cwd: REPO, encoding: "utf8", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home } as unknown as NodeJS.ProcessEnv, timeout: 60_000 });
     const printed = cli(["--print-plan", w.file]);
     expect(printed.status).toBe(0);
-    const p = JSON.parse(printed.stdout) as { status: string; code: null; plan_sha256: string; codex_invoked: boolean; sent: { prompt: string; attachments: { id: string; sha256: string; staged_path: string }[] } };
+    const p = JSON.parse(printed.stdout) as { status: string; code: null; plan_sha256: string; codex_invoked: boolean; commit: string | null; on_origin_develop: boolean; clean: boolean; sent: { prompt: string; attachments: { id: string; sha256: string; staged_path: string }[] } };
     expect([p.status, p.code, p.codex_invoked]).toEqual(["plan", null, false]);
+    // the CLI's own checkout, read with git (read only)
+    const g = (...a: string[]) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" }).stdout.trim();
+    const head = g("rev-parse", "HEAD");
+    expect(p).toMatchObject({ commit: head, on_origin_develop: head === g("rev-parse", "origin/develop"), clean: g("status", "--porcelain", "--untracked-files=all") === "" });
     const validated = cli(["--validate-request", w.file]);
     expect(validated.status).toBe(0);
     expect(JSON.parse(validated.stdout.trim())).toMatchObject({ status: "valid", plan_sha256: p.plan_sha256 });
@@ -145,7 +165,7 @@ describe("DEV-303 --print-plan: exactly what the one Codex run of a whole_page r
 
   it("the worker's precheck pins the same plan_sha256, and the FAKE Codex receives exactly the printed prompt and attachments", async () => {
     const w = world();
-    const p = await printRequestPlan({ file: w.file, home: w.home, repo: REPO });
+    const p = await printRequestPlan({ file: w.file, home: w.home, repo: REPO, checkout: AT_DEVELOP });
     // the worker side: a clone on origin/develop, root's private copy of the request, the private dirs
     const repo = workerRepo();
     const runsDir = join(w.home, "sr-runs");
@@ -158,7 +178,7 @@ describe("DEV-303 --print-plan: exactly what the one Codex run of a whole_page r
     const ledgerDir = join(w.home, "ledger");
     const opts = { repoRoot: repo, stateDir, runsDir, home: w.home, requestId: ID, requestSha256: sha(REQUEST), requestFile };
     const pre = await precheckRequestCycle(opts, { commit: () => gitCommitState(repo, ENV), ledger: openLedger(ledgerDir), now: () => NOW });
-    expect(pre.report).toMatchObject({ status: "would_run", approval_id: ID });
+    expect(pre.report).toMatchObject({ status: "would_run", approval_id: ID, plan_sha256: p.plan_sha256 });
     expect(pre.run!.planSha256).toBe(p.plan_sha256);
 
     // the fake Codex records its stdin and `--image` files (with their SHA-256 while they are staged)

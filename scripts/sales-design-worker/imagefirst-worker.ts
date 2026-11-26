@@ -83,7 +83,10 @@
  * checks, then exactly what the request's ONE Codex run would be sent (request.ts printRequestPlan): the batch prompt, the
  * attachments in exec order (reference ids, SHA-256, staged paths), the entry's pins and the whole plan; plan_sha256 is
  * the one --validate-request, the worker and the entry compute. Pretty JSON {"status":"plan",...} exit 0, or the same
- * refusal line as --validate-request exit 2. It holds the facts values the prompt quotes (for the owner's review).
+ * refusal line as --validate-request exit 2. It holds the facts values the prompt quotes (for the owner's review). It
+ * names the checkout it was built from (commit, on_origin_develop, clean: read-only git): the worker's plan is built in
+ * its own clone at origin/develop, so print from a clean checkout there and compare plan_sha256 with the worker's
+ * precheck / receipt. It reads this user's HOME (facts pack, case study, photo-materials runs): run it as the worker's user.
  *
  * DEV-303 (owner decision 2026-11-24), two stages: a request with stage "photo_materials" makes 1..6 picture materials
  * in ONE Codex run (its line adds "stage" and, succeeded, "photo_files": [{name, sha256}]); they are sealed and handed to
@@ -162,7 +165,7 @@ export async function main(readCgroup?: () => Promise<string>): Promise<number> 
     if (process.argv.length !== 4) return (say({ status: "refused", code: "USAGE", invoked: false }), 2);
     try {
       const o = { file: process.argv[3]!, home: homedir(), repo: REPO };
-      if (process.argv[2] === "--print-plan") process.stdout.write(`${JSON.stringify({ status: "plan", code: null, ...(await printRequestPlan(o)) }, null, 2)}\n`);
+      if (process.argv[2] === "--print-plan") process.stdout.write(`${JSON.stringify({ status: "plan", code: null, ...(await printRequestPlan({ ...o, checkout: () => gitCommitState(REPO, childEnvironment(process.env)) })) }, null, 2)}\n`);
       else say({ status: "valid", code: null, ...(await validateRequestFile(o)) });
       return 0;
     } catch (error) {
