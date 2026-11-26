@@ -8,6 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import type { Announcement, Category, MenuItem, ShopInfo } from "./content-model";
+import { GENERATED_RECORD, generatedRecord } from "./photos";
 
 /** A solid-colour PNG (synthetic). */
 export function solidPng(w: number, h: number, rgb: [number, number, number]): Buffer {
@@ -40,7 +41,8 @@ export function solidPng(w: number, h: number, rgb: [number, number, number]): B
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[]; media: Record<string, Buffer> };
+/** generated: the media file names handed over as generated materials (written to the handover record). */
+export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[]; media: Record<string, Buffer>; generated?: string[] };
 
 const SHOP: ShopInfo = {
   name: "架空のパン屋 こむぎ舎",
@@ -81,6 +83,7 @@ function items(n: number): { menu: MenuItem[]; media: Record<string, Buffer> } {
       priceDisplay: PRICES[k % PRICES.length]!,
       image: file ? `/media/${file}` : "",
       imageAlt: file ? `試験の画像 ${k + 1}` : "",
+      imageKind: k % 5 === 4 ? ("shop" as const) : ("generated" as const),
       visible: true,
       soldOut: false,
       displayOrder: k,
@@ -143,7 +146,32 @@ function makeFixtures(): Record<string, Fixture> {
   const prices = ["324円（税込）", "300円（税別）", "¥1,280", "時価", "", "本体1,000円（税込1,080円）"];
   trade.menu = trade.menu.map((m, k) => ({ ...m, priceDisplay: prices[k]!, ...(k % 2 === 0 ? { allergens: ["小麦", "乳", "卵"], shelfLife: k === 0 ? "当日中" : "翌日まで" } : {}) }));
   f["trade-extensions"] = trade;
+  f["photos-large-odd"] = photoVariety(base(6), "item");
   return f;
+}
+
+/**
+ * PR (4): pictures at the edges of the photo limits (photos.ts), every one allowed: a large one, the widest and the
+ * tallest ratio (3:1, 1:3), the smallest side, a square; generated materials and shop photos mixed.
+ */
+export const PHOTO_VARIETY: { w: number; h: number; kind: "generated" | "shop" }[] = [
+  { w: 3600, h: 2400, kind: "generated" },
+  { w: 1200, h: 400, kind: "generated" },
+  { w: 400, h: 1200, kind: "shop" },
+  { w: 320, h: 320, kind: "generated" },
+  { w: 2000, h: 2000, kind: "shop" },
+  { w: 960, h: 340, kind: "generated" },
+];
+export function photoVariety(fx: Fixture, prefix: string): Fixture {
+  const media: Record<string, Buffer> = {};
+  const menu = fx.menu.map((m, k) => {
+    const p = PHOTO_VARIETY[k % PHOTO_VARIETY.length]!;
+    const file = `${prefix}-photo-${k + 1}.png`;
+    media[file] = solidPng(p.w, p.h, COLOURS[k % 3]!);
+    return { ...m, image: `/media/${file}`, imageAlt: `試験の画像 ${k + 1}`, imageKind: p.kind };
+  });
+  // the generated ones were handed over with the record (review #365 M1); the shop ones are the shop's own
+  return { ...fx, menu, media, generated: menu.filter((m) => m.imageKind === "generated").map((m) => m.image.replace(/^\/media\//, "")) };
 }
 
 /** Writes one fixture as a shop repository (content/ + media/) under `dir`. */
@@ -155,6 +183,7 @@ export async function writeFixture(dir: string, fx: Fixture): Promise<void> {
   for (const m of fx.menu) await writeFile(join(dir, "content", "menu", `${m.id}.json`), json(m));
   for (const n of fx.news) await writeFile(join(dir, "content", "news", `${n.id}.json`), json(n));
   for (const [name, bytes] of Object.entries(fx.media)) await writeFile(join(dir, "media", name), bytes);
+  if (fx.generated) await writeFile(join(dir, GENERATED_RECORD), json(generatedRecord(Object.fromEntries(fx.generated.map((n) => [n, fx.media[n]!])))));
 }
 
 export const Q1_TODAY = "2026-12-01";

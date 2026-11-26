@@ -1,22 +1,25 @@
 /**
  * DEV-303 §6.1 row 12, first experiment: the static build of a shop repository (what Cloudflare Pages would run on
  * each commit; here only locally). It reads content/ (content-model.ts), renders the shop's own page code (a ShopSite,
- * shop-site.ts: the bakery unless another site is given), copies the pictures the content names from media/ and writes dist/ (index.html, style.css, media/)
- * plus the generated .pages.yml next to the content. No server, no network, no script on the page.
+ * shop-site.ts: the bakery unless another site is given), copies the pictures the page shows from media/ and writes
+ * dist/ (index.html, style.css, media/) plus the generated .pages.yml next to the content. No server, no network, no
+ * script on the page.
  *
- * A picture the content names but the repository does not have is reported (missing_media) and the build stops
- * (BUILD_MEDIA_MISSING): a failed build keeps the last good publish on Cloudflare Pages (Q2), so stopping is safe.
+ * PR (4): every picture the page shows is checked first (photos.ts: missing, type, bytes, pixel size, ratio) and the
+ * build stops with a CONTENT_PHOTO_* code; a failed build keeps the last good publish on Cloudflare Pages (Q2), so
+ * stopping is safe. Pictures are copied unchanged (no build-time optimisation: see the plan, PR (4) evaluation).
  */
 import { copyFile, lstat, mkdir, readdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { loadContent } from "./content-model";
 import { pagesYaml } from "./pages-config";
+import { checkPhotos, type PhotoCheck } from "./photos";
 import { priceDisplayReport, type PriceReport } from "./price-display";
 import { BAKERY_SITE, type ShopSite } from "./shop-site";
 
 export class BuildError extends Error {
   constructor(
-    readonly code: "BUILD_MEDIA_MISSING" | "BUILD_OUT_NOT_EMPTY",
+    readonly code: "BUILD_OUT_NOT_EMPTY",
     readonly detail: string,
   ) {
     super(`${code} ${detail}`);
@@ -24,7 +27,7 @@ export class BuildError extends Error {
   }
 }
 
-export type BuildResult = { html: string; css: string; media: string[]; price_report: PriceReport };
+export type BuildResult = { html: string; css: string; media: string[]; photos: PhotoCheck[]; price_report: PriceReport };
 
 /**
  * Builds <repo>/content + media into <outDir> (absent or empty) with the site's profile (fixed name, its trade
@@ -37,16 +40,13 @@ export async function buildSite(o: { repo: string; outDir: string; today: string
   const existing = await lstat(o.outDir).catch(() => null);
   if (existing && (!existing.isDirectory() || (await readdir(o.outDir)).length > 0)) throw new BuildError("BUILD_OUT_NOT_EMPTY", basename(o.outDir));
   const { html, css } = site.render(content, o.today);
-  const named = [...new Set(content.menu.filter((m) => m.visible && m.image).map((m) => m.image.replace(/^\/media\//, "")))].sort();
-  for (const n of named) {
-    const st = await lstat(join(o.repo, "media", n)).catch(() => null);
-    if (!st || !st.isFile()) throw new BuildError("BUILD_MEDIA_MISSING", n);
-  }
+  const photos = await checkPhotos(o.repo, content);
+  const named = photos.map((p) => p.file);
   await mkdir(join(o.outDir, "media"), { recursive: true });
   for (const n of named) await copyFile(join(o.repo, "media", n), join(o.outDir, "media", n));
   await writeFile(join(o.outDir, "index.html"), html);
   await writeFile(join(o.outDir, "style.css"), css);
-  return { html, css, media: named, price_report: priceDisplayReport(content) };
+  return { html, css, media: named, photos, price_report: priceDisplayReport(content) };
 }
 
 /** Writes the generated .pages.yml at the repository root (the CMS configuration, derived from the content model). */

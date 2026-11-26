@@ -2,7 +2,7 @@
 media:
   input: "media"
   output: "/media"
-  extensions: ["jpg", "jpeg", "png", "webp"]
+  extensions: ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"]
   rename: "safe"
 content:
   - name: "menu"
@@ -52,13 +52,25 @@ content:
       - name: "image"
         label: "写真"
         type: "image"
+        description: "JPEG・PNG・WebP、2MB まで、長い辺 4096px まで・1600 万画素まで・短い辺 320px 以上、縦横の比は 3:1 まで（スマートフォンの写真は「中」や「大」のサイズで送ると収まります）"
         options:
-          extensions: ["jpg", "jpeg", "png", "webp"]
+          extensions: ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"]
       - name: "imageAlt"
         label: "写真の説明（読み上げ用）"
         type: "string"
         options:
           maxlength: 120
+      - name: "imageKind"
+        label: "写真の種類"
+        type: "select"
+        default: "generated"
+        description: "イメージ素材（生成した画像）には頁で「イメージ」と表示します。店で撮った写真に差し替えたら「店の写真」にします"
+        options:
+          values:
+            - name: "generated"
+              label: "イメージ素材"
+            - name: "shop"
+              label: "店の写真"
       - name: "soldOut"
         label: "売り切れ"
         type: "boolean"

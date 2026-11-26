@@ -4,7 +4,7 @@
  * announcements, pictures of every shape and none) plus the café's `sizes` extension with its price texts.
  */
 import type { Announcement, Category, MenuItem, ShopInfo } from "./content-model";
-import { solidPng, type Fixture } from "./fixtures";
+import { photoVariety, solidPng, type Fixture } from "./fixtures";
 
 const SHOP: ShopInfo = {
   name: "架空のカフェ 木洩れ日珈琲",
@@ -53,6 +53,7 @@ function items(n: number): { menu: MenuItem[]; media: Record<string, Buffer> } {
       priceDisplay: drink ? "" : "380円（税込）",
       image: file ? `/media/${file}` : "",
       imageAlt: file ? `試験の画像 ${k + 1}` : "",
+      imageKind: k % 5 === 4 ? ("shop" as const) : ("generated" as const),
       visible: true,
       soldOut: false,
       displayOrder: k,
@@ -108,5 +109,6 @@ function make(): Record<string, Fixture> {
           : { ...m, category: "coffee", priceDisplay: "", sizes: [{ label: "S", priceDisplay: "" }, { label: "M", priceDisplay: "本体500円（税込550円）" }] },
   );
   f["sizes-prices"] = sizes;
+  f["photos-large-odd"] = photoVariety(base(6), "cafe");
   return f;
 }

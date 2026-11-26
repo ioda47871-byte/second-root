@@ -31,7 +31,8 @@ const Para = (max: number) =>
     .refine((s) => !/[\u0000-\u0009\u000b-\u001f\u007f]/.test(s), "control_character");
 const Id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 /** A picture path as the image field writes it (media.output + file name); empty when there is none. */
-const MediaPath = z.union([z.literal(""), z.string().regex(/^\/media\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(png|jpe?g|webp)$/)]);
+/** review #365 L3: upper-case extensions (a phone's IMG_0001.JPG) are accepted as they are. */
+const MediaPath = z.union([z.literal(""), z.string().regex(/^\/media\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(png|jpe?g|webp)$/i)]);
 const Hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const Day = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
 /** A real calendar date (2026-02-30 is refused). */
@@ -110,6 +111,12 @@ export const MenuItem = z.strictObject({
   priceDisplay: Line(40).default(""),
   image: MediaPath.default(""),
   imageAlt: Line(120).default(""),
+  /**
+   * PR (4): where the picture comes from. `generated`: a generated image material (MVP_SPEC §7.1) — the page shows it
+   * in a <figure> with <figcaption>イメージ</figcaption> (the rule materials-impl-check.ts checks). `shop`: the shop's
+   * own photo (after handover) — no イメージ label. Absent means generated (the safe side: it is labelled).
+   */
+  imageKind: z.enum(["generated", "shop"]).default("generated"),
   visible: z.boolean().default(true),
   soldOut: z.boolean().default(false),
   displayOrder: z.number().int().min(0).max(9999).default(0),
@@ -184,7 +191,21 @@ export type ShopContent = { shop: ShopInfo; categories: Category[]; menu: MenuIt
 
 export class ContentError extends Error {
   constructor(
-    readonly code: "CONTENT_INVALID" | "CONTENT_DUPLICATE_ID" | "CONTENT_UNKNOWN_CATEGORY" | "CONTENT_TOO_MANY" | "CONTENT_FIXED_CHANGED" | "CONTENT_EXTENSION_OFF",
+    readonly code:
+      | "CONTENT_INVALID"
+      | "CONTENT_DUPLICATE_ID"
+      | "CONTENT_UNKNOWN_CATEGORY"
+      | "CONTENT_TOO_MANY"
+      | "CONTENT_FIXED_CHANGED"
+      | "CONTENT_EXTENSION_OFF"
+      // PR (4) photos (photos.ts)
+      | "CONTENT_PHOTO_MISSING"
+      | "CONTENT_PHOTO_TYPE"
+      | "CONTENT_PHOTO_TOO_LARGE"
+      | "CONTENT_PHOTO_DIMENSIONS"
+      | "CONTENT_PHOTO_TOO_SMALL"
+      | "CONTENT_PHOTO_RATIO"
+      | "CONTENT_GENERATED_AS_SHOP",
     readonly file: string,
   ) {
     super(`${code} ${file}`);
@@ -256,3 +277,6 @@ export function viewOf(c: ShopContent): { shop: ShopInfo; sections: { category: 
   const news = c.news.filter((n) => n.visible).sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0));
   return { shop: c.shop, sections, news };
 }
+
+/** PR (4): whether the page shows any generated image material (each shop's footer then explains the イメージ label). */
+export const shownGenerated = (v: ReturnType<typeof viewOf>) => v.sections.some((s) => s.items.some((m) => m.image !== "" && m.imageKind === "generated"));

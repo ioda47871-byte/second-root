@@ -14,8 +14,9 @@
  * For every Q1 fixture of every fictional shop site (shop-site.ts SHOP_SITES: the bakery and the café), built with
  * that site's own page code, it runs BOTH this path and the
  * direct-Playwright path (q1-check.ts serveAndMeasure) and writes <out>/q1-compare.json (per fixture and width: the
- * codes each path found) and <out>/render-<fixture>-<pc|sp>.png. Exit 0 when no fixture has a finding in either path,
- * 1 otherwise.
+ * codes each path found) and <out>/render-<fixture>-<pc|sp>.png. Exit 0 only when the status is clean (q1Summary: no
+ * finding in either path, and no row whose phone checks had to drop facts); 1 for findings, 3 for an incomplete run,
+ * 2 when the run stopped (bad arguments, a control missed, an output folder refused).
  *
  * First, the controls (CONTROLS below): small, deliberately broken pages, each holding one kind of breakage (the
  * layout one holds several), and each must give its expected codes, or the run stops (Q1_RENDER_CONTROL_MISSED).
@@ -145,6 +146,17 @@ export function factsOf(content: ShopContent): { facts: string[]; truncated: num
 
 export type CompareRow = { fixture: string; viewport: "pc" | "sp"; render: string[]; direct: string[]; facts_truncated: number };
 
+/**
+ * The run's status (#363 re-review Low): `findings` when any row has a finding in either path; otherwise
+ * `incomplete` when the phone checks of any row could not take every fact the page shows (facts_truncated > 0: its
+ * SP check did not cover the whole page, so it is not a clean result); otherwise `clean`. Only `clean` exits 0.
+ */
+export function q1Summary(rows: readonly CompareRow[]): { status: "clean" | "findings" | "incomplete"; findings: number; facts_truncated: { fixture: string; count: number }[] } {
+  const findings = rows.filter((x) => x.render.length || x.direct.length).length;
+  const truncated = [...new Map(rows.filter((x) => x.facts_truncated > 0).map((x) => [x.fixture, x.facts_truncated])).entries()].map(([fixture, count]) => ({ fixture, count }));
+  return { status: findings ? "findings" : truncated.length ? "incomplete" : "clean", findings, facts_truncated: truncated };
+}
+
 export async function runQ1Compare(o: { outDir: string; browser: Browser }): Promise<{ rows: CompareRow[]; controls: ControlResult[] }> {
   const out = await safeOutDir(o.outDir);
   const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1r-"));
@@ -192,9 +204,9 @@ if (require.main === module) {
     const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
     try {
       const r = await runQ1Compare({ outDir, browser });
-      const found = r.rows.filter((x) => x.render.length || x.direct.length);
-      process.stdout.write(`${JSON.stringify({ status: found.length ? "findings" : "clean", controls: r.controls.map((c) => c.name), rows: r.rows }, null, 2)}\n`);
-      process.exit(found.length ? 1 : 0);
+      const s = q1Summary(r.rows);
+      process.stdout.write(`${JSON.stringify({ ...s, controls: r.controls.map((c) => c.name), rows: r.rows }, null, 2)}\n`);
+      process.exit(s.status === "clean" ? 0 : s.status === "findings" ? 1 : 3);
     } finally {
       await browser.close();
     }
