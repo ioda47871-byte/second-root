@@ -332,6 +332,18 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
       ["1,000〜1,500円+税", "tax_excluded_only"],
       ["本体価格1,000円 税込1,100円", "tax_included"],
       ["380〜520円（税込）", "tax_included"],
+      // review #363 M1: a tax rate after 税別 / 税抜 is not a base price
+      ["1,000円（税別10%）", "tax_excluded_only"],
+      ["1,000円（税抜8%）", "tax_excluded_only"],
+      ["1,000円（税別・10%）", "tax_excluded_only"],
+      ["1,080円（税抜1000）", "tax_included"],
+      // review #363 L2: a time is not an amount
+      ["10:00〜 500円（税込）", "tax_included"],
+      ["11:30〜14:00 ランチ 900円（税込）", "tax_included"],
+      // review #363 L3: unclear forms stay on the safe side (the owner checks them)
+      ["1,000円 ドリンク付き（税込）", "no_tax_wording"],
+      ["1,000円（税込、2個で1,800円）", "no_tax_wording"],
+      ["ランチ1,000円/ディナー1,500円（税込）", "no_tax_wording"],
     ];
     expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
     expect(priceAmounts("S 400円（税込）/ M 500円（税別）").map((a) => [a.text, a.class])).toEqual([
@@ -448,7 +460,23 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
     expect(SHOP_SITES.map((s) => s.id)).toEqual(["bakery", "cafe"]);
     // the phone checks' facts: distinct, the shop's details first, within the measure's limit of 200
     const content = await loadContent((await buildOf(CAFE_SITE, "items-50")).repo, CAFE_SITE.profile);
-    const facts = factsOf(content);
-    expect([facts.length <= FACTS_MAX, new Set(facts).size === facts.length, facts[0]]).toEqual([true, true, "架空のカフェ 木洩れ日珈琲"]);
+    const { facts, truncated } = factsOf(content);
+    expect([facts.length <= FACTS_MAX, new Set(facts).size === facts.length, facts[0], truncated]).toEqual([true, true, "架空のカフェ 木洩れ日珈琲", 0]);
+  });
+
+  it("review #363 L1: the facts come from what the page shows, in page order; what is still cut is counted", async () => {
+    const content = await loadContent((await buildOf(CAFE_SITE, "items-3")).repo, CAFE_SITE.profile);
+    const item = (k: number, visible: boolean) => ({ ...content.menu[2]!, id: `big-${k}`, name: `大きな一覧の品 ${k}`, priceDisplay: `${100 + k}円（税込）`, sizes: undefined, visible, displayOrder: k });
+    // 200 items: the first 150 hidden, the last 50 shown — every shown one is covered
+    const hiddenFirst = factsOf({ ...content, menu: Array.from({ length: 200 }, (_, k) => item(k, k >= 150)) });
+    expect(hiddenFirst.facts).toContain("大きな一覧の品 199");
+    expect(hiddenFirst.facts).not.toContain("大きな一覧の品 0");
+    expect(hiddenFirst.truncated).toBe(0);
+    // 200 items all shown: 3 shop details + 400 distinct texts; the cut is reported, never silent
+    const allShown = factsOf({ ...content, menu: Array.from({ length: 200 }, (_, k) => item(k, true)) });
+    expect([allShown.facts.length, allShown.truncated]).toEqual([FACTS_MAX, 3 + 400 - FACTS_MAX]);
+    // items in a hidden category do not use the budget either
+    const hiddenCategory = factsOf({ ...content, categories: content.categories.map((c) => ({ ...c, visible: c.id !== content.menu[2]!.category })), menu: Array.from({ length: 200 }, (_, k) => item(k, true)) });
+    expect(hiddenCategory.facts.some((f) => f.startsWith("大きな一覧の品"))).toBe(false);
   });
 });

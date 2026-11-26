@@ -128,6 +128,10 @@ export async function safeOutDir(outDir: string): Promise<string> {
   return out;
 }
 
+/**
+ * Runs the direct checks over every site's fixtures. Since PR (3) fixtures are named "<site>-<fixture>" (e.g.
+ * "bakery-items-50", "cafe-sizes-prices") in the report, in the file names and in `only`.
+ */
 export async function runQ1(o: { outDir: string; browser: Browser; only?: string[] }): Promise<{ fixtures: string[]; findings: Q1Finding[] }> {
   const out = await safeOutDir(o.outDir);
   const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1-"));

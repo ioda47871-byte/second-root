@@ -34,7 +34,11 @@ const DIGITS_RE = /[0-9０-９][0-9０-９,，.．]*/g;
 const COUNTER_AFTER = /^\s*(?:点|個|枚|本|名|人|組|品|種|切|入|g|ｇ|kg|ml|ｍｌ|cc|cm|mm|年|月|日|時|分|歳|%|％|号|番|階|丁目|番地|cal|kcal)/i;
 /** A text that is only numbers, separators, size labels and tax words is a list of amounts (「400 / 500」「S 400 / M 500（税別）」). */
 const ONLY_AMOUNTS = /^(?:[\s0-9０-９,，.．/／・、〜~～\-()（）:：|｜+＋]|[A-Za-zＡ-Ｚａ-ｚ]{1,3}(?![A-Za-z])|[大中小並特]|税込み?|税抜き?|税別|外税|内税|本体|tax|サイズ)+$/i;
-const NUM = String.raw`(?:[¥￥]\s*)?[0-9０-９〇一二三四五六七八九十百千万壱弐参]`;
+/**
+ * A real amount after a 税抜 / 税別 / 本体 label (review #363 M1): ¥ + digits, digits + 円, kanji + 円, or digits not
+ * followed by % (「（税別10%）」 is a tax rate, not a base price).
+ */
+const NUM = String.raw`(?:[¥￥]\s*[0-9０-９]|[0-9０-９][0-9０-９,，.．]*\s*円|[〇一二三四五六七八九十百千万壱弐参]+\s*円|[0-9０-９][0-9０-９,，]*(?![0-9０-９,，.．]*\s*[%％]))`;
 const INCLUDED_BEFORE = /(?:税込み?(?:価格)?|内税|総額)\s*[:：]?\s*$/;
 /**
  * Directly after the amount: （税込）/（税込価格）/（込）/（税・サ込）, or 税込 / 内税 not followed by more words (review L1:
@@ -79,7 +83,9 @@ export function priceAmounts(text: string): PriceAmount[] {
   const listOnly = ONLY_AMOUNTS.test(t);
   const candidates: Found[] = [...t.matchAll(DIGITS_RE)]
     .map((m) => ({ text: m[0], start: m.index!, end: m.index! + m[0].length, strong: false }))
-    .filter((a) => !inStrong(a.start) && !COUNTER_AFTER.test(t.slice(a.end)));
+    .filter((a) => !inStrong(a.start) && !COUNTER_AFTER.test(t.slice(a.end)))
+    // review #363 L2: a time (「10:00〜」) is not an amount
+    .filter((a) => !/[0-9０-９]\s*[:：]\s*$/.test(t.slice(0, a.start)) && !/^\s*[:：]\s*[0-9０-９]/.test(t.slice(a.end)));
   const adjacent = (a: Found) => {
     const before = t.slice(0, a.start);
     const after = t.slice(a.end);

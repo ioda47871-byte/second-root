@@ -32,7 +32,7 @@ import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
 import { buildSite } from "./build";
-import { loadContent, type ShopContent } from "./content-model";
+import { loadContent, viewOf, type ShopContent } from "./content-model";
 import { Q1_TODAY, writeFixture } from "./fixtures";
 import { CONTROL_PAGE, safeOutDir, serveAndMeasure } from "./q1-check";
 import { SHOP_SITES } from "./shop-site";
@@ -130,16 +130,20 @@ export async function runControls(browser: Browser, work: string, outDir: string
 
 /**
  * The phone checks' facts (texts that are the shop's facts, not labels): distinct, shop details first, at most
- * FACTS_MAX — the shop-CSS measure accepts at most 200 (page-scripts MeasureSchema `present`); more would make the
+ * FACTS_MAX (visible items only, in page order) — the shop-CSS measure accepts at most 200 (page-scripts MeasureSchema `present`); more would make the
  * phone check fail (SP_CHECK_FAILED), which the café's 50-item fixture showed before the list was made distinct.
  */
 export const FACTS_MAX = 200;
-export function factsOf(content: ShopContent): string[] {
-  const all = [content.shop.name, content.shop.address, content.shop.phone, ...content.menu.flatMap((m) => [m.name, m.priceDisplay, ...(m.sizes ?? []).flatMap((s) => [s.label, s.priceDisplay])])];
-  return [...new Set(all.filter(Boolean))].slice(0, FACTS_MAX);
+export function factsOf(content: ShopContent): { facts: string[]; truncated: number } {
+  // review #363 L1: only what the page shows, in page order (viewOf: visible items in visible categories), so hidden
+  // items do not use the budget; whatever is still cut is counted and recorded (facts_truncated)
+  const v = viewOf(content);
+  const items = v.sections.flatMap((s) => s.items);
+  const all = [...new Set([v.shop.name, v.shop.address, v.shop.phone, ...items.flatMap((m) => [m.name, m.priceDisplay, ...(m.sizes ?? []).flatMap((s) => [s.label, s.priceDisplay])])].filter(Boolean))];
+  return { facts: all.slice(0, FACTS_MAX), truncated: Math.max(0, all.length - FACTS_MAX) };
 }
 
-export type CompareRow ={ fixture: string; viewport: "pc" | "sp"; render: string[]; direct: string[] };
+export type CompareRow = { fixture: string; viewport: "pc" | "sp"; render: string[]; direct: string[]; facts_truncated: number };
 
 export async function runQ1Compare(o: { outDir: string; browser: Browser }): Promise<{ rows: CompareRow[]; controls: ControlResult[] }> {
   const out = await safeOutDir(o.outDir);
@@ -161,11 +165,11 @@ export async function runQ1Compare(o: { outDir: string; browser: Browser }): Pro
         const content = await loadContent(repo, site.profile);
         const media = new Map<string, Buffer>();
         for (const m of built.media) media.set(`media/${m}`, await readFile(join(dist, "media", m)));
-        const facts = factsOf(content);
+        const { facts, truncated } = factsOf(content);
         const render = await renderQ1(o.browser, { html: built.html, css: built.css }, media, facts, content.shop.name, out, name);
         for (const view of ["pc", "sp"] as const) {
           const direct = [...new Set((await serveAndMeasure(o.browser, dist, name, view, out)).map((f) => f.code))].sort();
-          rows.push({ fixture: name, viewport: view, render: render[view], direct });
+          rows.push({ fixture: name, viewport: view, render: render[view], direct, facts_truncated: truncated });
         }
       }
     }
