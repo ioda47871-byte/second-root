@@ -251,6 +251,80 @@ export type PhotoMaterialsRequest = z.infer<typeof PhotoMaterialsRequest>;
 
 export type ImagefirstRequest = DesignRequest | PhotoMaterialsRequest;
 export const isPhotoRequest = (r: ImagefirstRequest): r is PhotoMaterialsRequest => r.stage === "photo_materials";
+/** The envelope fields every request carries (what the facts, shop and approved-design readers use). */
+export type RequestEnvelope = Pick<DesignRequest, "id" | "shop_id" | "kind" | "facts_ref" | "facts_sha256">;
+
+/**
+ * DEV-364 PR 4 (docs/design/quality-proof-plan.md §2.4, §6 row 4; the owner's directive item 5): a DETAIL COMP request.
+ * After an owner-approved WHOLE-PAGE design only (its first approval, `approved_design`, gate-checked by the worker
+ * with approvedDesignRun): 1..IMAGE_TOOL_MAX_REFS targets (hero / products / shop_info), each a region (`box`, 0..1 of
+ * the approved PC or SP picture) of that design to enlarge and refine — the same layout, colours and type, no new
+ * element, photo frames kept as frames labelled イメージ. A support picture only: it never changes the approved
+ * composition, never counts as a design success, and never brings back the section-split generation.
+ *
+ * In this version a detail comp is OFFLINE ONLY: --validate-request and --print-plan check it and show its plan, but the
+ * worker never runs it — parseRequest (the run path's reader) refuses the stage (DETAIL_COMP_NOT_RUNNABLE). Running one
+ * (a Codex run under the existing approval / reference-count / run-count limits) needs the owner's approval first.
+ */
+export const DETAIL_COMP_STAGE = "detail_comp";
+export const DETAIL_TARGETS = ["hero", "products", "shop_info"] as const;
+export type DetailTarget = (typeof DETAIL_TARGETS)[number];
+const DetailBox = z.strictObject({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
+export type DetailBox = z.infer<typeof DetailBox>;
+export const DetailCompRequest = z
+  .strictObject({
+    ...ENVELOPE,
+    stage: z.literal(DETAIL_COMP_STAGE),
+    approved_design: ApprovedDesignRef,
+    targets: z.array(z.strictObject({ id: z.enum(DETAIL_TARGETS), view: z.enum(["pc", "sp"]), box: DetailBox, note: DirText(200) })).min(1),
+    max_images: z.number().int().min(1),
+  })
+  .refine(factsRefOk, "facts_ref_shop_mismatch")
+  .refine(realShopRootOk, "real_shop_facts_root")
+  .refine((r) => r.approved_design.bundle_id !== r.id, "approved_design_self")
+  .refine((r) => new Set(r.targets.map((t) => `${t.id}/${t.view}`)).size === r.targets.length, "targets_duplicate");
+export type DetailCompRequest = z.infer<typeof DetailCompRequest>;
+/** A region lies inside its picture: 0 ≤ x, y; w, h > 0; x + w ≤ 1; y + h ≤ 1 (finite numbers). */
+export const detailBoxInside = (b: DetailBox) => [b.x, b.y, b.w, b.h].every(Number.isFinite) && b.x >= 0 && b.y >= 0 && b.w > 0 && b.h > 0 && b.x + b.w <= 1 + 1e-9 && b.y + b.h <= 1 + 1e-9;
+/** Whether request bytes name the detail comp stage (to pick the offline reader; no schema check). */
+export function isDetailCompBytes(bytes: Buffer): boolean {
+  try {
+    const json = JSON.parse(bytes.toString("utf8")) as { stage?: unknown } | null;
+    return !!json && typeof json === "object" && json.stage === DETAIL_COMP_STAGE;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The detail comp request as --validate-request / --print-plan read it: the same envelope rules as parseRequest (size,
+ * SHA-256, strict JSON, the id), then: an approved design is required (APPROVED_DESIGN_REQUIRED), at most
+ * IMAGE_TOOL_MAX_REFS targets (DETAIL_REFERENCES_OVER_LIMIT: one approved-picture reference per target), every region
+ * inside its picture (DETAIL_REGION_OUTSIDE), one picture per target (max_images; REQUEST_IMAGES_MISMATCH).
+ */
+export function parseDetailCompRequest(bytes: Buffer, expectedSha256: string, expectedId: string): { request: DetailCompRequest; sha256: string } {
+  if (!isRequestId(expectedId)) throw new PromptStop(REQUEST_ID_RE.test(expectedId) ? "REQUEST_ID_RESERVED" : "REQUEST_ID_INVALID");
+  if (!/^[0-9a-f]{64}$/.test(expectedSha256)) throw new PromptStop("REQUEST_SHA_INVALID");
+  if (bytes.length > REQUEST_MAX_BYTES) throw new PromptStop("REQUEST_TOO_LARGE");
+  const got = sha256(bytes);
+  if (got !== expectedSha256) throw new PromptStop("REQUEST_SHA_MISMATCH");
+  let json: unknown;
+  try {
+    json = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new PromptStop("REQUEST_INVALID");
+  }
+  if (!json || typeof json !== "object" || (json as { stage?: unknown }).stage !== DETAIL_COMP_STAGE) throw new PromptStop("REQUEST_INVALID");
+  if (!Object.hasOwn(json, "approved_design")) throw new PromptStop("APPROVED_DESIGN_REQUIRED");
+  const targets = (json as { targets?: unknown }).targets;
+  if (Array.isArray(targets) && targets.length > IMAGE_TOOL_MAX_REFS) throw new PromptStop("DETAIL_REFERENCES_OVER_LIMIT");
+  const r = DetailCompRequest.safeParse(json);
+  if (!r.success) throw new PromptStop(r.error.issues.some((i) => i.message === "direction_text_unsafe") ? "REQUEST_DIRECTION_UNSAFE" : "REQUEST_INVALID");
+  if (r.data.targets.some((t) => !detailBoxInside(t.box))) throw new PromptStop("DETAIL_REGION_OUTSIDE");
+  if (r.data.max_images !== r.data.targets.length) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
+  if (r.data.id !== expectedId) throw new PromptStop("REQUEST_ID_MISMATCH");
+  return { request: r.data, sha256: got };
+}
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
@@ -270,6 +344,8 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
   } catch {
     throw new PromptStop("REQUEST_INVALID");
   }
+  // DEV-364 PR 4: a detail comp is checked and planned offline only; the run path never runs one
+  if (!!json && typeof json === "object" && (json as { stage?: unknown }).stage === DETAIL_COMP_STAGE) throw new PromptStop("DETAIL_COMP_NOT_RUNNABLE");
   // the stage picks the schema (no stage: the design stage); each schema is strict
   const photo = !!json && typeof json === "object" && (json as { stage?: unknown }).stage === "photo_materials";
   // DEV-303 §6.1 change 6: materials come only after the owner-approved design (the old order, materials first, is gone)
@@ -296,7 +372,7 @@ export function parseRequest(bytes: Buffer, expectedSha256: string, expectedId: 
 }
 
 /** The facts pack bytes a request names: within the cap, its SHA-256 = the request's facts_sha256, a valid pack. */
-export function parseRequestFacts(bytes: Buffer, request: ImagefirstRequest): FactsPack {
+export function parseRequestFacts(bytes: Buffer, request: Pick<RequestEnvelope, "facts_sha256">): FactsPack {
   if (bytes.length > FACTS_MAX_BYTES) throw new PromptStop("FACTS_TOO_LARGE");
   if (sha256(bytes) !== request.facts_sha256) throw new PromptStop("FACTS_SHA_MISMATCH");
   let json: unknown;
@@ -813,6 +889,120 @@ ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.n
 // facts-pack value enters a material prompt (the facts pack only binds the request to its shop and is checked against
 // the list). One Codex run, one picture per listed material, the approved design's pictures as references.
 // ---------------------------------------------------------------------------------------------------------------------
+
+export const DETAIL_PLAN_SCHEMA = "image_first_detail_plan_v0";
+export const DETAIL_PROMPT_VERSION = "if-detail-v1";
+const DETAIL_LABEL: Record<DetailTarget, string> = { hero: "最初の画面（hero）", products: "商品・品書き", shop_info: "店の情報（営業時間・場所など）" };
+/** The approved whole-page pictures a detail plan enlarges (approvedDesignRun's one PC and one SP part). */
+export type DetailApprovedImage = { image: string; sha256: string; width: number; height: number };
+export type DetailPlanInputs = {
+  request: DetailCompRequest;
+  requestSha256: string;
+  factsBytes: Buffer;
+  facts: FactsPack;
+  approved: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string; pc: DetailApprovedImage; sp: DetailApprovedImage };
+};
+export type PlannedDetail = { index: number; name: string; file: string; target: DetailTarget; view: "pc" | "sp"; box: DetailBox; reference: string; size: string; region_px: { x: number; y: number; w: number; h: number }; prompt: string; prompt_sha256: string; prompt_chars: number };
+export type DetailPlan = {
+  schema: typeof DETAIL_PLAN_SCHEMA;
+  prompt_version: typeof DETAIL_PROMPT_VERSION;
+  stage: typeof DETAIL_COMP_STAGE;
+  /** A support picture: never a design success, never a change of the approved composition. */
+  support_only: true;
+  counts_as_design_success: false;
+  request_id: string;
+  kind: ImagefirstRequest["kind"];
+  request_sha256: string;
+  facts_sha256: string;
+  approved_design: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
+  references: DesignReference[];
+  details: PlannedDetail[];
+  batch: { prompt: string; sha256: string; chars: number; images: number };
+  plan_sha256: string;
+};
+
+function detailPrompt(t: DetailCompRequest["targets"][number], refName: string, img: DetailApprovedImage, k: number, total: number): string {
+  const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
+  const lines = [
+    `これは承認済みのページ全体のデザイン画像（${t.view === "pc" ? "PC" : "SP"}、参照画像 ${refName}、${img.width}×${img.height}）の一部を拡大した詳細カンプ 1 枚です。新しいデザインではなく、承認したデザインの補助です。`,
+    `この画像の役割: ${total} 枚のうちの ${k} 枚目。対象: ${DETAIL_LABEL[t.id]}。`,
+    `範囲: 参照画像の左から ${pct(t.box.x)}〜${pct(t.box.x + t.box.w)}、上から ${pct(t.box.y)}〜${pct(t.box.y + t.box.h)} の矩形。`,
+    `補足: ${t.note}`,
+    "",
+    "必ず守ること:",
+    "- この範囲を拡大し、細部を整える（enlarge and refine this region of the approved design）。範囲の外のものを描き足さない。",
+    "- 配置・色・書体・余白・大きさの比は承認画像のまま（same layout, colours and type）。構図を変えない。",
+    "- 新しい要素（文字、図形、写真、装飾、ボタン）を足さない（no new elements）。承認画像に無い文字や事実を作らない。読めない文字は推測で書かず、承認画像と同じ形の線のままにする。",
+    `- 写真の枠は枠のまま（単純な長方形か角丸、中は無地か斜線）にし、隅の「${PHOTO_LABEL}」の表示を残す（photo frames stay frames labelled ${PHOTO_LABEL}）。写真を描き込まない。`,
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+/** The output size closest to the region's own shape (the image tool's three sizes). */
+function detailSize(w: number, h: number): string {
+  const r = w / h;
+  return r >= 1.25 ? "1536x1024" : r <= 0.8 ? "1024x1536" : "1024x1024";
+}
+
+/**
+ * The detail comp plan (DEV-364 PR 4): one picture per target, each enlarging its region of the approved PC or SP
+ * picture (attached as a reference: ref-1 PC, ref-2 SP, only the views used; never more than IMAGE_TOOL_MAX_REFS), the
+ * ONE batch prompt and the plan SHA (the canonical form of the other plans). Pure. Refuses another design than the
+ * request names (APPROVED_DESIGN_MISMATCH), a region outside its picture (DETAIL_REGION_OUTSIDE), too many targets
+ * (DETAIL_REFERENCES_OVER_LIMIT), a note quoting a facts-pack value (REQUEST_DIRECTION_HAS_FACT).
+ */
+export function buildDetailCompPlan(inputs: DetailPlanInputs): DetailPlan {
+  const { request, facts, approved: a } = inputs;
+  if (a.bundle_id !== request.approved_design.bundle_id || a.bundle_sha256 !== request.approved_design.bundle_sha256) throw new PromptStop("APPROVED_DESIGN_MISMATCH");
+  const total = request.targets.length;
+  if (total < 1 || total > IMAGE_TOOL_MAX_REFS) throw new PromptStop("DETAIL_REFERENCES_OVER_LIMIT");
+  if (request.max_images !== total) throw new PromptStop("REQUEST_IMAGES_MISMATCH");
+  if (request.targets.some((t) => !detailBoxInside(t.box))) throw new PromptStop("DETAIL_REGION_OUTSIDE");
+  const text = request.targets.map((t) => t.note).join("\n").normalize("NFKC").toLowerCase();
+  for (const f of facts.facts) if (f.key !== "category" && f.value.length >= 2 && text.includes(f.value.normalize("NFKC").toLowerCase())) throw new PromptStop("REQUEST_DIRECTION_HAS_FACT");
+  const views = (["pc", "sp"] as const).filter((v) => request.targets.some((t) => t.view === v));
+  const references: DesignReference[] = views.map((v, n) => ({ id: `ref-${n + 1}`, image: a[v].image, name: `ref-${n + 1}.png`, sha256: a[v].sha256 }));
+  const refOf = (v: "pc" | "sp") => references[views.indexOf(v)]!;
+  const details = request.targets.map((t, k): PlannedDetail => {
+    const img = a[t.view];
+    const region_px = { x: Math.round(t.box.x * img.width), y: Math.round(t.box.y * img.height), w: Math.max(1, Math.round(t.box.w * img.width)), h: Math.max(1, Math.round(t.box.h * img.height)) };
+    const prompt = detailPrompt(t, refOf(t.view).name, img, k + 1, total);
+    if (prompt.includes(REFERENCE_DIR_TOKEN)) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
+    return { index: k + 1, name: `detail-${k + 1}`, file: `parts/detail-${k + 1}.png`, target: t.id, view: t.view, box: t.box, reference: refOf(t.view).id, size: detailSize(region_px.w, region_px.h), region_px, prompt, prompt_sha256: sha256(prompt), prompt_chars: prompt.length };
+  });
+  const batchPrompt = `Make ${total} detail comps of an owner-approved whole-page website design with the image generation tool. Each one enlarges and refines one region of the approved design picture given as a reference: the same layout, colours and type, no new elements, photo frames kept as plain frames labelled ${PHOTO_LABEL}. They support the approved design; they are not a new design and never change its composition.
+
+Rules for this run:
+- Call the image generation tool exactly ${total} times, once per image below, in the order given (Image 1 first, Image ${total} last). Never more than ${total} calls in all.
+- For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
+- For each call, set referenced_image_paths to exactly the one path named for that image (an approved design picture, an absolute path, also attached as an input image); never another path.
+- Make each image in the size given for it.
+- If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
+- Do not run shell commands, do not read or write files yourself, do not browse (the image tool reads the referenced images itself).
+- When you have finished, reply with one line only: DONE followed by the number of images saved.
+
+${details.map((d) => `Image ${d.index} of ${total} — ${d.size} — ${d.name} — referenced_image_paths ["${REFERENCE_DIR_TOKEN}/${references.find((r) => r.id === d.reference)!.name}"]:\n<<<\n${d.prompt}>>>`).join("\n\n")}
+`;
+  if (batchPrompt.split(REFERENCE_DIR_TOKEN).length - 1 !== total) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
+  const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: total };
+  const body = {
+    schema: DETAIL_PLAN_SCHEMA,
+    prompt_version: DETAIL_PROMPT_VERSION,
+    stage: DETAIL_COMP_STAGE,
+    support_only: true,
+    counts_as_design_success: false,
+    request_id: request.id,
+    kind: request.kind,
+    request_sha256: inputs.requestSha256,
+    facts_sha256: sha256(inputs.factsBytes),
+    approved_design: { bundle_id: a.bundle_id, bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256 },
+    references,
+    details,
+    batch,
+  } as const;
+  const stripped = { ...body, batch: { sha256: batch.sha256, chars: batch.chars, images: batch.images }, details: details.map((d) => ({ ...d, prompt: undefined })) };
+  return { ...body, references, details, plan_sha256: sha256(canonical(stripped)) };
+}
 
 export const PHOTO_PLAN_SCHEMA = "image_first_photo_plan_v0";
 export const PHOTO_PROMPT_VERSION = "if-materials-v1";
