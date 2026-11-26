@@ -15,7 +15,8 @@
  * that site's own page code, it runs BOTH this path and the
  * direct-Playwright path (q1-check.ts serveAndMeasure) and writes <out>/q1-compare.json (per fixture and width: the
  * codes each path found) and <out>/render-<fixture>-<pc|sp>.png. Exit 0 only when the status is clean (q1Summary: no
- * finding in either path, and no row whose phone checks had to drop facts); 1 for findings or an incomplete run.
+ * finding in either path, and no row whose phone checks had to drop facts); 1 for findings, 3 for an incomplete run,
+ * 2 when the run stopped (bad arguments, a control missed, an output folder refused).
  *
  * First, the controls (CONTROLS below): small, deliberately broken pages, each holding one kind of breakage (the
  * layout one holds several), and each must give its expected codes, or the run stops (Q1_RENDER_CONTROL_MISSED).
@@ -205,7 +206,7 @@ if (require.main === module) {
       const r = await runQ1Compare({ outDir, browser });
       const s = q1Summary(r.rows);
       process.stdout.write(`${JSON.stringify({ ...s, controls: r.controls.map((c) => c.name), rows: r.rows }, null, 2)}\n`);
-      process.exit(s.status === "clean" ? 0 : 1);
+      process.exit(s.status === "clean" ? 0 : s.status === "findings" ? 1 : 3);
     } finally {
       await browser.close();
     }

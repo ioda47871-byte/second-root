@@ -31,7 +31,8 @@ const Para = (max: number) =>
     .refine((s) => !/[\u0000-\u0009\u000b-\u001f\u007f]/.test(s), "control_character");
 const Id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 /** A picture path as the image field writes it (media.output + file name); empty when there is none. */
-const MediaPath = z.union([z.literal(""), z.string().regex(/^\/media\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(png|jpe?g|webp)$/)]);
+/** review #365 L3: upper-case extensions (a phone's IMG_0001.JPG) are accepted as they are. */
+const MediaPath = z.union([z.literal(""), z.string().regex(/^\/media\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(png|jpe?g|webp)$/i)]);
 const Hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const Day = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
 /** A real calendar date (2026-02-30 is refused). */
@@ -203,7 +204,8 @@ export class ContentError extends Error {
       | "CONTENT_PHOTO_TOO_LARGE"
       | "CONTENT_PHOTO_DIMENSIONS"
       | "CONTENT_PHOTO_TOO_SMALL"
-      | "CONTENT_PHOTO_RATIO",
+      | "CONTENT_PHOTO_RATIO"
+      | "CONTENT_GENERATED_AS_SHOP",
     readonly file: string,
   ) {
     super(`${code} ${file}`);

@@ -8,6 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import type { Announcement, Category, MenuItem, ShopInfo } from "./content-model";
+import { GENERATED_RECORD, generatedRecord } from "./photos";
 
 /** A solid-colour PNG (synthetic). */
 export function solidPng(w: number, h: number, rgb: [number, number, number]): Buffer {
@@ -40,7 +41,8 @@ export function solidPng(w: number, h: number, rgb: [number, number, number]): B
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[]; media: Record<string, Buffer> };
+/** generated: the media file names handed over as generated materials (written to the handover record). */
+export type Fixture = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[]; media: Record<string, Buffer>; generated?: string[] };
 
 const SHOP: ShopInfo = {
   name: "架空のパン屋 こむぎ舎",
@@ -168,7 +170,8 @@ export function photoVariety(fx: Fixture, prefix: string): Fixture {
     media[file] = solidPng(p.w, p.h, COLOURS[k % 3]!);
     return { ...m, image: `/media/${file}`, imageAlt: `試験の画像 ${k + 1}`, imageKind: p.kind };
   });
-  return { ...fx, menu, media };
+  // the generated ones were handed over with the record (review #365 M1); the shop ones are the shop's own
+  return { ...fx, menu, media, generated: menu.filter((m) => m.imageKind === "generated").map((m) => m.image.replace(/^\/media\//, "")) };
 }
 
 /** Writes one fixture as a shop repository (content/ + media/) under `dir`. */
@@ -180,6 +183,7 @@ export async function writeFixture(dir: string, fx: Fixture): Promise<void> {
   for (const m of fx.menu) await writeFile(join(dir, "content", "menu", `${m.id}.json`), json(m));
   for (const n of fx.news) await writeFile(join(dir, "content", "news", `${n.id}.json`), json(n));
   for (const [name, bytes] of Object.entries(fx.media)) await writeFile(join(dir, "media", name), bytes);
+  if (fx.generated) await writeFile(join(dir, GENERATED_RECORD), json(generatedRecord(Object.fromEntries(fx.generated.map((n) => [n, fx.media[n]!])))));
 }
 
 export const Q1_TODAY = "2026-12-01";

@@ -9,7 +9,7 @@ import { addressOk, ContentError, loadContent, PHONE_MAX, phoneOk, viewOf } from
 import { PHOTO_VARIETY, Q1_TODAY, q1Fixtures, solidPng, writeFixture } from "@/experiments/pages-cms/fixtures";
 import { imageMeta } from "@/experiments/pages-cms/image-meta";
 import { checkPagesConfig, PHOTO_HINT, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
-import { checkPhoto, PHOTO_LIMITS } from "@/experiments/pages-cms/photos";
+import { checkPhoto, GENERATED_RECORD, PHOTO_LIMITS } from "@/experiments/pages-cms/photos";
 import { classifyPrice, priceAmounts, priceDisplayReport } from "@/experiments/pages-cms/price-display";
 import { safeOutDir } from "@/experiments/pages-cms/q1-check";
 import { BAKERY_SITE, CAFE_SITE, SHOP_SITES } from "@/experiments/pages-cms/shop-site";
@@ -427,15 +427,47 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
       "news-many": "4722d2deba5d7904912ed32ddf57ff254a5f32513e542513612d513c78c2f988",
       "trade-extensions": "d1bb7d41d12b9da905fe0ede54d759d6399211d3e8f899d76b6b1c6f347a3b34",
     };
+    // review #365 M2: the real bytes of today's bakery output, for every fixture, so later PRs compare real output
+    const current: Record<string, string> = {
+      "items-0": "7357b187ef5c5d8f78bd3f69efecca65185476716e7dbfc99c930c01f6c79223",
+      "items-3": "72bdd93beadfa6466c085a74e0248785054b514c36a61ecf6523950f0e927281",
+      "items-10": "b6cb1f0af06886779e4439d8c1ba2c355ce8471b593df5006c2261732428427b",
+      "items-50": "00f3caafcf62f1e1cbccc4930cc270c93df534e3eb2caf4fdb496bdeb7578201",
+      "long-text": "3c4b7ceb710d8ae66f06ee7968938b5da44d1a606c0fc416e74ea9c4a519335d",
+      "hidden-soldout-reorder": "d652873d6b6a7227fe5953dc520f3cf770141ca88a074d340c3ec5e66cec4db7",
+      "hours-closures": "218786431e50f2e12d4208d362b307c2a43f8732f3f8a8fcb83938f2ae4748ae",
+      "news-1": "faf429dd59e142f0bcf2b9eb30197f99b0c2439176457f6da18ceebbb50ff790",
+      "news-many": "dbcdf9013678c63e6aa1837c32b84a162bec8fbe49b70dacceef1a1f99277f4a",
+      "trade-extensions": "79cc4ac88befdd9b676a093382944607e1fe465d541d506058b77bc1fdc8557b",
+      "photos-large-odd": "28a89648c90f583e9df359794538b0b5bedabac2af3a908773a6da73e23e1396",
+    };
     const now: Record<string, string> = {};
-    for (const name of Object.keys(before)) {
-      const viaInterface = (await buildOf(BAKERY_SITE, name)).r;
+    const nowCurrent: Record<string, string> = {};
+    for (const name of Object.keys(current)) {
+      const built = await buildOf(BAKERY_SITE, name);
+      const viaInterface = built.r;
       const viaDefault = await buildSite({ repo: (await buildOf(BAKERY_SITE, name)).repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
       expect(viaDefault.html).toBe(viaInterface.html);
-      const old = undoPr4(viaInterface.html, viaInterface.css);
-      now[name] = sha(old.html, old.css);
+      nowCurrent[name] = sha(viaInterface.html, viaInterface.css);
+      // review #365 M2: before undoing, the PR (4) parts must be exactly where they belong — one figure per shown item
+      // with a picture, one caption per shown generated picture, the footer note once iff a generated picture is shown
+      const shown = viewOf(await loadContent(built.repo)).sections.flatMap((s) => s.items);
+      const html = viaInterface.html;
+      const count = (re: RegExp) => (html.match(re) ?? []).length;
+      const generatedShown = shown.filter((m) => m.image && m.imageKind === "generated").length;
+      expect([count(/<figure class="frame">/g), count(/<figcaption class="cap">イメージ<\/figcaption>/g), count(/「イメージ」の写真は生成した画像素材で、店の写真ではありません。/g)], name).toEqual([
+        shown.length,
+        generatedShown,
+        generatedShown > 0 ? 1 : 0,
+      ]);
+      expect(count(/<img /g), name).toBe(shown.filter((m) => m.image).length);
+      if (name in before) {
+        const old = undoPr4(viaInterface.html, viaInterface.css);
+        now[name] = sha(old.html, old.css);
+      }
     }
     expect(now).toEqual(before);
+    expect(nowCurrent).toEqual(current);
   });
 
   it("the café builds every one of its fixtures with its own composition, its sizes, its fixed name and no bakery extension", async () => {
@@ -596,11 +628,54 @@ describe("DEV-303 Pages CMS (4): photos — header-only size limits, generated v
     expect(shopOnly.html).not.toMatch(/イメージ/);
   });
 
+  it("review #365 M1: a delivered generated material cannot be relabelled 店の写真; the handover record is not in the CMS", async () => {
+    const relabel = async (record: boolean) => {
+      const repo = join(tmp(), "repo");
+      const fx = BAKERY_SITE.fixtures()["photos-large-odd"]!;
+      await writeFixture(repo, record ? fx : { ...fx, generated: undefined });
+      // the customer marks a generated picture (item-1) as the shop's own photo
+      const file = join(repo, "content", "menu", "item-1.json");
+      writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), imageKind: "shop" }));
+      return buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }).then(
+        (r) => (r.html.match(/イメージ<\/figcaption>/g) ?? []).length,
+        (e: unknown) => (e instanceof ContentError ? e.code : String(e)),
+      );
+    };
+    expect(await relabel(true)).toBe("CONTENT_GENERATED_AS_SHOP");
+    // without the record the build cannot know (so the handover must write it)
+    expect(await relabel(false)).toBe(PHOTO_VARIETY.filter((p) => p.kind === "generated").length - 1);
+    // a shop's own photo (another SHA-256) is free to be marked 店の写真, also with the record present
+    const repo = join(tmp(), "repo");
+    await writeFixture(repo, BAKERY_SITE.fixtures()["photos-large-odd"]!);
+    writeFileSync(join(repo, "media", "item-photo-1.png"), solidPng(1200, 800, [9, 9, 9]));
+    const file = join(repo, "content", "menu", "item-1.json");
+    writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), imageKind: "shop" }));
+    await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY })).resolves.toBeTruthy();
+    // a broken record stops the build; the record is nowhere in the CMS configuration
+    writeFileSync(join(repo, GENERATED_RECORD), "{}");
+    await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY })).rejects.toMatchObject({ code: "CONTENT_INVALID" });
+    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions })).not.toMatch(/generated-materials/);
+  });
+
+  it("review #365 L3: an upper-case extension (a phone's IMG_0001.JPG) is accepted, its bytes still decide the type", async () => {
+    const repo = join(tmp(), "repo");
+    await writeFixture(repo, BAKERY_SITE.fixtures()["items-3"]!);
+    writeFileSync(join(repo, "media", "IMG_0001.PNG"), solidPng(800, 600, [1, 2, 3]));
+    writeFileSync(join(repo, "media", "IMG_0002.JPG"), solidPng(800, 600, [1, 2, 3]));
+    const file = join(repo, "content", "menu", "item-1.json");
+    const item = JSON.parse(readFileSync(file, "utf8")) as object;
+    writeFileSync(file, JSON.stringify({ ...item, image: "/media/IMG_0001.PNG" }));
+    const r = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+    expect(r.media).toContain("IMG_0001.PNG");
+    writeFileSync(file, JSON.stringify({ ...item, image: "/media/IMG_0002.JPG" }));
+    await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY })).rejects.toMatchObject({ code: "CONTENT_PHOTO_TYPE" });
+  });
+
   it("the CMS shows the same limits as a hint and offers the generated / shop choice; the committed .pages.yml files follow", () => {
     const menu = pagesConfig().content.find((c) => c.name === "menu")!.fields as { name: string; description?: string; options?: { values?: { name: string }[] } }[];
     const image = menu.find((f) => f.name === "image")!;
     expect(image.description).toBe(PHOTO_HINT);
-    for (const v of [`${PHOTO_LIMITS.bytes / 1024 / 1024}MB`, `${PHOTO_LIMITS.maxSide}px`, `${PHOTO_LIMITS.minSide}px`, `${PHOTO_LIMITS.maxRatio}:1`]) expect(PHOTO_HINT).toContain(v);
+    for (const v of [`${PHOTO_LIMITS.bytes / 1024 / 1024}MB`, `${PHOTO_LIMITS.maxSide}px`, `${PHOTO_LIMITS.minSide}px`, `${PHOTO_LIMITS.maxRatio}:1`, `${PHOTO_LIMITS.maxPixels / 10_000} 万画素`]) expect(PHOTO_HINT).toContain(v);
     expect(menu.find((f) => f.name === "imageKind")!.options!.values!.map((v) => v.name)).toEqual(["generated", "shop"]);
     expect(checkPagesConfig(pagesConfig())).toEqual([]);
   });

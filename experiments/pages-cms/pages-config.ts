@@ -54,7 +54,7 @@ const ID: Field = { name: "id", label: "ID（自動）", type: "uuid", readonly:
  * PR (4): the photo limits as the editor sees them (Pages CMS has no size limit option; the build enforces them:
  * photos.ts PHOTO_LIMITS — kept equal by a test).
  */
-export const PHOTO_HINT = `JPEG・PNG・WebP、${PHOTO_LIMITS.bytes / 1024 / 1024}MB まで、長い辺 ${PHOTO_LIMITS.maxSide}px まで・短い辺 ${PHOTO_LIMITS.minSide}px 以上、縦横の比は ${PHOTO_LIMITS.maxRatio}:1 まで（スマートフォンの写真は「中」や「大」のサイズで送ると収まります）`;
+export const PHOTO_HINT = `JPEG・PNG・WebP、${PHOTO_LIMITS.bytes / 1024 / 1024}MB まで、長い辺 ${PHOTO_LIMITS.maxSide}px まで・${PHOTO_LIMITS.maxPixels / 10_000} 万画素まで・短い辺 ${PHOTO_LIMITS.minSide}px 以上、縦横の比は ${PHOTO_LIMITS.maxRatio}:1 まで（スマートフォンの写真は「中」や「大」のサイズで送ると収まります）`;
 
 /** The CMS pattern for a phone number (the build checks it fully: content-model.ts phoneOk). */
 const PHONE = { regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,24})?$", message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）" };
@@ -85,7 +85,7 @@ export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) 
     { name: "category", label: "分類", type: "reference", required: true, options: { collection: "categories", value: "{fields.id}", label: "{fields.name}" } },
     { name: "priceDisplay", label: "価格の表示", type: "string", description: "頁にそのまま出ます（例: 480円（税込）、時価）", options: { maxlength: 40 } },
     { name: "description", label: "説明", type: "text", options: { maxlength: 400 } },
-    { name: "image", label: "写真", type: "image", description: PHOTO_HINT, options: { extensions: ["jpg", "jpeg", "png", "webp"] } },
+    { name: "image", label: "写真", type: "image", description: PHOTO_HINT, options: { extensions: ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"] } },
     { name: "imageAlt", label: "写真の説明（読み上げ用）", type: "string", options: { maxlength: 120 } },
     {
       name: "imageKind",
@@ -101,7 +101,7 @@ export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) 
     ...(o.extensions ?? []).map((x) => EXTENSION_FIELDS[x]),
   ];
   return {
-    media: { input: "media", output: "/media", extensions: ["jpg", "jpeg", "png", "webp"], rename: "safe" },
+    media: { input: "media", output: "/media", extensions: ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"], rename: "safe" },
     content: [
       {
         name: "menu",
