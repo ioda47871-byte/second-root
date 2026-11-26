@@ -53,7 +53,7 @@ function items(n: number): { menu: MenuItem[]; media: Record<string, Buffer> } {
       priceDisplay: drink ? "" : "380円（税込）",
       image: file ? `/media/${file}` : "",
       imageAlt: file ? `試験の画像 ${k + 1}` : "",
-      imageKind: k % 5 === 4 ? ("shop" as const) : ("generated" as const),
+      imageKind: k % 5 === 4 ? ("customer_cms" as const) : ("generated" as const),
       visible: true,
       soldOut: false,
       displayOrder: k,

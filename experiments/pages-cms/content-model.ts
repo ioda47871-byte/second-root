@@ -100,6 +100,9 @@ export const addressOk = (s: string) => s === "" || (s.trim().length > 0 && s ==
  * turns on only what its trade needs; a field of an extension the shop has not turned on is refused at build.
  */
 export const TRADE_EXTENSIONS = ["sizes", "allergens", "shelfLife"] as const;
+/** DEV-364 PR 2a: the provenance classes A / B / C (provenance.ts). */
+export const IMAGE_KINDS = ["generated", "shop_provided", "customer_cms"] as const;
+export type ImageKind = (typeof IMAGE_KINDS)[number];
 export type TradeExtension = (typeof TRADE_EXTENSIONS)[number];
 
 export const MenuItem = z.strictObject({
@@ -112,11 +115,14 @@ export const MenuItem = z.strictObject({
   image: MediaPath.default(""),
   imageAlt: Line(120).default(""),
   /**
-   * PR (4): where the picture comes from. `generated`: a generated image material (MVP_SPEC §7.1) — the page shows it
-   * in a <figure> with <figcaption>イメージ</figcaption> (the rule materials-impl-check.ts checks). `shop`: the shop's
-   * own photo (after handover) — no イメージ label. Absent means generated (the safe side: it is labelled).
+   * DEV-364 PR 2a (quality-proof-plan §3.2): the picture's provenance class. `generated` (A): AI-generated proposal
+   * material — shown with <figcaption>イメージ</figcaption>. `shop_provided` (B): a real photo the shop provided, with a
+   * rights record kept outside the repository. `customer_cms` (C): a photo the customer uploaded or chose in Pages CMS
+   * after the contract. B and C show no イメージ label. Absent means `generated` (the safe, labelled side); C is only
+   * ever chosen explicitly. Backward compatible: the earlier two-way value `shop` (the customer's own photo, chosen in
+   * the CMS after handover) is read as `customer_cms`.
    */
-  imageKind: z.enum(["generated", "shop"]).default("generated"),
+  imageKind: z.preprocess((v) => (v === "shop" ? "customer_cms" : v), z.enum(IMAGE_KINDS).default("generated")),
   visible: z.boolean().default(true),
   soldOut: z.boolean().default(false),
   displayOrder: z.number().int().min(0).max(9999).default(0),
@@ -206,7 +212,8 @@ export class ContentError extends Error {
       | "CONTENT_PHOTO_TOO_SMALL"
       | "CONTENT_PHOTO_RATIO"
       | "CONTENT_GENERATED_AS_SHOP"
-      | "CONTENT_GENERATED_RECORD_MISSING",
+      | "CONTENT_GENERATED_RECORD_MISSING"
+      | "CONTENT_PHOTO_RIGHTS_MISSING",
     readonly file: string,
   ) {
     super(`${code} ${file}`);
