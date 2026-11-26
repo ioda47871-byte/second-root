@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
@@ -608,6 +608,20 @@ describe("DEV-303 the request cycle end to end (fake Codex)", () => {
       expect(await intake()).toBe("INTAKE_PREVIEWS_NOT_FROM_BUNDLE");
       writeFileSync(indexPath, original, { mode: 0o600 });
     }
+    expect(await intake()).toBe("resolved");
+    // PR #367 review Low: exactly the previews rebuilt from the verified bundle — an extra hand-made file, or a partial
+    // set (an index trimmed to its first two previews, the other files moved away; one alone already fails the index's own minimum), is refused
+    const previewsDir = join(inbox, "previews", id);
+    const all = (JSON.parse(original.toString("utf8")) as { previews: { file: string }[] }).previews.map((x) => x.file);
+    writeFileSync(join(previewsDir, "pc-9.png"), readFileSync(join(previewsDir, all[0]!)), { mode: 0o600 });
+    expect(await intake()).toBe("INTAKE_PREVIEWS_NOT_FROM_BUNDLE");
+    rmSync(join(previewsDir, "pc-9.png"));
+    const aside = tmp("sr-req-previews-aside-");
+    for (const f of all.slice(2)) renameSync(join(previewsDir, f), join(aside, f));
+    writeFileSync(indexPath, JSON.stringify({ ...ix, previews: ix.previews.slice(0, 2) }), { mode: 0o600 });
+    expect(await intake()).toBe("INTAKE_PREVIEWS_NOT_FROM_BUNDLE");
+    for (const f of all.slice(2)) renameSync(join(aside, f), join(previewsDir, f));
+    writeFileSync(indexPath, original, { mode: 0o600 });
     expect(await intake()).toBe("resolved");
   });
 

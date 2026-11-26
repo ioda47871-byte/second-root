@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 // process, opens no connection and reaches no model. A restricting check only (no exact import list is pinned here).
 
 const REPO = resolve(__dirname, "../../../..");
-const FILE = "lib/design-agent/research-log/intake.ts";
+/** The intake and its research-log helpers (PR #367 review Low: ./shops, ./store, ./schema as well). */
+const FILES = ["intake.ts", "shops.ts", "store.ts", "schema.ts"].map((f) => `lib/design-agent/research-log/${f}`);
 
 function specifiers(source: string): string[] {
   const out: string[] = [];
@@ -15,8 +16,8 @@ function specifiers(source: string): string[] {
   return out;
 }
 
-describe("research-log intake: no process, network or model", () => {
-  const source = readFileSync(resolve(REPO, FILE), "utf8");
+describe.each(FILES)("research-log %s: no process, network or model", (file) => {
+  const source = readFileSync(resolve(REPO, file), "utf8");
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
   it("imports no process, network or model module", () => {

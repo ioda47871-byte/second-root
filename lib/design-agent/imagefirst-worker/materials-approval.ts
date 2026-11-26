@@ -70,6 +70,7 @@ export const MATERIALS_APPROVAL_CODES = [
   "MATERIALS_APPROVAL_MATERIALS_MISMATCH",
   "MATERIALS_NOT_APPROVED",
   "MATERIALS_APPROVAL_HAS_FAIL",
+  "MATERIALS_DESIGN_SYNTHETIC",
 ] as const;
 export type MaterialsApprovalCode = (typeof MATERIALS_APPROVAL_CODES)[number];
 export class MaterialsApprovalStop extends Error {
@@ -165,6 +166,8 @@ export type DeliveredMaterials = {
   approved_design: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
   materials_sha256: string;
   pictures: MaterialPicture[];
+  /** DEV-303: only when the materials bundle itself is a synthetic one (bundle.ts, fictional request runs only). */
+  synthetic?: true;
 };
 
 /** The delivered materials run: the sealed bundle verifies, it is image materials, its receipt names its approved design. */
@@ -190,6 +193,7 @@ export async function readDeliveredMaterials(bundleDir: string): Promise<Deliver
     approved_design: { bundle_id: a.bundle_id, bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256 },
     materials_sha256: receipt.materials_sha256,
     pictures,
+    ...(v.manifest.synthetic === true ? { synthetic: true as const } : {}),
   };
 }
 
@@ -304,6 +308,11 @@ export type MaterialsApprovalCheck = {
   page_sha256: string;
   verdicts: { id: string; file: string; verdict: "pass" | "revise" | "fail" }[];
   approval: { sha256: string; decision: MaterialsApproval["decision"] } | null;
+  /**
+   * DEV-303 (PR #362 review Low 4): the approved design (or the materials run) is a synthetic rehearsal bundle. A draft
+   * says so; the gate refuses it (MATERIALS_DESIGN_SYNTHETIC), so nothing synthetic ever reaches stage 5 as approved.
+   */
+  synthetic?: true;
 };
 
 /** The design records of the approved design the materials were made for. */
@@ -340,7 +349,9 @@ export async function checkMaterialsApproval(o: {
   const reviewSha = sha256(reviewBytes);
   const verdicts = review.materials.map((m) => ({ id: m.id, file: m.file, verdict: m.verdict }));
   const pageSha = materialsReviewPageSha256(review, run);
-  const base = { request_id: run.request_id, bundle_sha256: run.bundle_sha256, review_sha256: reviewSha, page_sha256: pageSha, verdicts, design, run, review };
+  // DEV-303 (PR #362 review Low 4): a synthetic design (or materials run) is carried through and refused by the gate below
+  const synthetic = design.synthetic === true || run.synthetic === true;
+  const base = { request_id: run.request_id, bundle_sha256: run.bundle_sha256, review_sha256: reviewSha, page_sha256: pageSha, verdicts, ...(synthetic ? { synthetic: true as const } : {}), design, run, review };
   if (o.mode === "draft" && !o.approvalPath) return { ...base, approval: null, approved: null };
   if (!o.approvalPath) return stop("MATERIALS_APPROVAL_MISSING");
   const approvalBytes = await readMaterialsRecord(o.approvalPath, o.repo);
@@ -354,6 +365,7 @@ export async function checkMaterialsApproval(o: {
   if (order.some((i) => i < 0) || order.some((i, n) => n > 0 && i <= order[n - 1]!)) stop("MATERIALS_APPROVAL_MATERIALS_MISMATCH");
   const approval = { sha256: sha256(approvalBytes), decision: ap.decision };
   if (o.mode === "gate") {
+    if (synthetic) stop("MATERIALS_DESIGN_SYNTHETIC");
     if (ap.decision !== "approve") stop("MATERIALS_NOT_APPROVED");
     if (order.some((i) => review.materials[i]!.verdict === "fail")) stop("MATERIALS_APPROVAL_HAS_FAIL");
   }
