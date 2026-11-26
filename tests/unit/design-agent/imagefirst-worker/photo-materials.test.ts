@@ -11,7 +11,7 @@ import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-
 import { gitCommitState, type WorkerReceipt } from "@/lib/design-agent/imagefirst-worker/cycle";
 import { IMAGE_MATERIAL_LABEL, packBundle, verifyBundleDir } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { deliverReview } from "@/lib/design-agent/imagefirst-worker/deliver-review";
-import { loadRequestRun, recordUseOf, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
+import { loadRequestRun, planAttachmentsOf, printRequestPlan, recordUseOf, STAGED_INPUTS_DIR, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
 import { runRequestCycle } from "@/lib/design-agent/imagefirst-worker/request-cycle";
 import { runLoadedRequest } from "@/lib/design-agent/imagefirst-worker/request-run";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
@@ -872,5 +872,59 @@ describe("DEV-303 the audit CLI skips an image-materials bundle; the private rec
     expect(recordUseOf(parse(photoRequest()))).toBe("sales_proposal_image_material");
     expect(recordUseOf(parse(designRequest({ photo_inputs: { request_id: PHOTO_ID, files: [{ name: "photo-1.png", sha256: sha("1") }] } })))).toBe("proposal_demo_design");
     expect(recordUseOf(parse(designRequest()))).toBe("internal_design_reference_only");
+  });
+});
+
+describe("PR #361 review M2: --print-plan of the photo stages (attachments in exec order; plan_sha256 = --validate-request's)", () => {
+  const checkout = async () => ({ head: "c".repeat(40), base: "c".repeat(40), clean: true });
+  const fileOf = (o: Record<string, unknown>) => {
+    const file = join(tmp("sr-photo-print-"), `${o.id as string}.json`);
+    writeFileSync(file, bytesOf(o));
+    return file;
+  };
+
+  it("photo_materials: the approved design's first PC and first SP part as ref-1.png / ref-2.png (image/png), named in the prompt", async () => {
+    const { w, approved } = await sharedStageOne();
+    // the shared world's own approved bundle (another test's world may have moved approvedBundleSha since)
+    const file = fileOf(photoRequest({ approved_design: { bundle_id: BASE_ID, bundle_sha256: approved.bundleSha, review_file: REVIEW_FILE, approval_file: APPROVAL_FILE } }));
+    const p = await printRequestPlan({ file, home: w.h, repo: w.repo, checkout });
+    expect(p.plan_sha256).toBe((await validateRequestFile({ file, home: w.h, repo: w.repo })).plan_sha256);
+    expect(p).toMatchObject({ stage: "photo_materials", sent: { max_images: 6, reference_dir_token: REFERENCE_DIR_TOKEN, attachments_complete: true } });
+    expect(p.sent.attachments).toEqual([
+      { order: 1, kind: "reference", id: "ref-1", image: "pc-1", name: "ref-1.png", staged_name: "ref-1.png", staged_path: `${STAGED_INPUTS_DIR}/ref-1.png`, sha256: approved.images.pc[0]!.sha256, media_type: "image/png", bytes: expect.any(Number) },
+      { order: 2, kind: "reference", id: "ref-2", image: "sp-1", name: "ref-2.png", staged_name: "ref-2.png", staged_path: `${STAGED_INPUTS_DIR}/ref-2.png`, sha256: approved.images.sp[0]!.sha256, media_type: "image/png", bytes: expect.any(Number) },
+    ]);
+    for (const n of ["ref-1.png", "ref-2.png"]) expect(p.sent.prompt).toContain(`${REFERENCE_DIR_TOKEN}/${n}`);
+  });
+
+  it("design with photo inputs: each staged as photo-<n>.png in the request's order (its own name kept), image/png, no reference", async () => {
+    const { w, files } = await sharedStageOne();
+    const chosen = [files[2]!, files[0]!];
+    const file = fileOf(designRequest({ id: "req-test-shop-p-print-1", photo_inputs: { request_id: PHOTO_ID, files: chosen } }));
+    const p = await printRequestPlan({ file, home: w.h, repo: w.repo, checkout });
+    expect(p).toMatchObject({ photo_inputs: "checked", sent: { reference_dir_token: null, attachments_complete: true } });
+    expect(p.sent.attachments.map((a) => [a.order, a.kind, a.name, a.staged_name, a.staged_path, a.sha256, a.media_type])).toEqual(chosen.map((f, n) => [n + 1, "photo_input", f.name, `photo-${n + 1}.png`, `${STAGED_INPUTS_DIR}/photo-${n + 1}.png`, f.sha256, "image/png"]));
+  });
+
+  it("design with photo inputs whose run is not there: unchecked, the photo attachments left out (attachments_complete false)", async () => {
+    const { w } = await sharedStageOne();
+    const file = fileOf(designRequest({ id: "req-test-shop-p-print-2", photo_inputs: { request_id: "req-test-shop-p-photos-9", files: [{ name: "photo-1.png", sha256: sha("x") }] } }));
+    const p = await printRequestPlan({ file, home: w.h, repo: w.repo, checkout });
+    expect(p).toMatchObject({ photo_inputs: "unchecked", sent: { attachments: [], attachments_complete: false } });
+  });
+
+  it("the exec order when both are given: photo inputs first, then the references (planAttachmentsOf, pure)", () => {
+    const b = (s: string) => Buffer.from(s);
+    const a = planAttachmentsOf({
+      photos: [{ name: "photo-4.png", sha256: sha("four"), bytes: b("four") }, { name: "photo-2.png", sha256: sha("two"), bytes: b("two") }],
+      references: [{ id: "ref-1", case_id: "CP-001", name: "ref-1.webp", sha256: sha("r1"), media_type: "image/webp", bytes: b("r1") }],
+      approvedDesign: null,
+    });
+    expect(a.map((x) => [x.order, x.kind, x.name, x.staged_name, x.sha256, x.media_type])).toEqual([
+      [1, "photo_input", "photo-4.png", "photo-1.png", sha("four"), "image/png"],
+      [2, "photo_input", "photo-2.png", "photo-2.png", sha("two"), "image/png"],
+      [3, "reference", "ref-1.webp", "ref-1.webp", sha("r1"), "image/webp"],
+    ]);
+    expect(planAttachmentsOf({ photos: "unchecked", references: null, approvedDesign: null })).toEqual([]);
   });
 });
