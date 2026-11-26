@@ -131,7 +131,10 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 - **顧客が「店の写真」に変えても外れない**（PR #365 のレビュー M1、決定: 顧客に任せず構築で守る）: 納品のときに、渡した生成素材を
   `content/generated-materials.json`（`generated_materials_v1`: ファイル名と SHA-256）に書く。この記録は `.pages.yml` に入れないので CMS からは直せない。
   構築は、`imageKind: "shop"` の商品の写真の SHA-256 がこの記録にあれば止まる（`CONTENT_GENERATED_AS_SHOP`）。店が自分の写真に差し替えれば SHA-256 が違うので
-  「店の写真」にできる。記録が壊れていれば `CONTENT_INVALID`。記録が無い店（生成素材を渡していない店）では、この検査は何もしない（だから納品の手順で必ず書く）。
+  「店の写真」にできる。記録が壊れていれば `CONTENT_INVALID`。記録が無い店（生成素材を渡していない店）では、この検査は何もしない。
+  生成素材を渡した店は、店の profile に `generatedDelivered: true` を立て、記録が無ければ構築を止める（`CONTENT_GENERATED_RECORD_MISSING`）。
+  「記録が無い」とみなすのはファイルが存在しないとき（ENOENT）だけで、ディレクトリ・権限の誤り・その他の読み込みの失敗は `CONTENT_INVALID`。
+  **限界**: 照合は完全に同じバイトだけ（再圧縮・編集した生成素材は見つけない）。CMS での付け替えの誤りを防ぐもので、repo を直接書き換えることは防がない。
 - **大文字の拡張子**（`IMG_0001.JPG` など）: そのまま受け付ける（形式は中身で判定）。Pages CMS の `rename: "safe"` が小文字にするかは文書に書いていない（「slugify」とだけある）ので、
   どちらでも構築が通るようにした（実際の Pages CMS で確かめるのは Q3）。
 - 頁の枠は縦横比を固定して `object-fit: cover` で切り取るので、上限の中のどの比の写真でも構図は崩れない（Q1 の `photos-large-odd`: 3600×2400、3:1、1:3、320×320、2000×2000 を両方の店で PC・SP とも所見なし）。
@@ -195,10 +198,25 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 | 区分 | 成約前にローカルでできること（stub/mock） | 実際のアカウントが要ること（オーナーの承認の後） |
 |---|---|---|
 | Q2 GitHub からの自動公開 | ローカルの git repo に content の変更をコミットし、そのつど `build` を走らせ、成功なら `dist/` を差し替え、失敗なら前の `dist/` を残す、を再現する。連続のコミット・壊れた content（構築が止まる）・写真の欠けを試す | Cloudflare Pages の Git 連携での構築と公開、失敗時に前の版が残ること、反映の時間、無料枠（月 500 回の構築）の消費 |
-| Q3 顧客自身による更新 | Pages CMS が書くのと同じ形の JSON の変更（商品の追加・価格・写真の差し替え・非公開・並べ替え・営業時間・臨時休業・お知らせ）を手順書どおりに当て、Q1 の判定を通す。触る画面と手順の数を手順書で見積もる | 店主役が Pages CMS（hosted）だけで更新し、Second Root の操作なしで公開に反映されること、画面の数と所要時間の記録 |
+| Q3 顧客自身による更新 | Pages CMS が書くのと同じ形の JSON の変更（商品の追加・価格・写真の差し替え・非公開・並べ替え・営業時間・臨時休業・お知らせ）を手順書どおりに当て、Q1 の判定を通す。触る画面と手順の数を手順書で見積もる | 店主役が Pages CMS（hosted）だけで更新し、Second Root の操作なしで公開に反映されること、画面の数と所要時間の記録。**確かめること**: hosted の Pages CMS の画面から `.pages.yml` そのもの（と `content/generated-materials.json`）を書き換えられるか（できるなら、編集できる項目の制限と生成素材の記録は CMS の操作で外せてしまうので、守り方を見直す）。空の任意の項目の書き方、`rename: "safe"` が拡張子を小文字にするか |
 | Q4 権限を外した独立運用 | 引き渡しの資料のひな形（移行、Pages CMS が止まったときの案内、費用、責任の範囲）と、外す権限の一覧（GitHub の協力者、Cloudflare のメンバー、Pages CMS の協力者）の点検表 | 実際に権限を外した後で Q2・Q3 をもう一度行う。顧客の GitHub App は顧客のものとして残す |
 
 架空の店のためでも、実際の試験用アカウントの作成・GitHub App の導入・Cloudflare への deploy は別にオーナーの承認が要る（§3.7）。
+
+## 7a. CMS の構築を既存の検査にかける橋渡し（PR (5)）
+
+構築の出力（`dist/`: `index.html`・`style.css`・`media/*`）を、段 5・段 6 の既存の検査が読む形（`index.html`・`style.css`・`assets/*`）に写す
+`experiments/pages-cms/stage-for-gates.ts`（`stageForGates`）を足した。リポジトリの外の空の非公開の場所（0700）に、`src="/media/<名前>"` を `src="assets/<名前>"` に
+書き換えた頁と、`media/` の写真を**バイトを変えずに** `assets/` へ写す。`dist/` は読むだけ。検査のモジュール（`impl-compare-approved`・`materials-impl-check`）は
+写した場所を普段どおりに読むだけで、experiments から検査のモジュールを import しない（import の固定は変えない。試験は tests/ から両方を呼ぶ）。
+
+- **materials-impl-check**: カフェの構築（承認した素材 2 枚を生成素材として使う）を写すと、承認した素材だけが使われ、どちらも `<figure>` の `<figcaption>イメージ</figcaption>` つきで
+  通った（`status: ok`）。別のバイトの写真に変えると `MATERIALS_IMPL_IMAGE_NOT_APPROVED`。カフェの頁は店舗の版のデモの HTML/CSS の検査（`checkArtifactHtml`）も通った。
+- **impl-compare-approved**: リハーサルの合成の承認済みデザイン（#362、店 `cafe`、架空）と比べ、記録（助言だけ、`synthetic: true`、`passing: false`）ができた。
+  合成のデザインなので数値に意味は無く、道が最後まで通ることを確かめただけ。
+- **止まるもの**: JPEG・WebP の写真（`STAGE_ASSET_NOT_PNG`。impl-compare-approved は PNG の assets しか出さないので、今は比べられない＝既知の穴）、
+  書き換えの後も `/media/` が残る（CSS の `url()` など。`STAGE_MEDIA_REFERENCE`）、頁のファイルが無い（`STAGE_DIST_INVALID`）、出力先がリポジトリの中・空でない。
+- 試験: `tests/unit/experiments/pages-cms-gates.test.ts`（架空のデータ、段 6 は本物の Chromium）。
 
 ## 8. §6.1 の順との対応
 

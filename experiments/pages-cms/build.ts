@@ -40,7 +40,7 @@ export async function buildSite(o: { repo: string; outDir: string; today: string
   const existing = await lstat(o.outDir).catch(() => null);
   if (existing && (!existing.isDirectory() || (await readdir(o.outDir)).length > 0)) throw new BuildError("BUILD_OUT_NOT_EMPTY", basename(o.outDir));
   const { html, css } = site.render(content, o.today);
-  const photos = await checkPhotos(o.repo, content);
+  const photos = await checkPhotos(o.repo, content, site.profile);
   const named = photos.map((p) => p.file);
   await mkdir(join(o.outDir, "media"), { recursive: true });
   for (const n of named) await copyFile(join(o.repo, "media", n), join(o.outDir, "media", n));

@@ -205,7 +205,8 @@ export class ContentError extends Error {
       | "CONTENT_PHOTO_DIMENSIONS"
       | "CONTENT_PHOTO_TOO_SMALL"
       | "CONTENT_PHOTO_RATIO"
-      | "CONTENT_GENERATED_AS_SHOP",
+      | "CONTENT_GENERATED_AS_SHOP"
+      | "CONTENT_GENERATED_RECORD_MISSING",
     readonly file: string,
   ) {
     super(`${code} ${file}`);
@@ -238,7 +239,8 @@ async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T> {
 }
 
 /** What one shop's page code declares about its content: its fixed name, and the trade extensions it turns on. */
-export type ShopProfile = { fixedName: string; extensions: readonly TradeExtension[] };
+/** generatedDelivered (#365 re-review): generated materials were handed over, so the handover record must exist. */
+export type ShopProfile = { fixedName: string; extensions: readonly TradeExtension[]; generatedDelivered?: boolean };
 
 /**
  * Reads and checks the content folder of a shop repository (content/ next to media/). With a profile: the shop name
