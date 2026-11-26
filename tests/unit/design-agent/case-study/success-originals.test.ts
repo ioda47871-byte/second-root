@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
@@ -94,7 +94,8 @@ const B_ZIP = zip([
   { name: "SHA256SUMS", data: sums([{ name: "site/index.html", data: B_PAGE }, { name: "site/desktop_full.png", data: B_PNG }]) },
 ]);
 const M_PNG = png("member-recorded");
-const M_ZIP = zip([{ name: "approved.png", data: M_PNG }, { name: "notes.txt", data: Buffer.from("fictional notes") }]);
+const FABRICATED = png("fabricated-not-recorded");
+const M_ZIP = zip([{ name: "approved.png", data: M_PNG }, { name: "fabricated.png", data: FABRICATED }, { name: "notes.txt", data: Buffer.from("fictional notes") }]);
 
 function fictionalRepo(): string {
   const repo = tmp("sr-orig-repo-");
@@ -115,7 +116,7 @@ function fictionalRepo(): string {
   };
   writeFileSync(join(repo, HANDOVER_PATH), JSON.stringify(handover));
   writeFileSync(join(lib, "originals-index.json"), JSON.stringify({ schema: "sr_success_originals_index_v1", originals: [{ id: "CP-901", kind: "image", files: [{ path: "design-library/success-cases/assets/CP-901.webp", sha256: sha(A_IMG), role: "concept" }], counts_as_reference: true }], private_original_ids: ["CP-902", "CP-903", "CP-905"], expected_sha256: {}, unavailable_ids: ["CP-904"] }));
-  writeFileSync(join(lib, "manifest.json"), JSON.stringify({ records: [{ id: "CP-905", rejected_png_sha256: sha("rejected-version") }] }));
+  writeFileSync(join(lib, "manifest.json"), JSON.stringify({ records: [{ id: "CP-901", webp_sha256: sha(A_IMG), first_concept_png_sha256: sha("draft-901") }, { id: "CP-905", rejected_png_sha256: sha("rejected-version") }] }));
   writeFileSync(join(lib, "second-root-research-successes.json"), JSON.stringify({ records: [{ id: "SR-001", page_hashes: { html_sha256: sha("h"), css_sha256: sha("c"), copy_sha256: sha("j") } }] }));
   return repo;
 }
@@ -184,7 +185,7 @@ describe("verifyProvidedOriginals", () => {
     // a pseudo-restoration is never an original, even with a recorded SHA-256
     const pseudo = idx.entries.find((e) => e.pseudo)!;
     expect(pseudo.matched).toBeNull();
-    expect(pseudo.note).toBe("sha_is_recorded_original_but_placed_as_pseudo");
+    expect(pseudo.note).toBe("sha_is_recorded_but_placed_as_pseudo");
     expect(idx.ignored).toEqual([join(await import("node:fs/promises").then((f) => f.realpath(root)), "CP-999")]);
     // verified ZIPs are extracted under the root; unverified ones are not
     const b = idx.entries.find((e) => e.id === "CP-902")!;
@@ -241,8 +242,17 @@ describe("verifyProvidedOriginals", () => {
     const summary = (src: object) => JSON.stringify({ schema: "photo_swap_summary_v0", source_hashes: src, renders: [{ viewport: "desktop_1440", sha256: sha(r1) }, { viewport: "mobile_390", sha256: sha("other") }] });
     writeFileSync(join(job, "swap/swap-summary.json"), summary({ html: sha("h"), css: sha("c"), copy: sha("j") }));
     const root = privateRoot({});
+    // a listed render that does not match stops (never silently skipped)
+    expect(await codeOf(verifyProvidedOriginals({ repo, root, sr001Job: job }))).toBe("ORIGINALS_SR001_JOB_INVALID");
+    writeFileSync(join(job, "swap/renders/mobile_390.png"), Buffer.concat([png("m"), Buffer.from("x")]));
+    writeFileSync(join(job, "swap/swap-summary.json"), JSON.stringify({ schema: "photo_swap_summary_v0", source_hashes: { html: sha("h"), css: sha("c"), copy: sha("j") }, renders: [{ viewport: "desktop_1440", sha256: sha(r1) }] }));
     const idx = await verifyProvidedOriginals({ repo, root, sr001Job: job });
-    expect(idx.entries.map((e) => [e.name, e.status])).toEqual([["desktop_1440.png", "verified_private_chain"], ["mobile_390.png", "sha_mismatch"]]);
+    expect(idx.entries.map((e) => [e.name, e.status])).toEqual([["desktop_1440.png", "verified_private_chain"]]);
+    // an empty render list stops; a missing render file stops
+    writeFileSync(join(job, "swap/swap-summary.json"), JSON.stringify({ schema: "photo_swap_summary_v0", source_hashes: { html: sha("h"), css: sha("c"), copy: sha("j") }, renders: [] }));
+    expect(await codeOf(verifyProvidedOriginals({ repo, root, sr001Job: job }))).toBe("ORIGINALS_SR001_JOB_INVALID");
+    writeFileSync(join(job, "swap/swap-summary.json"), JSON.stringify({ schema: "photo_swap_summary_v0", source_hashes: { html: sha("h"), css: sha("c"), copy: sha("j") }, renders: [{ viewport: "tablet_768", sha256: sha("t") }] }));
+    expect(await codeOf(verifyProvidedOriginals({ repo, root, sr001Job: job }))).toBe("ORIGINALS_SR001_JOB_INVALID");
     writeFileSync(join(job, "swap/swap-summary.json"), summary({ html: sha("other"), css: sha("c"), copy: sha("j") }));
     expect(await codeOf(verifyProvidedOriginals({ repo, root, sr001Job: job }))).toBe("ORIGINALS_SR001_JOB_INVALID");
   });
@@ -276,6 +286,11 @@ describe("the private viewer", () => {
     expect(html).toContain("Fictional A &lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("疑似復元（原本ではない。参照に数えない）");
     expect(html).toMatch(/href="file:\/\/[^"]+site\/index\.html"/);
+    // a ZIP verified only through one member: the unrecorded members are never shown as originals
+    const m903 = model.cases.find((c) => c.c.id === "CP-903")!;
+    expect(m903.files.map((f) => f.label)).toEqual(["container.zip / approved.png"]);
+    expect(m903.unverified.map((f) => [f.label, f.image])).toEqual([["非公開の写し: container.zip", null], ["container.zip / fabricated.png", null]]);
+    expect(html).toContain("未照合（記録の無い中身。原本ではない）");
   });
 
   it("a private file changed after verify is shown as changed, not as an original", async () => {
@@ -329,7 +344,7 @@ describe("CLI", () => {
 
 describe("originals-handover.json (the repository's list)", () => {
   it("lists the 37 adopted cases in the catalog's A/B/C split, and changes no ledger", async () => {
-    const { handover, recorded } = await readRecords(REPO);
+    const { handover, originals, other } = await readRecords(REPO);
     const index = JSON.parse(readFileSync(join(REPO, "design-library/success-cases/originals-index.json"), "utf8"));
     const by = (cat: string) => handover.cases.filter((c) => c.category === cat).map((c) => c.id).sort();
     expect(handover.cases).toHaveLength(37);
@@ -338,9 +353,14 @@ describe("originals-handover.json (the repository's list)", () => {
     expect(by("C")).toEqual([...index.unavailable_ids].sort());
     // category C has no recorded SHA-256: nothing provided for it can ever be verified
     for (const id of by("C")) {
-      expect(recorded.get(id)!.size).toBe(0);
+      expect(originals.get(id)!.size + other.get(id)!.size).toBe(0);
       expect(handover.cases.find((c) => c.id === id)!.request.every((f) => f.sha256 === null)).toBe(true);
     }
+    // every file name is in the records on this branch, or says where it is recorded
+    const lib = join(REPO, "design-library/success-cases");
+    const text = readdirSync(lib).filter((n) => /\.(md|json)$/.test(n) && n !== "originals-handover.json").map((n) => readFileSync(join(lib, n), "utf8")).join("\n");
+    for (const c of handover.cases) for (const f of c.request) if (f.name) expect(text.includes(f.name) || !!f.name_source, `${c.id} ${f.name}`).toBe(true);
+    expect(handover.cases.flatMap((c) => c.request.filter((f) => f.name_source).map(() => c.id))).toEqual(["SR-002", "CP-033"]);
     // every B case asks for at least one file with a recorded SHA-256
     for (const id of by("B")) expect(handover.cases.find((c) => c.id === id)!.request.some((f) => f.sha256 !== null)).toBe(true);
     const manifest = JSON.parse(readFileSync(join(REPO, "design-library/success-cases/manifest.json"), "utf8"));
@@ -363,5 +383,145 @@ describe("originals-handover.json (the repository's list)", () => {
     const lib = join(REPO, "design-library/success-cases");
     expect(readdirSync(join(lib, "assets")).sort()).toEqual(["CP-001_Mond.webp", "CP-002_Sissi.webp", "CP-003_NagoyaBeans_v4_desktop.webp", "CP-003_NagoyaBeans_v4_mobile.webp"]);
     expect(readdirSync(lib).filter((n) => /\.(zip|png|jpe?g|webp|html?)$/i.test(n))).toEqual([]);
+  });
+});
+
+// ---- review fixes (PR #358) ------------------------------------------------------------------------------------------
+
+describe("review: originals are only adopted originals, judged against the current records", () => {
+  it("a private copy of a viewing copy or a draft is recorded_not_original and never promotes the case", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-901/copy.webp": A_IMG, "CP-901/draft.png": Buffer.from("draft-901") });
+    const idx = await verifyProvidedOriginals({ repo, root });
+    expect(idx.entries.map((e) => [e.name, e.status, e.matched?.role])).toEqual([
+      ["copy.webp", "recorded_not_original", "webp_sha256"],
+      ["draft.png", "recorded_not_original", "first_concept_png_sha256"],
+    ]);
+    const { model, images } = await buildViewerModel({ repo, root });
+    const c = model.cases.find((x) => x.c.id === "CP-901")!;
+    expect(c.status).toBe("repo_verified");
+    expect(c.unverified).toHaveLength(2);
+    expect(images.filter((i) => i.name.startsWith("images/CP-901"))).toHaveLength(1);
+  });
+
+  it("a verified entry stops counting once the current records no longer hold its SHA-256", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-902/fictional_b.zip": B_ZIP, "CP-903/container.zip": M_ZIP });
+    await verifyProvidedOriginals({ repo, root });
+    const handover = JSON.parse(readFileSync(join(repo, HANDOVER_PATH), "utf8"));
+    handover.cases[1].request[0].sha256 = sha("changed-record");
+    handover.cases[2].request[0].sha256 = sha("changed-record-2");
+    writeFileSync(join(repo, HANDOVER_PATH), JSON.stringify(handover));
+    const { model, images } = await buildViewerModel({ repo, root });
+    for (const id of ["CP-902", "CP-903"]) {
+      const c = model.cases.find((x) => x.c.id === id)!;
+      expect(c.status).toBe("sha_mismatch");
+      expect(c.files).toEqual([]);
+    }
+    expect(images).toHaveLength(1); // only the repository's CP-901 copy
+  });
+
+  it("the private index is checked strictly: an unknown status, a missing field or an extra field stops", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-902/fictional_b.zip": B_ZIP });
+    await verifyProvidedOriginals({ repo, root });
+    const path = join(root, PRIVATE_INDEX_REL);
+    const good = readFileSync(path, "utf8");
+    const tamper = (f: (i: { entries: Record<string, unknown>[] }) => void) => {
+      const i = JSON.parse(good);
+      f(i);
+      rmSync(path);
+      writeFileSync(path, JSON.stringify(i));
+    };
+    for (const f of [(i: { entries: Record<string, unknown>[] }) => (i.entries[0]!.status = "trusted"), (i: { entries: Record<string, unknown>[] }) => delete i.entries[0]!.pseudo, (i: { entries: Record<string, unknown>[] }) => (i.entries[0]!.promoted = true)]) {
+      tamper(f);
+      expect(await codeOf(buildViewerModel({ repo, root }))).toBe("ORIGINALS_INDEX_INVALID");
+    }
+  });
+
+  it("a mismatching provided file is surfaced even when the case has repository files", async () => {
+    const repo = fictionalRepo();
+    const handover = JSON.parse(readFileSync(join(repo, HANDOVER_PATH), "utf8"));
+    handover.cases[0].request = [{ name: "orig.png", sha256: sha("orig-901"), role: "original_png" }];
+    writeFileSync(join(repo, HANDOVER_PATH), JSON.stringify(handover));
+    const root = privateRoot({ "CP-901/orig.png": png("not-orig") });
+    await verifyProvidedOriginals({ repo, root });
+    const { model } = await buildViewerModel({ repo, root });
+    const c = model.cases.find((x) => x.c.id === "CP-901")!;
+    expect([c.status, c.has_mismatch]).toEqual(["repo_verified", true]);
+    expect(renderViewer(model)).toContain("不一致のファイルあり");
+  });
+});
+
+describe("review: SR-001 chain entries are not silently dropped", () => {
+  function job() {
+    const j = tmp("sr-orig-job2-");
+    mkdirSync(join(j, "swap/renders"), { recursive: true });
+    const r = png("render-d");
+    writeFileSync(join(j, "swap/renders/desktop_1440.png"), r);
+    const write = (html: string) => writeFileSync(join(j, "swap/swap-summary.json"), JSON.stringify({ schema: "photo_swap_summary_v0", source_hashes: { html, css: sha("c"), copy: sha("j") }, renders: [{ viewport: "desktop_1440", sha256: sha(r) }] }));
+    write(sha("h"));
+    return { j, write };
+  }
+  it("a run without --sr001-job carries the earlier chain entries after re-checking them; a broken chain stops", async () => {
+    const repo = fictionalRepo();
+    const { j, write } = job();
+    const root = privateRoot({});
+    await verifyProvidedOriginals({ repo, root, sr001Job: j });
+    const again = await verifyProvidedOriginals({ repo, root });
+    expect(again.entries.map((e) => [e.id, e.status])).toEqual([["SR-001", "verified_private_chain"]]);
+    const { model } = await buildViewerModel({ repo, root });
+    expect(model.cases.find((c) => c.c.id === "SR-001")!.status).toBe("original_verified_private");
+    write(sha("changed"));
+    expect(await codeOf(verifyProvidedOriginals({ repo, root }))).toBe("ORIGINALS_SR001_JOB_INVALID");
+    // the viewer re-checks the chain too: with the chain broken the renders are not originals
+    const { model: m2 } = await buildViewerModel({ repo, root });
+    expect(m2.cases.find((c) => c.c.id === "SR-001")!.status).toBe("sha_mismatch");
+  });
+});
+
+describe("review: ZIP and file safety", () => {
+  it("refuses ZIP64 (locator before the end record) and a file that is also a folder", () => {
+    const z = zip([{ name: "a.png", data: png("a") }]);
+    const end = z.length - 22;
+    const loc = Buffer.alloc(20);
+    loc.writeUInt32LE(0x07064b50, 0);
+    expect(readZip(Buffer.concat([z.subarray(0, end), loc, z.subarray(end)]))).toEqual({ ok: false, reason: "zip64_unsupported" });
+    expect(readZip(zip([{ name: "a", data: Buffer.from("x") }, { name: "a/b.png", data: png("b") }]))).toEqual({ ok: false, reason: "path_conflict" });
+  });
+
+  it("a hard-linked provided file is unsafe and not read", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-902/fictional_b.zip": B_ZIP });
+    linkSync(join(root, "CP-902/fictional_b.zip"), join(tmp("sr-orig-hl-"), "other.zip"));
+    const idx = await verifyProvidedOriginals({ repo, root });
+    expect(idx.entries[0]).toMatchObject({ status: "unsafe", sha256: null });
+  });
+
+  it("an extraction folder that differs, or a linked _extracted, stops with ORIGINALS_EXTRACT_CONFLICT", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-902/fictional_b.zip": B_ZIP });
+    const idx = await verifyProvidedOriginals({ repo, root });
+    const dir = idx.entries[0]!.zip!.extracted_dir!;
+    rmSync(join(dir, "site/desktop_full.png"));
+    writeFileSync(join(dir, "site/desktop_full.png"), png("tampered"));
+    expect(await codeOf(verifyProvidedOriginals({ repo, root }))).toBe("ORIGINALS_EXTRACT_CONFLICT");
+    const root2 = privateRoot({ "CP-902/fictional_b.zip": B_ZIP });
+    symlinkSync(tmp("sr-orig-elsewhere-"), join(root2, "_extracted"));
+    expect(await codeOf(verifyProvidedOriginals({ repo, root: root2 }))).toBe("ORIGINALS_EXTRACT_CONFLICT");
+  });
+
+  it("a pseudo ZIP is extracted apart and shown only as a pseudo-restoration, even when it holds a recorded file", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-903/pseudo/rebuild.zip": zip([{ name: "approved.png", data: M_PNG }, { name: "remade.png", data: png("remade") }]) });
+    const idx = await verifyProvidedOriginals({ repo, root });
+    expect(idx.entries[0]).toMatchObject({ status: "pseudo_restoration", pseudo: true, matched: null });
+    expect(idx.entries[0]!.zip!.extracted_dir).toMatch(/_extracted\/CP-903\/pseudo-[0-9a-f]{12}$/);
+    expect(idx.entries[0]!.zip!.members.every((m) => !m.recorded)).toBe(true);
+    const { model } = await buildViewerModel({ repo, root });
+    const c = model.cases.find((x) => x.c.id === "CP-903")!;
+    expect(c.status).toBe("pseudo_only");
+    expect(c.files).toEqual([]);
+    expect(c.pseudo.length).toBe(3);
   });
 });

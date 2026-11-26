@@ -2,9 +2,9 @@
   "schema": "sr_success_originals_handover_v1",
   "as_of": "2026-11-26",
   "issue": 336,
-  "scope": "All 37 owner-adopted success cases (originals-catalog.md A/B/C): what the owner hands over and the SHA-256 recorded for it. Metadata only: no original bytes are committed (the repository is public). Every sha256 here already appears in manifest.json, originals-index.json, originals-catalog.md or the case's CP-*.md record. Does not change manifest.json, second-root-research-successes.json or their counts, and does not widen the case-study counting rules (case-study.ts still reads only originals-index.json and manifest.json).",
+  "scope": "All 37 owner-adopted success cases (originals-catalog.md A/B/C): what the owner hands over and the SHA-256 recorded for it. Metadata only: no original bytes are committed (the repository is public). Every sha256 here already appears in manifest.json, originals-index.json, originals-catalog.md or the case's CP-*.md record on develop. Every file name appears in those records too, except the two ZIP names marked name_source (SR-002, CP-033), recorded only on the unmerged PR #237 / #240 branches. Does not change manifest.json, second-root-research-successes.json or their counts, and does not widen the case-study counting rules (case-study.ts still reads only originals-index.json and manifest.json).",
   "rules": {
-    "verified": "A provided file is an original only when its SHA-256 equals a sha256 recorded for that id (this file, manifest.json's non-rejected sha256 fields, originals-index.json expected_sha256). A ZIP whose own SHA-256 is unrecorded counts only through a member whose SHA-256 is recorded, after its SHA256SUMS (when present) all match.",
+    "verified": "A provided file is an original only when its SHA-256 equals a sha256 in this file's request for that id (adopted originals). Other recorded SHA-256s (manifest.json viewing copies, drafts, comparison sheets; originals-index.json) are reported as recorded_not_original and never promote a case. A ZIP whose own SHA-256 is not in the request is 'verified via member': only its members whose SHA-256 is in the request are originals, the other members stay unverified. A ZIP's SHA256SUMS (when present) must match entirely.",
     "no_sha": "An entry whose sha256 is null can never be verified: a provided file stays unverified and is never registered as an original.",
     "pseudo": "Files the owner places under <id>/pseudo/ are pseudo-restorations: always labelled so, never registered as originals, whatever their SHA-256.",
     "private": "Originals stay outside the repository (docs/design/success-originals-handover.md)."
@@ -618,7 +618,8 @@
           "name": "SecondRoot_SR002_Kintokiyu_approved_20261107.zip",
           "sha256": null,
           "role": "container_zip",
-          "label": "ZIP 自体の SHA-256 は記録なし。中の承認 PNG で照合する"
+          "label": "ZIP 自体の SHA-256 は記録なし。中の承認 PNG で照合する",
+          "name_source": "PR #237 branch (unmerged): SR-002-Kintokiyu.md"
         }
       ]
     },
@@ -632,7 +633,8 @@
         {
           "name": "SecondRoot_CP033_MARTELLI_Approved_20261108.zip",
           "sha256": "5f18b6672bbc60d7db18c2af7b123fd2db448a78b8272c5e085746f1634edd77",
-          "role": "success_zip"
+          "role": "success_zip",
+          "name_source": "PR #240 branch (unmerged): CP-033-MARTELLI-B-v4.md"
         }
       ]
     },
