@@ -21,7 +21,7 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import sharp from "sharp";
 import { approvedDesignRun, DesignApprovalStop } from "./design-approval";
 
@@ -37,6 +37,8 @@ export const DETAIL_FAITHFULNESS_CODES = [
   "DETAIL_FAITH_INPUT_UNSAFE",
   "DETAIL_FAITH_IN_REPO",
   "DETAIL_FAITH_OUT_NOT_EMPTY",
+  "DETAIL_FAITH_OUT_UNSAFE",
+  "DETAIL_FAITH_FOLDER_UNSAFE",
 ] as const;
 export class DetailFaithfulnessStop extends Error {
   constructor(readonly code: string) {
@@ -59,7 +61,10 @@ export const GRID = 32;
 /** At most as many regions as a detail comp request may name. */
 export const MAX_REGIONS = 5;
 
-/** A private input file (outside the repository, no link at the last step, regular, within `max`). */
+/**
+ * A private input file (outside the repository, no link at the last step, regular, within `max`; #375 review L1: ours
+ * and not readable by others, mode 0600-like, as final-approval.ts reads its captures).
+ */
 async function readPrivate(path: string, repo: string, max: number): Promise<Buffer> {
   const full = resolve(path);
   const real = await realpath(full).catch(() => null);
@@ -74,11 +79,37 @@ async function readPrivate(path: string, repo: string, max: number): Promise<Buf
   }
   try {
     const st = await h.stat();
-    if (!st.isFile() || st.nlink !== 1 || st.size > max) stop("DETAIL_FAITH_INPUT_UNSAFE");
+    if (!st.isFile() || st.nlink !== 1 || st.size > max || st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0) stop("DETAIL_FAITH_INPUT_UNSAFE");
     return await h.readFile();
   } finally {
     await h.close();
   }
+}
+
+/** #375 review L1: a folder of ours (final-approval.ts's rule): outside the repository, real (no link), owned by us, 0700. */
+async function privateFolder(dir: string, repo: string): Promise<string> {
+  const full = resolve(dir);
+  const real = await realpath(full).catch(() => null);
+  if (real === null) return stop("DETAIL_FAITH_FOLDER_UNSAFE");
+  const realRepo = await realpath(repo).catch(() => resolve(repo));
+  if (within(real, realRepo) || within(full, resolve(repo))) stop("DETAIL_FAITH_IN_REPO");
+  const st = await lstat(full);
+  if (real !== full || !st.isDirectory() || st.isSymbolicLink() || st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0) stop("DETAIL_FAITH_FOLDER_UNSAFE");
+  return full;
+}
+
+/** The nearest existing ancestor's real path joined with the rest (a link above is resolved). */
+async function realPlace(path: string): Promise<string | null> {
+  const rest: string[] = [];
+  let anc = resolve(path);
+  while (!(await lstat(anc).then(() => true, () => false))) {
+    const up = dirname(anc);
+    if (up === anc) return null;
+    rest.unshift(basename(anc));
+    anc = up;
+  }
+  const real = await realpath(anc).catch(() => null);
+  return real === null ? null : join(real, ...rest);
 }
 
 export type Box = { x: number; y: number; w: number; h: number };
@@ -174,7 +205,9 @@ export async function checkDetailFaithfulness(o: {
   if (o.regions.length < 1 || o.regions.length > MAX_REGIONS) stop("DETAIL_FAITH_TOO_MANY_REGIONS");
   if (o.regions.some((r) => !inside(r.box))) stop("DETAIL_FAITH_REGION_OUTSIDE");
   // the stage-6 comparison of THIS approved design, and its captures
-  const implBytes = await readPrivate(join(o.implCompareDir, "record.json"), o.repo, 1024 * 1024);
+  const implDir = await privateFolder(o.implCompareDir, o.repo);
+  const imagesDir = await privateFolder(join(implDir, "images"), o.repo);
+  const implBytes = await readPrivate(join(implDir, "record.json"), o.repo, 1024 * 1024);
   let impl: {
     schema?: unknown;
     request_id?: unknown;
@@ -191,7 +224,7 @@ export async function checkDetailFaithfulness(o: {
   if (impl.schema !== "sr_impl_compare_v1" || typeof impl.status !== "string" || !vp?.desktop_1440 || !vp.mobile_390) return stop("DETAIL_FAITH_IMPL_INVALID");
   if (impl.request_id !== design.request_id || impl.approved?.bundle_sha256 !== design.bundle_sha256 || impl.approved.review_sha256 !== design.review_sha256 || impl.approved.approval_sha256 !== design.approval_sha256) stop("DETAIL_FAITH_IMPL_MISMATCH");
   const captureOf = async (tag: "pc" | "sp", want: unknown) => {
-    const b = await readPrivate(join(o.implCompareDir, "images", `${tag}-capture.png`), o.repo, MAX_IMAGE);
+    const b = await readPrivate(join(imagesDir, `${tag}-capture.png`), o.repo, MAX_IMAGE);
     if (sha256(b) !== want) stop("DETAIL_FAITH_CAPTURE_MISMATCH");
     return b;
   };
@@ -223,13 +256,17 @@ export async function checkDetailFaithfulness(o: {
     not_measured: NOT_MEASURED,
     created_at: new Date((o.now ?? Date.now)()).toISOString(),
   };
-  // the output: an empty private folder outside the repository
+  // the output (#375 review L1, final-approval.ts's page-folder rule): outside the repository (links resolved), empty or
+  // absent, an existing one ours and private (0700); created 0700 and its real path checked again after the mkdir
   const out = resolve(o.outDir);
   const realRepo = await realpath(o.repo).catch(() => resolve(o.repo));
-  if (within(out, resolve(o.repo)) || within((await realpath(join(out, "..")).catch(() => out)) as string, realRepo)) stop("DETAIL_FAITH_IN_REPO");
+  const inRepo = (p: string | null) => p === null || within(p, realRepo) || within(p, resolve(o.repo));
+  if (inRepo(out) || inRepo(await realPlace(out))) stop("DETAIL_FAITH_IN_REPO");
   const existing = await lstat(out).catch(() => null);
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink() || (await readdir(out)).length > 0)) stop("DETAIL_FAITH_OUT_NOT_EMPTY");
+  if (existing && (existing.uid !== process.getuid?.() || (existing.mode & 0o077) !== 0)) stop("DETAIL_FAITH_OUT_UNSAFE");
   await mkdir(out, { recursive: true, mode: 0o700 });
+  if (inRepo(await realpath(out).catch(() => null))) stop("DETAIL_FAITH_IN_REPO");
   const text = `${JSON.stringify(record, null, 2)}\n`;
   const h = await open(join(out, "record.json"), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try {

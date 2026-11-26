@@ -292,7 +292,8 @@ export const DESIGN_REVIEWS_DIR = "design-reviews";
  * synthetic (DEV-303, owner goal 2026-11-26): the approved design is a synthetic rehearsal bundle (rehearsal.ts).
  * --validate-request still checks it (and says rehearsal_only); the worker's run and the entry refuse it.
  */
-export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[]; synthetic?: true };
+/** image_counts (DEV-364 PR 4, #375 review M1): the approved run's own PC / SP picture counts (references may be fewer). */
+export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[]; image_counts: { pc: number; sp: number }; synthetic?: true };
 
 /**
  * DEV-303 §6.1 change 6 (production flow §1 stage 4, §3.4): the owner-approved design a photo-materials request names.
@@ -330,6 +331,7 @@ export async function readApprovedDesign(request: Pick<PhotoMaterialsRequest, "a
   return {
     use: { bundle_id: a.request_id, bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256, references: references.map((r) => ({ id: r.id, image: r.image, name: r.name, sha256: r.sha256 })) },
     references,
+    image_counts: { pc: a.images.pc.length, sp: a.images.sp.length },
     ...(a.synthetic ? { synthetic: true as const } : {}),
   };
 }
@@ -539,6 +541,8 @@ async function loadDetailCompOffline(o: { file: string; home: string; repo: stri
   await checkRequestShop(request, facts.facts, o.repo);
   const design = await readApprovedDesign(request, o);
   if (design.synthetic) throw new PromptStop("DETAIL_COMP_DESIGN_SYNTHETIC");
+  // #375 review M1: the approved RUN's own pictures (a 6-picture section design is referenced by its first PC and SP only)
+  if (design.image_counts.pc !== 1 || design.image_counts.sp !== 1) throw new PromptStop("DETAIL_COMP_NOT_WHOLE_PAGE");
   const pc = design.references.filter((r) => r.image.startsWith("pc-"));
   const sp = design.references.filter((r) => r.image.startsWith("sp-"));
   if (pc.length !== 1 || sp.length !== 1 || design.references.length !== 2) throw new PromptStop("DETAIL_COMP_NOT_WHOLE_PAGE");

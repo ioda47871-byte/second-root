@@ -59,7 +59,8 @@ async function designPng(width: number, height: number, seed: number): Promise<B
 }
 
 /** A worker HOME with the fictional bakery's facts and an approved whole-page design (sealed bundle + its records). */
-async function world(o: { decision?: "approve" | "revise" } = {}) {
+/** section: the old 6-picture section design (PC 2 + SP 4) instead of a whole page (#375 review M1). */
+async function world(o: { decision?: "approve" | "revise"; section?: boolean } = {}) {
   const home = tmp("sr-detail-home-");
   const shopDir = join(home, "second-root-shops", SHOP);
   mkdirSync(join(shopDir, "design-reviews"), { recursive: true, mode: 0o700 });
@@ -69,19 +70,23 @@ async function world(o: { decision?: "approve" | "revise" } = {}) {
   mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
   chmodSync(runDir, 0o700);
   const pictures = { pc: await designPng(1024, 1536, 1), sp: await designPng(1024, 1536, 2) };
-  const images = (["pc", "sp"] as const).map((view) => {
-    writeFileSync(join(runDir, "parts", `${view}-1.png`), pictures[view], { mode: 0o600 });
-    return { file: `parts/${view}-1.png`, sha256: sha(pictures[view]), bytes: pictures[view].length };
-  });
+  const parts: { view: "pc" | "sp"; n: number }[] = o.section ? [...[1, 2].map((n) => ({ view: "pc" as const, n })), ...[1, 2, 3, 4].map((n) => ({ view: "sp" as const, n }))] : [{ view: "pc", n: 1 }, { view: "sp", n: 1 }];
+  const images = await Promise.all(
+    parts.map(async ({ view, n }) => {
+      const bytes = n === 1 ? pictures[view] : await designPng(1024, 1536, 10 + n);
+      writeFileSync(join(runDir, "parts", `${view}-${n}.png`), bytes, { mode: 0o600 });
+      return { file: `parts/${view}-${n}.png`, sha256: sha(bytes), bytes: bytes.length };
+    }),
+  );
   const references = [{ id: "ref-1", case_id: "CP-001", sha256: sha("invented reference") }];
-  writeFileSync(join(runDir, "reference-inputs.json"), JSON.stringify({ schema: "image_first_reference_inputs_v0", layout: "whole_page", references }), { mode: 0o600 });
+  if (!o.section) writeFileSync(join(runDir, "reference-inputs.json"), JSON.stringify({ schema: "image_first_reference_inputs_v0", layout: "whole_page", references }), { mode: 0o600 });
   const receipt = {
     schema: "imagefirst_worker_receipt_v1", status: "succeeded", stop_code: null, stage: null, cli_exit: 0, cli_timed_out: false, interrupted: false,
     shop: SHOP, direction: "request", approval_id: DESIGN_ID, plan_id: DESIGN_ID, commit: "c".repeat(40), packet_sha256: "a".repeat(64), plan_sha256: "b".repeat(64), prompt_sha256: "d".repeat(64), prompt_chars: 4000,
     run_dir: runDir, images, stopped_images: [], verified: true,
     timings: { started_at: "2026-11-26T01:00:00.000Z", finished_at: "2026-11-26T01:05:00.000Z", elapsed_ms: 300_000 },
-    mode: "request", kind: "fictional", request_id: DESIGN_ID, request_sha256: "a".repeat(64), facts_sha256: sha(FACTS_BYTES), images_total: 2,
-    counts: { pc: 1, sp: 1, total: 2, stopped: 0 }, design_layout: "whole_page", reference_images: references,
+    mode: "request", kind: "fictional", request_id: DESIGN_ID, request_sha256: "a".repeat(64), facts_sha256: sha(FACTS_BYTES), images_total: images.length,
+    ...(o.section ? { counts: { pc: 2, sp: 4, total: 6, stopped: 0 } } : { counts: { pc: 1, sp: 1, total: 2, stopped: 0 }, design_layout: "whole_page", reference_images: references }),
   };
   const receiptPath = join(runs, "design.receipt.json");
   writeFileSync(receiptPath, JSON.stringify(receipt), { mode: 0o600 });
@@ -172,6 +177,13 @@ describe("DEV-364 PR 4: the detail comp request (offline only)", () => {
     // the design's own gate runs: a design the owner asked to revise is not approved
     const revised = await world({ decision: "revise" });
     expect(await bad({}, revised)).toBe("DESIGN_NOT_APPROVED");
+    // #375 review M1: the old 6-picture section design (its references are only its first PC and SP) is not a whole page
+    const section = await world({ section: true });
+    expect(await bad({}, section)).toBe("DETAIL_COMP_NOT_WHOLE_PAGE");
+    // a note quoting a facts-pack value (the shop's name)
+    const facts = JSON.parse(FACTS_BYTES.toString("utf8")) as { facts: { key: string; value: string }[] };
+    const name = facts.facts.find((f) => f.key === "name")!.value;
+    expect(await bad({ targets: [{ ...TARGETS[0]!, note: `${name}の見出し` }], max_images: 1 })).toBe("REQUEST_DIRECTION_HAS_FACT");
   });
 
   it("the real worker CLI: --validate-request says valid / runnable false, --print-plan shows the plan (exit 0), nothing written", () => {
@@ -254,6 +266,16 @@ describe("DEV-364 PR 4: the faithfulness record (advisory) against the whole pag
     writeFileSync(join(full, "x"), "x");
     expect(await again({ outDir: full })).toBe("DETAIL_FAITH_OUT_NOT_EMPTY");
     expect(await again({ outDir: join(REPO, "tmp-faith") })).toBe("DETAIL_FAITH_IN_REPO");
+    // #375 review L1: an existing output folder must be ours and private; inputs and their folders too
+    const open = tmp();
+    chmodSync(open, 0o755);
+    expect(await again({ outDir: open })).toBe("DETAIL_FAITH_OUT_UNSAFE");
+    chmodSync(implDir, 0o755);
+    expect(await again({})).toBe("DETAIL_FAITH_FOLDER_UNSAFE");
+    chmodSync(implDir, 0o700);
+    chmodSync(matching, 0o644);
+    expect(await again({ regions: [{ target: "hero", view: "pc", box: hero, detailPath: matching }] })).toBe("DETAIL_FAITH_INPUT_UNSAFE");
+    chmodSync(matching, 0o600);
     expect(await again({})).toBe("ok");
   });
 
