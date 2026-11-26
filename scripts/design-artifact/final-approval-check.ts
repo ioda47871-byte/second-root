@@ -7,7 +7,8 @@
  *   npx tsx scripts/design-artifact/final-approval-check.ts --page  <inputs> --review <review.json> --out <private dir>
  *
  *   <inputs>  --design-bundle <review-inbox/<id>> --design-review <f> --design-approval <f>   (the first approval)
- *             [--materials-bundle <dir> --materials-review <f> --materials-approval <f>]     (needed when an A picture is shown)
+ *             --materials-bundle <dir> --materials-review <f> --materials-approval <f>       (always: the approved materials,
+ *                                                                                     so no approved material passes as B / C)
  *             --slots <photo-slots.json> --provenance <private dir> --site <staged site> --impl-compare <comparison dir>
  *
  * --check  every SHA-256 the review names is recomputed from the files; gate mode (the default) also needs the approval,
@@ -46,12 +47,11 @@ export function parseFinalApprovalArgs(argv: string[]): Args | null {
     i++;
   }
   if (flags.has("--check") === flags.has("--page")) return null;
-  for (const k of ["--design-bundle", "--design-review", "--design-approval", "--slots", "--provenance", "--site", "--impl-compare", "--review"]) if (!o[k]) return null;
-  const m = ["--materials-bundle", "--materials-review", "--materials-approval"].filter((k) => o[k]);
-  if (m.length !== 0 && m.length !== 3) return null;
+  // #373 re-review Low 1: the materials records are always required here
+  for (const k of ["--design-bundle", "--design-review", "--design-approval", "--materials-bundle", "--materials-review", "--materials-approval", "--slots", "--provenance", "--site", "--impl-compare", "--review"]) if (!o[k]) return null;
   const inputs: FinalInputs = {
     design: { bundleDir: resolve(o["--design-bundle"]!), reviewPath: resolve(o["--design-review"]!), approvalPath: resolve(o["--design-approval"]!) },
-    ...(m.length ? { materials: { bundleDir: resolve(o["--materials-bundle"]!), reviewPath: resolve(o["--materials-review"]!), approvalPath: resolve(o["--materials-approval"]!) } } : {}),
+    materials: { bundleDir: resolve(o["--materials-bundle"]!), reviewPath: resolve(o["--materials-review"]!), approvalPath: resolve(o["--materials-approval"]!) },
     slotsPath: resolve(o["--slots"]!),
     provenanceDir: resolve(o["--provenance"]!),
     siteDir: resolve(o["--site"]!),

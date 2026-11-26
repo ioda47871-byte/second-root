@@ -32,7 +32,8 @@
  * (a new whole-page design and its approval, not a second approval): when the reviewer says so (composition_change
  * major) and, whatever the reviewer says, when the comparison measured it — COMPOSITION_ROUTE_RULE: the comparison did
  * not compare both viewports (status not "compared", or a viewport's code set), or a viewport's page layout fell below
- * the implementation lane's provisional page SSIM threshold (DEV-131, 0.8: the difference code <PC|SP>_PAGE_LAYOUT).
+ * the implementation lane's provisional page SSIM threshold (DEV-131, 0.8: the difference code <PC|SP>_PAGE_LAYOUT, or
+ * the number itself; a record whose code and number disagree is refused).
  * The page height is NOT used (the first-approved picture is a condensed overview; its height is expected to differ).
  * The gate refuses that route (FINAL_COMPOSITION_CHANGED).
  *
@@ -357,8 +358,13 @@ export type ImplRecordView = z.infer<typeof ImplRecord>;
 export type FinalInputs = {
   /** The first approval's records (design-approval.ts). */
   design: ApprovedDesignRecords;
-  /** The approved materials' records (materials-approval.ts); required when the site shows an A picture. */
-  materials?: { bundleDir: string; reviewPath: string; approvalPath: string };
+  /**
+   * The approved materials' records (materials-approval.ts), or the explicit statement that the first-approved design
+   * has no approved materials (`{ none: true }`). #373 re-review Low 1: never simply left out, so the check that no
+   * approved material is shown as B or C (FINAL_GENERATED_AS_SHOP) cannot be skipped by omission. The CLI always asks
+   * for the records; `none` is for a caller that knows the design has no materials stage (an A picture then stops).
+   */
+  materials: { bundleDir: string; reviewPath: string; approvalPath: string } | { none: true };
   /** The photo-slot spec file. */
   slotsPath: string;
   /** The private provenance folder: <picture sha256>.json per picture. */
@@ -392,22 +398,44 @@ const passThrough = async <T>(f: () => Promise<T>): Promise<T> => {
   }
 };
 
-/** COMPOSITION_ROUTE_RULE applied to the comparison record: the reasons it routes back to the first approval. */
+/**
+ * COMPOSITION_ROUTE_RULE applied to the comparison record: the reasons it routes back to the first approval. #373
+ * re-review Low 2: the numbers count as well as the codes — a viewport whose page SSIM is under the threshold routes back
+ * (as <PC|SP>_PAGE_LAYOUT) even when its difference code is missing.
+ */
 export function measuredCompositionChange(impl: ImplRecordView): string[] | null {
   const reasons: string[] = [];
   if (impl.status !== "compared") reasons.push(`STATUS_${impl.status.toUpperCase()}`);
   for (const [tag, v] of [["PC", impl.viewports.desktop_1440], ["SP", impl.viewports.mobile_390]] as const) {
     if (v.code) reasons.push(`${tag}_${v.code}`);
     if (v.page === null) reasons.push(`${tag}_NOT_MEASURED`);
+    else if (!(v.page.ssim >= COMPOSITION_ROUTE_RULE.pageSsim)) reasons.push(`${tag}_PAGE_LAYOUT`);
     for (const d of v.differences) if (COMPOSITION_ROUTE_RULE.pageLayoutCode.test(d)) reasons.push(d);
   }
   return reasons.length ? [...new Set(reasons)] : null;
 }
 
+/**
+ * #373 re-review Low 2: the comparison record must agree with itself — a viewport's PAGE_LAYOUT code exactly when its
+ * page SSIM is under the threshold, and the record's differences / findings the two viewports' in order. A record whose
+ * codes and numbers disagree was not written by the comparison as it is (FINAL_IMPL_COMPARE_INVALID).
+ */
+export function implRecordConsistent(impl: ImplRecordView): boolean {
+  const vps = [["PC", impl.viewports.desktop_1440], ["SP", impl.viewports.mobile_390]] as const;
+  for (const [tag, v] of vps) {
+    if (v.page === null) continue;
+    const coded = v.differences.includes(`${tag}_PAGE_LAYOUT`);
+    if (!Number.isFinite(v.page.ssim) || coded !== v.page.ssim < COMPOSITION_ROUTE_RULE.pageSsim) return false;
+  }
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, n) => x === b[n]);
+  return same(impl.differences, [...vps[0][1].differences, ...vps[1][1].differences]) && same(impl.findings, [...vps[0][1].findings, ...vps[1][1].findings]);
+}
+
 /** Reads and recomputes everything the review must match (see the header). */
 async function gatherEvidence(i: FinalInputs, repo: string): Promise<FinalEvidence> {
   const design = await passThrough(() => approvedDesignRun({ ...i.design, repo }));
-  const approved = i.materials ? await passThrough(() => approvedMaterials({ design: i.design, ...i.materials!, repo })) : null;
+  const m = i.materials;
+  const approved = "none" in m ? null : await passThrough(() => approvedMaterials({ design: i.design, bundleDir: m.bundleDir, reviewPath: m.reviewPath, approvalPath: m.approvalPath, repo }));
   // the slot spec in its full strict form, bound to this first approval
   const slotsBytes = await readFinalRecord(i.slotsPath, repo);
   const slots = PhotoSlots.safeParse(parseJson(slotsBytes, "FINAL_SLOTS_INVALID"));
@@ -423,6 +451,7 @@ async function gatherEvidence(i: FinalInputs, repo: string): Promise<FinalEviden
   const parsed = ImplRecord.safeParse(parseJson(implBytes, "FINAL_IMPL_COMPARE_INVALID"));
   if (!parsed.success) return stop("FINAL_IMPL_COMPARE_INVALID");
   const impl = parsed.data;
+  if (!implRecordConsistent(impl)) stop("FINAL_IMPL_COMPARE_INVALID");
   if (impl.request_id !== design.request_id || impl.approved.bundle_sha256 !== design.bundle_sha256 || impl.approved.review_sha256 !== design.review_sha256 || impl.approved.approval_sha256 !== design.approval_sha256) stop("FINAL_IMPL_COMPARE_MISMATCH");
   if (impl.viewports.desktop_1440.design.source_sha256 !== design.images.pc[0]?.sha256 || impl.viewports.mobile_390.design.source_sha256 !== design.images.sp[0]?.sha256) stop("FINAL_IMPL_COMPARE_MISMATCH");
   if (buildFilesSha256(impl.site.files) !== buildFilesSha256(site.files)) stop("FINAL_IMPL_COMPARE_MISMATCH");
