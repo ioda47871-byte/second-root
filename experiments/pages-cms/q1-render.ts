@@ -35,7 +35,7 @@ import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype
 import { buildSite } from "./build";
 import { loadContent, viewOf, type ShopContent } from "./content-model";
 import { Q1_TODAY, writeFixture } from "./fixtures";
-import { CONTROL_PAGE, safeOutDir, serveAndMeasure } from "./q1-check";
+import { CONTROL_PAGE, safeOutDir, serveAndMeasure, SLOT_CODES, SLOT_CONTROLS } from "./q1-check";
 import { SHOP_SITES } from "./shop-site";
 
 /** What the render-helper path reports for one width (codes of its own vocabulary). */
@@ -64,6 +64,9 @@ type Control = {
   render: string[];
   /** Codes the direct path must give at PC and at SP, and codes it must NOT give there. */
   direct?: { present: string[]; absent: string[] };
+  /** DEV-364 PR 2b: pictures the control page needs (path → bytes) and the photo slots the direct path measures. */
+  media?: Record<string, Buffer>;
+  slots?: Parameters<typeof serveAndMeasure>[5];
 };
 /** The controls (see the header): each must give its codes, or the checks are not working. */
 export const CONTROLS: Control[] = [
@@ -98,6 +101,17 @@ export const CONTROLS: Control[] = [
   { name: "fact-hidden", page: { html: `${HEAD}<h1>架空の店</h1><p class="h">03-0000-0000</p></body></html>`, css: ".h{visibility:hidden}" }, facts: ["03-0000-0000"], shopName: null, render: ["SP_FACT_HIDDEN"] },
   { name: "tap-too-small", page: { html: `${HEAD}<h1>架空の店</h1><p>本文です。</p><a class="t" href="#a">x</a></body></html>`, css: ".t{display:inline-block;width:16px;height:16px;font-size:12px;overflow:hidden}" }, facts: [], shopName: null, render: ["SP_TAP_TARGET_TOO_SMALL"] },
   { name: "tap-below-44", page: { html: `${HEAD}<h1>架空の店</h1><p>本文です。</p><a class="t" href="#a">押</a></body></html>`, css: ".t{display:inline-block;width:32px;height:32px;font-size:14px}" }, facts: [], shopName: null, render: ["SP_TAP_TARGET_BELOW_44"] },
+  // DEV-364 PR 2b (review #372 L3): one slot control per code; each gives its own and none of the other slot codes
+  ...SLOT_CONTROLS.map((c) => ({
+    name: c.name,
+    page: { html: c.html, css: c.css },
+    facts: [],
+    shopName: null,
+    render: [],
+    direct: { present: [c.code], absent: [...SLOT_CODES.filter((x) => x !== c.code), "Q1_BROKEN_IMAGE"] },
+    media: c.media,
+    slots: c.slots,
+  })),
   { name: "shop-name-low", page: { html: `${HEAD}<div class="sp"></div><h1>架空の店</h1></body></html>`, css: ".sp{height:1400px}" }, facts: ["架空の店"], shopName: "架空の店", render: ["SP_SHOP_NAME_NOT_IN_FIRST_SCREEN"] },
 ];
 
@@ -107,7 +121,7 @@ export type ControlResult = { name: string; render: RenderQ1; direct: Record<"pc
 export async function runControls(browser: Browser, work: string, outDir: string): Promise<ControlResult[]> {
   const results: ControlResult[] = [];
   for (const c of CONTROLS) {
-    const render = await renderQ1(browser, c.page, new Map(), c.facts, c.shopName, outDir, `control-${c.name}`);
+    const render = await renderQ1(browser, c.page, new Map(Object.entries(c.media ?? {})), c.facts, c.shopName, outDir, `control-${c.name}`);
     const all = new Set([...render.pc, ...render.sp]);
     const missing = c.render.filter((code) => !all.has(code)).map((code) => `${c.name}:${code}`);
     let direct: ControlResult["direct"] = null;
@@ -116,9 +130,13 @@ export async function runControls(browser: Browser, work: string, outDir: string
       await mkdir(dist, { recursive: true });
       await writeFile(join(dist, "index.html"), c.page.html);
       await writeFile(join(dist, "style.css"), c.page.css);
+      for (const [path, bytes] of Object.entries(c.media ?? {})) {
+        await mkdir(join(dist, path, ".."), { recursive: true });
+        await writeFile(join(dist, path), bytes);
+      }
       direct = { pc: [], sp: [] };
       for (const view of ["pc", "sp"] as const) {
-        const codes = new Set((await serveAndMeasure(browser, dist, `control-${c.name}`, view, outDir)).map((f) => f.code));
+        const codes = new Set((await serveAndMeasure(browser, dist, `control-${c.name}`, view, outDir, c.slots ?? [])).map((f) => f.code));
         direct[view] = [...codes].sort();
         for (const code of c.direct.present) if (!codes.has(code as never)) missing.push(`${c.name}:${view}:${code}`);
         for (const code of c.direct.absent) if (codes.has(code as never)) missing.push(`${c.name}:${view}:not ${code}`);
@@ -180,7 +198,7 @@ export async function runQ1Compare(o: { outDir: string; browser: Browser }): Pro
         const { facts, truncated } = factsOf(content);
         const render = await renderQ1(o.browser, { html: built.html, css: built.css }, media, facts, content.shop.name, out, name);
         for (const view of ["pc", "sp"] as const) {
-          const direct = [...new Set((await serveAndMeasure(o.browser, dist, name, view, out)).map((f) => f.code))].sort();
+          const direct = [...new Set((await serveAndMeasure(o.browser, dist, name, view, out, built.slots)).map((f) => f.code))].sort();
           rows.push({ fixture: name, viewport: view, render: render[view], direct, facts_truncated: truncated });
         }
       }

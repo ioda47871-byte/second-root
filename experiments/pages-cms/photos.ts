@@ -81,6 +81,8 @@ export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" |
  * Root's delivery build, which refuses C (CONTENT_DELIVERY_CUSTOMER_PHOTO); provenanceDir alone does not imply it.
  */
 export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string; delivery?: boolean } = {}): Promise<PhotoProvenance[]> {
+  // #371 re-review: a delivery build checks the full B rights records, so it needs the private folder
+  if (o.delivery && !o.provenanceDir) throw new ContentError("CONTENT_DELIVERY_RIGHTS_DIR_MISSING", "provenanceDir");
   if (o.provenanceDir) await assertOutsideRepo(o.provenanceDir, repo);
   const handover = await loadGeneratedEntries(repo);
   const index = await loadProvenanceIndex(repo);
@@ -171,7 +173,7 @@ export async function loadGeneratedRecord(repo: string, delivered = false): Prom
 }
 
 /** The handover record's entries (none when there is no record; errors as loadGeneratedRecord). */
-async function loadGeneratedEntries(repo: string): Promise<GeneratedRecord["files"]> {
+export async function loadGeneratedEntries(repo: string): Promise<GeneratedRecord["files"]> {
   if ((await loadGeneratedRecord(repo)).size === 0) return [];
   return GeneratedRecord.parse(JSON.parse((await readFile(join(repo, GENERATED_RECORD))).toString("utf8"))).files;
 }

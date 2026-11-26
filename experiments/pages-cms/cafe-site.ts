@@ -19,8 +19,9 @@ function prices(m: MenuItem): string {
   return m.priceDisplay ? `<p class="yen">${e(m.priceDisplay)}</p>` : "";
 }
 
-function row(m: MenuItem): string {
-  const pic = m.image ? `<img src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="160" height="160">` : "";
+function row(m: MenuItem, slotOf?: (image: string) => string | undefined): string {
+  const slot = m.image ? slotOf?.(m.image) : undefined;
+  const pic = m.image ? `<img ${slot ? `data-slot="${e(slot)}" ` : ""}src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="160" height="160">` : "";
   return `<li class="row${m.soldOut ? " out" : ""}" data-q1="item"><figure class="thumb">${pic}${m.image && m.imageKind === "generated" ? '<figcaption class="cap">イメージ</figcaption>' : ""}</figure><div class="what"><h3>${e(m.name)}</h3>${m.soldOut ? '<p class="tag">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}</div><div class="cost">${prices(m)}</div></li>`;
 }
 
@@ -35,10 +36,10 @@ function side(shop: ShopInfo, news: Announcement[], today: string): string {
 }
 
 /** The page (pure). `today` (YYYY-MM-DD) decides which special closures are still ahead. */
-export function renderCafe(content: ShopContent, today: string): { html: string; css: string } {
+export function renderCafe(content: ShopContent, today: string, slotOf?: (image: string) => string | undefined): { html: string; css: string } {
   const v = viewOf(content);
   const menu = v.sections.length
-    ? v.sections.map((s) => `<section class="cat" data-q1="section"><h2>${e(s.category.name)}</h2><ul class="list">${s.items.map(row).join("")}</ul></section>`).join("")
+    ? v.sections.map((s) => `<section class="cat" data-q1="section"><h2>${e(s.category.name)}</h2><ul class="list">${s.items.map((m) => row(m, slotOf)).join("")}</ul></section>`).join("")
     : '<p class="empty">メニューは準備中です。</p>';
   const html = `<!doctype html>
 <html lang="ja">

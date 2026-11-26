@@ -4,7 +4,7 @@
  * announcements, pictures of every shape and none) plus the café's `sizes` extension with its price texts.
  */
 import type { Announcement, Category, MenuItem, ShopInfo } from "./content-model";
-import { photoVariety, solidPng, uniqueColour, type Fixture } from "./fixtures";
+import { photoVariety, solidPng, uniqueColour, withPhotoSlots, type Fixture } from "./fixtures";
 
 const SHOP: ShopInfo = {
   name: "架空のカフェ 木洩れ日珈琲",
@@ -110,5 +110,12 @@ function make(): Record<string, Fixture> {
   );
   f["sizes-prices"] = sizes;
   f["photos-large-odd"] = photoVariety(base(6), "cafe");
+  // DEV-364 PR 2b: the same picture ratios in the café's 1:1 thumbnails, each with its slot
+  f["photo-slots"] = withPhotoSlots(photoVariety(base(6), "cafe-slot"), "1:1", [
+    { material: "cup-steam", position: "50% 30%", subject: "top" },
+    { material: "bean-row", position: "80% 50%", subject: "right-third" },
+    { material: "cloth-weave", position: "50% 50%", subject: "center" },
+    { material: "spoon-line", position: "20% 50%", subject: "left-third" },
+  ]);
   return f;
 }

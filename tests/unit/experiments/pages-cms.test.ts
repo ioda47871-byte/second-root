@@ -830,7 +830,9 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
   it("review #371 L3: Second Root's delivery build never places a customer's picture (C); delivery is explicit", async () => {
     const repo = await photosRepo();
     expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo), delivery: true }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO");
-    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, delivery: true }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO");
+    // #371 re-review: a delivery build needs the private folder (it checks the full B records, not just the index)
+    expect(await code(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, delivery: true }))).toBe("CONTENT_DELIVERY_RIGHTS_DIR_MISSING");
+    expect(await code(buildSite({ repo: await deliveryRepo(), outDir: join(tmp(), "dist"), today: Q1_TODAY, delivery: true }))).toBe("CONTENT_DELIVERY_RIGHTS_DIR_MISSING");
     // review #371 Low: an audit with the private folder but without delivery keeps the customer's legitimate C pictures
     const audit = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo) });
     expect(audit.provenance.filter((p) => p.class === "C").length).toBeGreaterThan(0);
