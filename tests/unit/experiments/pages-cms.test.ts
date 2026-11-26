@@ -6,12 +6,14 @@ import { afterAll, describe, expect, it } from "vitest";
 import { BAKERY_PROFILE, renderBakery } from "@/experiments/pages-cms/bakery-site";
 import { BuildError, buildSite, writePagesYaml } from "@/experiments/pages-cms/build";
 import { addressOk, ContentError, loadContent, PHONE_MAX, phoneOk, viewOf } from "@/experiments/pages-cms/content-model";
-import { Q1_TODAY, q1Fixtures, writeFixture } from "@/experiments/pages-cms/fixtures";
-import { checkPagesConfig, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
+import { PHOTO_VARIETY, Q1_TODAY, q1Fixtures, solidPng, writeFixture } from "@/experiments/pages-cms/fixtures";
+import { imageMeta } from "@/experiments/pages-cms/image-meta";
+import { checkPagesConfig, PHOTO_HINT, pagesConfig, pagesYaml, toYaml } from "@/experiments/pages-cms/pages-config";
+import { checkPhoto, PHOTO_LIMITS } from "@/experiments/pages-cms/photos";
 import { classifyPrice, priceAmounts, priceDisplayReport } from "@/experiments/pages-cms/price-display";
 import { safeOutDir } from "@/experiments/pages-cms/q1-check";
 import { BAKERY_SITE, CAFE_SITE, SHOP_SITES } from "@/experiments/pages-cms/shop-site";
-import { FACTS_MAX, factsOf } from "@/experiments/pages-cms/q1-render";
+import { FACTS_MAX, factsOf, q1Summary } from "@/experiments/pages-cms/q1-render";
 
 // DEV-303 §6.1 rows 10–12 and §3.7 Q1, first experiment (docs/design/pages-cms-implementation-plan.md): the shared
 // content model, the generated Pages CMS configuration and the static build of ONE fictional bakery. FICTIONAL and
@@ -72,7 +74,7 @@ describe("DEV-303 Pages CMS experiment: the content model and the fictional bake
       const r = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
       expect(r.html).not.toMatch(/<script|javascript:|https?:\/\//i);
       expect(r.html).toContain("提案用デモ（架空の店）");
-      expect(r.html).toContain("写真はイメージです。");
+      expect(r.html.includes("「イメージ」の写真は生成した画像素材で")).toBe(r.html.includes("<figcaption class=\"cap\">イメージ</figcaption>"));
     }
     const states = viewOf(await loadContent(await fixtureRepo("hidden-soldout-reorder")));
     const shown = states.sections.flatMap((s) => s.items);
@@ -116,7 +118,7 @@ describe("DEV-303 Pages CMS experiment: the content model and the fictional bake
     expect(await code(loadContent(await edit({ id: "item-2" })))).toBe("CONTENT_DUPLICATE_ID");
     expect(await code(loadContent(await edit({ image: "https://example.invalid/a.png" })))).toBe("CONTENT_INVALID");
     expect(await code(loadContent(await edit({ image: "/media/../secret.png" })))).toBe("CONTENT_INVALID");
-    expect(await code(buildSite({ repo: await edit({ image: "/media/absent.png" }), outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("BUILD_MEDIA_MISSING");
+    expect(await code(buildSite({ repo: await edit({ image: "/media/absent.png" }), outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("CONTENT_PHOTO_MISSING");
   });
 });
 
@@ -399,8 +401,20 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
     return { repo, r: await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site }) };
   };
 
-  it("the bakery's output through the interface is byte-identical to before the interface (html + css per fixture)", async () => {
-    // recorded with the bakery-only build at 12d30f4c (#360 head), before the interface existed
+  it("the bakery's output through the interface is byte-identical to before the interface (html + css per fixture), apart from PR (4)'s イメージ figure", async () => {
+    // recorded with the bakery-only build at 12d30f4c (#360 head), before the interface existed. PR (4) changed exactly
+    // the picture frame (a <figure> with <figcaption>イメージ</figcaption> for generated materials), its two CSS rules
+    // and the footer note; undoing those three gives the recorded bytes again, so nothing else moved.
+    const undoPr4 = (html: string, css: string) => ({
+      html: html
+        .replace(/<figure class="frame">/g, '<div class="frame">')
+        .replace(/<figcaption class="cap">イメージ<\/figcaption><\/figure>/g, "</div>")
+        .replace(/<\/figure>/g, "</div>")
+        .replace(/(?:<p class="note">「イメージ」の写真は生成した画像素材で、店の写真ではありません。<\/p>)?<\/footer>/, '<p class="note">写真はイメージです。</p></footer>'),
+      // (the sold-out fade moved from the frame to its picture, so the イメージ label stays readable: q1-render's
+      // SP_TEXT_FADED found it)
+      css: css.replace(".frame{position:relative;margin:0;aspect-ratio:4/3;", ".frame{aspect-ratio:4/3;").replace(/\n\.cap\{[^\n]*\}/, "").replace(".soldout .frame img{opacity:.55}", ".soldout .frame{opacity:.55}"),
+    });
     const before: Record<string, string> = {
       "items-0": "c8ee9d4930bf06d447350509c96b50d03423aab2c37471934a898f41688c3bff",
       "items-3": "8a8b4513599d1fbf69517cabb16643764a1d4085ed2ffb306b505c403df1e183",
@@ -414,11 +428,12 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
       "trade-extensions": "d1bb7d41d12b9da905fe0ede54d759d6399211d3e8f899d76b6b1c6f347a3b34",
     };
     const now: Record<string, string> = {};
-    for (const name of Object.keys(BAKERY_SITE.fixtures())) {
+    for (const name of Object.keys(before)) {
       const viaInterface = (await buildOf(BAKERY_SITE, name)).r;
       const viaDefault = await buildSite({ repo: (await buildOf(BAKERY_SITE, name)).repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
       expect(viaDefault.html).toBe(viaInterface.html);
-      now[name] = sha(viaInterface.html, viaInterface.css);
+      const old = undoPr4(viaInterface.html, viaInterface.css);
+      now[name] = sha(old.html, old.css);
     }
     expect(now).toEqual(before);
   });
@@ -429,7 +444,7 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
       expect(r.html).not.toMatch(/<script|javascript:|https?:\/\//i);
       expect(r.html).toContain("架空のカフェ 木洩れ日珈琲");
       expect(r.html).toContain("提案用デモ（架空の店）");
-      expect(r.html).toContain("写真はイメージです。");
+      expect(r.html.includes("「イメージ」の写真は生成した画像素材で")).toBe(r.html.includes("<figcaption class=\"cap\">イメージ</figcaption>"));
     }
     const { r } = await buildOf(CAFE_SITE, "items-3");
     // a different composition from the bakery (a price list and a side column, not a card grid and a dark hero)
@@ -478,5 +493,115 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
     // items in a hidden category do not use the budget either
     const hiddenCategory = factsOf({ ...content, categories: content.categories.map((c) => ({ ...c, visible: c.id !== content.menu[2]!.category })), menu: Array.from({ length: 200 }, (_, k) => item(k, true)) });
     expect(hiddenCategory.facts.some((f) => f.startsWith("大きな一覧の品"))).toBe(false);
+  });
+
+  it("#363 re-review Low: a run whose phone checks dropped facts is `incomplete`, never clean", () => {
+    const row = (facts_truncated: number, render: string[] = []) => ({ fixture: "cafe-x", viewport: "sp" as const, render, direct: [], facts_truncated });
+    expect(q1Summary([row(0)])).toEqual({ status: "clean", findings: 0, facts_truncated: [] });
+    expect(q1Summary([row(0), row(12)])).toEqual({ status: "incomplete", findings: 0, facts_truncated: [{ fixture: "cafe-x", count: 12 }] });
+    expect(q1Summary([row(12, ["SP_TEXT_CLIPPED"])]).status).toBe("findings");
+  });
+});
+
+describe("DEV-303 Pages CMS (4): photos — header-only size limits, generated vs shop pictures, the イメージ figure", () => {
+  // synthetic headers (no real photo is needed to read a size): JPEG SOF0, WebP VP8 / VP8L / VP8X
+  const jpegHeader = (w: number, h: number) => Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, h >> 8, h & 255, w >> 8, w & 255, 0x03]);
+  const riff = (chunk: string, body: Buffer) => Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP"), Buffer.from(chunk, "latin1"), Buffer.alloc(4), body]);
+  const vp8 = (w: number, h: number) => {
+    const b = Buffer.alloc(10);
+    b.set([0x9d, 0x01, 0x2a], 3);
+    b.writeUInt16LE(w, 6);
+    b.writeUInt16LE(h, 8);
+    return riff("VP8 ", b);
+  };
+  const vp8l = (w: number, h: number) => {
+    const b = Buffer.alloc(10);
+    b[0] = 0x2f;
+    b.writeUInt32LE((w - 1) | ((h - 1) << 14), 1);
+    return riff("VP8L", b);
+  };
+  const vp8x = (w: number, h: number) => {
+    const b = Buffer.alloc(10);
+    b.writeUIntLE(w - 1, 4, 3);
+    b.writeUIntLE(h - 1, 7, 3);
+    return riff("VP8X", b);
+  };
+
+  it("reads PNG / JPEG / WebP sizes from the header only; anything else is no picture", () => {
+    expect(imageMeta(solidPng(640, 480, [1, 2, 3]))).toEqual({ format: "png", width: 640, height: 480 });
+    expect(imageMeta(jpegHeader(1200, 800))).toEqual({ format: "jpeg", width: 1200, height: 800 });
+    expect(imageMeta(vp8(1000, 750))).toEqual({ format: "webp", width: 1000, height: 750 });
+    expect(imageMeta(vp8l(800, 600))).toEqual({ format: "webp", width: 800, height: 600 });
+    expect(imageMeta(vp8x(4000, 3000))).toEqual({ format: "webp", width: 4000, height: 3000 });
+    for (const bad of [Buffer.from("<svg></svg>"), Buffer.from("GIF89a......"), Buffer.alloc(0), solidPng(64, 64, [0, 0, 0]).subarray(0, 20)]) expect(imageMeta(bad)).toBe(null);
+  });
+
+  it("checks each picture against the limits with a named code (bytes, type, sides, pixels, ratio)", () => {
+    const code = (file: string, bytes: Buffer) => {
+      try {
+        checkPhoto(file, bytes);
+        return "ok";
+      } catch (e) {
+        return e instanceof ContentError ? e.code : String(e);
+      }
+    };
+    expect(code("a.png", solidPng(1200, 800, [1, 2, 3]))).toBe("ok");
+    expect(code("a.jpg", jpegHeader(4000, 3000))).toBe("ok");
+    expect(code("a.webp", vp8(1000, 1000))).toBe("ok");
+    // the bytes decide the type, and they must agree with the extension
+    expect(code("a.jpg", solidPng(800, 600, [1, 2, 3]))).toBe("CONTENT_PHOTO_TYPE");
+    expect(code("a.png", Buffer.from("not a picture"))).toBe("CONTENT_PHOTO_TYPE");
+    expect(code("a.png", Buffer.concat([solidPng(800, 600, [1, 2, 3]), Buffer.alloc(PHOTO_LIMITS.bytes)]))).toBe("CONTENT_PHOTO_TOO_LARGE");
+    expect(code("a.jpg", jpegHeader(5000, 3000))).toBe("CONTENT_PHOTO_DIMENSIONS");
+    expect(code("a.webp", vp8x(4096, 4096))).toBe("CONTENT_PHOTO_DIMENSIONS"); // 16.8 MP > 16 MP
+    expect(code("a.jpg", jpegHeader(300, 300))).toBe("CONTENT_PHOTO_TOO_SMALL");
+    expect(code("a.jpg", jpegHeader(1300, 400))).toBe("CONTENT_PHOTO_RATIO");
+    expect(code("a.jpg", jpegHeader(1200, 400))).toBe("ok"); // exactly 3:1
+  });
+
+  it("the build stops on an oversize, wrong-type or missing picture the page shows; a hidden item's picture is not checked", async () => {
+    const withMedia = async (name: string, bytes: Buffer, visible = true) => {
+      const repo = join(tmp(), "repo");
+      await writeFixture(repo, BAKERY_SITE.fixtures()["items-3"]!);
+      writeFileSync(join(repo, "media", name), bytes);
+      const file = join(repo, "content", "menu", "item-1.json");
+      writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), image: `/media/${name}`, visible }));
+      return buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY }).then(() => "ok", (e: unknown) => (e instanceof ContentError ? e.code : String(e)));
+    };
+    expect(await withMedia("big.png", Buffer.concat([solidPng(800, 600, [1, 2, 3]), Buffer.alloc(PHOTO_LIMITS.bytes)]))).toBe("CONTENT_PHOTO_TOO_LARGE");
+    expect(await withMedia("fake.jpg", solidPng(800, 600, [1, 2, 3]))).toBe("CONTENT_PHOTO_TYPE");
+    expect(await withMedia("strip.png", solidPng(1500, 400, [1, 2, 3]))).toBe("CONTENT_PHOTO_RATIO");
+    expect(await withMedia("strip.png", solidPng(1500, 400, [1, 2, 3]), false)).toBe("ok");
+  });
+
+  it("a generated material is shown in a <figure> with <figcaption>イメージ</figcaption>; a shop photo is not labelled — both shops", async () => {
+    for (const site of SHOP_SITES) {
+      const siteRepo = join(tmp(), "repo");
+      await writeFixture(siteRepo, site.fixtures()["photos-large-odd"]!);
+      const r = await buildSite({ repo: siteRepo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site });
+      const figures = [...r.html.matchAll(/<figure class="(?:frame|thumb)">(<img [^>]*>)(<figcaption class="cap">イメージ<\/figcaption>)?<\/figure>/g)];
+      // the page groups items by category, so match each figure to its item by the picture's alt text (試験の画像 <n>)
+      const labelled = figures.map((m) => [Number(/試験の画像 (\d+)/.exec(m[1]!)![1]), Boolean(m[2])] as const).sort((a, b) => a[0] - b[0]);
+      expect(labelled.map(([, l]) => l)).toEqual(PHOTO_VARIETY.map((p) => p.kind === "generated"));
+      // the label is not hidden (materials-impl-check refuses a hidden figcaption)
+      expect(r.html).not.toMatch(/<figcaption[^>]*(hidden|aria-hidden)/);
+      expect(r.photos.map((p) => [p.width, p.height])).toEqual(PHOTO_VARIETY.map((p) => [p.w, p.h]));
+      expect(r.html).toContain("「イメージ」の写真は生成した画像素材で、店の写真ではありません。");
+    }
+    // only shop photos: no イメージ label and no footer note
+    const repo = join(tmp(), "repo");
+    const fx = BAKERY_SITE.fixtures()["items-3"]!;
+    await writeFixture(repo, { ...fx, menu: fx.menu.map((m) => ({ ...m, imageKind: "shop" as const })) });
+    const shopOnly = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+    expect(shopOnly.html).not.toMatch(/イメージ/);
+  });
+
+  it("the CMS shows the same limits as a hint and offers the generated / shop choice; the committed .pages.yml files follow", () => {
+    const menu = pagesConfig().content.find((c) => c.name === "menu")!.fields as { name: string; description?: string; options?: { values?: { name: string }[] } }[];
+    const image = menu.find((f) => f.name === "image")!;
+    expect(image.description).toBe(PHOTO_HINT);
+    for (const v of [`${PHOTO_LIMITS.bytes / 1024 / 1024}MB`, `${PHOTO_LIMITS.maxSide}px`, `${PHOTO_LIMITS.minSide}px`, `${PHOTO_LIMITS.maxRatio}:1`]) expect(PHOTO_HINT).toContain(v);
+    expect(menu.find((f) => f.name === "imageKind")!.options!.values!.map((v) => v.name)).toEqual(["generated", "shop"]);
+    expect(checkPagesConfig(pagesConfig())).toEqual([]);
   });
 });

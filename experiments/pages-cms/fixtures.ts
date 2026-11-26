@@ -81,6 +81,7 @@ function items(n: number): { menu: MenuItem[]; media: Record<string, Buffer> } {
       priceDisplay: PRICES[k % PRICES.length]!,
       image: file ? `/media/${file}` : "",
       imageAlt: file ? `試験の画像 ${k + 1}` : "",
+      imageKind: k % 5 === 4 ? ("shop" as const) : ("generated" as const),
       visible: true,
       soldOut: false,
       displayOrder: k,
@@ -143,7 +144,31 @@ function makeFixtures(): Record<string, Fixture> {
   const prices = ["324円（税込）", "300円（税別）", "¥1,280", "時価", "", "本体1,000円（税込1,080円）"];
   trade.menu = trade.menu.map((m, k) => ({ ...m, priceDisplay: prices[k]!, ...(k % 2 === 0 ? { allergens: ["小麦", "乳", "卵"], shelfLife: k === 0 ? "当日中" : "翌日まで" } : {}) }));
   f["trade-extensions"] = trade;
+  f["photos-large-odd"] = photoVariety(base(6), "item");
   return f;
+}
+
+/**
+ * PR (4): pictures at the edges of the photo limits (photos.ts), every one allowed: a large one, the widest and the
+ * tallest ratio (3:1, 1:3), the smallest side, a square; generated materials and shop photos mixed.
+ */
+export const PHOTO_VARIETY: { w: number; h: number; kind: "generated" | "shop" }[] = [
+  { w: 3600, h: 2400, kind: "generated" },
+  { w: 1200, h: 400, kind: "generated" },
+  { w: 400, h: 1200, kind: "shop" },
+  { w: 320, h: 320, kind: "generated" },
+  { w: 2000, h: 2000, kind: "shop" },
+  { w: 960, h: 340, kind: "generated" },
+];
+export function photoVariety(fx: Fixture, prefix: string): Fixture {
+  const media: Record<string, Buffer> = {};
+  const menu = fx.menu.map((m, k) => {
+    const p = PHOTO_VARIETY[k % PHOTO_VARIETY.length]!;
+    const file = `${prefix}-photo-${k + 1}.png`;
+    media[file] = solidPng(p.w, p.h, COLOURS[k % 3]!);
+    return { ...m, image: `/media/${file}`, imageAlt: `試験の画像 ${k + 1}`, imageKind: p.kind };
+  });
+  return { ...fx, menu, media };
 }
 
 /** Writes one fixture as a shop repository (content/ + media/) under `dir`. */

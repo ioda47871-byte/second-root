@@ -7,7 +7,7 @@
  * or scripts. It turns on the `sizes` extension (a café's S / M / L), not the bakery's allergens / shelf life.
  */
 import type { Announcement, MenuItem, ShopInfo, ShopProfile } from "./content-model";
-import { viewOf, type ShopContent } from "./content-model";
+import { shownGenerated, viewOf, type ShopContent } from "./content-model";
 
 export const CAFE_PROFILE: ShopProfile = { fixedName: "架空のカフェ 木洩れ日珈琲", extensions: ["sizes"] };
 
@@ -21,7 +21,7 @@ function prices(m: MenuItem): string {
 
 function row(m: MenuItem): string {
   const pic = m.image ? `<img src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="160" height="160">` : "";
-  return `<li class="row${m.soldOut ? " out" : ""}" data-q1="item"><div class="thumb">${pic}</div><div class="what"><h3>${e(m.name)}</h3>${m.soldOut ? '<p class="tag">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}</div><div class="cost">${prices(m)}</div></li>`;
+  return `<li class="row${m.soldOut ? " out" : ""}" data-q1="item"><figure class="thumb">${pic}${m.image && m.imageKind === "generated" ? '<figcaption class="cap">イメージ</figcaption>' : ""}</figure><div class="what"><h3>${e(m.name)}</h3>${m.soldOut ? '<p class="tag">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}</div><div class="cost">${prices(m)}</div></li>`;
 }
 
 function side(shop: ShopInfo, news: Announcement[], today: string): string {
@@ -54,7 +54,7 @@ export function renderCafe(content: ShopContent, today: string): { html: string;
 <main id="menu" class="menu">${menu}</main>
 ${side(v.shop, v.news, today)}
 </div>
-<footer data-q1="section"><p>${e(v.shop.name)}</p>${v.shop.address ? `<p>${e(v.shop.address)}</p>` : ""}${v.shop.phone ? `<p>${e(v.shop.phone)}</p>` : ""}<p class="note">写真はイメージです。</p></footer>
+<footer data-q1="section"><p>${e(v.shop.name)}</p>${v.shop.address ? `<p>${e(v.shop.address)}</p>` : ""}${v.shop.phone ? `<p>${e(v.shop.phone)}</p>` : ""}${shownGenerated(v) ? '<p class="note">「イメージ」の写真は生成した画像素材で、店の写真ではありません。</p>' : ""}</footer>
 </body>
 </html>
 `;
@@ -74,12 +74,13 @@ body{margin:0;background:#f3f1e8;color:#23312a;font-family:"Hiragino Sans","Yu G
 h2{font-size:20px;margin:28px 0 10px;color:#2f5d46}
 .list{list-style:none;margin:0;padding:0}
 .row{display:grid;grid-template-columns:80px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 0;border-top:1px solid #d6d2c2;min-width:0}
-.thumb{width:80px;height:80px;background:#e3e0d2;border-radius:6px;overflow:hidden}
+.thumb{position:relative;margin:0;width:80px;height:80px;background:#e3e0d2;border-radius:6px;overflow:hidden}
+.cap{position:absolute;left:0;right:0;bottom:0;margin:0;font-size:12px;line-height:1.6;text-align:center;background:rgba(35,49,42,.8);color:#fff}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .what h3{margin:0;font-size:17px;line-height:1.5}
 .desc{margin:4px 0 0;font-size:14px;color:#46544c}
 .tag{display:inline-block;margin:4px 0 0;padding:0 8px;border:1px solid #8a3b22;color:#8a3b22;font-size:13px}
-.out .thumb{opacity:.5}
+.out .thumb img{opacity:.5}
 .cost{text-align:right;min-width:0;max-width:220px}
 .yen{margin:0;font-size:15px;font-weight:bold}
 .sizes{list-style:none;margin:0;padding:0;font-size:14px}

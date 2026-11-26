@@ -110,6 +110,12 @@ export const MenuItem = z.strictObject({
   priceDisplay: Line(40).default(""),
   image: MediaPath.default(""),
   imageAlt: Line(120).default(""),
+  /**
+   * PR (4): where the picture comes from. `generated`: a generated image material (MVP_SPEC §7.1) — the page shows it
+   * in a <figure> with <figcaption>イメージ</figcaption> (the rule materials-impl-check.ts checks). `shop`: the shop's
+   * own photo (after handover) — no イメージ label. Absent means generated (the safe side: it is labelled).
+   */
+  imageKind: z.enum(["generated", "shop"]).default("generated"),
   visible: z.boolean().default(true),
   soldOut: z.boolean().default(false),
   displayOrder: z.number().int().min(0).max(9999).default(0),
@@ -184,7 +190,20 @@ export type ShopContent = { shop: ShopInfo; categories: Category[]; menu: MenuIt
 
 export class ContentError extends Error {
   constructor(
-    readonly code: "CONTENT_INVALID" | "CONTENT_DUPLICATE_ID" | "CONTENT_UNKNOWN_CATEGORY" | "CONTENT_TOO_MANY" | "CONTENT_FIXED_CHANGED" | "CONTENT_EXTENSION_OFF",
+    readonly code:
+      | "CONTENT_INVALID"
+      | "CONTENT_DUPLICATE_ID"
+      | "CONTENT_UNKNOWN_CATEGORY"
+      | "CONTENT_TOO_MANY"
+      | "CONTENT_FIXED_CHANGED"
+      | "CONTENT_EXTENSION_OFF"
+      // PR (4) photos (photos.ts)
+      | "CONTENT_PHOTO_MISSING"
+      | "CONTENT_PHOTO_TYPE"
+      | "CONTENT_PHOTO_TOO_LARGE"
+      | "CONTENT_PHOTO_DIMENSIONS"
+      | "CONTENT_PHOTO_TOO_SMALL"
+      | "CONTENT_PHOTO_RATIO",
     readonly file: string,
   ) {
     super(`${code} ${file}`);
@@ -256,3 +275,6 @@ export function viewOf(c: ShopContent): { shop: ShopInfo; sections: { category: 
   const news = c.news.filter((n) => n.visible).sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0));
   return { shop: c.shop, sections, news };
 }
+
+/** PR (4): whether the page shows any generated image material (each shop's footer then explains the イメージ label). */
+export const shownGenerated = (v: ReturnType<typeof viewOf>) => v.sections.some((s) => s.items.some((m) => m.image !== "" && m.imageKind === "generated"));

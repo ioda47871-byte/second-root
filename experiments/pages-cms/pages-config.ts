@@ -20,6 +20,7 @@
  */
 import { z } from "zod";
 import type { TradeExtension } from "./content-model";
+import { PHOTO_LIMITS } from "./photos";
 
 type Field = {
   name: string;
@@ -49,6 +50,12 @@ const HHMM = { regex: "^(([01][0-9]|2[0-3]):[0-5][0-9])?$", message: "08:30 の�
 const ID: Field = { name: "id", label: "ID（自動）", type: "uuid", readonly: true, hidden: true };
 
 /** The configuration as data (what `.pages.yml` holds). */
+/**
+ * PR (4): the photo limits as the editor sees them (Pages CMS has no size limit option; the build enforces them:
+ * photos.ts PHOTO_LIMITS — kept equal by a test).
+ */
+export const PHOTO_HINT = `JPEG・PNG・WebP、${PHOTO_LIMITS.bytes / 1024 / 1024}MB まで、長い辺 ${PHOTO_LIMITS.maxSide}px まで・短い辺 ${PHOTO_LIMITS.minSide}px 以上、縦横の比は ${PHOTO_LIMITS.maxRatio}:1 まで（スマートフォンの写真は「中」や「大」のサイズで送ると収まります）`;
+
 /** The CMS pattern for a phone number (the build checks it fully: content-model.ts phoneOk). */
 const PHONE = { regex: "^([+＋]?[0-9０-９()（）\\-－ 　]{10,24})?$", message: "例: 03-1234-5678（数字・ハイフン・括弧。全角の数字も使えます。空なら表示しません）" };
 /** The CMS pattern for an address (no markup; the build checks it fully: addressOk). */
@@ -78,8 +85,16 @@ export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) 
     { name: "category", label: "分類", type: "reference", required: true, options: { collection: "categories", value: "{fields.id}", label: "{fields.name}" } },
     { name: "priceDisplay", label: "価格の表示", type: "string", description: "頁にそのまま出ます（例: 480円（税込）、時価）", options: { maxlength: 40 } },
     { name: "description", label: "説明", type: "text", options: { maxlength: 400 } },
-    { name: "image", label: "写真", type: "image", options: { extensions: ["jpg", "jpeg", "png", "webp"] } },
+    { name: "image", label: "写真", type: "image", description: PHOTO_HINT, options: { extensions: ["jpg", "jpeg", "png", "webp"] } },
     { name: "imageAlt", label: "写真の説明（読み上げ用）", type: "string", options: { maxlength: 120 } },
+    {
+      name: "imageKind",
+      label: "写真の種類",
+      type: "select",
+      default: "generated",
+      description: "イメージ素材（生成した画像）には頁で「イメージ」と表示します。店で撮った写真に差し替えたら「店の写真」にします",
+      options: { values: [{ name: "generated", label: "イメージ素材" }, { name: "shop", label: "店の写真" }] },
+    },
     { name: "soldOut", label: "売り切れ", type: "boolean", default: false },
     { name: "visible", label: "公開する", type: "boolean", default: true },
     { name: "displayOrder", label: "並び順（小さいほど上）", type: "number", default: 0, options: { min: 0, max: 9999 } },
