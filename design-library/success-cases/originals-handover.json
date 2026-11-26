@@ -1,0 +1,698 @@
+{
+  "schema": "sr_success_originals_handover_v1",
+  "as_of": "2026-11-26",
+  "issue": 336,
+  "scope": "All 37 owner-adopted success cases (originals-catalog.md A/B/C): what the owner hands over and the SHA-256 recorded for it. Metadata only: no original bytes are committed (the repository is public). Every sha256 here already appears in manifest.json, originals-index.json, originals-catalog.md or the case's CP-*.md record on develop. Every file name appears in those records too, except the two ZIP names marked name_source (SR-002, CP-033), recorded only on the unmerged PR #237 / #240 branches. Does not change manifest.json, second-root-research-successes.json or their counts, and does not widen the case-study counting rules (case-study.ts still reads only originals-index.json and manifest.json).",
+  "rules": {
+    "verified": "A provided file is an original only when its SHA-256 equals a sha256 in this file's request for that id (adopted originals). Other recorded SHA-256s (manifest.json viewing copies, drafts, comparison sheets; originals-index.json) are reported as recorded_not_original and never promote a case. A ZIP whose own SHA-256 is not in the request is 'verified via member': only its members whose SHA-256 is in the request are originals, the other members stay unverified. A ZIP's SHA256SUMS (when present) must match entirely.",
+    "no_sha": "An entry whose sha256 is null can never be verified: a provided file stays unverified and is never registered as an original.",
+    "pseudo": "Files the owner places under <id>/pseudo/ are pseudo-restorations: always labelled so, never registered as originals, whatever their SHA-256.",
+    "private": "Originals stay outside the repository (docs/design/success-originals-handover.md)."
+  },
+  "cases": [
+    {
+      "id": "CP-001",
+      "title": "Mond — The Living Archive",
+      "category": "A",
+      "record": "design-library/success-cases/CP-001-Mond.md",
+      "adoption_record": "manifest.json CP-001",
+      "request": [
+        {
+          "name": null,
+          "sha256": "99316fb40d71a0081bd5e9b892acf69d386a472722fb7d0bb1638ad0a2557d95",
+          "role": "original_png",
+          "label": "元 PNG（記録に名前なし）"
+        }
+      ],
+      "note": "リポジトリには閲覧用 WebP だけ。元 PNG は任意"
+    },
+    {
+      "id": "CP-002",
+      "title": "Sissi — Flower is Art",
+      "category": "A",
+      "record": "design-library/success-cases/CP-002-Sissi.md",
+      "adoption_record": "manifest.json CP-002",
+      "request": [
+        {
+          "name": null,
+          "sha256": "9376f4eb7e24cb881627956d331d9d5f97c405ac197f051128352d0db1b4814d",
+          "role": "original_png",
+          "label": "元 PNG（記録に名前なし）"
+        }
+      ],
+      "note": "リポジトリには閲覧用 WebP だけ。元 PNG は任意"
+    },
+    {
+      "id": "CP-003",
+      "title": "なごやビーンズ — Editorial Roast Atlas v4",
+      "category": "A",
+      "record": "design-library/success-cases/CP-003-NagoyaBeans-v4.md",
+      "adoption_record": "manifest.json CP-003",
+      "request": [
+        {
+          "name": "nagoya_beans_editorial_v4_source.zip",
+          "sha256": "7f2f14769d196311d22e629097371c67aa2dd1c2b205561b0178279cebe6ff9b",
+          "role": "source_zip"
+        },
+        {
+          "name": null,
+          "sha256": "c1e42ba20375f2b990f05c43086504fae23fdd9030359d9e9565dda87fa13d24",
+          "role": "pc_png",
+          "label": "PC PNG"
+        },
+        {
+          "name": null,
+          "sha256": "f8050aaf2b629d805fa338cad0c46edc7d3df2c8a7111f918f645da451169a1b",
+          "role": "sp_png",
+          "label": "SP PNG"
+        }
+      ],
+      "note": "リポジトリには閲覧用 WebP（PC・SP）がある。元 PNG・ZIP は任意"
+    },
+    {
+      "id": "CP-004",
+      "title": "harebare — Spinning Beigoma Editorial v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-004-Harebare.md",
+      "adoption_record": "CP-004 記録の表",
+      "request": [
+        {
+          "name": "harebare_editorial_poc_v1_source.zip",
+          "sha256": "889d6fba877520eb1a78ee14da05e9d0a0d444f692eb38895b4273311e05a3b6",
+          "role": "source_zip"
+        },
+        {
+          "name": "desktop_full.png",
+          "sha256": "eb41b8a59a217259ef9010cf604616f63f765a6c22fbbca180cab0e8c7246849",
+          "role": "pc_png"
+        },
+        {
+          "name": "mobile_full.png",
+          "sha256": "55701641e04f290086efb0d79eb246228b4de1424d529eabe09122ed510a9df5",
+          "role": "sp_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-005",
+      "title": "Hamsa — Rice Koji / Shared Loaf Editorial",
+      "category": "B",
+      "record": "design-library/success-cases/CP-005-Hamsa.md",
+      "adoption_record": "CP-005 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP005_Hamsa_success_archive_20261027.zip",
+          "sha256": "7f0cfa59d092faea785a425bdb1c7a088b6e72d676d0aa242291eb494f14b0ca",
+          "role": "success_zip"
+        },
+        {
+          "name": "hamsa_editorial_poc_v1.zip",
+          "sha256": "141e8827aadf2368224065faa5669f44f35c7b71abebcf9348a7d25065dbf413",
+          "role": "source_zip"
+        },
+        {
+          "name": "design_reference_polished.png",
+          "sha256": "54b4eddecdd053e1a4796779910798afba4d8f93218227000b3d41eab9a306aa",
+          "role": "design_png"
+        },
+        {
+          "name": "1440_full.png",
+          "sha256": "e1a0ac1ff9ff3db820094ef5c1a4127e1a634e09f10bf451b9b1a0dc615d1fc0",
+          "role": "pc_png"
+        },
+        {
+          "name": "390_full.png",
+          "sha256": "6494351672ebaee545d53c85f5aae0a70ab3357656a30528d7e4929a9c31e9e2",
+          "role": "sp_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-006",
+      "title": "Melon de Mille — CUT & STACK",
+      "category": "B",
+      "record": "design-library/success-cases/CP-006-Melon-de-Mille.md",
+      "adoption_record": "CP-006 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP006_Melon_de_Mille_success_20261027.zip",
+          "sha256": "09070c9c7957eca876d9eebfe737bf021613d92161d5db4e8df474841b9737f7",
+          "role": "success_zip"
+        },
+        {
+          "name": "CP-006_Melon_de_Mille_Cut_and_Stack_v2_approved.png",
+          "sha256": "996b4671da84b7a1a9fe69b5322f7652ff73aa69ec215c7958413805e6ca1921",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-007",
+      "title": "ORGN. — SEAM / CUT Editorial v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-007-ORGN-SEAM-CUT.md",
+      "adoption_record": "CP-007 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP007_ORGN_SEAM_CUT_success_20261027.zip",
+          "sha256": "094aa62835123dc60918b62bda785b21ae53f65abd6bb44fe4784f249cbf338e",
+          "role": "success_zip"
+        },
+        {
+          "name": "1440_full.png",
+          "sha256": "2d3083780691b00fb73127ee74370d34b34faa7e8d46b997da36a276b4c69d93",
+          "role": "pc_png"
+        },
+        {
+          "name": "390_full.png",
+          "sha256": "c61bdfb84f5c399927364bad2493768d8b48808a0a2481cf63f422f296ea5e72",
+          "role": "sp_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-008",
+      "title": "整体院 Go. — PAUSE / GO Editorial",
+      "category": "B",
+      "record": "design-library/success-cases/CP-008-Seitai-Go-PAUSE.md",
+      "adoption_record": "CP-008 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP008_SeitaiGo_success_20261027.zip",
+          "sha256": "bd2a12763c0b02964339b8539fae9bf62f6b5868143e16305bd494f0c965efb9",
+          "role": "success_zip"
+        },
+        {
+          "name": "CP-008_SeitaiGo_v3_approved.png",
+          "sha256": "bb861c745f45b7cac87b1c74b59e05adbbf069e7c70cdbbf149e3c3c8346d63f",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-009",
+      "title": "豆＊豆 — STITCH",
+      "category": "B",
+      "record": "design-library/success-cases/CP-009-MameMame-STITCH.md",
+      "adoption_record": "CP-009 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP009_MameMame_success_20261027.zip",
+          "sha256": "b393331cd5e63efb1c59b3470016fedb1b61f4e30d9166830db68855252b69d2",
+          "role": "success_zip"
+        },
+        {
+          "name": "CP-009_MameMame_desktop_full.png",
+          "sha256": "aee4dcc2e41fd15fddf5bdf26d46835ced3208135342dfa866c6ec94aa9526f5",
+          "role": "pc_png"
+        },
+        {
+          "name": "CP-009_MameMame_mobile_full.png",
+          "sha256": "b4513ecd14e7f12cd52dcce6b3d9379475864736cc92316c4933a0c20303ec14",
+          "role": "sp_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-010",
+      "title": "ぺいぱばっくらいたー — PT02",
+      "category": "B",
+      "record": "design-library/success-cases/CP-010-PaperTheater-PT02.md",
+      "adoption_record": "CP-010 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP010_PaperTheater_PT02_success_20261027.zip",
+          "sha256": "a438dfce1434de4b6973283edcfd696c1a1e0b6a10850cb60b4918f21e59eecc",
+          "role": "success_zip"
+        },
+        {
+          "name": null,
+          "sha256": "6341c869f931810e449a3406ff87c5c9abf9e05bf5b5d56e87cc93a3f41983ce",
+          "role": "pc_png",
+          "label": "PC FULL（1440）"
+        },
+        {
+          "name": null,
+          "sha256": "a9594cda129bf903fd3a5978eb063b2c7a597dc13b2edd884f089d6b2f714ed1",
+          "role": "sp_png",
+          "label": "スマホ FULL（390）"
+        }
+      ]
+    },
+    {
+      "id": "CP-011",
+      "title": "BAR N — GLASS SILENCE",
+      "category": "B",
+      "record": "design-library/success-cases/CP-011-BAR-N-GLASS-SILENCE.md",
+      "adoption_record": "CP-011 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP011_BAR_N_success_20261027.zip",
+          "sha256": "db741840c31b79b8e1582d99b7c39797a6a9d260f6718eabba89541c58dd873d",
+          "role": "success_zip"
+        },
+        {
+          "name": "secondroot_CP011_BAR_N_structure_recovery_v2.zip",
+          "sha256": "e47e79fb882f3d5caec9de153552a56f85392020508f163f1d72ab803a36cb55",
+          "role": "source_zip"
+        },
+        {
+          "name": "1440_full.png",
+          "sha256": "870ccff24b45438a6be2fbfda95aed8906208bac479bdb43b65c48ef1bc1bc4e",
+          "role": "pc_png"
+        },
+        {
+          "name": "390_full.png",
+          "sha256": "dd4b1cf113c1b09ab45514b36f6bcd7fa11cf675f5464741f9640b3ac88038d5",
+          "role": "sp_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-012",
+      "title": "Admy — ONE OF A KIND",
+      "category": "B",
+      "record": "design-library/success-cases/CP-012-Admy-ONE-OF-A-KIND.md",
+      "adoption_record": "CP-012 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP012_Admy_success_20261027.zip",
+          "sha256": "7fa174c2e341c009c82124208ec8624981e84b14df7e21970a25fadb5d9323f8",
+          "role": "success_zip"
+        },
+        {
+          "name": "CP-012_Admy_owner_approved_concept.png",
+          "sha256": "b9309e3d4d4226abd3b2400fb079c6ecdd592874679f592d1b5e91ecfe672176",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-013",
+      "title": "スペースたのしい — TOY PACKAGING",
+      "category": "B",
+      "record": "design-library/success-cases/CP-013-SpaceTanoshii-TOY-PACKAGING.md",
+      "adoption_record": "CP-013 記録の表",
+      "request": [
+        {
+          "name": "secondroot_CP013_SpaceTanoshii_success_20261028.zip",
+          "sha256": "ea3587b138cf42c54e0ae0e34ba3e1a792d8d6105cb52cca5ad973af2c5da0cb",
+          "role": "success_zip"
+        },
+        {
+          "name": "CP-013_SpaceTanoshii_v2_approved.png",
+          "sha256": "6b52cdc05537d740cd61e4cbee042f86aa73c3b1cb8806059611979dfc6e031b",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-015",
+      "title": "imairo. — TABLE JOURNAL v2",
+      "category": "B",
+      "record": "design-library/success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md",
+      "adoption_record": "CP-015 記録の表",
+      "request": [
+        {
+          "name": "SecondRoot_CP015_TableJournal_v2_20261028.zip",
+          "sha256": "b580f3612d5ba36987adf39cd379f68424801676365a2fb01b9589750f74d696",
+          "role": "success_zip"
+        },
+        {
+          "name": null,
+          "sha256": "39615184f7b78e139f18f91761e2d630c1762661ec5b5f8bcb28aa1dfdb0bba2",
+          "role": "pc_png",
+          "label": "PC1440 ノート表示PNG"
+        },
+        {
+          "name": null,
+          "sha256": "4e997de75939d51145a098711d57076b59580a5a1263b1e1329d879df1d27d2f",
+          "role": "sp_png",
+          "label": "スマホ390 ノート表示PNG"
+        }
+      ]
+    },
+    {
+      "id": "CP-016",
+      "title": "ズールー工作所 — COUNTERWEIGHT ZK01",
+      "category": "B",
+      "record": "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md",
+      "adoption_record": "CP-016 記録",
+      "request": [
+        {
+          "name": "SecondRoot_CP016_Zulu_Counterweight_ZK01_study.zip",
+          "sha256": "18e78a159b2d7f91fafc21c4cfde58c59e7ce57e232d79df1ed742be2966eab5",
+          "role": "success_zip"
+        },
+        {
+          "name": null,
+          "sha256": "9ea42fe1cc87056d2810069343aa937468048917650897fe69780f1e7e08107e",
+          "role": "pc_png",
+          "label": "PC 1440 初期状態の PNG"
+        },
+        {
+          "name": null,
+          "sha256": "3b67d554b68e36aaf98fcebc8e45f960a267f3d2f80fcba51cd988b9e37c2e58",
+          "role": "sp_png",
+          "label": "スマホ 390 初期状態の PNG"
+        }
+      ]
+    },
+    {
+      "id": "CP-017",
+      "title": "Rurikoyarn — UNWIND v1.1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md",
+      "adoption_record": "CP-017 記録の表",
+      "request": [
+        {
+          "name": "SecondRoot_CP017_UNWIND_v1_1_refinement_comparison.zip",
+          "sha256": "e7fdffe2e939d7aa7a4c0045e7ad8ef488a722b3b3ae17584e3f088836f8f293",
+          "role": "success_zip"
+        },
+        {
+          "name": "CP017_Rurikoyarn_UNWIND_v1_1_refined.png",
+          "sha256": "4e70e70425d71a2ffe38ac702121e399817255493fac29e40c166d2850b21b28",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-018",
+      "title": "MOLE FACTORY — OVERPRINT v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md",
+      "adoption_record": "CP-018 記録",
+      "request": [
+        {
+          "name": "a_wide_graphic_poster_like_website_landing_page.png",
+          "sha256": "69a4275c1e5adaac43199f4f825c5d43366702c69ac4ca7fd9bf15df970aacfa",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-019",
+      "title": "浦田杏梨 — WAX TIME v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md",
+      "adoption_record": "CP-019 記録",
+      "request": [
+        {
+          "name": "wide_cinematic_high_end_editorial_website_homepag.png",
+          "sha256": "2162587bc40a8c2e33620ad78b35837457f3c507f7edb94f874bed6afe444ef9",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-020",
+      "title": "喫茶 ITALICO — SHOWCASE v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md",
+      "adoption_record": "CP-020 記録",
+      "request": [
+        {
+          "name": "a_cinematic_moody_vintage_café_website_landing_p.png",
+          "sha256": "1b19426edc9a135dc1f40bddf6f86417c16ed9d230c8dbc85150551e75877049",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-021",
+      "title": "TERACE — PICK & COMPOSE v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md",
+      "adoption_record": "CP-021 記録の表（正式採用 v1）",
+      "request": [
+        {
+          "name": "a_wide_high_quality_editorial_web_graphic_design.png",
+          "sha256": "c8675baaa39c9c04bab28a68ecc8ffe790b0d135187475340143b258daec94eb",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-022",
+      "title": "Harissy — CRUMB FRACTURE v1",
+      "category": "B",
+      "record": "design-library/success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md",
+      "adoption_record": "CP-022 記録",
+      "request": [
+        {
+          "name": "wide_cinematic_editorial_website_poster_style_ima.png",
+          "sha256": "c6816c02d7d102c554b292fe9142567e25deba0b03fac575c06cb30f6a696abc",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-023",
+      "title": "BURGERS,INC — NEON FLIP v4",
+      "category": "B",
+      "record": "design-library/success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md",
+      "adoption_record": "CP-023 記録（正式採用 v4）",
+      "request": [
+        {
+          "name": "昼と夜を彩るバーガー_バー.png",
+          "sha256": "7f3ced52f3d22d09b6c6775a950619e28cbc5283b8102805bcd9362f364d194b",
+          "role": "approved_png"
+        }
+      ]
+    },
+    {
+      "id": "CP-024",
+      "title": "Boheme. — FLORAL FITTING ROOM 全ページ v2",
+      "category": "B",
+      "record": "design-library/success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md",
+      "adoption_record": "CP-024 記録の表",
+      "request": [
+        {
+          "name": "SecondRoot_CP024_Boheme_FullPage_Research_v2.zip",
+          "sha256": "ed83a5fa210b3847dbd95ce703f0799db7d148e6a55659bc47db999a90efc50a",
+          "role": "success_zip"
+        },
+        {
+          "name": null,
+          "sha256": "5c81a615ed3bfec4c1d27ee1729bf80d56112a5df62d92b69b4274de673d0de9",
+          "role": "pc_png",
+          "label": "PC1440 全ページ PNG"
+        },
+        {
+          "name": null,
+          "sha256": "4e3af11e5f04646e890d8a14dc1143ea3b937e78b5928d2d8b2fcfd2ed634c68",
+          "role": "sp_png",
+          "label": "スマホ390 全ページ PNG"
+        }
+      ],
+      "note": "疑似復元 v3 は採用原本 v2 ではない。v3 を渡すときは pseudo/ に置く（原本として登録しない）"
+    },
+    {
+      "id": "CP-026",
+      "title": "Sawaddee Chao — CHIANG MAI SHOP NOTE v5",
+      "category": "C",
+      "record": "design-library/success-cases/CP-026-Sawaddee-Chao-Shop-Note-v5.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP026_SawaddeeChao_ChiangMaiShopNote_v5.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "CP-027",
+      "title": "MATO OBJECTS STORE — Between Floors v2",
+      "category": "C",
+      "record": "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP027_MATO_BetweenFloors_v2_Approved.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "CP-028",
+      "title": "ユメツナベース — One Sheet v1",
+      "category": "C",
+      "record": "design-library/success-cases/CP-028-Yumetuna-One-Sheet-v1.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP028_Yumetuna_OneSheet_v1_Approved.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "CP-029",
+      "title": "SNOWMY — Soft Pop v4",
+      "category": "C",
+      "record": "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP029_SNOWMY_SoftPop_v4_Approved.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "CP-030",
+      "title": "高田時計店 — Service Counter v2",
+      "category": "C",
+      "record": "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP030_Takada_ServiceCounter_v2_Approved.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "CP-031",
+      "title": "リフォーム 中村 — Hybrid v3",
+      "category": "C",
+      "record": "design-library/success-cases/CP-031-Reform-Nakamura-Hybrid-v3.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP031_ReformNakamura_Hybrid_v3.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "CP-032",
+      "title": "幸せを呼ぶ玉虫屋 — Iridescent Light v1",
+      "category": "C",
+      "record": "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md",
+      "adoption_record": "原本候補の名前だけ（SHA-256 の記録なし）",
+      "request": [
+        {
+          "name": "SecondRoot_CP032_Tamamushiya_IridescentLight_v1_Approved.zip",
+          "sha256": null,
+          "role": "candidate_zip"
+        }
+      ],
+      "note": "記録された SHA-256 が無いので、渡されても「未照合」のまま。原本として登録しない"
+    },
+    {
+      "id": "SR-001",
+      "title": "輪（架空の自転車修理店）d1-v9",
+      "category": "A",
+      "record": "design-library/success-cases/second-root-research-successes.json",
+      "adoption_record": "Issue #193 comment 6703047826",
+      "request": [],
+      "note": "頁はリポジトリ（記録の SHA-256 と一致）。AI 写真入り完成版の写真は WSL の非公開の出力にある。他店の参照には数えない"
+    },
+    {
+      "id": "SR-002",
+      "title": "金時湯 — 地下水の物語",
+      "category": "B",
+      "record": "PR #237（未マージ）",
+      "adoption_record": "PR #237 本文・Issue #193",
+      "request": [
+        {
+          "name": "金時湯_地下水の物語.png",
+          "sha256": "da08c7981d26f269e73408edb0f12d631f1fd19071f4e7853138086795392695",
+          "role": "approved_png"
+        },
+        {
+          "name": "SecondRoot_SR002_Kintokiyu_approved_20261107.zip",
+          "sha256": null,
+          "role": "container_zip",
+          "label": "ZIP 自体の SHA-256 は記録なし。中の承認 PNG で照合する",
+          "name_source": "PR #237 branch (unmerged): SR-002-Kintokiyu.md"
+        }
+      ]
+    },
+    {
+      "id": "CP-033",
+      "title": "MARTELLI — B v4（= SR-003）",
+      "category": "B",
+      "record": "PR #240（未マージ）",
+      "adoption_record": "PR #240 本文",
+      "request": [
+        {
+          "name": "SecondRoot_CP033_MARTELLI_Approved_20261108.zip",
+          "sha256": "5f18b6672bbc60d7db18c2af7b123fd2db448a78b8272c5e085746f1634edd77",
+          "role": "success_zip",
+          "name_source": "PR #240 branch (unmerged): CP-033-MARTELLI-B-v4.md"
+        }
+      ]
+    },
+    {
+      "id": "CP-034",
+      "title": "中善提灯店 — v12-B FULL「折り型」（= SR-004）",
+      "category": "B",
+      "record": "Issue #193 の採用記録（2026-11-09）",
+      "adoption_record": "SecondRoot_CP034_v12B_Approved_Research_Record_20261109.md",
+      "request": [
+        {
+          "name": "SecondRoot_CP034_v12B_FullWeb_20261109.zip",
+          "sha256": "6f4fea138de381b2bca2d0d687f6ac821f897a0ee5e0079ffa97ba61632e51a1",
+          "role": "success_zip"
+        }
+      ]
+    },
+    {
+      "id": "CP-035",
+      "title": "昭雲堂印店 — A-v2 OneSheet（= SR-005）",
+      "category": "B",
+      "record": "Issue #193 の採用記録（2026-11-10）",
+      "adoption_record": "SecondRoot_CP035_A_v2_Owner_Approved_20261110.md",
+      "request": [
+        {
+          "name": "SecondRoot_CP035_A_OneSheet_v2_20261110.zip",
+          "sha256": "81ad1b3f1351bc843ac97ca6aed761353e00f5ddc25715dc2a46da90051a5382",
+          "role": "success_zip"
+        }
+      ]
+    },
+    {
+      "id": "CP-036",
+      "title": "丸五庖丁店 — D Photo Polish（= SR-006）",
+      "category": "B",
+      "record": "Issue #193 の採用記録（2026-11-10）",
+      "adoption_record": "CP036_Marugo_D_PhotoPolish_Owner_Approved_20261110.md",
+      "request": [
+        {
+          "name": "SecondRoot_CP036_Marugo_D_PhotoPolish_20261110.zip",
+          "sha256": "1527f51c1dc3109682e65c4192a46c7c07e02cbe47bea91af321cbeecdd74f61",
+          "role": "success_zip"
+        }
+      ]
+    },
+    {
+      "id": "CP-037",
+      "title": "大観堂書店 — C×A Message Clarity v2（= SR-007）",
+      "category": "B",
+      "record": "Issue #193 の採用記録（2026-11-10）",
+      "adoption_record": "SecondRoot_CP037_Owner_Adoption_20261110.md",
+      "request": [
+        {
+          "name": "SecondRoot_CP037_CA_MessageClarity_v2_20261110.zip",
+          "sha256": "4c4202266eb6b3814b012ea3c237feffc38428327f7fc27d64087b69105260eb",
+          "role": "success_zip"
+        }
+      ]
+    }
+  ]
+}
