@@ -28,6 +28,8 @@ export async function runLoadedRequest(o: LoadedRequestOptions, d: Omit<FullPage
     repoRoot: o.repoRoot,
     ...(o.signal === undefined ? {} : { signal: o.signal }),
   };
+  // DEV-303 (owner goal 2026-11-26): never from a synthetic rehearsal bundle (the worker's cycle refuses it first)
+  if (run.approvedDesign?.synthetic) return { status: "stopped", code: "APPROVED_DESIGN_SYNTHETIC", stage: "precheck", aborted: false };
   // DEV-303 §6.1 change 6: a materials run carries the approved design's PC / SP pictures as references
   if (isPhotoRequest(run.request)) return runRequestPhotoCall({ ...common, plan: run.plan as PhotoPlan, ...(run.approvedDesign ? { references: run.approvedDesign.references } : {}) }, d);
   // a run never starts on unchecked photo inputs (only --validate-request leaves them unchecked)

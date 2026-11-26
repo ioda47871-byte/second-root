@@ -298,3 +298,32 @@
 - **記録**: `--out` に `record.json`（`sr_impl_compare_v1`: 承認の bundle・審査・承認の SHA-256、頁のファイルと撮影の SHA-256、表示ごとの数値・違い・所見、道具の版）、
   `images/`（拡大縮小したデザインと撮影）、`index.html`（静的な確認ページ。script なし・通信なし・CSP）。リポジトリの中には書かない。
 - **扱い**: 数値は**オーナーの確認のための助言**で、それだけで合否を決めない（`passing` は常に false）。段 6 から先へ進むのは、再現性の審査（§3.3 の観点で見る）と Q1 の合格をオーナーが確かめたときだけ。
+
+## 5. 段 3〜6 のリハーサル（合成の bundle。DEV-303、オーナーの目標 2026-11-26）
+
+最初の本物の whole_page 生成の前に、届いてから実装の比較までを**生成なし**で手元で通す。Codex・モデル・画像の道具・通信・worker・timer・承認 ID は使わない。
+`scripts/design-artifact/imagefirst-rehearsal.ts`（`lib/design-agent/imagefirst-worker/rehearsal.ts`）が、手元で描いた帯と斜線だけの PC 1 + SP 1 の画像で
+合成の run を作り、既存の `packBundle` と local inbox の受け渡しで封印して届ける。bundle の receipt と manifest に `synthetic: true`（架空の依頼の run だけに付けられる）、commit は `000…0`。
+
+- **本物の結果としては断られる**: 研究ログ（`SYNTHETIC_NOT_LOGGED`）、worker の review の受け渡し（`RECEIPT_SYNTHETIC`）、合成のデザインからの素材の run（worker の cycle と entry: `APPROVED_DESIGN_SYNTHETIC`）。
+  実店舗の依頼は種類が違うので名指しできない（`APPROVED_DESIGN_MISMATCH`）。確認ページには「合成（リハーサル）」と出て、`design-approval-check` の結果と比較の `record.json` に `synthetic: true` が付く。
+- **置き場**: 空の非公開（0700）の一時 dir を「リハーサルの home」にする（リポジトリの外。本当の home は断る: `REHEARSAL_HOME_IS_REAL_HOME`。jail の Claude が読む本当の inbox には触れない）。
+
+```bash
+H=$(mktemp -d)   # 例: /tmp/tmp.XXXX（0700）
+ID=req-synthetic-rehearsal-wp-1
+# 1. 封印して一時の inbox へ届ける（架空の店 cafe の facts pack・合成の審査・リハーサル用の頁も置く）
+npx tsx scripts/design-artifact/imagefirst-rehearsal.ts --seal --home "$H"
+# 2. 審査だけの確認（段 3）と確認ページ（page_sha256 を控える）
+npx tsx scripts/design-artifact/design-approval-check.ts --check --draft --bundle "$H/sr-runs/review-inbox/$ID" --review "$H/second-root-shops/cafe/design-reviews/$ID.review.json"
+npx tsx scripts/design-artifact/design-approval-check.ts --page --bundle "$H/sr-runs/review-inbox/$ID" --review "$H/second-root-shops/cafe/design-reviews/$ID.review.json" --out "$H/page"
+# 3. 架空の承認（合成の bundle にだけ書ける）と、それを名指す架空の素材の依頼
+npx tsx scripts/design-artifact/imagefirst-rehearsal.ts --approve --home "$H" --page-sha256 <2 の page_sha256>
+npx tsx scripts/design-artifact/design-approval-check.ts --check --bundle "$H/sr-runs/review-inbox/$ID" --review "$H/second-root-shops/cafe/design-reviews/$ID.review.json" --approval "$H/second-root-shops/cafe/design-reviews/$ID.approval.json"
+# 4. 素材の依頼の検査（HOME をリハーサルの home にする。結果に rehearsal_only: true）
+HOME="$H" node --import tsx scripts/sales-design-worker/imagefirst-worker.ts --validate-request "$H/rehearsal-requests/$ID-materials.json"
+# 5. 段 6: 実装との比較（Chromium。重い処理なので先に scripts/ops/wsl-resource-preflight.sh）
+npx tsx scripts/design-artifact/impl-compare-approved.ts --bundle "$H/sr-runs/review-inbox/$ID" --review "$H/second-root-shops/cafe/design-reviews/$ID.review.json" --approval "$H/second-root-shops/cafe/design-reviews/$ID.approval.json" --site "$H/second-root-shops/cafe/site-rehearsal" --out "$H/impl-compare"
+```
+
+素材の bundle（`image_material`）は作らないので、§H の `materials-impl-check.ts` は対象外。終わったら一時 dir は手で消す。

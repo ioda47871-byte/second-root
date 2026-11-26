@@ -288,7 +288,11 @@ export async function checkRequestShop(request: ImagefirstRequest, facts: FactsP
 /** DEV-303 §6.1 change 6: where a shop's design review / approval records live (inside its private shop directory). */
 export const DESIGN_REVIEWS_DIR = "design-reviews";
 /** The approved design a materials request names, gate-checked: what the plan uses, and the reference pictures' bytes. */
-export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[] };
+/**
+ * synthetic (DEV-303, owner goal 2026-11-26): the approved design is a synthetic rehearsal bundle (rehearsal.ts).
+ * --validate-request still checks it (and says rehearsal_only); the worker's run and the entry refuse it.
+ */
+export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[]; synthetic?: true };
 
 /**
  * DEV-303 §6.1 change 6 (production flow §1 stage 4, §3.4): the owner-approved design a photo-materials request names.
@@ -326,6 +330,7 @@ export async function readApprovedDesign(request: PhotoMaterialsRequest, places:
   return {
     use: { bundle_id: a.request_id, bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256, references: references.map((r) => ({ id: r.id, image: r.image, name: r.name, sha256: r.sha256 })) },
     references,
+    ...(a.synthetic ? { synthetic: true as const } : {}),
   };
 }
 
@@ -488,7 +493,7 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] } }> {
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<{ request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] }; rehearsal_only?: true }> {
   const file = resolve(o.file);
   const name = basename(file);
   if (!name.endsWith(".json")) throw new PromptStop("REQUEST_FILE_NAME_MISMATCH");
@@ -507,6 +512,8 @@ export async function validateRequestFile(o: { file: string; home: string; repo:
     ...(run.jaRenderings ? { ja_renderings: { sha256: run.jaRenderings.sha256, keys: run.jaRenderings.entries.map((e) => e.fact_key) } } : {}),
     ...(run.references ? { layout: "whole_page" as const, reference_images: referenceRecordOf(run.references) } : {}),
     ...(run.approvedDesign && "materials_sha256" in run.plan ? { approved_design: approvedDesignRecordOf(run.approvedDesign), materials_sha256: run.plan.materials_sha256 } : {}),
+    // DEV-303 (owner goal 2026-11-26): the approved design is a synthetic rehearsal bundle; the worker would refuse the run
+    ...(run.approvedDesign?.synthetic ? { rehearsal_only: true as const } : {}),
   };
 }
 

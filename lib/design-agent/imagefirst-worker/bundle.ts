@@ -183,6 +183,12 @@ export type BundleManifest = {
   image_material?: true;
   image_material_label?: typeof IMAGE_MATERIAL_LABEL;
   photos?: { file: string; sha256: string; frame: "3:2" | "1:1" | "2:3" }[];
+  /**
+   * DEV-303 (owner goal 2026-11-26): only on a SYNTHETIC rehearsal bundle (rehearsal.ts: locally drawn pictures, no
+   * generation; always a fictional request run). Never a generated result: the research log, the worker's review delivery
+   * and its materials run refuse it.
+   */
+  synthetic?: true;
   total_bytes: number;
   created_at: string;
   access: { visibility: "private"; retrieval_ttl_seconds: number };
@@ -223,6 +229,7 @@ type Receipt = {
   approved_design?: unknown;
   materials_sha256?: unknown;
   ja_renderings_sha256?: unknown;
+  synthetic?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -418,6 +425,8 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; phot
     if (r.mode !== undefined || r.kind !== undefined || !RUN_APPROVAL_ID_RE.test(r.approval_id as string)) stop("RECEIPT_INVALID");
     if (r.shop !== "hoshigama" || r.direction !== runOfApprovalId(r.approval_id as string)?.direction || typeof r.run_dir !== "string") stop("RECEIPT_INVALID");
   }
+  // DEV-303 (owner goal 2026-11-26): the synthetic marker is `true` on a fictional request run only (never a real shop's)
+  if (r.synthetic !== undefined && (r.synthetic !== true || r.mode !== "request" || r.kind !== "fictional")) stop("RECEIPT_INVALID");
   if (!Array.isArray(r.images) || !Array.isArray(r.stopped_images)) stop("RECEIPT_INVALID");
   const images = r.images as ReceiptImage[];
   for (const i of images) {
@@ -549,6 +558,7 @@ export async function packBundle(o: PackOptions): Promise<SealedBundle> {
     shop: r.shop as string,
     direction: r.direction as string,
     ...(r.mode === "request" ? { mode: "request" as const, kind: r.kind as "real_shop" | "fictional" } : {}),
+    ...(r.synthetic === true ? { synthetic: true as const } : {}),
     packet_sha256: r.packet_sha256 as string,
     plan_sha256: r.plan_sha256 as string,
     receipt_sha256: sha256(bundledReceipt),
@@ -690,7 +700,7 @@ export async function verifyBundleDir(dir: string, o: VerifyOptions = {}): Promi
   }
   const { r, images, photo, design } = parsed;
   if (r.approval_id !== m.approval_id || r.plan_id !== m.plan_id || r.commit !== m.commit || r.packet_sha256 !== m.packet_sha256 || r.plan_sha256 !== m.plan_sha256 || r.run_dir !== RECEIPT_RUN_DIR_REDACTED) stop("BUNDLE_RECEIPT_MISMATCH");
-  if (m.shop !== r.shop || m.direction !== r.direction || m.mode !== r.mode || m.kind !== r.kind) stop("BUNDLE_RECEIPT_MISMATCH");
+  if (m.shop !== r.shop || m.direction !== r.direction || m.mode !== r.mode || m.kind !== r.kind || m.synthetic !== r.synthetic) stop("BUNDLE_RECEIPT_MISMATCH");
   const parts = m.files.filter((f) => f.role === "part");
   if (parts.length !== images.length || images.some((i) => !parts.some((p) => p.path === i.file && p.sha256 === i.sha256 && p.bytes === i.bytes))) stop("BUNDLE_RECEIPT_MISMATCH");
   const pc = parts.filter((p) => p.path.startsWith("parts/pc-")).length;

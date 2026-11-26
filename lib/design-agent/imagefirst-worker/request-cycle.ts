@@ -146,6 +146,8 @@ async function lockedRequest(o: RequestCycleOptions, d: RequestCycleDeps, now: (
   if (whole && (!inputs.references || inputs.references.length === 0)) return refuse("REFERENCE_IMAGES_MISSING");
   if (inputs.plan.batch.images !== want || want < 1 || want > REQUEST_IMAGES.total || inputs.request.codex_runs !== 1) return refuse("REQUEST_IMAGES_MISMATCH");
   if (inputs.photos === "unchecked") return refuse("PHOTO_INPUT_RUN_MISSING");
+  // DEV-303 (owner goal 2026-11-26): materials are never made from a synthetic rehearsal bundle (never a generated design)
+  if (inputs.approvedDesign?.synthetic) return refuse("APPROVED_DESIGN_SYNTHETIC");
 
   // ---- one use: never claimed here, unused in the entry's ledger (read only) ----
   if (await claimed(o.stateDir, id)) return refuse("REQUEST_ALREADY_CLAIMED");
