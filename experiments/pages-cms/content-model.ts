@@ -45,12 +45,12 @@ const IsoDate = z
 /** Text the customer types that the page shows: no markup and no link (the page escapes anyway; links are not content). */
 const NO_LINK_OR_MARKUP = /[<>]|https?:|www\.|:\/\//i;
 
+/** The longest phone text, as typed and after normalising (the CMS maxlength and the build agree on it). */
+export const PHONE_MAX = 24;
 /**
  * A Japanese phone number as shops write it: digits with optional hyphens, spaces or parentheses, 10 or 11 digits
  * starting with 0 (or +81 and 9–10 digits). Owner decision 2026-11-26: editable, with input validation.
  */
-/** The longest phone text, as typed and after normalising (the CMS maxlength and the build agree on it). */
-export const PHONE_MAX = 24;
 export function phoneOk(input: string): boolean {
   const s = normalizePhone(input);
   if (s === "") return true;

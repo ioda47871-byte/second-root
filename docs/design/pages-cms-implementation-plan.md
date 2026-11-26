@@ -118,18 +118,22 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 - 撮影と判定（`q1-check.ts`、**手で動かすスクリプト**。unit の試験にしない＝unit の時間を増やさない）:
   `npx tsx experiments/pages-cms/q1-check.ts --out <リポジトリの外の空の場所>`。Chromium で PC 1440・SP 390、JS なし、構築した `dist/` の外への要求はすべて止めて数える。
   判定: 横のはみ出し、欠けた画像、商品どうし・商品の中の文字どうしの重なり、12px 未満の文字、箱で切れた文字、外への要求。撮影は頁の高さで撮る（`fullPage` を使わない、DEV-135）、
-  撮る前に描画のフレームを待つ（DEV-098、再試行なし）。始めにわざと壊した頁（対照）で全部の判定が出ることを確かめ、出なければ止まる（`Q1_CONTROL_MISSED`）。
+  撮る前に描画のフレームを待つ（DEV-098、再試行なし）。始めにわざと壊した頁（対照）を PC と SP で開き、6 つの判定（はみ出し・欠けた画像・重なり・小さい字・切れた文字・外への要求）がすべて出ることを確かめ、出なければ止まる（`Q1_CONTROL_MISSED`）。
   **限界**: 「切れた文字」は横に切れたものだけを見る（縦に切れたものは見つけない）。重なりはメニューの商品だけを見る（他の節は見ない）。作業用のコピーは終わったら消し、`--out` には報告と撮影だけを残す。
 - **既存の描画の道具での Q1**（オーナー決定 2026-11-26: 読むだけ・比べるだけの最小の import の固定の変更）: `experiments/pages-cms/q1-render.ts` だけが
   `phase2f/render-prototype` の `renderPrototype` だけを使う（`tests/unit/design-agent/phase2f/isolation.test.ts` の監査の試験で、この 1 つのファイル・1 つのモジュール・1 つの名前に固定。
   `experiments/` から comp-impl・shop-css などへ直接届くことも禁じる）。renderPrototype は comp-impl の安全な開き方（JS なし、頁のファイルだけを出し、ほかの要求は止めて数える）で
   PC 1440・SP 390 を撮り、SP 390 では DEV-134 の電話の検査（shop-CSS の文字の測り方: 切れ・覆い・箱の外・12px 未満・薄い・詰まり・重なり、押せる大きさ、最初の画面の店名）を行う。
   `npx tsx experiments/pages-cms/q1-render.ts --out <リポジトリの外の空の場所>` は、すべての試験の content と対照の頁で、この道と Playwright を直接使う道（`q1-check.ts`）の両方を走らせ、
-  `q1-compare.json` に幅ごとの所見を並べる。対照の頁は両方の道の全部の判定を出さなければ止まる（`Q1_RENDER_CONTROL_MISSED`。対照には、自分の箱で切れる文字と、祖先の箱で切れる文字の両方を入れた）。
+  `q1-compare.json` に幅ごとの所見を並べる。対照は 1 つの頁ではなく、壊し方ごとの小さな頁の組（`CONTROLS`）で、それぞれ決めた判定が出なければ止まる（`Q1_RENDER_CONTROL_MISSED`）。
+  **対照で確かめた判定**: 既存の道具の道は `R_OVERFLOW_X`、`R_BLOCKED`（欠けた画像だけの頁と、外の stylesheet だけの頁で別々に）、`SP_TEXT_TOO_SMALL`・`SP_TEXT_CLIPPED`・`SP_TEXT_OVERLAP`・
+  `SP_TEXT_OUT_OF_BOX`・`SP_TEXT_COVERED`・`SP_TEXT_OFFSCREEN`・`SP_TEXT_FADED`・`SP_TEXT_SQUEEZED`・`SP_FACT_HIDDEN`・`SP_TAP_TARGET_TOO_SMALL`・`SP_TAP_TARGET_BELOW_44`・
+  `SP_SHOP_NAME_NOT_IN_FIRST_SCREEN`。直接の道（PC と SP の両方）は `Q1_OVERFLOW_X`・`Q1_OVERLAP`・`Q1_SMALL_TEXT`・`Q1_TEXT_CLIPPED`、`Q1_BROKEN_IMAGE`（`Q1_EXTERNAL_REQUEST` なしで）、
+  `Q1_EXTERNAL_REQUEST`（`Q1_BROKEN_IMAGE` なしで）。**対照で確かめていないもの**: 電話の検査そのものが失敗したときの `SP_CHECK_FAILED`・`SP_CHECK_SCOPE_CONFLICT`。
 - **比べた結果（2026-11-26）**: 直接の道は 10 件 × PC/SP で所見なし。既存の道具の道は、SP で全件に `SP_TAP_TARGET_BELOW_44`（見出しの中の案内のリンクが 44px より小さい）を見つけた
   （直接の道は押せる大きさを測らない）。架空のパン屋の頁のコードで案内のリンクを 44px にして、両方の道とも所見なしになった。既存の道具のほうが電話の検査が広いので、正式な Q1 は既存の道具の道を主にし、
   直接の道は PC の重なりの検査（既存の道具は PC では文字を測らない）として残すのがよい。
-- 2026-11-26 の実行: 9 件の試験の content × PC/SP で所見なし（情報の形の PR の後は業種の拡張を足した 10 件で所見なし。既存の道具の道は上のとおり）（対照は全部の判定が出た）。**これは架空の 1 店の頁での結果で、正式な店舗の頁の Q1 の合格ではない。**
+- 2026-11-26 の実行: 9 件の試験の content × PC/SP で所見なし（情報の形の PR の後は業種の拡張を足した 10 件で所見なし。既存の道具の道は上のとおり）（対照は上に挙げた判定がすべて出た）。**これは架空の 1 店の頁での結果で、正式な店舗の頁の Q1 の合格ではない。**
   「店舗固有の構図が保たれる」の判定（段 6 の比較の観点）は、承認したデザインと実装がそろってから行う。
 - unit の試験（`tests/unit/experiments/pages-cms.test.ts`、ブラウザなし・約 1 秒）: 情報の形の検査、構築（非公開・並び順・売り切れ・臨時休業・0 品・escape）、
   `.pages.yml` の文書との照合と読み戻し。
