@@ -64,9 +64,11 @@ const RequestManifest = z.object({ bundle_id: Slug, mode: z.literal("request"), 
  * DEV-303: a request-mode run (its bundle id is the request id) is logged only when its sealed bundle in the inbox says it
  * is a FICTIONAL shop's, and the same shop as `--shop`. A real shop's run never enters the committed log (its private
  * record is ~/second-root-shops/<shop_id>/runs/<id>.json, written by the worker): REAL_SHOP_NOT_LOGGED.
+ * Returns the verified bundle's SHA-256 and its files' SHA-256s (PR #366 review Low 1: the previews are tied to them);
+ * null for a fixed approval id's run (not checked here, as before).
  */
-async function assertLoggableRun(o: IntakeInput): Promise<void> {
-  if (APPROVAL_RUN_ID.test(o.bundleId)) return;
+async function assertLoggableRun(o: IntakeInput): Promise<{ bundle_sha256: string; files: Map<string, string> } | null> {
+  if (APPROVAL_RUN_ID.test(o.bundleId)) return null;
   const bytes = await readFile(join(o.inbox, o.bundleId, "manifest.json")).catch(() => {
     throw new LogStop("INTAKE_MANIFEST_MISSING", `${o.bundleId}/manifest.json is missing (a request run is logged from its sealed bundle)`);
   });
@@ -80,15 +82,17 @@ async function assertLoggableRun(o: IntakeInput): Promise<void> {
   if (m.data.shop !== o.shop) throw new LogStop("INTAKE_SHOP_MISMATCH", `the bundle is ${m.data.shop}'s, not ${o.shop}'s`);
   // DEV-303 (PR #362 review Low 1): the manifest read above must be the sealed bundle's own — an edited one (a dropped
   // synthetic or image-material marker, another kind or shop) never verifies, and the verified one must say the same
-  let verified;
+  let bundle;
   try {
-    verified = (await verifyBundleDir(join(o.inbox, o.bundleId))).manifest;
+    bundle = await verifyBundleDir(join(o.inbox, o.bundleId));
   } catch {
     throw new LogStop("INTAKE_BUNDLE_UNVERIFIED", `${o.bundleId} is not a sealed bundle that verifies`);
   }
+  const verified = bundle.manifest;
   if (verified.bundle_id !== o.bundleId || verified.mode !== "request" || verified.kind !== "fictional" || verified.synthetic !== undefined || verified.image_material !== undefined || verified.shop !== o.shop) {
     throw new LogStop("INTAKE_BUNDLE_UNVERIFIED", `${o.bundleId}/manifest.json is not the verified bundle's`);
   }
+  return { bundle_sha256: bundle.bundle_sha256, files: new Map(verified.files.map((f) => [f.path, f.sha256])) };
 }
 
 /** Builds (does not write) the entry. Throws LogStop with a fixed code on any disagreement. */
@@ -102,7 +106,9 @@ export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
   const idx = PreviewIndex.safeParse(parseJson(indexBytes, "INTAKE_INDEX_INVALID", "INDEX.json"));
   if (!idx.success) throw new LogStop("INTAKE_INDEX_INVALID", "INDEX.json does not match imagefirst_review_previews_v1");
   if (idx.data.bundle_id !== o.bundleId) throw new LogStop("INTAKE_INDEX_INVALID", "INDEX.json names another bundle");
-  await assertLoggableRun(o);
+  const bound = await assertLoggableRun(o);
+  // PR #366 review Low 1: a request run's previews are the verified bundle's (its SHA-256, each source file's SHA-256)
+  if (bound && idx.data.bundle_sha256 !== bound.bundle_sha256) throw new LogStop("INTAKE_PREVIEWS_NOT_FROM_BUNDLE", "INDEX.json names another bundle SHA-256 than the verified bundle's");
 
   const previews: ResearchEntry["provenance"]["previews"] = [];
   for (const p of idx.data.previews) {
@@ -111,6 +117,7 @@ export async function entryFromInbox(o: IntakeInput): Promise<ResearchEntry> {
       throw new LogStop("INTAKE_PREVIEW_MISSING", p.file);
     });
     if (sha(bytes) !== p.preview_sha256) throw new LogStop("INTAKE_PREVIEW_MISMATCH", `${p.file} does not match INDEX.json`);
+    if (bound && bound.files.get(p.source) !== p.source_sha256) throw new LogStop("INTAKE_PREVIEWS_NOT_FROM_BUNDLE", `${p.file}'s source is not the verified bundle's file`);
     const viewport = p.file.startsWith("pc-") ? "desktop_1440" : p.file.startsWith("sp-") ? "mobile_390" : null;
     if (!viewport) throw new LogStop("INTAKE_INDEX_INVALID", `${p.file} is neither pc- nor sp-`);
     previews.push({ file: p.file, viewport, source: p.source, source_sha256: p.source_sha256, preview_sha256: p.preview_sha256, width: p.width, height: p.height });
