@@ -128,6 +128,24 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 - **生成した素材と店の写真**: 商品ごとに `imageKind`（`generated` イメージ素材 / `shop` 店の写真。無ければ `generated`＝安全側）。`generated` の写真は
   `<figure>` の中に `<figcaption>イメージ</figcaption>` を付けて出す（`materials-impl-check.ts` の決まりと同じ。隠さない）。店の写真には付けない。
   頁の下の注記（「「イメージ」の写真は生成した画像素材で、店の写真ではありません。」）は、生成した素材を出すときだけ出す。パン屋とカフェの両方を直した。
+- **写真の出自 A/B/C（DEV-364 PR 2a、`quality-proof-plan.md` §3.2）**: `imageKind` を 3 つにした。`generated`（A、AI の提案用素材。「イメージ」付き。既定）、
+  `shop_provided`（B、店が提供した本物の写真。権利の記録が要る）、`customer_cms`（C、成約後に顧客が CMS で上げた・選んだ写真。明示して選ぶときだけ）。B と C は「イメージ」を付けない。
+  以前の `shop`（納品後に顧客が CMS で選ぶ「店の写真」）は C として読む（後方互換）。Second Root が置く写真は A か B で、C にはしない。
+  - A の記録: 引き渡しの記録 `generated-materials.json` の項目に、素材の id と素材の承認の SHA-256 を任意で書ける（書いてあれば構築の出自の報告に A の記録として出る。無ければ null と報告）。
+  - B の記録: 全文（`sr_photo_provenance_v1`、提供した人の役割・出典・許可の範囲と確認日と確認した役割・事実の確認・SHA-256）は**リポジトリの外**の非公開の場所に、写真ごとに `<sha256>.json`。
+    店のリポジトリには索引 `content/photo-provenance.json`（写真の SHA-256 と非公開の記録の SHA-256）だけを置く（`.pages.yml` には入れない）。顧客の構築は索引だけで B と分かり、
+    Second Root の構築（非公開の場所を渡す）は記録の全文と索引の一致まで確かめる。索引に無い B、記録が無い・書き換えられた B は `CONTENT_PHOTO_RIGHTS_MISSING`。
+  - C の記録: 構築が自動の検査（形式・大きさ・寸法・比）の結果から書く（オーナーの承認は求めない）。
+  - `CONTENT_GENERATED_AS_SHOP` は B と C の両方に効く（バイトの完全な一致だけ。変換した写しは見つからない＝既知の限界）。`materials-impl-check` など他の検査は変えていない。
+  - **区分は写真のバイトに属する**（PR #371 のレビュー M1、オーナーの「A/B/C を混ぜない」）: B の索引にある写真はどこでも B（A や C、以前の `shop` にすると `CONTENT_PHOTO_CLASS_MIXED`）。
+    同じ写真を頁の中で 2 つの区分で出す、生成素材の記録と B の索引の両方に同じ SHA-256 がある、も `CONTENT_PHOTO_CLASS_MIXED`。
+  - **Second Root の納品の構築**（明示の `delivery: true` を渡す構築）は C の写真を断る（`CONTENT_DELIVERY_CUSTOMER_PHOTO`。「C は置かない」を手順でなく構築で守る）。
+    非公開の場所（`provenanceDir`）を渡すだけでは納品にならない：その場所を使う監査の構築は、顧客の正当な C の写真をそのまま通す（PR #371 の Low）。
+    非公開の場所がリポジトリの中なら `CONTENT_PROVENANCE_IN_REPO`。記録が読めない（存在しない以外の失敗）は `CONTENT_INVALID`。
+  - B の `provided_by`・`confirmed_by` は役割の一覧（店主・店長・スタッフ・撮影者・Second Root 担当）だけ。出典・範囲の文は NFKC で正規化してから、電話番号・LINE ID・@ や SNS 名のあとのハンドル・下線を含む英字の語・
+    メール・リンク・敬称つきの名前（後ろの文字を問わない）を断る。**これは推測の検査で、名前や連絡先を確実に止めるものではない**：
+    厳しめの側に倒れる（「模様」「仕様」「皆さん」も断る）一方、敬称の無い名前や印の無いハンドルは通ってしまう。守りの本体は役割の一覧。A の素材の承認の SHA-256 と C の commit は任意（`quality-proof-plan.md` §3.2 も合わせた）。
+  - CMS の選択肢は変えていない（PR 5）。CMS の「店の写真」は C になる。B は納品のときに Second Root が content に書く値で、CMS の選択肢には無い（PR 5 で表示を決める）。変換の記録 `sr_photo_transform_v1` は後の PR。
 - **顧客が「店の写真」に変えても外れない**（PR #365 のレビュー M1、決定: 顧客に任せず構築で守る）: 納品のときに、渡した生成素材を
   `content/generated-materials.json`（`generated_materials_v1`: ファイル名と SHA-256）に書く。この記録は `.pages.yml` に入れないので CMS からは直せない。
   構築は、`imageKind: "shop"` の商品の写真の SHA-256 がこの記録にあれば止まる（`CONTENT_GENERATED_AS_SHOP`）。店が自分の写真に差し替えれば SHA-256 が違うので
