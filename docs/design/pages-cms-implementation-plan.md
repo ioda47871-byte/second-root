@@ -108,7 +108,62 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 - 構築は `node build.mjs`（納品の repo では依存の少ない Node のスクリプトにする。実験は TypeScript の `build.ts`）、出力は `dist/`（`index.html`・`style.css`・`media/`）。
   Second Root 本体（Next.js）は static export しない。
 - 秘密の情報は要らない（構築は repo の中のファイルだけを読む）。トークンを頁・repo・記録に置かない。Deploy Hook は使わない。
-- 写真の最適化（縮小・WebP）は構築では行わない（今は元のファイルをそのまま写す）。上げる写真の大きさの上限と案内は未決（§9）。
+- 写真の最適化（縮小・WebP）は構築では行わない（今は元のファイルをそのまま写す）。上限は §5.1（PR (4)）。
+
+### 5.1 写真（PR (4)、オーナー決定 2026-11-26: 大きさの上限と構築のときの最適化を検討し、操作性と表示の品質を試す）
+
+**上限（構築で検査、依存なし）**: `experiments/pages-cms/photos.ts`。頁に出る商品の写真だけを、ファイルの先頭（PNG の IHDR、JPEG の SOF、WebP の VP8 / VP8L / VP8X）から
+形式と縦横の画素を読んで調べる（`image-meta.ts`。画像を展開しない・変えない）。
+
+| 検査 | 上限 | 止まる名前 |
+|---|---|---|
+| ファイルがある | — | `CONTENT_PHOTO_MISSING` |
+| 形式（中身で判定し、拡張子と一致） | PNG・JPEG・WebP | `CONTENT_PHOTO_TYPE` |
+| 大きさ | 2MB | `CONTENT_PHOTO_TOO_LARGE` |
+| 長い辺・画素数 | 4096px・1600 万画素 | `CONTENT_PHOTO_DIMENSIONS` |
+| 短い辺 | 320px 以上 | `CONTENT_PHOTO_TOO_SMALL` |
+| 縦横の比 | 3:1 まで | `CONTENT_PHOTO_RATIO` |
+
+- CMS では写真の欄の説明に同じ上限（1600 万画素を含む）を出す（`PHOTO_HINT`。Pages CMS には大きさの上限の設定が無いので、決めるのは構築。値は試験で一致を確かめる）。止まった構築は公開されず、前の公開が残る。
+- **生成した素材と店の写真**: 商品ごとに `imageKind`（`generated` イメージ素材 / `shop` 店の写真。無ければ `generated`＝安全側）。`generated` の写真は
+  `<figure>` の中に `<figcaption>イメージ</figcaption>` を付けて出す（`materials-impl-check.ts` の決まりと同じ。隠さない）。店の写真には付けない。
+  頁の下の注記（「「イメージ」の写真は生成した画像素材で、店の写真ではありません。」）は、生成した素材を出すときだけ出す。パン屋とカフェの両方を直した。
+- **顧客が「店の写真」に変えても外れない**（PR #365 のレビュー M1、決定: 顧客に任せず構築で守る）: 納品のときに、渡した生成素材を
+  `content/generated-materials.json`（`generated_materials_v1`: ファイル名と SHA-256）に書く。この記録は `.pages.yml` に入れないので CMS からは直せない。
+  構築は、`imageKind: "shop"` の商品の写真の SHA-256 がこの記録にあれば止まる（`CONTENT_GENERATED_AS_SHOP`）。店が自分の写真に差し替えれば SHA-256 が違うので
+  「店の写真」にできる。記録が壊れていれば `CONTENT_INVALID`。記録が無い店（生成素材を渡していない店）では、この検査は何もしない。
+  生成素材を渡した店は、店の profile に `generatedDelivered: true` を立て、記録が無ければ構築を止める（`CONTENT_GENERATED_RECORD_MISSING`）。
+  「記録が無い」とみなすのはファイルが存在しないとき（ENOENT）だけで、ディレクトリ・権限の誤り・その他の読み込みの失敗は `CONTENT_INVALID`。
+  **限界**: 照合は完全に同じバイトだけ（再圧縮・編集した生成素材は見つけない）。CMS での付け替えの誤りを防ぐもので、repo を直接書き換えることは防がない。
+- **大文字の拡張子**（`IMG_0001.JPG` など）: そのまま受け付ける（形式は中身で判定）。Pages CMS の `rename: "safe"` が小文字にするかは文書に書いていない（「slugify」とだけある）ので、
+  どちらでも構築が通るようにした（実際の Pages CMS で確かめるのは Q3）。
+- 頁の枠は縦横比を固定して `object-fit: cover` で切り取るので、上限の中のどの比の写真でも構図は崩れない（Q1 の `photos-large-odd`: 3600×2400、3:1、1:3、320×320、2000×2000 を両方の店で PC・SP とも所見なし）。
+
+**構築のときの最適化の評価（依存は足していない）**
+
+参考の数値（2026-11-26、Chromium の画像の書き出し `canvas.toBlob` で、合成した写真風の画像を測った。実際の写真は細部が多く、縮小した後の大きさはこの 2〜4 倍になることが多い）:
+
+| 画像 | JPEG q80 | WebP q80 |
+|---|---|---|
+| 元（4032×3024、スマートフォンの写真に近い JPEG q92） | 3.3MB | — |
+| 2400×1800 | 317KB | 147KB |
+| 1600×1200 | 110KB | 38KB |
+| 1200×900 | 60KB | 25KB |
+| 800×600 | 29KB | 14KB |
+
+頁で写真が出る大きさは、パン屋のカードで約 280〜380px 幅（PC）、カフェの小さい写真で 80px 角。画面の密度 2 倍でも 800px あれば足りるので、1200〜1600px に縮めれば
+1 枚あたり数十〜数百 KB になり、元のまま（数 MB）より頁がずっと軽くなる。
+
+| 方法 | 得るもの | 引き換え |
+|---|---|---|
+| (a) 縮めない（今）＋上限と案内 | 依存なし・構築が速い・元の画質 | 店が 2MB 以下で上げる手間。上限の中でも頁は重め（50 品で数十 MB になりうる） |
+| (b) `sharp`（libvips）を構築で使う | 速い・高品質の縮小と WebP・複数の大きさ（srcset） | 依存が増える（ネイティブのバイナリ。Cloudflare Pages の構築の環境での動作は要確認）、構築の時間と回数（月 500 回）への影響 |
+| (c) `@squoosh/lib` など WASM | ネイティブのバイナリなし | 保守が止まっている。遅い。勧めない |
+| (d) ブラウザ（Chromium）で縮める | この repo にはもう Playwright がある | 納品の店舗の repo の構築に Chromium は重すぎる。研究の測定にだけ使える |
+| (e) GitHub Actions で縮めて commit し直す | 店の repo の中で完結、Pages CMS の上げ方は変わらない | Actions の分数・権限・二重の commit（構築が 2 回）。顧客名義の repo の設定が増える |
+| (f) Pages CMS の上げるときに縮める | 店の手間が最小 | hosted の Pages CMS には変換の機能が無い（`media` の設定は置き場と名前だけ） |
+
+**勧め**: 今は (a)。実際の店で上限に当たる回数と頁の重さを Q3 で測り、重すぎれば (b) を、依存を足す前に Lead とオーナーの了承を得てから試す。今の数値では、依存が**はっきり必要**とまでは言えない。
 - 実際の Cloudflare Pages での構築・公開は、試験用アカウントも含めてオーナーの承認の後（Q2）。
 
 ## 6. Q1 CMS 更新による崩れ（§6.1 の 13）
@@ -143,10 +198,25 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 | 区分 | 成約前にローカルでできること（stub/mock） | 実際のアカウントが要ること（オーナーの承認の後） |
 |---|---|---|
 | Q2 GitHub からの自動公開 | ローカルの git repo に content の変更をコミットし、そのつど `build` を走らせ、成功なら `dist/` を差し替え、失敗なら前の `dist/` を残す、を再現する。連続のコミット・壊れた content（構築が止まる）・写真の欠けを試す | Cloudflare Pages の Git 連携での構築と公開、失敗時に前の版が残ること、反映の時間、無料枠（月 500 回の構築）の消費 |
-| Q3 顧客自身による更新 | Pages CMS が書くのと同じ形の JSON の変更（商品の追加・価格・写真の差し替え・非公開・並べ替え・営業時間・臨時休業・お知らせ）を手順書どおりに当て、Q1 の判定を通す。触る画面と手順の数を手順書で見積もる | 店主役が Pages CMS（hosted）だけで更新し、Second Root の操作なしで公開に反映されること、画面の数と所要時間の記録 |
+| Q3 顧客自身による更新 | Pages CMS が書くのと同じ形の JSON の変更（商品の追加・価格・写真の差し替え・非公開・並べ替え・営業時間・臨時休業・お知らせ）を手順書どおりに当て、Q1 の判定を通す。触る画面と手順の数を手順書で見積もる | 店主役が Pages CMS（hosted）だけで更新し、Second Root の操作なしで公開に反映されること、画面の数と所要時間の記録。**確かめること**: hosted の Pages CMS の画面から `.pages.yml` そのもの（と `content/generated-materials.json`）を書き換えられるか（できるなら、編集できる項目の制限と生成素材の記録は CMS の操作で外せてしまうので、守り方を見直す）。空の任意の項目の書き方、`rename: "safe"` が拡張子を小文字にするか |
 | Q4 権限を外した独立運用 | 引き渡しの資料のひな形（移行、Pages CMS が止まったときの案内、費用、責任の範囲）と、外す権限の一覧（GitHub の協力者、Cloudflare のメンバー、Pages CMS の協力者）の点検表 | 実際に権限を外した後で Q2・Q3 をもう一度行う。顧客の GitHub App は顧客のものとして残す |
 
 架空の店のためでも、実際の試験用アカウントの作成・GitHub App の導入・Cloudflare への deploy は別にオーナーの承認が要る（§3.7）。
+
+## 7a. CMS の構築を既存の検査にかける橋渡し（PR (5)）
+
+構築の出力（`dist/`: `index.html`・`style.css`・`media/*`）を、段 5・段 6 の既存の検査が読む形（`index.html`・`style.css`・`assets/*`）に写す
+`experiments/pages-cms/stage-for-gates.ts`（`stageForGates`）を足した。リポジトリの外の空の非公開の場所（0700）に、`src="/media/<名前>"` を `src="assets/<名前>"` に
+書き換えた頁と、`media/` の写真を**バイトを変えずに** `assets/` へ写す。`dist/` は読むだけ。検査のモジュール（`impl-compare-approved`・`materials-impl-check`）は
+写した場所を普段どおりに読むだけで、experiments から検査のモジュールを import しない（import の固定は変えない。試験は tests/ から両方を呼ぶ）。
+
+- **materials-impl-check**: カフェの構築（承認した素材 2 枚を生成素材として使う）を写すと、承認した素材だけが使われ、どちらも `<figure>` の `<figcaption>イメージ</figcaption>` つきで
+  通った（`status: ok`）。別のバイトの写真に変えると `MATERIALS_IMPL_IMAGE_NOT_APPROVED`。カフェの頁は店舗の版のデモの HTML/CSS の検査（`checkArtifactHtml`）も通った。
+- **impl-compare-approved**: リハーサルの合成の承認済みデザイン（#362、店 `cafe`、架空）と比べ、記録（助言だけ、`synthetic: true`、`passing: false`）ができた。
+  合成のデザインなので数値に意味は無く、道が最後まで通ることを確かめただけ。
+- **止まるもの**: JPEG・WebP の写真（`STAGE_ASSET_NOT_PNG`。impl-compare-approved は PNG の assets しか出さないので、今は比べられない＝既知の穴）、
+  書き換えの後も `/media/` が残る（CSS の `url()` など。`STAGE_MEDIA_REFERENCE`）、頁のファイルが無い（`STAGE_DIST_INVALID`）、出力先がリポジトリの中・空でない。
+- 試験: `tests/unit/experiments/pages-cms-gates.test.ts`（架空のデータ、段 6 は本物の Chromium）。
 
 ## 8. §6.1 の順との対応
 

@@ -9,7 +9,7 @@
  * is a plain rectangle with a fixed aspect (object-fit: cover), so a replaced picture of any shape keeps the layout.
  */
 import type { Announcement, MenuItem, ShopInfo, ShopProfile } from "./content-model";
-import { viewOf, type ShopContent } from "./content-model";
+import { shownGenerated, viewOf, type ShopContent } from "./content-model";
 
 /**
  * What this shop's page code declares (owner decision 2026-11-26): its name is fixed (the brand is this code), and it
@@ -24,7 +24,7 @@ function item(m: MenuItem): string {
   const pic = m.image
     ? `<img src="${e(m.image)}" alt="${e(m.imageAlt)}" loading="lazy" width="600" height="450">`
     : `<span class="noimg" aria-hidden="true">${e(m.name.slice(0, 1))}</span>`;
-  return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><div class="frame">${pic}</div><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}${extras(m)}</div></li>`;
+  return `<li class="item${m.soldOut ? " soldout" : ""}" data-q1="item"><figure class="frame">${pic}${m.image && m.imageKind === "generated" ? '<figcaption class="cap">イメージ</figcaption>' : ""}</figure><div class="body"><h3>${e(m.name)}</h3>${m.priceDisplay ? `<p class="price">${e(m.priceDisplay)}</p>` : ""}${m.soldOut ? '<p class="badge">売り切れ</p>' : ""}${m.description ? `<p class="desc">${e(m.description)}</p>` : ""}${extras(m)}</div></li>`;
 }
 
 /** The bakery's extensions, in its own words; nothing when the item has none. */
@@ -69,7 +69,7 @@ ${news(v.news)}
 <div id="menu" class="menu">${menu}</div>
 ${hours(v.shop, today)}
 </main>
-<footer data-q1="section"><p>${e(v.shop.name)}</p>${v.shop.address ? `<p>${e(v.shop.address)}</p>` : ""}${v.shop.phone ? `<p>${e(v.shop.phone)}</p>` : ""}<p class="note">写真はイメージです。</p></footer>
+<footer data-q1="section"><p>${e(v.shop.name)}</p>${v.shop.address ? `<p>${e(v.shop.address)}</p>` : ""}${v.shop.phone ? `<p>${e(v.shop.phone)}</p>` : ""}${shownGenerated(v) ? '<p class="note">「イメージ」の写真は生成した画像素材で、店の写真ではありません。</p>' : ""}</footer>
 </body>
 </html>
 `;
@@ -89,14 +89,15 @@ main{max-width:1200px;margin:0 auto;padding:0 6vw}
 h2{font-size:clamp(22px,3vw,30px);margin:56px 0 20px;border-bottom:1px solid #b9a58f;padding-bottom:8px}
 .grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:28px}
 .item{background:#fffaf2;border:1px solid #e3d5c3;display:flex;flex-direction:column;min-width:0}
-.frame{aspect-ratio:4/3;background:#e9dccb;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.frame{position:relative;margin:0;aspect-ratio:4/3;background:#e9dccb;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.cap{position:absolute;left:8px;bottom:8px;margin:0;padding:0 8px;font-size:12px;line-height:1.7;background:rgba(43,33,27,.82);color:#fff}
 .frame img{width:100%;height:100%;object-fit:cover;display:block}
 .noimg{font-size:48px;color:#a48c74}
 .body{padding:14px 16px 18px}
 .body h3{margin:0;font-size:18px;line-height:1.5}
 .price{margin:6px 0 0;font-size:16px;font-weight:bold}
 .badge{display:inline-block;margin:8px 0 0;padding:2px 10px;background:#7a2e1f;color:#fff;font-size:14px}
-.soldout .frame{opacity:.55}
+.soldout .frame img{opacity:.55}
 .desc{margin:8px 0 0;font-size:15px}
 .extra{margin:8px 0 0;font-size:14px;display:grid;grid-template-columns:auto 1fr;gap:2px 10px}.extra dt{color:#6b5a4c}.extra dd{margin:0}
 .empty{margin:48px 0;font-size:16px}
