@@ -35,7 +35,7 @@ import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype
 import { buildSite } from "./build";
 import { loadContent, viewOf, type ShopContent } from "./content-model";
 import { Q1_TODAY, writeFixture } from "./fixtures";
-import { CONTROL_PAGE, safeOutDir, serveAndMeasure, SLOT_CONTROL } from "./q1-check";
+import { CONTROL_PAGE, safeOutDir, serveAndMeasure, SLOT_CODES, SLOT_CONTROLS } from "./q1-check";
 import { SHOP_SITES } from "./shop-site";
 
 /** What the render-helper path reports for one width (codes of its own vocabulary). */
@@ -101,16 +101,17 @@ export const CONTROLS: Control[] = [
   { name: "fact-hidden", page: { html: `${HEAD}<h1>架空の店</h1><p class="h">03-0000-0000</p></body></html>`, css: ".h{visibility:hidden}" }, facts: ["03-0000-0000"], shopName: null, render: ["SP_FACT_HIDDEN"] },
   { name: "tap-too-small", page: { html: `${HEAD}<h1>架空の店</h1><p>本文です。</p><a class="t" href="#a">x</a></body></html>`, css: ".t{display:inline-block;width:16px;height:16px;font-size:12px;overflow:hidden}" }, facts: [], shopName: null, render: ["SP_TAP_TARGET_TOO_SMALL"] },
   { name: "tap-below-44", page: { html: `${HEAD}<h1>架空の店</h1><p>本文です。</p><a class="t" href="#a">押</a></body></html>`, css: ".t{display:inline-block;width:32px;height:32px;font-size:14px}" }, facts: [], shopName: null, render: ["SP_TAP_TARGET_BELOW_44"] },
-  {
-    name: "slot",
-    page: { html: SLOT_CONTROL.html, css: SLOT_CONTROL.css },
+  // DEV-364 PR 2b (review #372 L3): one slot control per code; each gives its own and none of the other slot codes
+  ...SLOT_CONTROLS.map((c) => ({
+    name: c.name,
+    page: { html: c.html, css: c.css },
     facts: [],
     shopName: null,
     render: [],
-    direct: { present: [...SLOT_CONTROL.present], absent: ["Q1_BROKEN_IMAGE"] },
-    media: SLOT_CONTROL.media,
-    slots: SLOT_CONTROL.slots,
-  },
+    direct: { present: [c.code], absent: [...SLOT_CODES.filter((x) => x !== c.code), "Q1_BROKEN_IMAGE"] },
+    media: c.media,
+    slots: c.slots,
+  })),
   { name: "shop-name-low", page: { html: `${HEAD}<div class="sp"></div><h1>架空の店</h1></body></html>`, css: ".sp{height:1400px}" }, facts: ["架空の店"], shopName: "架空の店", render: ["SP_SHOP_NAME_NOT_IN_FIRST_SCREEN"] },
 ];
 

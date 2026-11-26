@@ -113,8 +113,10 @@ export type RequestDirection = z.infer<typeof RequestDirection>;
 export const MATERIAL_KINDS = ["photo", "background", "decoration"] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];
 export const MATERIAL_ASPECTS = ["landscape_3x2", "square_1x1", "portrait_2x3"] as const;
+/** A material's id (exported so a test can keep copies of the rule equal to this one; DEV-364 PR 2b). */
+export const MATERIAL_ID_RE = /^[a-z][a-z0-9-]{1,30}$/;
 export const Material = z.strictObject({
-  id: z.string().regex(/^[a-z][a-z0-9-]{1,30}$/),
+  id: z.string().regex(MATERIAL_ID_RE),
   kind: z.enum(MATERIAL_KINDS),
   aspect: z.enum(MATERIAL_ASPECTS),
   placement: DirText(120),

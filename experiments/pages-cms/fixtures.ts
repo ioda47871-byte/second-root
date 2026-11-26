@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import type { Announcement, Category, ImageKind, MenuItem, ShopInfo } from "./content-model";
 import { PROVENANCE_INDEX, PROVENANCE_SCHEMA, rightsFiles, type ProvenanceB } from "./provenance";
 import { GENERATED_RECORD, generatedRecord } from "./photos";
-import { PHOTO_SLOTS_FILE, PHOTO_SLOTS_SCHEMA, SLOT_ASPECTS, type ApprovedDesign, type PhotoSlots, type SlotView } from "./photo-slots";
+import { PHOTO_SLOTS_FILE, PHOTO_SLOTS_SCHEMA, SLOT_FRAME_RATIOS, type ApprovedDesign, type PhotoSlots, type SlotView } from "./photo-slots";
 
 /** A solid-colour PNG (synthetic). */
 /**
@@ -263,9 +263,9 @@ export const FICTIONAL_APPROVAL: ApprovedDesign = {
 export const FICTIONAL_APPROVED_IMAGE = { pc: { width: 1440, height: 3000 }, sp: { width: 390, height: 2400 } } as const;
 
 /** A box of the given aspect in the approved image (0..1), `width` of the image wide, at (x, y). */
-export function boxFor(view: "pc" | "sp", aspect: keyof typeof SLOT_ASPECTS, width: number, x = 0.05, y = 0.3): SlotView["box"] {
+export function boxFor(view: "pc" | "sp", aspect: keyof typeof SLOT_FRAME_RATIOS, width: number, x = 0.05, y = 0.3): SlotView["box"] {
   const img = FICTIONAL_APPROVED_IMAGE[view];
-  return { x, y, w: width, h: (width * img.width) / SLOT_ASPECTS[aspect] / img.height };
+  return { x, y, w: width, h: (width * img.width) / SLOT_FRAME_RATIOS[aspect] / img.height };
 }
 
 /**
@@ -273,7 +273,7 @@ export function boxFor(view: "pc" | "sp", aspect: keyof typeof SLOT_ASPECTS, wid
  * materials and one slot per material — the same object-position and subject at PC and SP, the frame's aspect being
  * the site's own (4:3 cards for the bakery, 1:1 thumbnails for the café).
  */
-export function withPhotoSlots(fx: Fixture, aspect: keyof typeof SLOT_ASPECTS, plan: { material: string; position: string; subject: SlotView["subject"] }[]): Fixture {
+export function withPhotoSlots(fx: Fixture, aspect: keyof typeof SLOT_FRAME_RATIOS, plan: { material: string; position: string; subject: SlotView["subject"] }[]): Fixture {
   const generated = fx.generated ?? [];
   const materials = Object.fromEntries(generated.map((file, k) => [file, plan[k % plan.length]!.material]));
   const view = (v: "pc" | "sp", p: (typeof plan)[number]): SlotView => ({ box: boxFor(v, aspect, v === "pc" ? 0.2 : 0.42), aspect, shape: "rect", object_position: p.position, subject: p.subject, text_gap: "adjacent" });

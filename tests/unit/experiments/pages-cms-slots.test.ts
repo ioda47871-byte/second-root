@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildSite } from "@/experiments/pages-cms/build";
 import { ContentError } from "@/experiments/pages-cms/content-model";
-import { FICTIONAL_APPROVAL, FICTIONAL_APPROVED_IMAGE, Q1_TODAY, writeFixture } from "@/experiments/pages-cms/fixtures";
+import { FICTIONAL_APPROVAL, FICTIONAL_APPROVED_IMAGE, provenanceDirOf, Q1_TODAY, writeFixture } from "@/experiments/pages-cms/fixtures";
+import { GENERATED_RECORD } from "@/experiments/pages-cms/photos";
 import { pagesYaml } from "@/experiments/pages-cms/pages-config";
 import { checkPhotoSlots, MIRROR, PHOTO_SLOTS_FILE, PhotoSlots, type SlotContext, subjectVisible } from "@/experiments/pages-cms/photo-slots";
-import { SLOT_CONTROL, slotFindings } from "@/experiments/pages-cms/q1-check";
+import { SLOT_CODES, SLOT_CONTROLS, slotFindings } from "@/experiments/pages-cms/q1-check";
 import { BAKERY_SITE, CAFE_SITE, SHOP_SITES } from "@/experiments/pages-cms/shop-site";
-import { ApprovedDesignRef, DESIGN_RECORD_NAME_RE, Material, MATERIAL_ASPECTS, MATERIAL_KINDS, REQUEST_ID_RE } from "@/lib/design-agent/image-first/request-prompt";
+import { ApprovedDesignRef, DESIGN_RECORD_NAME_RE, Material, MATERIAL_ASPECTS, MATERIAL_ID_RE, MATERIAL_KINDS, REQUEST_ID_RE } from "@/lib/design-agent/image-first/request-prompt";
 
 // DEV-364 PR 2b (docs/design/quality-proof-plan.md §3.1, §6 row 2b): the photo-slot spec, the pages applying it and
 // the Q1 measurement of it. FICTIONAL and LOCAL only; the browser part is experiments/pages-cms/q1-check.ts.
@@ -48,6 +49,9 @@ describe("DEV-364 PR 2b: the photo-slot spec sr_photo_slots_v1", () => {
   it("links to the approved composition's own vocabulary: the mirrors equal request-prompt.ts (Material, ApprovedDesignRef)", () => {
     expect(MIRROR.requestId.source).toBe(REQUEST_ID_RE.source);
     expect(MIRROR.recordName.source).toBe(DESIGN_RECORD_NAME_RE.source);
+    // review #372 L2: the material id rule itself (request-prompt.ts exports it; Material uses it)
+    expect(MIRROR.materialId.source).toBe(MATERIAL_ID_RE.source);
+    expect(MIRROR.materialId.flags).toBe(MATERIAL_ID_RE.flags);
     expect([...MIRROR.kinds]).toEqual([...MATERIAL_KINDS]);
     expect([...MIRROR.aspects]).toEqual([...MATERIAL_ASPECTS]);
     // every material id in the fixtures is a valid Material id; the approval is a valid ApprovedDesignRef
@@ -91,6 +95,9 @@ describe("DEV-364 PR 2b: the photo-slot spec sr_photo_slots_v1", () => {
     ];
     for (const v of bad) expect(PhotoSlots.safeParse(v).success, JSON.stringify(v).slice(0, 100)).toBe(false);
     expect(PhotoSlots.safeParse({ ...s, notes: "写真の周りは余白を広めに取る" }).success).toBe(true);
+    // review #372 L1: notes are a remark for people, not an instruction; overlay wording is refused there too
+    for (const notes of ["写真の上に店名を大きく重ねる", "hero の写真に見出しを白文字で乗せる", "写真の上にロゴを置く", "OVERLAY the title", "見出しをオーバーレイ", "文字を写真に載せる", "ｏｖｅｒｌａｙ"])
+      expect(PhotoSlots.safeParse({ ...s, notes }).success, notes).toBe(false);
   });
 
   it("the delivery check: bound to the approval, the approved materials only, the role fits the kind, the box fits the approved image, the subject stays in the crop", () => {
@@ -183,8 +190,64 @@ describe("DEV-364 PR 2b: the shop pages apply the slots (object-position at PC a
   });
 });
 
+describe("review #372 M1: the delivery build runs the slot check against the approval", () => {
+  /** The photo-slot fixture as Second Root delivers it: no customer picture (item-5 becomes generated), the private folder given. */
+  const deliveryRepo = async () => {
+    const repo = await repoOf();
+    const file = join(repo, "content", "menu", "item-5.json");
+    writeFileSync(file, JSON.stringify({ ...(JSON.parse(readFileSync(file, "utf8")) as object), imageKind: "generated" }));
+    return repo;
+  };
+  const deliver = (repo: string, slotContext?: SlotContext) => buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, provenanceDir: provenanceDirOf(repo), delivery: true, ...(slotContext ? { slotContext } : {}) });
+
+  it("passes with the approval it names; stops without the context", async () => {
+    const repo = await deliveryRepo();
+    const s = spec();
+    const r = await deliver(repo, ctx(s));
+    expect(r.slots.length).toBe(s.slots.length);
+    expect(await codeOf(deliver(await deliveryRepo()))).toBe("CONTENT_DELIVERY_SLOT_CONTEXT_MISSING");
+    // the customer's own build needs no context (the approval was checked at delivery)
+    expect(await codeOf(buildSite({ repo: await repoOf(), outDir: join(tmp(), "dist"), today: Q1_TODAY }))).toBe("ok");
+  });
+
+  it("the reviewer's probe: a spec naming another bundle or another approval stops the delivery build", async () => {
+    for (const patch of [{ bundle_id: "req-other-design-02" }, { bundle_sha256: "e".repeat(64) }, { approval_sha256: "f".repeat(64) }, { approval_file: "approval-other.json" }]) {
+      const repo = await deliveryRepo();
+      const s = JSON.parse(readFileSync(join(repo, PHOTO_SLOTS_FILE), "utf8")) as PhotoSlots;
+      s.approved_design = { ...s.approved_design, ...patch };
+      writeFileSync(join(repo, PHOTO_SLOTS_FILE), JSON.stringify(s));
+      expect(await codeOf(deliver(repo, ctx(spec()))), JSON.stringify(patch)).toBe("CONTENT_SLOTS_NOT_APPROVED");
+    }
+  });
+
+  it("every other code of the slot check stops the delivery build too", async () => {
+    const s = spec();
+    expect(await codeOf(deliver(await deliveryRepo(), { ...ctx(s), materials: ctx(s).materials.slice(1) }))).toBe("CONTENT_SLOTS_MATERIAL_UNKNOWN");
+    expect(await codeOf(deliver(await deliveryRepo(), { ...ctx(s), materials: ctx(s).materials.map((m) => ({ ...m, kind: "background" as const })) }))).toBe("CONTENT_SLOTS_ROLE_MISMATCH");
+    expect(await codeOf(deliver(await deliveryRepo(), { ...ctx(s), approvedImage: { ...FICTIONAL_APPROVED_IMAGE, sp: { width: 390, height: 900 } } }))).toBe("CONTENT_SLOTS_BOX_MISMATCH");
+    // a 3:2 material in a 1:1 slot shown from its left edge while its subject is on the right third
+    const crop = await deliveryRepo();
+    const c = JSON.parse(readFileSync(join(crop, PHOTO_SLOTS_FILE), "utf8")) as PhotoSlots;
+    const board = c.slots.find((x) => x.material_ids.includes("bake-board"))!;
+    board.pc = { ...board.pc, aspect: "1:1", object_position: "0% 50%", box: { ...board.pc.box, h: (board.pc.box.w * 1440) / 3000 } };
+    writeFileSync(join(crop, PHOTO_SLOTS_FILE), JSON.stringify(c));
+    expect(await codeOf(deliver(crop, ctx(s)))).toBe("CONTENT_SLOTS_SUBJECT_CROPPED");
+  });
+
+  it("a material id the handover record does not name is refused (every build), never skipped", async () => {
+    for (const deliveryBuild of [false, true]) {
+      const repo = await deliveryRepo();
+      const rec = JSON.parse(readFileSync(join(repo, GENERATED_RECORD), "utf8")) as { files: { material_id?: string }[] };
+      delete rec.files[0]!.material_id;
+      writeFileSync(join(repo, GENERATED_RECORD), JSON.stringify(rec));
+      const run = deliveryBuild ? deliver(repo, ctx(spec())) : buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY });
+      expect(await codeOf(run), String(deliveryBuild)).toBe("CONTENT_SLOTS_MATERIAL_NOT_HANDED_OVER");
+    }
+  });
+});
+
 describe("DEV-364 PR 2b: Q1 measures the slots (pure part; the browser run is q1-check.ts / q1-render.ts)", () => {
-  const slots = SLOT_CONTROL.slots.slice(0, 1).map((a) => ({ ...a, pc: { aspect: "4:3" as const, object_position: "75% 50%", subject: "right-third" as const }, sp: { aspect: "4:3" as const, object_position: "75% 50%", subject: "right-third" as const } }));
+  const slots = SLOT_CONTROLS[0]!.slots.map((a) => ({ ...a, slot: "wrong", pc: { aspect: "4:3" as const, object_position: "75% 50%", subject: "right-third" as const }, sp: { aspect: "4:3" as const, object_position: "75% 50%", subject: "right-third" as const } }));
   const good = { slot: "wrong", position: "75% 50%", fit: "cover", w: 400, h: 300, nw: 1200, nh: 400 };
   it("a frame that keeps the slot gives nothing; a changed aspect, position, fit, a cropped subject or a missing slot each give their code", () => {
     expect(slotFindings("f", "pc", slots, [good])).toEqual([]);
@@ -197,14 +260,19 @@ describe("DEV-364 PR 2b: Q1 measures the slots (pure part; the browser run is q1
     // a picture that did not load is not measured here (Q1_BROKEN_IMAGE reports it)
     expect(codes([{ ...good, nw: 0, nh: 0 }])).toEqual([]);
   });
-  it("the slot control page is built to trip all four codes", () => {
-    expect([...SLOT_CONTROL.present].sort()).toEqual(["Q1_SLOT_ASPECT", "Q1_SLOT_MISSING", "Q1_SLOT_POSITION", "Q1_SUBJECT_CROPPED"]);
-    // its own geometry: a 900×300 picture in a 16:9 box at 100% 50%, subject on the left third
-    expect(slotFindings("c", "pc", SLOT_CONTROL.slots, [{ slot: "wrong", position: "100% 50%", fit: "cover", w: 320, h: 180, nw: 900, nh: 300 }]).map((x) => x.code).sort()).toEqual([
-      "Q1_SLOT_ASPECT",
-      "Q1_SLOT_MISSING",
-      "Q1_SLOT_POSITION",
-      "Q1_SUBJECT_CROPPED",
-    ]);
+  it("review #372 L3: one slot control per code, each wrong in one way only (its own geometry gives its own code and no other)", () => {
+    expect(SLOT_CONTROLS.map((c) => c.code).sort()).toEqual([...SLOT_CODES].sort());
+    // what each control page renders (a 900×300 picture in a 320px frame; the CSS of the page, measured by hand)
+    const shown: Record<string, { position: string; w: number; h: number }> = {
+      "slot-aspect": { position: "50% 50%", w: 320, h: 180 },
+      "slot-position": { position: "50% 50%", w: 320, h: 320 },
+      "slot-subject": { position: "0% 50%", w: 320, h: 320 },
+      "slot-missing": { position: "50% 50%", w: 320, h: 320 },
+    };
+    for (const c of SLOT_CONTROLS) {
+      const m = shown[c.name]!;
+      expect(c.css).toContain(`object-position:${m.position}`);
+      expect(slotFindings(c.name, "pc", c.slots, [{ slot: "probe", fit: "cover", nw: 900, nh: 300, ...m }]).map((x) => x.code), c.name).toEqual([c.code]);
+    }
   });
 });

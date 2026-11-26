@@ -223,7 +223,9 @@ export class ContentError extends Error {
       | "CONTENT_SLOTS_MATERIAL_UNKNOWN"
       | "CONTENT_SLOTS_ROLE_MISMATCH"
       | "CONTENT_SLOTS_BOX_MISMATCH"
-      | "CONTENT_SLOTS_SUBJECT_CROPPED",
+      | "CONTENT_SLOTS_SUBJECT_CROPPED"
+      | "CONTENT_SLOTS_MATERIAL_NOT_HANDED_OVER"
+      | "CONTENT_DELIVERY_SLOT_CONTEXT_MISSING",
     readonly file: string,
   ) {
     super(`${code} ${file}`);

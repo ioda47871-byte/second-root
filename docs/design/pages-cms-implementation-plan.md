@@ -192,17 +192,21 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
   枠ごとに `id`・`role`（hero / product / background / decor）・`material_ids`（承認した構図の素材の id。`request-prompt.ts` の Material）、PC と SP それぞれに
   `box`（承認画像の中の 0〜1 の矩形）・`aspect`（16:9・3:2・4:3・1:1・3:4・2:3）・`shape`（rect / rounded）・`object_position`（「50% 35%」の形だけ）・`subject`（center / left-third / right-third / top / bottom）・
   `text_gap`（adjacent / separated）。**文字を写真に重ねる指定は書けない**（`text_gap` に重ねる値が無く、どの階層も余分な欄を断る）。重ねる表現は §4 の別の承認の項目。
+  `notes` は人への覚え書きで、**頁や生成への指示ではない**（何も読まない）。それでも重ねる言い回し（重ね・乗せ・載せ・被せ・上に文字／店名／見出し・overlay・オーバーレイ など）は断る（PR #372 の L1。推測の検査で厳しめ）。
 - 承認した画像と全体の依頼文（whole_page の prompt）は変えない。別の記録として、承認に欄と SHA-256 で結びつくだけ。
 - `experiments/` は `request-prompt.ts` を import できない（オーナー承認の隔離の試験）。id の形・素材の種類と比・依頼 ID・記録の名前はこの file に写し、単体試験で `request-prompt.ts` と一致することを確かめる。
-- **納品のときの検査**（`checkPhotoSlots`、承認の文脈を渡す）: 渡した承認と違う → `CONTENT_SLOTS_NOT_APPROVED`。承認した素材に無い id → `CONTENT_SLOTS_MATERIAL_UNKNOWN`。
+- **納品のときの検査**（`checkPhotoSlots`、承認の文脈を渡す。PR #372 の M1: 納品の構築 `delivery: true` は、指定があれば必ずこれを通す。
+  文脈（承認・承認した素材・承認画像の大きさ）を渡さなければ `CONTENT_DELIVERY_SLOT_CONTEXT_MISSING` で止まる。顧客の構築は文脈を持たないので通さない）: 渡した承認と違う → `CONTENT_SLOTS_NOT_APPROVED`。承認した素材に無い id → `CONTENT_SLOTS_MATERIAL_UNKNOWN`。
   役割と素材の種類が合わない（hero・product は photo、background は background、decor は decoration）→ `CONTENT_SLOTS_ROLE_MISMATCH`。
   `box` の承認画像の中での形が `aspect` と 8% を超えて違う → `CONTENT_SLOTS_BOX_MISMATCH`。素材の比で切り取ると主役が枠の外 → `CONTENT_SLOTS_SUBJECT_CROPPED`。形の誤り → `CONTENT_SLOTS_INVALID`。
 - **構築**: `content/photo-slots.json`（`.pages.yml` に入れない。CMS からは直せない）を読み、生成素材の記録で素材の id が付いた写真に、その枠を当てる。
+  指定の素材の id が生成素材の記録に無ければ、どの構築でも止まる（`CONTENT_SLOTS_MATERIAL_NOT_HANDED_OVER`。黙って飛ばさない）。
   写真の**実際の比**で PC・SP とも主役が切り取りの中に残るかを確かめる（残らなければ `CONTENT_SLOTS_SUBJECT_CROPPED`）。頁は `<img data-slot="…">` と、
   後ろに足す CSS（`object-position`、SP は店ごとの区切り幅の下）で枠を当てる。指定が無ければ頁は前と同じバイト。
 - **Q1**（`q1-check.ts` の直接の経路。`q1-render.ts` は同じ関数を通す。import は変えていない）: 当てた枠ごとに PC・SP で、描いた枠の比（`Q1_SLOT_ASPECT`、3% まで）、
   `object-position` と `object-fit: cover`（`Q1_SLOT_POSITION`）、主役の点が見える範囲に残るか（`Q1_SUBJECT_CROPPED`）、枠が頁にあるか（`Q1_SLOT_MISSING`）を測る。
-  わざと崩した枠の対照の頁（`SLOT_CONTROL`）で 4 つとも出ることを毎回確かめる。架空の `photo-slots` の試験データ（3:2・3:1・1:1・2.8:1 の写真、パン屋の 4:3 のカードとカフェの 1:1 の小さい写真）は PC・SP とも所見なし。
+  わざと崩した枠の対照の頁を符号ごとに 1 つずつ（`SLOT_CONTROLS`。PR #372 の L3）用意し、それぞれが自分の符号だけを出し、ほかの枠の符号を出さないことを毎回確かめる。
+  比の表は、頁の枠の比（`SLOT_FRAME_RATIOS`）と素材の画像の比（`MATERIAL_IMAGE_RATIOS`）に名前を分けた。架空の `photo-slots` の試験データ（3:2・3:1・1:1・2.8:1 の写真、パン屋の 4:3 のカードとカフェの 1:1 の小さい写真）は PC・SP とも所見なし。
 - **限界**: 主役の位置は指定に書いた位置で、画素から見つけたものではない（測れるのは幾何だけ）。枠は生成素材の記録の素材の id を通して写真に届くので、B・C の写真と差し替えた写真には
   頁の既定の枠が当たる。差し替えても承認した構図に収まるかは PR 5。枠の比は店の CSS が決め、指定の比と合うかを Q1 が測る（頁の CSS は変えない）。
 

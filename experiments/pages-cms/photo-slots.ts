@@ -19,10 +19,14 @@
  *     the role fits the material's kind (CONTENT_SLOTS_ROLE_MISMATCH); each box lies inside the approved image and its
  *     pixel shape matches the declared aspect (CONTENT_SLOTS_BOX_MISMATCH); the subject stays inside the crop of the
  *     material's own aspect (CONTENT_SLOTS_SUBJECT_CROPPED).
- *   appliedSlots (every build, from content/photo-slots.json; not in .pages.yml, so the CMS cannot edit it): a picture
- *     whose handover entry (content/generated-materials.json) names a slot's material gets that slot; its subject
- *     must stay inside the crop for the picture's REAL ratio at PC and SP (CONTENT_SLOTS_SUBJECT_CROPPED). The page
- *     applies the slot's object-position (slotCss); Q1 measures the rendered frame (q1-check.ts).
+ *     Review #372 M1: Second Root's delivery build (build.ts, delivery: true) runs it whenever the repository has a
+ *     spec, and stops without the context (CONTENT_DELIVERY_SLOT_CONTEXT_MISSING).
+ *   appliedSlots (every build, from content/photo-slots.json; not in .pages.yml, so the CMS cannot edit it): every
+ *     material id must be named by the handover record (content/generated-materials.json), or the build stops
+ *     (CONTENT_SLOTS_MATERIAL_NOT_HANDED_OVER; review #372 M1: refused, never skipped); a picture whose handover entry
+ *     names a slot's material gets that slot; its subject must stay inside the crop for the picture's REAL ratio at PC
+ *     and SP (CONTENT_SLOTS_SUBJECT_CROPPED). The page applies the slot's object-position (slotCss); Q1 measures the
+ *     rendered frame (q1-check.ts).
  *
  * Limits: the subject's position is the declared one (where the spec says it is), not found in the pixels. A slot
  * reaches a picture through the handover record's material id, so B / C pictures (and a replaced picture) take the
@@ -46,14 +50,14 @@ export const MIRROR = {
   aspects: ["landscape_3x2", "square_1x1", "portrait_2x3"] as const,
   recordName: /^[a-z0-9][a-z0-9._-]{0,63}\.json$/,
 };
-/** The width / height of each material aspect. */
-export const MATERIAL_RATIO: Record<(typeof MIRROR.aspects)[number], number> = { landscape_3x2: 3 / 2, square_1x1: 1, portrait_2x3: 2 / 3 };
+/** MATERIAL images (the approved composition's materials, request-prompt.ts aspects): width / height. */
+export const MATERIAL_IMAGE_RATIOS: Record<(typeof MIRROR.aspects)[number], number> = { landscape_3x2: 3 / 2, square_1x1: 1, portrait_2x3: 2 / 3 };
 
 export const SLOT_ROLES = ["hero", "product", "background", "decor"] as const;
 /** The material kinds each role takes. */
 export const ROLE_KINDS: Record<(typeof SLOT_ROLES)[number], readonly (typeof MIRROR.kinds)[number][]> = { hero: ["photo"], product: ["photo"], background: ["background"], decor: ["decoration"] };
-/** The width / height of each slot aspect. */
-export const SLOT_ASPECTS = { "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "1:1": 1, "3:4": 3 / 4, "2:3": 2 / 3 } as const;
+/** SLOT frames (the box a picture is cropped into on the page): width / height. Not the material's own ratio. */
+export const SLOT_FRAME_RATIOS = { "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "1:1": 1, "3:4": 3 / 4, "2:3": 2 / 3 } as const;
 /** Where the subject sits in the picture, as a point in percent of its width and height. */
 export const SUBJECT_POINTS = { center: [50, 50], "left-third": [100 / 3, 50], "right-third": [200 / 3, 50], top: [50, 25], bottom: [50, 75] } as const;
 export const TEXT_GAPS = ["adjacent", "separated"] as const;
@@ -67,7 +71,7 @@ const Box = z
 const ObjectPosition = z.string().regex(/^(?:100|[1-9]?\d)% (?:100|[1-9]?\d)%$/);
 const View = z.strictObject({
   box: Box,
-  aspect: z.enum(Object.keys(SLOT_ASPECTS) as [keyof typeof SLOT_ASPECTS, ...(keyof typeof SLOT_ASPECTS)[]]),
+  aspect: z.enum(Object.keys(SLOT_FRAME_RATIOS) as [keyof typeof SLOT_FRAME_RATIOS, ...(keyof typeof SLOT_FRAME_RATIOS)[]]),
   shape: z.enum(["rect", "rounded"]),
   object_position: ObjectPosition,
   subject: z.enum(Object.keys(SUBJECT_POINTS) as [keyof typeof SUBJECT_POINTS, ...(keyof typeof SUBJECT_POINTS)[]]),
@@ -85,11 +89,20 @@ export const ApprovedDesign = z
   })
   .refine((a) => a.review_file !== a.approval_file, "approved_design_same_file");
 export type ApprovedDesign = z.infer<typeof ApprovedDesign>;
-/** Notes on spacing, brightness, legibility: plain text, no fact (no link, markup or digit run). */
+/**
+ * Notes on spacing, brightness, legibility: a remark for people, NOT an instruction to the page or to a generator
+ * (nothing reads them). Plain text, no fact (no link, markup or digit run), and no overlay wording (review #372 L1:
+ * text over a photo cannot come in through the notes either): 重ね・重な・乗せ・載せ・のせ・被せ・かぶせ・上に＋文字 /
+ * 店名 / 見出し / ロゴ / テキスト・overlay・オーバーレイ. Matched after NFKC; a heuristic on the strict side.
+ */
+const OVERLAY_WORDING = /重ね|重な|乗せ|載せ|のせ|被せ|かぶせ|上に.{0,6}(?:文字|店名|見出し|ロゴ|テキスト|コピー)|overlay|オーバーレイ|over\s*the\s*photo/i;
 const Notes = z
   .string()
   .max(200)
-  .refine((s) => !/[<>]|https?:|www\.|\d{3,}/i.test(s), "notes_plain");
+  .refine((s) => {
+    const n = s.normalize("NFKC");
+    return !/[<>]|https?:|www\.|\d{3,}/i.test(n) && !OVERLAY_WORDING.test(n);
+  }, "notes_plain");
 
 export const PhotoSlots = z
   .strictObject({
@@ -154,10 +167,10 @@ export function checkPhotoSlots(raw: unknown, ctx: SlotContext): PhotoSlots {
       const v = slot[view];
       const img = ctx.approvedImage[view];
       const shape = (v.box.w * img.width) / (v.box.h * img.height);
-      const want = SLOT_ASPECTS[v.aspect];
+      const want = SLOT_FRAME_RATIOS[v.aspect];
       if (Math.abs(shape - want) / want > 0.08) throw new ContentError("CONTENT_SLOTS_BOX_MISMATCH", `${slot.id}/${view}`);
       for (const id of slot.material_ids) {
-        const ratio = MATERIAL_RATIO[byId.get(id)!.aspect];
+        const ratio = MATERIAL_IMAGE_RATIOS[byId.get(id)!.aspect];
         if (!subjectVisible({ w: ratio * 1000, h: 1000 }, { w: want * 1000, h: 1000 }, v.object_position, v.subject)) throw new ContentError("CONTENT_SLOTS_SUBJECT_CROPPED", `${slot.id}/${view}/${id}`);
       }
     }
@@ -194,6 +207,8 @@ export type AppliedSlot = { slot: string; file: string; pc: Pick<SlotView, "aspe
  */
 export function appliedSlots(spec: PhotoSlots | null, pictures: readonly { file: string; sha256: string; width: number; height: number }[], handover: readonly { sha256: string; material_id?: string }[]): AppliedSlot[] {
   if (!spec) return [];
+  const named = new Set(handover.map((h) => h.material_id).filter(Boolean));
+  for (const slot of spec.slots) for (const id of slot.material_ids) if (!named.has(id)) throw new ContentError("CONTENT_SLOTS_MATERIAL_NOT_HANDED_OVER", `${slot.id}/${id}`);
   const slotOfMaterial = new Map(spec.slots.flatMap((s) => s.material_ids.map((id) => [id, s] as const)));
   const out: AppliedSlot[] = [];
   for (const p of pictures) {
@@ -202,7 +217,7 @@ export function appliedSlots(spec: PhotoSlots | null, pictures: readonly { file:
     if (!slot) continue;
     for (const view of ["pc", "sp"] as const) {
       const v = slot[view];
-      if (!subjectVisible({ w: p.width, h: p.height }, { w: SLOT_ASPECTS[v.aspect] * 1000, h: 1000 }, v.object_position, v.subject)) throw new ContentError("CONTENT_SLOTS_SUBJECT_CROPPED", `${slot.id}/${view}/${p.file}`);
+      if (!subjectVisible({ w: p.width, h: p.height }, { w: SLOT_FRAME_RATIOS[v.aspect] * 1000, h: 1000 }, v.object_position, v.subject)) throw new ContentError("CONTENT_SLOTS_SUBJECT_CROPPED", `${slot.id}/${view}/${p.file}`);
     }
     const pick = (v: SlotView) => ({ aspect: v.aspect, object_position: v.object_position, subject: v.subject });
     out.push({ slot: slot.id, file: p.file, pc: pick(slot.pc), sp: pick(slot.sp) });

@@ -29,7 +29,7 @@ import { chromium, type Browser } from "playwright";
 import { waitForFrame } from "../../lib/design-agent/frame-ready";
 import { buildSite } from "./build";
 import { Q1_TODAY, solidPng, writeFixture } from "./fixtures";
-import { SLOT_ASPECTS, subjectVisible, type AppliedSlot } from "./photo-slots";
+import { SLOT_FRAME_RATIOS, subjectVisible, type AppliedSlot } from "./photo-slots";
 import { SHOP_SITES } from "./shop-site";
 
 const REPO = resolve(__dirname, "../..");
@@ -89,7 +89,7 @@ export function slotFindings(fixture: string, view: "pc" | "sp", slots: readonly
     if (shown.length === 0) add("Q1_SLOT_MISSING", name);
     for (const m of shown) {
       if (m.w <= 0 || m.h <= 0 || m.nw <= 0) continue; // not measurable (Q1_BROKEN_IMAGE covers a broken picture)
-      const ratio = SLOT_ASPECTS[want.aspect];
+      const ratio = SLOT_FRAME_RATIOS[want.aspect];
       if (Math.abs(m.w / m.h - ratio) / ratio > 0.03) add("Q1_SLOT_ASPECT", `${name} ${(m.w / m.h).toFixed(3)} != ${want.aspect}`);
       if (m.fit !== "cover" || m.position.trim() !== want.object_position) add("Q1_SLOT_POSITION", `${name} ${m.fit} ${m.position} != ${want.object_position}`);
       if (!subjectVisible({ w: m.nw, h: m.nh }, { w: m.w, h: m.h }, m.position, want.subject)) add("Q1_SUBJECT_CROPPED", `${name} ${want.subject}`);
@@ -143,21 +143,28 @@ export const CONTROL_PAGE = {
   css: "ul{list-style:none}.up{margin-top:-40px}.tiny{font-size:9px}.cut{width:80px;white-space:nowrap;overflow:hidden}.wide{width:3000px}.clipbox{width:80px;overflow:hidden}.inner{white-space:nowrap}",
 };
 
+/** The slot codes of Q1 (each slot control must give its own and none of the others). */
+export const SLOT_CODES = ["Q1_SLOT_ASPECT", "Q1_SLOT_POSITION", "Q1_SUBJECT_CROPPED", "Q1_SLOT_MISSING"] as const;
+const slotPage = (frame: string, position: string) => ({
+  html: '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><h1>架空の店</h1><figure class="f"><img data-slot="probe" src="media/wide.png" alt="試験" width="900" height="300"></figure></body></html>',
+  css: `body{margin:0;padding:16px}.f{margin:0;width:320px;aspect-ratio:${frame};overflow:hidden}.f img{width:100%;height:100%;display:block;object-fit:cover;object-position:${position}}`,
+});
+const slotOf = (name: string, aspect: AppliedSlot["pc"]["aspect"], position: string, subject: AppliedSlot["pc"]["subject"]): AppliedSlot => ({ slot: name, file: "wide.png", pc: { aspect, object_position: position, subject }, sp: { aspect, object_position: position, subject } });
 /**
- * DEV-364 PR 2b: the deliberately wrong slot page. A 3:1 picture in a 16:9 frame at object-position 100% 50%, while
- * its slot says 1:1, 0% 50% and a subject on the left third; and a second slot that is not on the page. At PC and SP
- * it must give Q1_SLOT_ASPECT, Q1_SLOT_POSITION, Q1_SUBJECT_CROPPED and Q1_SLOT_MISSING, and no Q1_BROKEN_IMAGE.
+ * DEV-364 PR 2b, review #372 L3: one deliberately wrong slot page per code, each wrong in one way only (a 3:1 picture,
+ * 900×300, in a 320px frame). At PC and SP each must give its own code and none of the other slot codes (nor
+ * Q1_BROKEN_IMAGE), so each check is proven for its own cause.
+ *   aspect    a 16:9 frame where the slot says 1:1 (position and a centred subject as the slot says)
+ *   position  the page shows 50% 50% where the slot says 45% 50% (1:1, centred subject still visible)
+ *   subject   0% 50% as the slot says, but the subject is on the right third (1:1: only the left third shows)
+ *   missing   the slot the build applied is not on the page (the picture there has another slot name)
  */
-export const SLOT_CONTROL = {
-  html: '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><h1>架空の店</h1><figure class="f"><img data-slot="wrong" src="media/wide.png" alt="試験" width="900" height="300"></figure></body></html>',
-  css: "body{margin:0;padding:16px}.f{margin:0;width:320px;aspect-ratio:16/9;overflow:hidden}.f img{width:100%;height:100%;display:block;object-fit:cover;object-position:100% 50%}",
-  media: { "media/wide.png": solidPng(900, 300, [120, 140, 160]) } as Record<string, Buffer>,
-  slots: [
-    { slot: "wrong", file: "wide.png", pc: { aspect: "1:1", object_position: "0% 50%", subject: "left-third" }, sp: { aspect: "1:1", object_position: "0% 50%", subject: "left-third" } },
-    { slot: "gone", file: "gone.png", pc: { aspect: "1:1", object_position: "50% 50%", subject: "center" }, sp: { aspect: "1:1", object_position: "50% 50%", subject: "center" } },
-  ] as AppliedSlot[],
-  present: ["Q1_SLOT_ASPECT", "Q1_SLOT_POSITION", "Q1_SUBJECT_CROPPED", "Q1_SLOT_MISSING"] as const,
-};
+export const SLOT_CONTROLS: { name: string; html: string; css: string; media: Record<string, Buffer>; slots: AppliedSlot[]; code: (typeof SLOT_CODES)[number] }[] = [
+  { name: "slot-aspect", ...slotPage("16/9", "50% 50%"), slots: [slotOf("probe", "1:1", "50% 50%", "center")], code: "Q1_SLOT_ASPECT" },
+  { name: "slot-position", ...slotPage("1/1", "50% 50%"), slots: [slotOf("probe", "1:1", "45% 50%", "center")], code: "Q1_SLOT_POSITION" },
+  { name: "slot-subject", ...slotPage("1/1", "0% 50%"), slots: [slotOf("probe", "1:1", "0% 50%", "right-third")], code: "Q1_SUBJECT_CROPPED" },
+  { name: "slot-missing", ...slotPage("1/1", "50% 50%"), slots: [slotOf("gone", "1:1", "50% 50%", "center")], code: "Q1_SLOT_MISSING" },
+].map((c) => ({ ...c, media: { "media/wide.png": solidPng(900, 300, [120, 140, 160]) }, code: c.code as (typeof SLOT_CODES)[number] }));
 
 export async function controlCheck(browser: Browser, work: string, outDir: string): Promise<Q1Finding["code"][]> {
   const dist = join(work, "control");
@@ -170,16 +177,18 @@ export async function controlCheck(browser: Browser, work: string, outDir: strin
     const codes = new Set((await serveAndMeasure(browser, dist, `control-${view}`, view, outDir)).map((f) => f.code));
     for (const c of ["Q1_OVERFLOW_X", "Q1_BROKEN_IMAGE", "Q1_OVERLAP", "Q1_SMALL_TEXT", "Q1_TEXT_CLIPPED", "Q1_EXTERNAL_REQUEST"] as const) if (!codes.has(c)) missed.push(`${view}:${c}`);
   }
-  // DEV-364 PR 2b: the slot control, at both widths
-  const slotDist = join(work, "control-slot");
-  await mkdir(join(slotDist, "media"), { recursive: true });
-  await writeFile(join(slotDist, "index.html"), SLOT_CONTROL.html);
-  await writeFile(join(slotDist, "style.css"), SLOT_CONTROL.css);
-  for (const [name, bytes] of Object.entries(SLOT_CONTROL.media)) await writeFile(join(slotDist, name), bytes);
-  for (const view of ["pc", "sp"] as const) {
-    const codes = new Set((await serveAndMeasure(browser, slotDist, `control-slot-${view}`, view, outDir, SLOT_CONTROL.slots)).map((f) => f.code));
-    for (const c of SLOT_CONTROL.present) if (!codes.has(c)) missed.push(`slot:${view}:${c}`);
-    if (codes.has("Q1_BROKEN_IMAGE")) missed.push(`slot:${view}:not Q1_BROKEN_IMAGE`);
+  // DEV-364 PR 2b (review #372 L3): the slot controls, one per code, at both widths
+  for (const c of SLOT_CONTROLS) {
+    const slotDist = join(work, `control-${c.name}`);
+    await mkdir(join(slotDist, "media"), { recursive: true });
+    await writeFile(join(slotDist, "index.html"), c.html);
+    await writeFile(join(slotDist, "style.css"), c.css);
+    for (const [name, bytes] of Object.entries(c.media)) await writeFile(join(slotDist, name), bytes);
+    for (const view of ["pc", "sp"] as const) {
+      const codes = new Set((await serveAndMeasure(browser, slotDist, `control-${c.name}-${view}`, view, outDir, c.slots)).map((f) => f.code));
+      if (!codes.has(c.code)) missed.push(`${c.name}:${view}:${c.code}`);
+      for (const other of [...SLOT_CODES.filter((x) => x !== c.code), "Q1_BROKEN_IMAGE" as const]) if (codes.has(other)) missed.push(`${c.name}:${view}:not ${other}`);
+    }
   }
   return missed as Q1Finding["code"][];
 }
