@@ -319,6 +319,16 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
       ["400円（税込）/ 500円（税別）", "tax_excluded_only"],
       // review L1
       ["500円 税込価格は店頭で", "no_tax_wording"],
+      // PR (3): 税込 among other words in the bracket; lists sharing the last 円 and tax words; 本体価格 … 税込 …
+      ["1,000円（10%税込）", "tax_included"],
+      ["1,100円（税込・10%）", "tax_included"],
+      ["864円（税込8%）", "tax_included"],
+      ["1,000円（2名分・税込）", "tax_included"],
+      ["S400/M500/L600円（税込）", "tax_included"],
+      ["S 400 M 500 L 600（税込）", "tax_included"],
+      ["1,000〜1,500円+税", "tax_excluded_only"],
+      ["本体価格1,000円 税込1,100円", "tax_included"],
+      ["380〜520円（税込）", "tax_included"],
     ];
     expect(cases.map(([t]) => [t, classifyPrice(t)])).toEqual(cases);
     expect(priceAmounts("S 400円（税込）/ M 500円（税別）").map((a) => [a.text, a.class])).toEqual([
@@ -329,6 +339,16 @@ describe("DEV-303 Pages CMS content model (owner decisions 2026-11-26): fixed na
     const menu = loaded.menu.map((m, k) => (k === 0 ? { ...m, priceDisplay: "S 400円（税込）/ M 500円（税別）/ L 600円" } : m));
     const finding = priceDisplayReport({ categories: loaded.categories, menu }).findings.find((f) => f.item === "item-1")!;
     expect([finding.class, finding.amounts]).toEqual(["tax_excluded_only", ["500円", "600円"]]);
+    // PR (3): a list's members without 円 are named too, with the class of the member that carries the 円 and tax words
+    expect(priceAmounts("1,000〜1,500円+税").map((a) => [a.text, a.class])).toEqual([
+      ["1,000", "excluded"],
+      ["1,500円", "excluded"],
+    ]);
+    expect(priceAmounts("S400/M500/L600円（税込）").map((a) => a.class)).toEqual(["included", "included", "included"]);
+    expect(priceAmounts("本体価格1,000円 税込1,100円").map((a) => [a.text, a.class])).toEqual([
+      ["1,000円", "paired"],
+      ["1,100円", "included"],
+    ]);
   });
 
   it("review #360 L3: the Q1 output folder is resolved itself; a link into the repository (or anywhere) is refused", async () => {
