@@ -2,14 +2,17 @@
  * Issue #336 CLI — OFFLINE: checks the success-case originals the owner hands over, and writes the owner's private viewer
  * of all adopted success cases (docs/design/success-originals-handover.md).
  *
- *   npx tsx scripts/design-artifact/success-originals.ts verify --root ~/second-root-originals [--sr001-job <dir>]
+ *   npx tsx scripts/design-artifact/success-originals.ts verify --root ~/second-root-originals [--sr001-job <dir>] [--drop-sr001-chain] [--reset-index]
  *   npx tsx scripts/design-artifact/success-originals.ts viewer --out <empty dir> [--root ~/second-root-originals]
  *
  * verify  every file in <root>/<ID>/ (and <root>/<ID>/pseudo/) is hashed and judged against the SHA-256 recorded for
  *         that id (originals-handover.json, manifest.json, originals-index.json). A ZIP is read (CRC-checked; its
  *         SHA256SUMS, when present, must match entirely) and, when verified, extracted to <root>/_extracted/<ID>/.
  *         The PRIVATE index is written to <root>/_index/private-originals-index.json. --sr001-job also registers SR-001's
- *         completed AI-photo renders from that private image-run output, through the page SHA-256 chain.
+ *         completed AI-photo renders from that private image-run output, through the page SHA-256 chain. Without it,
+ *         earlier SR-001 entries are carried forward only unchanged (else it stops). --drop-sr001-chain drops them (e.g.
+ *         the run folder is gone); --reset-index ignores the previous index (e.g. it is unreadable). Neither deletes any
+ *         provided original or extracted file; only the index is rewritten.
  * viewer  a static page (no script, no network; CSP) listing every case with its status, the repository files and the
  *         verified private files (re-hashed), written to --out (outside this repository; empty or absent).
  *
@@ -22,18 +25,29 @@ import { OriginalsStop, verifyProvidedOriginals, writeSuccessCasesViewer } from 
 const REPO = resolve(__dirname, "../..");
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
 
-type Args = { mode: "verify"; root: string; sr001Job?: string } | { mode: "viewer"; out: string; root?: string };
+type Args = { mode: "verify"; root: string; sr001Job?: string; dropSr001Chain?: true; resetIndex?: true } | { mode: "viewer"; out: string; root?: string };
+const FLAGS = ["--drop-sr001-chain", "--reset-index"];
 export function parseSuccessOriginalsArgs(argv: string[]): Args | null {
   const [mode, ...rest] = argv;
   const o: Record<string, string> = {};
-  for (let i = 0; i < rest.length; i += 2) {
+  const flags = new Set<string>();
+  for (let i = 0; i < rest.length; i++) {
     const k = rest[i]!;
+    if (FLAGS.includes(k)) {
+      if (flags.has(k)) return null;
+      flags.add(k);
+      continue;
+    }
     const v = rest[i + 1];
     if (!["--root", "--out", "--sr001-job"].includes(k) || !v || v.startsWith("--") || k in o) return null;
     o[k] = v;
+    i++;
   }
-  if (mode === "verify") return o["--root"] && !o["--out"] ? { mode, root: resolve(o["--root"]), ...(o["--sr001-job"] ? { sr001Job: resolve(o["--sr001-job"]) } : {}) } : null;
-  if (mode === "viewer") return o["--out"] && !o["--sr001-job"] ? { mode, out: resolve(o["--out"]), ...(o["--root"] ? { root: resolve(o["--root"]) } : {}) } : null;
+  if (mode === "verify") {
+    if (!o["--root"] || o["--out"] || (o["--sr001-job"] && flags.has("--drop-sr001-chain"))) return null;
+    return { mode, root: resolve(o["--root"]), ...(o["--sr001-job"] ? { sr001Job: resolve(o["--sr001-job"]) } : {}), ...(flags.has("--drop-sr001-chain") ? { dropSr001Chain: true as const } : {}), ...(flags.has("--reset-index") ? { resetIndex: true as const } : {}) };
+  }
+  if (mode === "viewer") return o["--out"] && !o["--sr001-job"] && flags.size === 0 ? { mode, out: resolve(o["--out"]), ...(o["--root"] ? { root: resolve(o["--root"]) } : {}) } : null;
   return null;
 }
 
@@ -42,7 +56,7 @@ export async function successOriginalsMain(argv: string[], repo = REPO): Promise
   if (!a) return (say({ status: "refused", code: "ARGS_INVALID" }), 2);
   try {
     if (a.mode === "verify") {
-      const idx = await verifyProvidedOriginals({ repo, root: a.root, sr001Job: a.sr001Job });
+      const idx = await verifyProvidedOriginals({ repo, root: a.root, sr001Job: a.sr001Job, dropSr001Chain: a.dropSr001Chain, resetIndex: a.resetIndex });
       const byStatus: Record<string, number> = {};
       for (const e of idx.entries) byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
       say({ status: "verified", index: `${idx.root}/_index/private-originals-index.json`, files: idx.entries.length, by_status: byStatus, entries: idx.entries.map((e) => ({ id: e.id, name: e.name, sha256: e.sha256, status: e.status, sums: e.zip?.sums ?? null })), ignored: idx.ignored.length });

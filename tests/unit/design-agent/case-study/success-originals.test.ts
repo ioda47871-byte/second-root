@@ -525,3 +525,92 @@ describe("review: ZIP and file safety", () => {
     expect(c.pseudo.length).toBe(3);
   });
 });
+
+// ---- re-review fixes (PR #358, 3b6d014c) ----------------------------------------------------------------------------
+
+describe("re-review: a ZIP verified via a member is re-checked from the bytes, never from the index", () => {
+  it("an index edited to verified_via_member for a ZIP with no recorded member does not count", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-903/container.zip": zip([{ name: "only.png", data: png("unrecorded-only") }]) });
+    const idx = await verifyProvidedOriginals({ repo, root });
+    expect(idx.entries[0]!.status).toBe("sha_mismatch");
+    const path = join(root, PRIVATE_INDEX_REL);
+    const i = JSON.parse(readFileSync(path, "utf8"));
+    i.entries[0].status = "verified_via_member";
+    i.entries[0].zip.members[0].sha256 = sha(M_PNG);
+    i.entries[0].zip.members[0].recorded = true;
+    rmSync(path);
+    writeFileSync(path, JSON.stringify(i));
+    const { model } = await buildViewerModel({ repo, root });
+    const c = model.cases.find((x) => x.c.id === "CP-903")!;
+    expect(c.status).toBe("sha_mismatch");
+    expect(c.files).toEqual([]);
+    expect(c.unverified[0]!.status).toContain("verify を再実行");
+  });
+
+  it("after verify, a deleted _extracted or a changed recorded member stops the case counting", async () => {
+    const repo = fictionalRepo();
+    const root = privateRoot({ "CP-903/container.zip": M_ZIP });
+    const idx = await verifyProvidedOriginals({ repo, root });
+    const dir = idx.entries[0]!.zip!.extracted_dir!;
+    expect((await buildViewerModel({ repo, root })).model.cases.find((x) => x.c.id === "CP-903")!.status).toBe("original_verified_private");
+    rmSync(join(dir, "approved.png"));
+    writeFileSync(join(dir, "approved.png"), png("changed-member"));
+    expect((await buildViewerModel({ repo, root })).model.cases.find((x) => x.c.id === "CP-903")!.status).toBe("sha_mismatch");
+    rmSync(join(root, "_extracted"), { recursive: true });
+    const c = (await buildViewerModel({ repo, root })).model.cases.find((x) => x.c.id === "CP-903")!;
+    expect([c.status, c.files.length]).toEqual(["sha_mismatch", 0]);
+  });
+});
+
+describe("re-review: SR-001 carry-forward and recovery flags", () => {
+  function chainJob() {
+    const j = tmp("sr-orig-job3-");
+    mkdirSync(join(j, "swap/renders"), { recursive: true });
+    const put = (bytes: Buffer) => {
+      rmSync(join(j, "swap/renders/desktop_1440.png"), { force: true });
+      writeFileSync(join(j, "swap/renders/desktop_1440.png"), bytes);
+      rmSync(join(j, "swap/swap-summary.json"), { force: true });
+      writeFileSync(join(j, "swap/swap-summary.json"), JSON.stringify({ schema: "photo_swap_summary_v0", source_hashes: { html: sha("h"), css: sha("c"), copy: sha("j") }, renders: [{ viewport: "desktop_1440", sha256: sha(bytes) }] }));
+    };
+    put(png("render-first"));
+    return { j, put };
+  }
+
+  it("a rewritten summary with a new render is not carried forward (stops)", async () => {
+    const repo = fictionalRepo();
+    const { j, put } = chainJob();
+    const root = privateRoot({});
+    await verifyProvidedOriginals({ repo, root, sr001Job: j });
+    put(png("render-replaced")); // summary and render rewritten consistently
+    expect(await codeOf(verifyProvidedOriginals({ repo, root }))).toBe("ORIGINALS_SR001_JOB_INVALID");
+    // registering it again on purpose is explicit
+    const again = await verifyProvidedOriginals({ repo, root, sr001Job: j });
+    expect(again.entries.map((e) => e.sha256)).toEqual([sha(png("render-replaced"))]);
+  });
+
+  it("--drop-sr001-chain recovers from a deleted run folder; --reset-index from an unreadable index; originals are kept", async () => {
+    const repo = fictionalRepo();
+    const { j } = chainJob();
+    const root = privateRoot({ "CP-902/fictional_b.zip": B_ZIP });
+    await verifyProvidedOriginals({ repo, root, sr001Job: j });
+    rmSync(j, { recursive: true });
+    expect(await codeOf(verifyProvidedOriginals({ repo, root }))).toBe("ORIGINALS_SR001_JOB_INVALID");
+    const dropped = await verifyProvidedOriginals({ repo, root, dropSr001Chain: true });
+    expect(dropped.entries.map((e) => [e.id, e.status])).toEqual([["CP-902", "verified"]]);
+    expect(await codeOf(verifyProvidedOriginals({ repo, root, sr001Job: j, dropSr001Chain: true }))).toBe("ORIGINALS_SR001_JOB_INVALID");
+    rmSync(join(root, PRIVATE_INDEX_REL));
+    writeFileSync(join(root, PRIVATE_INDEX_REL), "{ not json");
+    expect(await codeOf(verifyProvidedOriginals({ repo, root }))).toBe("ORIGINALS_INDEX_INVALID");
+    const reset = await verifyProvidedOriginals({ repo, root, resetIndex: true });
+    expect(reset.entries.map((e) => [e.id, e.status])).toEqual([["CP-902", "verified"]]);
+    expect(existsSync(join(root, "CP-902/fictional_b.zip"))).toBe(true);
+    expect(existsSync(reset.entries[0]!.zip!.extracted_dir!)).toBe(true);
+  });
+
+  it("the CLI takes the two recovery flags on verify only, and not --drop-sr001-chain with --sr001-job", () => {
+    expect(parseSuccessOriginalsArgs(["verify", "--root", "/x", "--drop-sr001-chain", "--reset-index"])).toEqual({ mode: "verify", root: "/x", dropSr001Chain: true, resetIndex: true });
+    expect(parseSuccessOriginalsArgs(["verify", "--reset-index", "--root", "/x", "--sr001-job", "/j"])).toEqual({ mode: "verify", root: "/x", sr001Job: "/j", resetIndex: true });
+    for (const bad of [["verify", "--root", "/x", "--sr001-job", "/j", "--drop-sr001-chain"], ["verify", "--root", "/x", "--reset-index", "--reset-index"], ["viewer", "--out", "/o", "--reset-index"]]) expect(parseSuccessOriginalsArgs(bad)).toBeNull();
+  });
+});

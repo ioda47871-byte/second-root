@@ -533,7 +533,8 @@ export async function checkSr001Job(job: string, records: Records): Promise<Prov
  * SR-001's chain entries: --sr001-job registers them; without it, the previous index's chain entries are carried over
  * only after their chain is checked again (a broken chain stops), so a run without the flag never silently drops them.
  */
-export async function verifyProvidedOriginals(o: { repo: string; root: string; sr001Job?: string; now?: Date }): Promise<PrivateIndex> {
+export async function verifyProvidedOriginals(o: { repo: string; root: string; sr001Job?: string; dropSr001Chain?: boolean; resetIndex?: boolean; now?: Date }): Promise<PrivateIndex> {
+  if (o.sr001Job && o.dropSr001Chain) throw new OriginalsStop("ORIGINALS_SR001_JOB_INVALID");
   const records = await readRecords(o.repo);
   const root = await checkPrivateRoot(o.root, o.repo);
   const ignored: string[] = [];
@@ -554,10 +555,18 @@ export async function verifyProvidedOriginals(o: { repo: string; root: string; s
     if (pst?.isDirectory() && !pst.isSymbolicLink()) for (const f of await listFiles(pd, ignored)) entries.push(await judgeFile(root, n, f, true, records));
   }
   if (o.sr001Job) entries.push(...(await checkSr001Job(resolve(o.sr001Job), records)));
-  else {
+  else if (!o.dropSr001Chain && !o.resetIndex) {
+    // --reset-index ignores the previous index (an unreadable one included); --drop-sr001-chain drops SR-001's entries.
+    // Neither touches any provided original or extracted file; only the index is rewritten.
     const prev = await readPrivateIndexIfPresent(root);
-    const jobs = [...new Set((prev?.entries ?? []).filter((e) => e.status === "verified_private_chain" && e.chain).map((e) => e.chain!.job))];
-    for (const job of jobs) entries.push(...(await checkSr001Job(job, records)));
+    const chained = (prev?.entries ?? []).filter((e) => e.status === "verified_private_chain" && e.chain);
+    for (const job of [...new Set(chained.map((e) => e.chain!.job))]) {
+      const now = await checkSr001Job(job, records);
+      // carried forward only unchanged: the same renders with the same SHA-256 as the previous index
+      const before = new Map(chained.filter((e) => e.chain!.job === job).map((e) => [e.chain!.viewport, e.sha256]));
+      if (now.length !== before.size || now.some((e) => before.get(e.chain!.viewport) !== e.sha256)) throw new OriginalsStop("ORIGINALS_SR001_JOB_INVALID");
+      entries.push(...now);
+    }
   }
   const index: PrivateIndex = { schema: PRIVATE_INDEX_SCHEMA, generated_at: (o.now ?? new Date()).toISOString(), root, entries, ignored };
   await mkdirUnder(root, "_index");
@@ -674,7 +683,21 @@ export async function buildViewerModel(o: { repo: string; root?: string }): Prom
       // re-judged against the CURRENT records, not the index's word
       let stillRecorded = false;
       if (e.status === "verified") stillRecorded = e.sha256 !== null && originals.has(e.sha256);
-      else if (e.status === "verified_via_member") stillRecorded = (e.zip?.members ?? []).some((m) => originals.has(m.sha256));
+      else if (e.status === "verified_via_member" && stillSame) {
+        // never from the index's word: the ZIP is read again now, and a recorded member must also be on disk unchanged
+        const zipNow = readZip(now.bytes!);
+        const recordedNow = new Set(zipNow.ok ? zipNow.entries.map((m) => sha256(m.data)).filter((h) => originals.has(h)) : []);
+        const dir = e.zip?.extracted_dir;
+        if (recordedNow.size > 0 && dir && root && within(dir, join(root, EXTRACTED_DIR)))
+          for (const m of e.zip!.members) {
+            if (!recordedNow.has(m.sha256) || !within(join(dir, m.path), dir)) continue;
+            const mb = await readRegularFile(join(dir, m.path), FILE_MAX_BYTES);
+            if (mb.bytes && sha256(mb.bytes) === m.sha256) {
+              stillRecorded = true;
+              break;
+            }
+          }
+      }
       else if (e.status === "verified_private_chain" && e.chain && c.id === "SR-001") {
         if (!chainOk.has(e.chain.job)) chainOk.set(e.chain.job, new Set(await checkSr001Job(e.chain.job, records).then((r) => r.map((x) => x.sha256!), () => [] as string[])));
         stillRecorded = e.sha256 !== null && chainOk.get(e.chain.job)!.has(e.sha256);
@@ -686,7 +709,7 @@ export async function buildViewerModel(o: { repo: string; root?: string }): Prom
         if (e.status !== "verified_via_member" && e.sha256) foundShas.set(e.sha256, "private");
       } else if (e.status === "sha_mismatch" || e.status === "zip_sums_mismatch" || (wasVerified && !e.pseudo)) mismatch = true;
       else if (e.status === "unverifiable_no_recorded_sha" || e.status === "recorded_not_original") unverifiedSeen = true;
-      const label = !stillSame ? "照合後に変わった（verify をやり直す）" : wasVerified && !stillRecorded ? "今の記録では採用原本ではない（verify をやり直す）" : PROVIDED_LABEL[e.status];
+      const label = !stillSame ? "照合後に変わった（verify をやり直す）" : e.status === "verified_via_member" && !stillRecorded ? "変更あり（記録と一致する中身を今は確かめられない）/ verify を再実行" : wasVerified && !stillRecorded ? "今の記録では採用原本ではない（verify をやり直す）" : PROVIDED_LABEL[e.status];
       // a container verified only through a member is not itself an original
       const target = e.pseudo ? pseudo : verified && e.status !== "verified_via_member" ? files : unverified;
       const showImage = stillSame && !isZip && (verified || e.pseudo) ? addImage(e.file, now.bytes!) : null;
