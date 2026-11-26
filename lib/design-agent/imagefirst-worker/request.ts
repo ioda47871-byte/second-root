@@ -35,7 +35,7 @@ import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promise
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { CASE_STUDY_MAX_BYTES, CaseStudyStop, checkCaseStudy, type CaseStudyInspection, type ViewedFile } from "../case-study/case-study";
 import { PromptStop } from "../image-first/prompt";
-import { buildPhotoPlan, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, CASE_STUDY_TEXT_FIELDS, CaseStudyTextStop, FACTS_MAX_BYTES, type CaseStudyTextField, isPhotoRequest, layoutOf, materialsBytes, parseRequest, parseRequestFacts, PHOTO_FILE_RE, type ApprovedDesignUse, type DesignReference, type PhotoMaterialsRequest, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
+import { buildDetailCompPlan, buildPhotoPlan, buildRequestPlan, CASE_STUDY_TEXT_CATEGORIES, type DetailPlan, isDetailCompBytes, parseDetailCompRequest, type RequestEnvelope, CASE_STUDY_TEXT_FIELDS, CaseStudyTextStop, FACTS_MAX_BYTES, type CaseStudyTextField, isPhotoRequest, layoutOf, materialsBytes, parseRequest, parseRequestFacts, PHOTO_FILE_RE, type ApprovedDesignUse, type DesignReference, type PhotoMaterialsRequest, REQUEST_MAX_BYTES, requestDirectionBytes, type DesignRequest, type FactsRoot, type ImagefirstRequest, type PhotoPlan, type PlanReference, type RequestCaseStudyUse, type RequestPlan } from "../image-first/request-prompt";
 import { IMAGE_TOOL_MAX_REFS, REFERENCE_DIR_TOKEN } from "../image-tool-limits";
 import { checkJaRenderings, JA_RENDERINGS_MAX_BYTES, jaRenderingDetailOf, JaRenderingsStop, type CheckedJaRenderings, type JaRenderingDetail } from "../ja-renderings/ja-renderings";
 import type { FactsPack } from "../quality-pipeline/facts-pack";
@@ -101,7 +101,7 @@ const realDir = async (p: string) => {
 };
 
 /** The facts pack the request names: no link anywhere below its root, its real path that path, the request's SHA-256. */
-export async function readRequestFacts(request: ImagefirstRequest, places: { home: string; repo: string }): Promise<{ bytes: Buffer; facts: FactsPack; path: string }> {
+export async function readRequestFacts(request: RequestEnvelope, places: { home: string; repo: string }): Promise<{ bytes: Buffer; facts: FactsPack; path: string }> {
   const base = factsBase(request.facts_ref.root, places);
   const shopDir = join(base, request.facts_ref.shop_id);
   const path = join(shopDir, "facts-pack.json");
@@ -264,7 +264,7 @@ export function caseStudyUseOf(i: SelectionInput & Pick<CaseStudyInspection, "ca
 }
 
 /** The request's kind against the pack (see the header). Throws PromptStop. */
-export async function checkRequestShop(request: ImagefirstRequest, facts: FactsPack, repo: string): Promise<void> {
+export async function checkRequestShop(request: RequestEnvelope, facts: FactsPack, repo: string): Promise<void> {
   const fictionalSlug = Object.hasOwn(FICTIONAL_SHOPS, request.shop_id);
   if (request.kind === "real_shop") {
     if (fictionalSlug || request.shop_id.startsWith("fictional") || facts.shop_id.startsWith("fictional")) throw new PromptStop("REAL_SHOP_IS_FICTIONAL");
@@ -292,7 +292,8 @@ export const DESIGN_REVIEWS_DIR = "design-reviews";
  * synthetic (DEV-303, owner goal 2026-11-26): the approved design is a synthetic rehearsal bundle (rehearsal.ts).
  * --validate-request still checks it (and says rehearsal_only); the worker's run and the entry refuse it.
  */
-export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[]; synthetic?: true };
+/** image_counts (DEV-364 PR 4, #375 review M1): the approved run's own PC / SP picture counts (references may be fewer). */
+export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (DesignReference & { bytes: Buffer })[]; image_counts: { pc: number; sp: number }; synthetic?: true };
 
 /**
  * DEV-303 §6.1 change 6 (production flow §1 stage 4, §3.4): the owner-approved design a photo-materials request names.
@@ -304,7 +305,7 @@ export type ResolvedApprovedDesign = { use: ApprovedDesignUse; references: (Desi
  * References: the approved PC / SP pictures (all of them when at most IMAGE_TOOL_MAX_REFS, else the first PC and the
  * first SP part), as ref-N.png.
  */
-export async function readApprovedDesign(request: PhotoMaterialsRequest, places: { home: string; repo: string }): Promise<ResolvedApprovedDesign> {
+export async function readApprovedDesign(request: Pick<PhotoMaterialsRequest, "approved_design" | "facts_ref" | "shop_id" | "kind">, places: { home: string; repo: string }): Promise<ResolvedApprovedDesign> {
   const ref = request.approved_design;
   const base = factsBase(request.facts_ref.root, places);
   const shopDir = join(base, request.facts_ref.shop_id);
@@ -330,6 +331,7 @@ export async function readApprovedDesign(request: PhotoMaterialsRequest, places:
   return {
     use: { bundle_id: a.request_id, bundle_sha256: a.bundle_sha256, review_sha256: a.review_sha256, approval_sha256: a.approval_sha256, references: references.map((r) => ({ id: r.id, image: r.image, name: r.name, sha256: r.sha256 })) },
     references,
+    image_counts: { pc: a.images.pc.length, sp: a.images.sp.length },
     ...(a.synthetic ? { synthetic: true as const } : {}),
   };
 }
@@ -493,9 +495,78 @@ export const REQUEST_FILE_ENV = "SR_IMAGEFIRST_REQUEST_FILE";
  * (6 pictures), and (Issue #336) the design stage's case study in gate mode. Its SHA-256 is computed here (root later binds it with --request-sha256). Read only: no claim, no ledger,
  * no write, no network, no Codex.
  */
-export type RequestValidation = { request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] }; rehearsal_only?: true };
-export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<RequestValidation> {
+export type RequestValidation = { request_id: string; kind: ImagefirstRequest["kind"]; stage: "design" | "photo_materials" | "detail_comp"; request_sha256: string; facts_sha256: string; plan_sha256: string; photo_inputs: "checked" | "unchecked" | null; case_study: { sha256: string; counted: string[] } | null; layout?: "whole_page"; reference_images?: ReferenceRecord[]; approved_design?: ApprovedDesignRecord; materials_sha256?: string; ja_renderings?: { sha256: string; keys: string[] }; rehearsal_only?: true };
+export async function validateRequestFile(o: { file: string; home: string; repo: string }): Promise<RequestValidation | DetailValidation> {
+  const detail = await loadDetailCompOffline(o);
+  if (detail) return detailValidationOf(detail);
   return validationOf(await loadRequestFileOffline(o));
+}
+
+/**
+ * DEV-364 PR 4: what --validate-request says of a detail comp request (request-prompt.ts DetailCompRequest). It is
+ * checked and planned offline only: `runnable: false` (the worker's run path refuses the stage, DETAIL_COMP_NOT_RUNNABLE),
+ * `support_only: true` (never a design success).
+ */
+export type DetailValidation = Omit<RequestValidation, "stage" | "approved_design"> & {
+  stage: "detail_comp";
+  approved_design: ApprovedDesignRecord;
+  targets: { id: string; view: "pc" | "sp"; box: { x: number; y: number; w: number; h: number } }[];
+  support_only: true;
+  runnable: false;
+};
+export type DetailCompRun = { plan: DetailPlan; requestSha256: string; references: (ResolvedApprovedDesign["references"][number])[] };
+
+/** The PNG's own width and height (its IHDR), or a stop. */
+function pngSize(bytes: Buffer): { width: number; height: number } {
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length < 24 || !bytes.subarray(0, 8).equals(sig) || bytes.toString("latin1", 12, 16) !== "IHDR") throw new PromptStop("APPROVED_DESIGN_MISMATCH");
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+/**
+ * DEV-364 PR 4: a detail comp request file, read and checked offline (null when the file is not a detail comp): the same
+ * file rules as the other stages, the strict schema, the facts pack and shop, the approved design through its own gate
+ * (readApprovedDesign → approvedDesignRun), which must be a WHOLE PAGE (one PC and one SP picture;
+ * DETAIL_COMP_NOT_WHOLE_PAGE) and not a synthetic rehearsal (DETAIL_COMP_DESIGN_SYNTHETIC), then the plan.
+ */
+async function loadDetailCompOffline(o: { file: string; home: string; repo: string }): Promise<DetailCompRun | null> {
+  const file = resolve(o.file);
+  const name = basename(file);
+  if (!name.endsWith(".json")) return null;
+  const bytes = await readChecked(file, REQUEST_MAX_BYTES, { unsafe: "REQUEST_FILE_UNSAFE", big: "REQUEST_TOO_LARGE", missing: "REQUEST_FILE_MISSING" });
+  if (!isDetailCompBytes(bytes)) return null;
+  const requestSha256 = createHash("sha256").update(bytes).digest("hex");
+  const { request } = parseDetailCompRequest(bytes, requestSha256, name.slice(0, -".json".length));
+  const facts = await readRequestFacts(request, o);
+  await checkRequestShop(request, facts.facts, o.repo);
+  const design = await readApprovedDesign(request, o);
+  if (design.synthetic) throw new PromptStop("DETAIL_COMP_DESIGN_SYNTHETIC");
+  // #375 review M1: the approved RUN's own pictures (a 6-picture section design is referenced by its first PC and SP only)
+  if (design.image_counts.pc !== 1 || design.image_counts.sp !== 1) throw new PromptStop("DETAIL_COMP_NOT_WHOLE_PAGE");
+  const pc = design.references.filter((r) => r.image.startsWith("pc-"));
+  const sp = design.references.filter((r) => r.image.startsWith("sp-"));
+  if (pc.length !== 1 || sp.length !== 1 || design.references.length !== 2) throw new PromptStop("DETAIL_COMP_NOT_WHOLE_PAGE");
+  const image = (r: (typeof pc)[number]) => ({ image: r.image, sha256: r.sha256, ...pngSize(r.bytes) });
+  const plan = buildDetailCompPlan({ request, requestSha256, factsBytes: facts.bytes, facts: facts.facts, approved: { bundle_id: design.use.bundle_id, bundle_sha256: design.use.bundle_sha256, review_sha256: design.use.review_sha256, approval_sha256: design.use.approval_sha256, pc: image(pc[0]!), sp: image(sp[0]!) } });
+  const used = new Set(plan.references.map((r) => r.sha256));
+  return { plan, requestSha256, references: design.references.filter((r) => used.has(r.sha256)) };
+}
+
+function detailValidationOf(d: DetailCompRun): DetailValidation {
+  return {
+    request_id: d.plan.request_id,
+    kind: d.plan.kind,
+    stage: "detail_comp",
+    request_sha256: d.requestSha256,
+    facts_sha256: d.plan.facts_sha256,
+    plan_sha256: d.plan.plan_sha256,
+    photo_inputs: null,
+    case_study: null,
+    approved_design: d.plan.approved_design,
+    targets: d.plan.details.map((x) => ({ id: x.target, view: x.view, box: x.box })),
+    support_only: true,
+    runnable: false,
+  };
 }
 
 /** The request file as --validate-request and --print-plan read it (named <id>.json; its own bytes' SHA-256), loaded and checked. */
@@ -556,7 +627,7 @@ export const STAGED_INPUTS_DIR = "<codex work dir>/inputs";
 export type PlanAttachment = { order: number; kind: "photo_input" | "reference"; name: string; staged_name: string; staged_path: string; sha256: string; media_type: string; bytes: number; id?: string; case_id?: string; image?: string };
 /** HEAD, origin/develop and a clean tree, as the worker's gitCommitState reads them (structural; this module starts no process). */
 export type PlanCheckout = { head: string | null; base: string | null; clean: boolean };
-export type RequestPlanPrint = RequestValidation & {
+export type RequestPlanPrint = (RequestValidation | DetailValidation) & {
   schema: typeof PLAN_PRINT_SCHEMA;
   codex_invoked: false;
   commit: string | null;
@@ -564,7 +635,7 @@ export type RequestPlanPrint = RequestValidation & {
   clean: boolean;
   sent: { codex_runs: 1; max_images: number; prompt_sha256: string; prompt_chars: number; prompt: string; reference_dir_token: string | null; staged_dir: string; attachments: PlanAttachment[]; attachments_complete: boolean };
   entry_pins: { expected_plan_sha256: string; expected_prompt_sha256: string; expected_prompt_chars: number };
-  plan: RequestPlan | PhotoPlan;
+  plan: RequestPlan | PhotoPlan | DetailPlan;
 };
 
 /**
@@ -584,6 +655,29 @@ export function planAttachmentsOf(run: Pick<RequestRunInputs, "photos" | "refere
 }
 
 export async function printRequestPlan(o: { file: string; home: string; repo: string; checkout: () => Promise<PlanCheckout> }): Promise<RequestPlanPrint> {
+  const detail = await loadDetailCompOffline(o);
+  if (detail) {
+    // DEV-364 PR 4: what a detail comp's ONE run would be sent — shown for review; the worker does not run it in this version
+    const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+    const attachments: PlanAttachment[] = detail.plan.references.map((r, n) => {
+      const bytes = detail.references.find((x) => x.sha256 === r.sha256)!.bytes;
+      return { order: n + 1, kind: "reference", id: r.id, image: r.image, name: r.name, staged_name: r.name, staged_path: `${STAGED_INPUTS_DIR}/${r.name}`, sha256: sha(bytes), media_type: "image/png", bytes: bytes.length };
+    });
+    const c = await o.checkout().catch(() => null);
+    const commit = c?.head && /^[0-9a-f]{40}$/.test(c.head) ? c.head : null;
+    const p = detail.plan;
+    return {
+      schema: PLAN_PRINT_SCHEMA,
+      ...detailValidationOf(detail),
+      codex_invoked: false,
+      commit,
+      on_origin_develop: commit !== null && c?.base === commit,
+      clean: c?.clean === true,
+      sent: { codex_runs: 1, max_images: p.batch.images, prompt_sha256: p.batch.sha256, prompt_chars: p.batch.chars, prompt: p.batch.prompt, reference_dir_token: REFERENCE_DIR_TOKEN, staged_dir: STAGED_INPUTS_DIR, attachments, attachments_complete: true },
+      entry_pins: { expected_plan_sha256: p.plan_sha256, expected_prompt_sha256: p.batch.sha256, expected_prompt_chars: p.batch.chars },
+      plan: p,
+    };
+  }
   const run = await loadRequestFileOffline(o);
   const plan = run.plan;
   const attachments = planAttachmentsOf(run);
