@@ -83,8 +83,8 @@ body{margin:0;background:#f6efe4;color:#2b211b;font-family:"Hiragino Mincho ProN
 .hero{padding:72px 6vw 48px;background:#3a2a20;color:#f6efe4}
 .hero .kicker{margin:0 0 8px;font-size:14px;letter-spacing:.2em}
 .hero h1{margin:0;font-size:clamp(32px,6vw,64px);line-height:1.2}
-.hero nav{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:24px}
-.hero nav a{color:#f6efe4;font-size:16px}
+.hero nav{display:flex;flex-wrap:wrap;gap:4px 24px;margin-top:16px}
+.hero nav a{color:#f6efe4;font-size:16px;display:inline-flex;align-items:center;min-height:44px;min-width:44px}
 main{max-width:1200px;margin:0 auto;padding:0 6vw}
 h2{font-size:clamp(22px,3vw,30px);margin:56px 0 20px;border-bottom:1px solid #b9a58f;padding-bottom:8px}
 .grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:28px}

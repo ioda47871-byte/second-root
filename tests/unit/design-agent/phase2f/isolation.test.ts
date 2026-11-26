@@ -230,6 +230,30 @@ describe("DEV-196r: the sales packaging script takes only renderPrototype from p
   });
 });
 
+/**
+ * DEV-303 Pages CMS Q1 (owner decision 2026-11-26: the minimal read / compare-only import of the render check, fixed by
+ * an audit test): the Q1 comparison script of the local, fictional Pages CMS experiment renders built pages with
+ * renderPrototype — and nothing else of phase2f, and nothing of comp-impl or shop-css directly.
+ */
+const PAGES_CMS_Q1 = "experiments/pages-cms/q1-render.ts";
+describe("DEV-303 Pages CMS Q1: experiments/ takes only renderPrototype from phase2f (owner decision 2026-11-26, exact path)", () => {
+  it("only q1-render.ts under experiments/ imports phase2f, and only render-prototype's renderPrototype", () => {
+    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "experiments"])).toEqual([PAGES_CMS_Q1]);
+    const source = readFileSync(resolve(REPO, PAGES_CMS_Q1), "utf8");
+    const names = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([["../../lib/design-agent/phase2f/render-prototype", ["renderPrototype"]]]);
+    expect(specifiers(source).filter((s) => s.includes("phase2f"))).toEqual(["../../lib/design-agent/phase2f/render-prototype"]);
+  });
+  it("no file under experiments/ reaches comp-impl, shop-css or the other research modules directly", () => {
+    expect(git(["grep", "--untracked", "-lE", "design-agent/(comp-impl|shop-css|impl-lane|image-first|imagefirst-worker|phase2f-live|three-methods|research)", "--", "experiments"])).toEqual([]);
+  });
+  it("the whole script: exactly these modules, read and compare only (no process, network, model or Codex)", () => {
+    const source = readFileSync(resolve(REPO, PAGES_CMS_Q1), "utf8");
+    expect(specifiers(source).sort()).toEqual(["../../lib/design-agent/phase2f/render-prototype", "./build", "./content-model", "./fixtures", "./q1-check", "node:fs/promises", "node:os", "node:path", "playwright"]);
+    expect(source.replace(/require\.main === module/g, "")).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|phase2f\/(runner|prompt)|anthropic|openai|\bspawn\(|execFile|execSync|\bfetch\(|codex/i);
+  });
+});
+
 describe("offline CLI", () => {
   const ws = workspace();
   afterAll(() => rmSync(ws.base, { recursive: true, force: true }));
