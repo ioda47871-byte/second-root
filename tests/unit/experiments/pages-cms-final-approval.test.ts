@@ -11,7 +11,11 @@ import { CAFE_SITE } from "@/experiments/pages-cms/shop-site";
 import { stageForGates } from "@/experiments/pages-cms/stage-for-gates";
 import { packBundle } from "@/lib/design-agent/imagefirst-worker/bundle";
 import { checkDesignApproval, DESIGN_AXES } from "@/lib/design-agent/imagefirst-worker/design-approval";
-import { approvedFinal, checkFinalApproval, FINAL_AXES, type FinalInputs, writeFinalReviewPage } from "@/lib/design-agent/imagefirst-worker/final-approval";
+import { approvedFinal, checkFinalApproval, COMPOSITION_ROUTE_RULE, FINAL_AXES, type FinalInputs, measuredCompositionChange, writeFinalReviewPage } from "@/lib/design-agent/imagefirst-worker/final-approval";
+import * as libRecords from "@/lib/design-agent/imagefirst-worker/photo-records";
+import { THRESHOLDS } from "@/lib/design-agent/impl-lane/compare";
+import * as expProvenance from "@/experiments/pages-cms/provenance";
+import * as expSlots from "@/experiments/pages-cms/photo-slots";
 import { runImplCompare } from "@/lib/design-agent/imagefirst-worker/impl-compare-approved";
 import { approvedMaterials, materialsReviewPageSha256, parseMaterialsReview, readDeliveredMaterials } from "@/lib/design-agent/imagefirst-worker/materials-approval";
 import { REHEARSAL_SHOP } from "@/lib/design-agent/imagefirst-worker/rehearsal";
@@ -56,13 +60,15 @@ type DesignRecords = { bundleDir: string; reviewPath: string; approvalPath: stri
 type DesignBinding = { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string };
 
 /** A FICTIONAL, non-synthetic approved whole-page design of the café (the #368 gates test's pattern). */
-async function fictionalDesign(): Promise<{ design: DesignRecords; binding: DesignBinding }> {
+async function fictionalDesign(pictures?: { pc: Buffer; sp: Buffer }): Promise<{ design: DesignRecords; binding: DesignBinding; designPictures: { pc: Buffer; sp: Buffer } }> {
+  const used = {} as { pc: Buffer; sp: Buffer };
   const runs = tmp("sr-final-druns-");
   const runDir = join(runs, `${DESIGN_ID}-20261126T010000Z`);
   mkdirSync(join(runDir, "parts"), { recursive: true, mode: 0o700 });
   chmodSync(runDir, 0o700);
   const images = (["pc", "sp"] as const).map((view, n) => {
-    const bytes = solidPng(1024, 1536, [200 - n * 40, 180, 150]);
+    const bytes = pictures ? pictures[view] : solidPng(1024, 1536, [200 - n * 40, 180, 150]);
+    used[view] = bytes;
     writeFileSync(join(runDir, "parts", `${view}-1.png`), bytes, { mode: 0o600 });
     return { file: `parts/${view}-1.png`, sha256: sha(bytes), bytes: bytes.length };
   });
@@ -89,7 +95,7 @@ async function fictionalDesign(): Promise<{ design: DesignRecords; binding: Desi
   const approval = bytesOf({ schema: "sr_design_approval_v1", request_id: DESIGN_ID, bundle_sha256: sealed.bundle_sha256, approved_images: { pc: pick("pc"), sp: pick("sp") }, review_sha256: draft.review_sha256, page_sha256: draft.page_sha256, decision: "approve", decided_at: "2026-11-26T01:20:00Z" });
   const approvalPath = join(recs, "design.approval.json");
   write(approvalPath, approval);
-  return { design: { bundleDir: sealed.dir, reviewPath, approvalPath }, binding: { bundle_id: DESIGN_ID, bundle_sha256: sealed.bundle_sha256, review_sha256: draft.review_sha256, approval_sha256: sha(approval) } };
+  return { design: { bundleDir: sealed.dir, reviewPath, approvalPath }, binding: { bundle_id: DESIGN_ID, bundle_sha256: sealed.bundle_sha256, review_sha256: draft.review_sha256, approval_sha256: sha(approval) }, designPictures: used };
 }
 
 /** The approved materials run of that design (its records). */
@@ -131,10 +137,32 @@ async function materialsFor(approved_design: DesignBinding) {
 
 type World = Awaited<ReturnType<typeof makeWorld>>;
 /** The whole fictional chain up to the second review's inputs. */
-async function makeWorld() {
-  const d = await fictionalDesign();
-  const materials = await materialsFor(d.binding);
-  const approved = await approvedMaterials({ design: d.design, ...materials, repo: REPO });
+/** The staged site drawn at PC 1440 / SP 390 (JS off, its own files only): stands in for an approved whole-page design. */
+async function capturesOf(siteDir: string): Promise<{ pc: Buffer; sp: Buffer }> {
+  // SP at twice the density: a design part is at least 512 px on each side (the bundle's PNG limits)
+  const shot = async (width: number) => {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, javaScriptEnabled: false, deviceScaleFactor: width < 512 ? 2 : 1 });
+    try {
+      await ctx.route("**/*", async (route) => {
+        const rel = new URL(route.request().url()).pathname.replace(/^\/+/, "") || "index.html";
+        const body = /^(index\.html|style\.css|assets\/[A-Za-z0-9._-]+\.png)$/.test(rel) ? readFileSync(join(siteDir, rel)) : null;
+        return body ? route.fulfill({ status: 200, body, contentType: rel.endsWith(".html") ? "text/html; charset=utf-8" : rel.endsWith(".css") ? "text/css" : "image/png" }) : route.fulfill({ status: 404, body: "" });
+      });
+      const page = await ctx.newPage();
+      await page.goto("http://design.invalid/index.html", { waitUntil: "load" });
+      return await page.screenshot({ fullPage: true });
+    } finally {
+      await ctx.close();
+    }
+  };
+  return { pc: await shot(1440), sp: await shot(390) };
+}
+
+/**
+ * The whole fictional chain up to the second review's inputs. The first-approved design is the café's own drawing
+ * (so the finished site keeps its composition); `solidDesign` approves a plain picture instead (a measured change).
+ */
+async function makeWorld(o: { solidDesign?: boolean } = {}) {
   // the café built with the two approved materials (A, イメージ) and the shop's photo (B, with its rights record)
   const repo = join(tmp(), "repo");
   const fx = CAFE_SITE.fixtures()["items-3"]!;
@@ -145,6 +173,9 @@ async function makeWorld() {
   const dist = join(tmp(), "dist");
   await buildSite({ repo, outDir: dist, today: Q1_TODAY, site: CAFE_SITE });
   const staged = await stageForGates({ dist, outDir: join(tmp(), "staged") });
+  const d = await fictionalDesign(o.solidDesign ? undefined : await capturesOf(staged.dir));
+  const materials = await materialsFor(d.binding);
+  const approved = await approvedMaterials({ design: d.design, ...materials, repo: REPO });
   // stage 6 against the approved design: the record and its PC 1440 / SP 390 captures
   const implDir = join(tmp(), "impl");
   const impl = await runImplCompare({ ...d.design, siteDir: staged.dir, outDir: implDir, repo: REPO, browser, now: () => T0 + 600_000 });
@@ -182,7 +213,7 @@ async function makeWorld() {
     reviewer: "independent-subagent",
     reviewed_at: "2026-11-26T05:00:00Z",
   };
-  return { d, materials, approved, inputs, staged, implDir, prov, recs, review };
+  return { d, materials, approved, inputs, staged, implDir, prov, recs, review, impl };
 }
 
 let decisions = 0;
@@ -234,7 +265,14 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
     expect(html).toContain("Content-Security-Policy");
     expect(html).toContain("オーナー本人の署名ではない");
     expect(html).not.toContain("approval_sha256\":");
-    for (const f of ["images/pc-capture.png", "images/sp-capture.png", "images/material-1.png", "images/material-3.png"]) expect(readFileSync(join(out, f)).length).toBeGreaterThan(0);
+    for (const f of ["images/design-pc.png", "images/design-sp.png", "images/pc-capture.png", "images/sp-capture.png", "images/material-1.png", "images/material-3.png"]) expect(readFileSync(join(out, f)).length).toBeGreaterThan(0);
+    // review #373 M2: the first-approved design next to the finished captures, with the comparison's numbers and findings
+    expect(readFileSync(join(out, "images/design-pc.png"))).toEqual(w.d.designPictures.pc);
+    expect(html).toContain("第 1 承認のデザイン");
+    expect(html).toContain("完成したサイト");
+    expect(html).toContain(w.impl.record.viewports.desktop_1440.page!.ssim.toFixed(3));
+    expect(html).toContain("撮り直してはいない");
+    expect(draft.measured_change).toBeNull();
     const ok = await approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO });
     expect(ok.files.map((f) => f.path)).toEqual(["index.html", "style.css", "assets/photo-1.png", "assets/photo-3.png", "assets/shop-1.png"]);
     expect(ok.design.request_id).toBe(DESIGN_ID);
@@ -246,6 +284,9 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
       expect(JSON.parse(String(out2.mock.calls.at(-1)![0]))).toMatchObject({ status: "passed", mode: "gate", route: "second_approval", approval: { decision: "approve" } });
       expect(await finalApprovalMain(["--check", ...args])).toBe(1); // gate without the approval: stopped
       expect(JSON.parse(String(out2.mock.calls.at(-1)![0]))).toEqual({ status: "stopped", code: "FINAL_APPROVAL_MISSING" });
+      // review #373 L3: a draft is checked, never "passed"
+      expect(await finalApprovalMain(["--check", ...args, "--draft"])).toBe(0);
+      expect(JSON.parse(String(out2.mock.calls.at(-1)![0]))).toMatchObject({ status: "draft_checked", mode: "draft", approval: null, measured_change: null });
     } finally {
       out2.mockRestore();
     }
@@ -293,8 +334,17 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
     await tamper(join(w.staged.dir, "assets", "shop-1.png"), () => solidPng(640, 480, [1, 2, 3]), "FINAL_IMPL_COMPARE_MISMATCH");
     // a capture replaced
     await tamper(join(w.implDir, "images", "sp-capture.png"), () => solidPng(390, 800, [9, 9, 9]), "FINAL_CAPTURE_MISMATCH");
+    // review #373 M1: a customer's picture relabelled B with a one-line record (not the strict B form)
+    const bPath = join(w.prov, `${sha(SHOP_PHOTO["shop-1.png"])}.json`);
+    await tamper(bPath, () => bytesOf({ schema: "sr_photo_provenance_v1", class: "B", sha256: sha(SHOP_PHOTO["shop-1.png"]) }), "FINAL_PROVENANCE_INVALID");
+    // review #373 M1: an approved A material relabelled B with a full, valid B record (the generated picture shown as the shop's)
+    await tamper(join(w.prov, `${sha(PICTURES["photo-1.png"])}.json`), () => bytesOf(fictionalRights(PICTURES["photo-1.png"])), "FINAL_GENERATED_AS_SHOP");
+    // ... or as a customer's upload (a full, valid C record)
+    await tamper(join(w.prov, `${sha(PICTURES["photo-1.png"])}.json`), () => bytesOf({ schema: "sr_photo_provenance_v1", class: "C", sha256: sha(PICTURES["photo-1.png"]), uploaded_via: "pages_cms", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } }), "FINAL_GENERATED_AS_SHOP");
+    // the shop's photo recorded as a customer's upload (a full, valid C record): C never belongs to a Second Root approval
+    await tamper(bPath, () => bytesOf({ schema: "sr_photo_provenance_v1", class: "C", sha256: sha(SHOP_PHOTO["shop-1.png"]), uploaded_via: "pages_cms", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } }), "FINAL_MATERIAL_CLASS");
     // the B record turned into a customer's upload (C never belongs to a Second Root approval)
-    await tamper(join(w.prov, `${sha(SHOP_PHOTO["shop-1.png"])}.json`), (b) => Buffer.from(b.toString("utf8").replace('"class": "B"', '"class": "C"')), "FINAL_MATERIAL_CLASS");
+    await tamper(join(w.prov, `${sha(SHOP_PHOTO["shop-1.png"])}.json`), (b) => Buffer.from(b.toString("utf8").replace('"class": "B"', '"class": "C"')), "FINAL_PROVENANCE_INVALID"); // B fields under class C: not the strict C form
     // the B rights record rewritten (still valid JSON, another SHA-256)
     await tamper(join(w.prov, `${sha(SHOP_PHOTO["shop-1.png"])}.json`), addText, "FINAL_PROVENANCE_MISMATCH");
     // an A record naming another materials approval
@@ -313,7 +363,9 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
     const before = readFileSync(path);
     write(path, Buffer.from(before.toString("utf8").replace('"decided_at"', '"note": "再記録（架空）",\n  "decided_at"')));
     // the design still passes its own gate, but its approval SHA-256 changed: the slot spec (and all else) names the old one
-    expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("FINAL_SLOTS_MISMATCH");
+    expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("MATERIALS_DESIGN_MISMATCH");
+    // without the materials records (no A picture left to bind) the slot spec is the next binding to fail
+    expect(await codeOf(checkFinalApproval({ design: w.inputs.design, slotsPath: w.inputs.slotsPath, provenanceDir: w.inputs.provenanceDir, siteDir: w.inputs.siteDir, implCompareDir: w.inputs.implCompareDir, reviewPath, approvalPath, repo: REPO, mode: "draft" }))).toBe("FINAL_SLOTS_MISMATCH");
     // the design's approval with a non-approve decision fails the first gate itself (its code passes through)
     write(path, Buffer.from(before.toString("utf8").replace('"decision": "approve"', '"decision": "revise"')));
     expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("DESIGN_NOT_APPROVED");
@@ -326,8 +378,87 @@ describe("DEV-364 PR 3a: the second (photo-included) review and approval on the 
     const noMaterials: FinalInputs = { design: w.inputs.design, slotsPath: w.inputs.slotsPath, provenanceDir: w.inputs.provenanceDir, siteDir: w.inputs.siteDir, implCompareDir: w.inputs.implCompareDir };
     expect(await codeOf(approvedFinal({ ...noMaterials, reviewPath, approvalPath, repo: REPO }))).toBe("FINAL_MATERIALS_RECORDS_MISSING");
     expect(await codeOf(approvedFinal({ ...w.inputs, provenanceDir: tmp(), reviewPath, approvalPath, repo: REPO }))).toBe("FINAL_PROVENANCE_MISSING");
+    // review #373 L4: the provenance and comparison folders and the captures are ours and private
+    for (const [path, mode, back] of [[w.prov, 0o755, 0o700], [w.implDir, 0o750, 0o700], [join(w.implDir, "images", "pc-capture.png"), 0o644, 0o600]] as const) {
+      chmodSync(path, mode);
+      expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO })), path).toMatch(/^FINAL_(FOLDER|RECORD)_UNSAFE$/);
+      chmodSync(path, back);
+    }
+    expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("ok");
     expect(await codeOf(approvedFinal({ ...w.inputs, reviewPath: join(REPO, "package.json"), approvalPath, repo: REPO }))).toBe("FINAL_RECORD_IN_REPO");
     expect(await codeOf(writeFinalReviewPage(draft.review, draft.evidence, { outDir: join(REPO, "tmp-final-page"), repo: REPO }))).toBe("FINAL_PAGE_IN_REPO");
+  });
+});
+
+describe("review #373 M2: a composition change the comparison measures routes back to the first approval", () => {
+  it("a plain first-approved picture against the finished café: PAGE_LAYOUT measured, route first_approval, the gate refuses whatever the review declares", async () => {
+    const w2 = await makeWorld({ solidDesign: true });
+    const { reviewPath, approvalPath, draft } = await recordDecision(w2);
+    expect(w2.review.composition_change).toBe("none");
+    expect(draft.measured_change).toEqual(expect.arrayContaining(["PC_PAGE_LAYOUT"]));
+    expect(draft.route).toBe("first_approval");
+    expect(await codeOf(approvedFinal({ ...w2.inputs, reviewPath, approvalPath, repo: REPO }))).toBe("FINAL_COMPOSITION_CHANGED");
+    const page = join(tmp(), "page");
+    await writeFinalReviewPage(draft.review, draft.evidence, { outDir: page, repo: REPO });
+    expect(readFileSync(join(page, "index.html"), "utf8")).toContain("審査の申告にかかわらず、第 2 承認ではなく第 1 承認へ戻る");
+  }, 180_000);
+
+  it("the rule (pure): not compared, a viewport not measured or its code set, or a PAGE_LAYOUT difference; never the page height", () => {
+    const vp = (o: object = {}) => ({ design: { source_file: "parts/pc-1.png", source_sha256: "a".repeat(64) }, capture: { sha256: "b".repeat(64), height: 900, scroll_width: 1440, blocked_requests: 0 }, page: { ssim: 0.9, colour_blocks: 0.9, edges_iou: 0.8, height_ratio: 0.4 }, code: null, differences: ["PC_PAGE_HEIGHT"], findings: [], ...o });
+    const rec = (o: object = {}, pc: object = {}, sp: object = {}) => ({ schema: "sr_impl_compare_v1" as const, advisory: true as const, status: "compared", request_id: "req-x-design-1", approved: { bundle_sha256: "a".repeat(64), review_sha256: "a".repeat(64), approval_sha256: "a".repeat(64) }, site: { files: [] }, viewports: { desktop_1440: vp(pc), mobile_390: vp(sp) }, differences: [], findings: [], ...o });
+    expect(measuredCompositionChange(rec())).toBeNull();
+    expect(measuredCompositionChange(rec({}, { differences: ["PC_PAGE_LAYOUT", "PC_PAGE_HEIGHT"] }))).toEqual(["PC_PAGE_LAYOUT"]);
+    expect(measuredCompositionChange(rec({ status: "partial" }, {}, { code: "RENDER_FAILED", page: null }))).toEqual(["STATUS_PARTIAL", "SP_RENDER_FAILED", "SP_NOT_MEASURED"]);
+    // the threshold is the implementation lane's own (DEV-131), restated
+    expect(COMPOSITION_ROUTE_RULE.pageSsim).toBe(THRESHOLDS.pageSsim);
+  });
+});
+
+describe("review #373 M1 / L4: the copied strict records equal the experiment's", () => {
+  const pic = sha("p");
+  const b = fictionalRights(Buffer.from("p"));
+  const provenanceSamples: unknown[] = [
+    { schema: "sr_photo_provenance_v1", class: "A", sha256: pic, material_id: "counter-texture", materials_approval_sha256: "a".repeat(64) },
+    { schema: "sr_photo_provenance_v1", class: "A", sha256: pic, material_id: "counter-texture" },
+    b,
+    { ...b, provided_by: "山田" },
+    { ...b, source: "山田さんから受領" },
+    { ...b, source: "Instagram yamada_t" },
+    { ...b, permission: { ...b.permission, scope: "０９０−１２３４−５６７８" } },
+    { ...b, facts_check: { shown_as_fact: true, confirmed: false } },
+    { ...b, extra: 1 },
+    { schema: "sr_photo_provenance_v1", class: "B", sha256: pic },
+    { schema: "sr_photo_provenance_v1", class: "C", sha256: pic, uploaded_via: "pages_cms", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } },
+    { schema: "sr_photo_provenance_v1", class: "C", sha256: pic, uploaded_via: "pages_cms", commit: "abc1234", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } },
+    { schema: "sr_photo_provenance_v1", class: "C", sha256: pic, uploaded_via: "upload", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } },
+    { schema: "sr_photo_provenance_v1", class: "D", sha256: pic },
+  ];
+  it("sr_photo_provenance_v1: the same verdict on every sample, the same roles", () => {
+    const verdicts = provenanceSamples.map((x) => [expProvenance.Provenance.safeParse(x).success, libRecords.Provenance.safeParse(x).success]);
+    for (const [n, [a, l]] of verdicts.entries()) expect(l, String(n)).toBe(a);
+    expect(verdicts.filter(([a]) => a).length).toBe(4);
+    expect([...libRecords.PROVENANCE_ROLES]).toEqual([...expProvenance.PROVENANCE_ROLES]);
+  });
+  it("sr_photo_slots_v1: the same verdict on every sample, the same vocabulary", () => {
+    const base = CAFE_SITE.fixtures()["photo-slots"]!.slots!;
+    const one = base.slots[0]!;
+    const samples: unknown[] = [
+      base,
+      { ...base, notes: "写真の周りは余白を広めに取る" },
+      { ...base, notes: "写真の上に店名を大きく重ねる" },
+      { ...base, slots: [{ ...one, pc: { ...one.pc, text_gap: "overlay" } }] },
+      { ...base, slots: [{ ...one, pc: { ...one.pc, overlay: true } }] },
+      { ...base, slots: [{ ...one, pc: { ...one.pc, object_position: "calc(1px) 50%" } }] },
+      { ...base, slots: [{ ...one, pc: { ...one.pc, box: { x: 0.9, y: 0.1, w: 0.2, h: 0.1 } } }] },
+      { ...base, slots: [one, one] },
+      { ...base, approved_design: { ...base.approved_design, review_file: base.approved_design.approval_file } },
+      { ...base, schema: "sr_photo_slots_v0" },
+    ];
+    for (const [n, x] of samples.entries()) expect(libRecords.PhotoSlots.safeParse(x).success, String(n)).toBe(expSlots.PhotoSlots.safeParse(x).success);
+    expect(samples.filter((x) => expSlots.PhotoSlots.safeParse(x).success).length).toBe(2);
+    expect(libRecords.SLOT_FRAME_RATIOS).toEqual(expSlots.SLOT_FRAME_RATIOS);
+    expect(libRecords.SUBJECT_POINTS).toEqual(expSlots.SUBJECT_POINTS);
+    expect(libRecords.MIRROR.materialId.source).toBe(expSlots.MIRROR.materialId.source);
   });
 });
 
@@ -335,7 +466,11 @@ describe("DEV-364 PR 3a: the module's reach (no pin change)", () => {
   const specifiers = (source: string) => [...source.matchAll(/(?:\bfrom\s*|(?<!@)\bimport\s*\(?\s*|\brequire\s*\(\s*)["'`]([^"'`]+)["'`]/g)].map((m) => m[1]!);
   it("imports only its siblings (as materials-approval.ts does), names no IMAGE_FIRST contract path, and calls nothing", () => {
     const lib = readFileSync(join(REPO, "lib/design-agent/imagefirst-worker/final-approval.ts"), "utf8");
-    expect([...new Set(specifiers(lib))].sort()).toEqual(["../case-study/case-study", "./design-approval", "./impl-compare-approved", "./materials-approval", "node:crypto", "node:fs", "node:fs/promises", "node:path", "zod"]);
+    // review #373 L2: no edge to the comparison module (and so none, even transitively, to the IMAGE_FIRST adapter)
+    expect([...new Set(specifiers(lib))].sort()).toEqual(["../case-study/case-study", "./design-approval", "./materials-approval", "./photo-records", "node:crypto", "node:fs", "node:fs/promises", "node:path", "zod"]);
+    const records = readFileSync(join(REPO, "lib/design-agent/imagefirst-worker/photo-records.ts"), "utf8");
+    expect(specifiers(records)).toEqual(["zod"]);
+    expect(records).not.toMatch(/design-agent\/image-first|image-first\//);
     const cli = readFileSync(join(REPO, "scripts/design-artifact/final-approval-check.ts"), "utf8");
     expect(specifiers(cli).sort()).toEqual(["../../lib/design-agent/imagefirst-worker/final-approval", "node:path"]);
     for (const source of [lib, cli]) {

@@ -12,7 +12,8 @@
  *
  * --check  every SHA-256 the review names is recomputed from the files; gate mode (the default) also needs the approval,
  *          bound to all of them, decision approve, no axis `fail`, no major composition change, not synthetic. --draft
- *          checks the review alone (and the approval's binding when one is given, without asking for approve).
+ *          checks the review alone (and the approval's binding when one is given, without asking for approve) and prints
+ *          status "draft_checked" (never "passed").
  * --page   the owner's private viewing page (static HTML, no script, no network; CSP; captures and pictures copied next
  *          to it) written to --out (outside this repository; empty or absent). The printed page_sha256 and review_sha256
  *          are what Claude records in the approval — only when the owner has decided, and never as the owner's signature.
@@ -68,11 +69,11 @@ export async function finalApprovalMain(argv: string[], repoRoot: string = REPO)
       // one read: the same checks as --check --draft, and the page rendered from exactly the bytes whose SHA-256 is printed
       const c = await checkFinalApproval({ ...args.inputs, reviewPath: args.review, repo: repoRoot, mode: "draft" });
       const w = await writeFinalReviewPage(c.review, c.evidence, { outDir: args.out!, repo: repoRoot });
-      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, build_files_sha256: c.build_files_sha256, design: c.design, verdicts: c.verdicts, route: c.route, ...(c.synthetic ? { synthetic: true } : {}) });
+      say({ status: "page_written", page: w.page, page_sha256: w.page_sha256, review_sha256: c.review_sha256, build_files_sha256: c.build_files_sha256, design: c.design, verdicts: c.verdicts, route: c.route, measured_change: c.measured_change, ...(c.synthetic ? { synthetic: true } : {}) });
       return 0;
     }
     const c = await checkFinalApproval({ ...args.inputs, reviewPath: args.review, repo: repoRoot, mode: args.draft ? "draft" : "gate", ...(args.approval ? { approvalPath: args.approval } : {}) });
-    say({ status: "passed", mode: args.draft ? "draft" : "gate", design: c.design, review_sha256: c.review_sha256, page_sha256: c.page_sha256, build_files_sha256: c.build_files_sha256, verdicts: c.verdicts, route: c.route, approval: c.approval, ...(c.synthetic ? { synthetic: true } : {}) });
+    say({ status: args.draft ? "draft_checked" : "passed", mode: args.draft ? "draft" : "gate", design: c.design, review_sha256: c.review_sha256, page_sha256: c.page_sha256, build_files_sha256: c.build_files_sha256, verdicts: c.verdicts, route: c.route, measured_change: c.measured_change, approval: c.approval, ...(c.synthetic ? { synthetic: true } : {}) });
     return 0;
   } catch (error) {
     if (!(error instanceof FinalApprovalStop)) throw error;
