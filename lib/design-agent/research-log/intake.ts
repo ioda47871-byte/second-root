@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { verifyBundleDir } from "../imagefirst-worker/bundle";
 import { assertFictionalShop } from "./shops";
 import { LogStop } from "./store";
 import { Sha, Slug, type ResearchEntry } from "./schema";
@@ -77,6 +78,17 @@ async function assertLoggableRun(o: IntakeInput): Promise<void> {
   // DEV-303 (owner decision 2026-11-24): photo materials are not a design comp; they are never logged as one
   if (m.data.image_material === true) throw new LogStop("PHOTO_MATERIALS_NOT_LOGGED", "a photo-materials bundle is not a design comp");
   if (m.data.shop !== o.shop) throw new LogStop("INTAKE_SHOP_MISMATCH", `the bundle is ${m.data.shop}'s, not ${o.shop}'s`);
+  // DEV-303 (PR #362 review Low 1): the manifest read above must be the sealed bundle's own — an edited one (a dropped
+  // synthetic or image-material marker, another kind or shop) never verifies, and the verified one must say the same
+  let verified;
+  try {
+    verified = (await verifyBundleDir(join(o.inbox, o.bundleId))).manifest;
+  } catch {
+    throw new LogStop("INTAKE_BUNDLE_UNVERIFIED", `${o.bundleId} is not a sealed bundle that verifies`);
+  }
+  if (verified.bundle_id !== o.bundleId || verified.mode !== "request" || verified.kind !== "fictional" || verified.synthetic !== undefined || verified.image_material !== undefined || verified.shop !== o.shop) {
+    throw new LogStop("INTAKE_BUNDLE_UNVERIFIED", `${o.bundleId}/manifest.json is not the verified bundle's`);
+  }
 }
 
 /** Builds (does not write) the entry. Throws LogStop with a fixed code on any disagreement. */

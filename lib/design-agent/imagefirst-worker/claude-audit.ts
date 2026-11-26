@@ -398,6 +398,8 @@ export async function runClaudeAudit(o: ClaudeAuditOptions): Promise<ClaudeAudit
     const m = v.manifest;
     if (v.bundle_sha256 !== bundleSha || m.bundle_id !== id || m.approval_id !== id) stop("BUNDLE_UNVERIFIED");
     if (dummy && (m.plan_id !== DUMMY_AUDIT_RECORD.plan_id || m.commit !== DUMMY_AUDIT_RECORD.commit)) stop("BUNDLE_UNVERIFIED");
+    // DEV-303 (PR #362 review Low 3): a synthetic rehearsal bundle is never audited as a design (no model call for it)
+    if (m.synthetic === true) stop("AUDIT_SYNTHETIC_BUNDLE");
     // the quoted direction is the bundle's own (the id names it; verifyBundleDir tied the manifest's direction to the
     // receipt's and the id's): a d3 material never audits a d4 bundle, nor the other way round
     if (isRequestRunId(id)) {

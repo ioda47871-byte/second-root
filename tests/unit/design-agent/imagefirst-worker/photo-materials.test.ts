@@ -928,3 +928,21 @@ describe("PR #361 review M2: --print-plan of the photo stages (attachments in ex
     expect(planAttachmentsOf({ photos: "unchecked", references: null, approvedDesign: null })).toEqual([]);
   });
 });
+
+describe("PR #361 review L-a: the photo_materials run's fake Codex gets exactly the printed attachments", () => {
+  it("the one exec's --image files (staged names, order, SHA-256) and prompt SHA-256 are what --print-plan says", async () => {
+    const { w, one } = await sharedStageOne();
+    // the very request bytes the cycle ran (root's private copy), printed from a copy
+    const ran = readFileSync(join(w.runsDir, "requests-private", PHOTO_ID, `${PHOTO_ID}.json`));
+    const file = join(tmp("sr-photo-la-"), `${PHOTO_ID}.json`);
+    writeFileSync(file, ran);
+    const p = await printRequestPlan({ file, home: w.h, repo: w.repo, checkout: async () => ({ head: "c".repeat(40), base: "c".repeat(40), clean: true }) });
+    expect(p.sent.attachments.length).toBeGreaterThan(0);
+    const images = one.fake.argv[0]!.filter((x) => x.startsWith("--image=")).map((x) => x.slice("--image=".length));
+    expect(images.map((x) => x.split("/").at(-1))).toEqual(p.sent.attachments.map((a) => a.staged_name));
+    expect(images.every((x) => x.split("/").at(-2) === "inputs")).toBe(true);
+    expect(one.fake.attached[0]).toEqual(p.sent.attachments.map((a) => a.sha256));
+    const receipt = JSON.parse(readFileSync(one.report.receipt!, "utf8")) as { plan_sha256: string; prompt_sha256: string; prompt_chars: number };
+    expect([receipt.plan_sha256, receipt.prompt_sha256, receipt.prompt_chars]).toEqual([p.plan_sha256, p.sent.prompt_sha256, p.sent.prompt_chars]);
+  });
+});
