@@ -64,3 +64,21 @@ function webp(b: Buffer): ImageMeta | null {
 export function imageMeta(bytes: Buffer): ImageMeta | null {
   return png(bytes) ?? jpeg(bytes) ?? webp(bytes);
 }
+
+/**
+ * Issue #380 (phone photos): whether the bytes are a HEIF-family file (an iPhone's HEIC, or AVIF) — an ISO-BMFF `ftyp`
+ * box at the start whose major or a compatible brand is a HEIF brand. The build does not accept these (JPEG / PNG /
+ * WebP only); this only lets it say so by name (CONTENT_PHOTO_HEIC) instead of the generic CONTENT_PHOTO_TYPE, so the
+ * customer can be told what to change on the phone (docs/design/pages-cms-phone-photos.md).
+ */
+const HEIF_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1", "avif", "avis"]);
+export function isHeif(b: Buffer): boolean {
+  if (b.length < 16 || b.toString("latin1", 4, 8) !== "ftyp") return false;
+  const size = b.readUInt32BE(0);
+  const end = Math.min(b.length, size >= 16 ? size : 16);
+  for (let i = 8; i + 4 <= end; i += 4) {
+    if (i === 12) continue; // the minor version, not a brand
+    if (HEIF_BRANDS.has(b.toString("latin1", i, i + 4))) return true;
+  }
+  return false;
+}
