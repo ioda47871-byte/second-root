@@ -8,9 +8,9 @@ import { caseStudyUseOf } from "@/lib/design-agent/imagefirst-worker/request";
 import { colourPng } from "../phase2f/fixtures";
 import { cleanupTemps, REPO, sha, tmp } from "../imagefirst-worker/support";
 
-// DEV-364 (owner originals 2026-11-27): a member of a verified category-B ZIP counts as an ORIGINAL when it is bound by
-// the ZIP's recorded SHA-256, its member path and its own SHA-256, and listed in the ZIP's own SHA256SUMS; such a member
-// becomes a reference the prompt calls 原本. Previews never count. FICTIONAL data only: an invented ZIP whose SHA-256 is
+// DEV-364 (owner originals 2026-11-27; PR #381 review): a member of a recorded category-B ZIP counts as an ORIGINAL only
+// when the repository's allowlist names it (ZIP SHA-256 + member path + member SHA-256) and it is inside that ZIP and its
+// SHA256SUMS; such a member becomes a reference the prompt calls 原本. Anything else stays evidence only. FICTIONAL data only: an invented ZIP whose SHA-256 is
 // recorded for CP-033 in a temporary copy of the index. No Codex, no model, no network.
 
 afterAll(cleanupTemps);
@@ -59,17 +59,23 @@ const OVERVIEW = colourPng(1200, 800);
 const MEMBER = "site/desktop_1440_full.png";
 const sumsOf = (entries: { name: string; data: Buffer }[]) => Buffer.from(entries.map((e) => `${sha(e.data)}  ${e.name}\n`).join(""));
 
-/** A temporary repository whose index records `zipBytes`' SHA-256 for CP-033, and a private folder with the ZIP and its extracted members. */
-function world(o: { members?: { name: string; data: Buffer }[]; sums?: Buffer | null } = {}) {
+/**
+ * A temporary repository whose index records the ZIP's SHA-256 for CP-033 and allowlists `allow` (default: MEMBER with
+ * DESKTOP's SHA-256) as its adopted-page members, and a private folder with the ZIP and its extracted members.
+ */
+function world(o: { members?: { name: string; data: Buffer }[]; sums?: Buffer | null; allow?: { path: string; sha256: string }[]; manifestCp033?: Record<string, string> } = {}) {
   const members = o.members ?? [{ name: MEMBER, data: DESKTOP }, { name: "site/PC_SP_overview.png", data: OVERVIEW }];
   const entries = o.sums === null ? members : [...members, { name: "SHA256SUMS", data: o.sums ?? sumsOf(members) }];
   const zipBytes = zip(entries);
   const repo = tmp("sr-zipm-repo-");
   mkdirSync(join(repo, "design-library/success-cases"), { recursive: true });
-  const index = JSON.parse(readFileSync(resolve(REPO, ORIGINALS_INDEX_PATH), "utf8")) as { expected_sha256: Record<string, string[]> };
+  const index = JSON.parse(readFileSync(resolve(REPO, ORIGINALS_INDEX_PATH), "utf8")) as { expected_sha256: Record<string, string[]>; zip_member_originals?: Record<string, unknown[]> };
   index.expected_sha256["CP-033"] = [sha(zipBytes)];
+  index.zip_member_originals = { ...index.zip_member_originals, "CP-033": (o.allow ?? [{ path: MEMBER, sha256: sha(DESKTOP) }]).map((x) => ({ zip_sha256: sha(zipBytes), ...x })) };
   writeFileSync(join(repo, ORIGINALS_INDEX_PATH), JSON.stringify(index));
-  writeFileSync(join(repo, SUCCESS_MANIFEST_PATH), readFileSync(resolve(REPO, SUCCESS_MANIFEST_PATH)));
+  const manifest = JSON.parse(readFileSync(resolve(REPO, SUCCESS_MANIFEST_PATH), "utf8")) as { records: Record<string, unknown>[] };
+  if (o.manifestCp033) manifest.records = [...manifest.records.filter((r) => r.id !== "CP-033"), { id: "CP-033", ...o.manifestCp033 }];
+  writeFileSync(join(repo, SUCCESS_MANIFEST_PATH), JSON.stringify(manifest));
   const priv = tmp("sr-zipm-priv-");
   writeFileSync(join(priv, "CP-033.zip"), zipBytes);
   mkdirSync(join(priv, "x", "site"), { recursive: true });
@@ -81,12 +87,13 @@ function recordOf(files: Record<string, unknown>[], extra: Record<string, unknow
   return Buffer.from(JSON.stringify({ schema: "sr_case_study_v1", shop_id: "test-shop-z", cases: [{ id, evidence_kind: "image", files, observations: obs, principles_to_bring: ["原理"], do_not_copy: ["写さない"], ...extra }], shop_specific_principles: ["店の原理"] }));
 }
 const codeOf = (p: Promise<unknown>) => p.then(() => "resolved", (e: unknown) => (e instanceof CaseStudyStop ? e.code : String(e)));
+const memberOf = (w: { priv: string; zipSha: string }, name = MEMBER, data = DESKTOP, over: Record<string, unknown> = {}) => ({ path: join(w.priv, "x", name), sha256: sha(data), zip_member: { zip_sha256: w.zipSha, path: name, ...over } });
 
-describe("DEV-364 a verified member of a recorded category-B ZIP counts as an original", () => {
-  it("bound by ZIP SHA-256 + member path + member SHA-256 and listed in SHA256SUMS: an original reference (原本); a preview member never counts", async () => {
+describe("DEV-364 an allowlisted member of a recorded category-B ZIP counts as an original", () => {
+  it("on the allowlist, inside the ZIP and its SHA256SUMS: an original reference (原本); another marked member stays evidence only", async () => {
     const w = world();
-    const member = { path: join(w.priv, "x", MEMBER), sha256: sha(DESKTOP), zip_member: { zip_sha256: w.zipSha, path: MEMBER } };
-    const overview = { path: join(w.priv, "x", "site/PC_SP_overview.png"), sha256: sha(OVERVIEW), zip_member: { zip_sha256: w.zipSha, path: "site/PC_SP_overview.png" } };
+    const member = memberOf(w);
+    const overview = memberOf(w, "site/PC_SP_overview.png", OVERVIEW);
     const i = await inspectCaseStudy(recordOf([{ path: w.zipPath, sha256: w.zipSha }, overview, member]), { repo: w.repo });
     expect(i.counted).toEqual(["CP-033"]);
     expect(i.counting_files["CP-033"]).toEqual([{ path: w.zipPath, sha256: w.zipSha }, { path: member.path, sha256: member.sha256 }]);
@@ -95,35 +102,43 @@ describe("DEV-364 a verified member of a recorded category-B ZIP counts as an or
     expect(referencesJa(refs)).toBe("成功例の原本 1 枚");
   });
 
-  it("without zip_member the listed image is evidence only (the case counts through its ZIP; no reference) — as before", async () => {
-    const w = world();
-    const i = await inspectCaseStudy(recordOf([{ path: w.zipPath, sha256: w.zipSha }, { path: join(w.priv, "x", MEMBER), sha256: sha(DESKTOP) }]), { repo: w.repo });
-    expect(i.counted).toEqual(["CP-033"]);
+  it("PR #381 review H1: a member that is not on the allowlist never counts, whatever its name (a sheet named like a full page too)", async () => {
+    // the overview saved under a full-page name, and a correct member of a ZIP whose id has no allowlist entry for it
+    const sheet = colourPng(1440, 1200);
+    const w = world({ members: [{ name: "site/desktop_1440_full.png", data: sheet }, { name: "site/OneSheet.png", data: OVERVIEW }], allow: [{ path: MEMBER, sha256: sha(DESKTOP) }] });
+    const i = await inspectCaseStudy(recordOf([{ path: w.zipPath, sha256: w.zipSha }, memberOf(w, MEMBER, sheet), memberOf(w, "site/OneSheet.png", OVERVIEW)]), { repo: w.repo });
     expect(i.counting_files["CP-033"]).toEqual([{ path: w.zipPath, sha256: w.zipSha }]);
     expect(caseStudyUseOf(i).use.references).toEqual([]);
+    // without zip_member the listed image is evidence only, as before
+    const v = world();
+    const j = await inspectCaseStudy(recordOf([{ path: v.zipPath, sha256: v.zipSha }, { path: join(v.priv, "x", MEMBER), sha256: sha(DESKTOP) }]), { repo: v.repo });
+    expect(j.counting_files["CP-033"]).toEqual([{ path: v.zipPath, sha256: v.zipSha }]);
   });
 
-  it("refuses a claim the ZIP does not back (CASE_STUDY_ZIP_MEMBER_MISMATCH)", async () => {
-    const member = (w: ReturnType<typeof world>, over: Record<string, unknown> = {}) => ({ path: join(w.priv, "x", MEMBER), sha256: sha(DESKTOP), zip_member: { zip_sha256: w.zipSha, path: MEMBER, ...over } });
-    const run = (w: ReturnType<typeof world>, files: Record<string, unknown>[], extra?: Record<string, unknown>, id?: string) => codeOf(inspectCaseStudy(recordOf(files, extra, id), { repo: w.repo }));
+  it("PR #381 review M1: an allowlisted member whose SHA-256 the manifest records as a viewing copy stays a viewing copy", async () => {
+    const w = world({ manifestCp033: { preview_png_sha256: sha(DESKTOP) } });
+    const i = await inspectCaseStudy(recordOf([{ path: w.zipPath, sha256: w.zipSha }, memberOf(w)]), { repo: w.repo });
+    expect(i.counting_files["CP-033"]).toContainEqual({ path: join(w.priv, "x", MEMBER), sha256: sha(DESKTOP), copy: "viewing" });
+    expect(caseStudyUseOf(i).use.references.map((r) => r.copy)).toEqual(["viewing"]);
+  });
+
+  it("refuses an allowlisted claim the ZIP does not back (CASE_STUDY_ZIP_MEMBER_MISMATCH)", async () => {
+    const run = (w: { repo: string }, files: Record<string, unknown>[], extra?: Record<string, unknown>) => codeOf(inspectCaseStudy(recordOf(files, extra), { repo: w.repo }));
     const w = world();
     const zipFile = { path: w.zipPath, sha256: w.zipSha };
-    // another member path, the ZIP not listed in the case, another ZIP SHA-256, an unsafe member path
-    expect(await run(w, [zipFile, member(w, { path: "site/other.png" })])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
-    expect(await run(w, [member(w)])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
-    expect(await run(w, [zipFile, member(w, { zip_sha256: "e".repeat(64) })])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
-    expect(await run(w, [zipFile, member(w, { path: "../desktop_1440_full.png" })])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
-    // the extracted file is not the member's bytes (another picture under the same name)
-    const other = world();
-    writeFileSync(join(other.priv, "x", "fake.png"), colourPng(1440, 2401));
-    expect(await run(other, [{ path: other.zipPath, sha256: other.zipSha }, { path: join(other.priv, "x", "fake.png"), sha256: sha(colourPng(1440, 2401)), zip_member: { zip_sha256: other.zipSha, path: MEMBER } }])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
+    // the ZIP not listed in the case; not a private_verified category-B case
+    expect(await run(w, [memberOf(w)])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
+    expect(await run(w, [zipFile, memberOf(w)], {})).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
+    // the allowlist names bytes the ZIP does not hold at that path (the extracted file is those bytes)
+    const other = colourPng(1440, 2401);
+    const v = world({ allow: [{ path: MEMBER, sha256: sha(other) }] });
+    writeFileSync(join(v.priv, "x", "fake.png"), other);
+    expect(await run(v, [{ path: v.zipPath, sha256: v.zipSha }, { path: join(v.priv, "x", "fake.png"), sha256: sha(other), zip_member: { zip_sha256: v.zipSha, path: MEMBER } }])).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
     // no SHA256SUMS, a SHA256SUMS line that does not match, a SHA256SUMS without the member
     for (const sums of [null, Buffer.from(`${"f".repeat(64)}  ${MEMBER}\n`), Buffer.from(`${sha(OVERVIEW)}  site/PC_SP_overview.png\n`)]) {
-      const v = world({ sums });
-      expect(await run(v, [{ path: v.zipPath, sha256: v.zipSha }, member(v)]), String(sums)).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
+      const x = world({ sums });
+      expect(await run(x, [{ path: x.zipPath, sha256: x.zipSha }, memberOf(x)]), String(sums)).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
     }
-    // not a private_verified category-B case
-    expect(await run(w, [zipFile, member(w)], {})).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
   });
 
   it("a ZIP whose SHA-256 is not recorded for the id never lends its members", async () => {
@@ -131,20 +146,23 @@ describe("DEV-364 a verified member of a recorded category-B ZIP counts as an or
     const index = JSON.parse(readFileSync(join(w.repo, ORIGINALS_INDEX_PATH), "utf8")) as { expected_sha256: Record<string, string[]> };
     index.expected_sha256["CP-033"] = ["d".repeat(64)];
     writeFileSync(join(w.repo, ORIGINALS_INDEX_PATH), JSON.stringify(index));
-    const files = [{ path: w.zipPath, sha256: w.zipSha }, { path: join(w.priv, "x", MEMBER), sha256: sha(DESKTOP), zip_member: { zip_sha256: w.zipSha, path: MEMBER } }];
-    expect(await codeOf(inspectCaseStudy(recordOf(files), { repo: w.repo }))).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
+    expect(await codeOf(inspectCaseStudy(recordOf([{ path: w.zipPath, sha256: w.zipSha }, memberOf(w)]), { repo: w.repo }))).toBe("CASE_STUDY_ZIP_MEMBER_MISMATCH");
   });
 });
 
-describe("DEV-364 preview-like member names never count", () => {
-  it("overview / comparison / before-after sheets, thumbnails and combined PC+SP sheets are verified but not counted", async () => {
-    const names = ["site/PC_SP_FIRSTVIEW.png", "site/CP_SP_OVERVIEW.png", "site/first_view_comparison.png", "site/BEFORE_AFTER_PC.png", "site/MARTELLI_preview.png", "site/thumbs.png"];
-    const members = names.map((name, n) => ({ name, data: colourPng(800 + n, 600) }));
-    const w = world({ members });
-    const files = [{ path: w.zipPath, sha256: w.zipSha }, ...members.map((m) => ({ path: join(w.priv, "x", m.name), sha256: sha(m.data), zip_member: { zip_sha256: w.zipSha, path: m.name } }))];
-    const i = await inspectCaseStudy(recordOf(files), { repo: w.repo });
-    expect(i.counting_files["CP-033"]).toEqual([{ path: w.zipPath, sha256: w.zipSha }]);
-    expect(caseStudyUseOf(i).use.references).toEqual([]);
+describe("DEV-364 the repository's allowlist", () => {
+  it("names only members of handover success_zip ZIPs of the same id, by path, member SHA-256 and ZIP SHA-256 (no image)", () => {
+    const index = JSON.parse(readFileSync(resolve(REPO, ORIGINALS_INDEX_PATH), "utf8")) as { zip_member_originals: Record<string, { zip_sha256: string; path: string; sha256: string }[]> };
+    const handover = JSON.parse(readFileSync(resolve(REPO, "design-library/success-cases/originals-handover.json"), "utf8")) as { cases: { id: string; request: { sha256: string | null; role: string }[] }[] };
+    expect(Object.keys(index.zip_member_originals).sort()).toEqual(["CP-033", "CP-037"]);
+    for (const [id, list] of Object.entries(index.zip_member_originals)) {
+      const zips = handover.cases.find((c) => c.id === id)!.request.filter((r) => r.role === "success_zip").map((r) => r.sha256);
+      for (const e of list) {
+        expect(zips, `${id} ${e.path}`).toContain(e.zip_sha256);
+        expect(e.path).toMatch(/\.png$/);
+        expect(e.sha256).toMatch(/^[0-9a-f]{64}$/);
+      }
+    }
   });
 });
 

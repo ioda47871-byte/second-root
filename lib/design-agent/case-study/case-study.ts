@@ -22,9 +22,10 @@
  *     sha256 fields, rejected / not-preferred revisions excluded, or the index's expected_sha256), and a cited archive's
  *     SHA-256 is recorded for that id and comes with the viewed images listed next to it.
  *   - DEV-364: in such a case, a listed image marked zip_member {zip_sha256, path} is one of that ORIGINAL's files (it can
- *     be a reference picture, called 原本) only when the recorded ZIP listed in the case holds it at that path with that
- *     SHA-256 and the ZIP's own SHA256SUMS lists it so (verifyZipMembers); preview / overview / comparison / combined
- *     PC+SP sheet members never count. A manifest viewing copy (preview / WebP field) is marked copy "viewing".
+ *     be a reference picture, called 原本) only when the index's zip_member_originals allowlist names exactly it (the
+ *     final adopted full pages only) and the recorded ZIP listed in the case holds it at that path with that SHA-256 and
+ *     lists it so in its own SHA256SUMS (verifyZipMembers); anything else marked zip_member stays evidence only. A
+ *     manifest viewing copy (preview / WebP field) is marked copy "viewing" and is never promoted.
  *
  * Gate mode (request mode, before design): ≥ 3 counted cases and owner_confirmation (confirmed true) whose selected_ids
  * are exactly the counted ids and whose page_sha256 is the SHA-256 of the viewing page this record renders to (the page
@@ -42,7 +43,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { readZip, safeMemberName, ZIP_MAX_BYTES } from "./success-originals";
+import { readZip, safeMemberName } from "./success-originals";
 
 export const CASE_STUDY_SCHEMA = "sr_case_study_v1";
 export const ORIGINALS_INDEX_SCHEMA = "sr_success_originals_index_v1";
@@ -192,6 +193,11 @@ export const OriginalsIndex = z.object({
     .min(1),
   /** Category B: originals outside the repository, countable as private_verified against a recorded SHA-256. */
   private_original_ids: z.array(CASE_ID),
+  /**
+   * DEV-364 (PR #381 review H1): the members of adopted success ZIPs that ARE the original (the final adopted full pages),
+   * per id: the member path, its SHA-256 and the ZIP SHA-256 it must come from. Only these can count via zip_member.
+   */
+  zip_member_originals: z.record(CASE_ID, z.array(z.strictObject({ zip_sha256: SHA, path: z.string().min(1).max(300), sha256: SHA })).min(1)).optional(),
   /** Recorded SHA-256s (adoption records) for B ids that manifest.json does not hold. */
   expected_sha256: z.record(CASE_ID, z.array(SHA).min(1)),
   /** Category C: no verifiable original; never counted. */
@@ -381,73 +387,74 @@ function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string
   // DEV-364: a verified member of the case's recorded ZIP (verifyZipMembers) counts as the original it is
   return c.files
     .filter((f) => known.has(f.sha256) || members.has(memberKey(c.id, f)))
-    .map((f) => ({ path: f.path, sha256: f.sha256, ...(copies.has(f.sha256) && !members.has(memberKey(c.id, f)) ? { copy: "viewing" as const } : {}) }));
+    // PR #381 review M1: a SHA-256 recorded as a viewing copy stays a viewing copy, member or not (never promoted to 原本)
+    .map((f) => ({ path: f.path, sha256: f.sha256, ...(copies.has(f.sha256) ? { copy: "viewing" as const } : {}) }));
 }
 
 const memberKey = (caseId: string, f: { path: string; sha256: string }) => `${caseId}\u0000${f.path}\u0000${f.sha256}`;
-/**
- * Member names that are previews / overviews / comparison sheets / thumbnails, or combined PC+SP sheets (PC_SP_*,
- * CP_SP_*): never counted as an original, whatever the ZIP holds.
- */
-const PREVIEW_MEMBER = /(?:^|[/_.\- ])(?:preview|overview|comparison|before[_-]?after|thumb(?:nail)?s?)(?:[/_.\- ]|$)|(?:^|\/)(?:PC|CP)_SP[_.]/i;
+/** The ZIPs this path reads are only the allowlisted ones (known bytes); still, a smaller cap than the viewer's. */
+export const ZIP_MEMBER_ZIP_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
- * DEV-364 (owner originals 2026-11-27): the listed files that are verified members of a category-B case's recorded ZIP.
- * A file marked zip_member counts as an original only when ALL of these hold, else the record stops
- * (CASE_STUDY_ZIP_MEMBER_MISMATCH): the same case lists a ZIP with that SHA-256 and the SHA-256 is recorded for the id;
- * the ZIP (re-read, its SHA-256 the listed one) reads cleanly; it holds the member at exactly that path whose bytes have
- * the file's SHA-256; the ZIP's own SHA256SUMS lists that path with that SHA-256 and every line of it matches its
- * member. A member named like a preview / overview / comparison / thumbnail is verified the same way but never counts.
- * An image only (by extension, the file's own extension the member's). Returns the counting keys.
+ * DEV-364 (owner originals 2026-11-27; PR #381 review H1): the listed files that are ORIGINALS because they are members
+ * of an adopted success ZIP named in the repository's allowlist (originals-index.json zip_member_originals: per id, the
+ * member path, its SHA-256 and the ZIP SHA-256 it must come from — only the final adopted full pages, checked by eye).
+ * A file marked zip_member that is NOT on the list stays evidence only (never read, never counted). A listed one counts
+ * only when ALL of these hold, else the record stops (CASE_STUDY_ZIP_MEMBER_MISMATCH): a safe member path and an image
+ * of the same extension; the same case lists that ZIP and its SHA-256 is recorded for the id; the ZIP (re-read within
+ * ZIP_MEMBER_ZIP_MAX_BYTES, its SHA-256 the listed one) reads cleanly; it holds the member at exactly that path with the
+ * file's SHA-256; and the ZIP's own SHA256SUMS lists that path with that SHA-256 and every line of it matches its member.
+ * Each ZIP is read once, verified for its listed members, then dropped. Returns the counting keys.
  */
-async function verifyZipMembers(c: CaseEntry, located: Map<string, string>, recorded: Map<string, Set<string>>): Promise<Set<string>> {
+async function verifyZipMembers(c: CaseEntry, located: Map<string, string>, recorded: Map<string, Set<string>>, index: OriginalsIndex): Promise<Set<string>> {
   const out = new Set<string>();
-  const marked = c.files.filter((f) => f.zip_member);
-  if (marked.length === 0) return out;
+  const allow = index.zip_member_originals?.[c.id] ?? [];
+  const listed = c.files.filter((f) => f.zip_member && allow.some((e) => e.zip_sha256 === f.zip_member!.zip_sha256 && e.path === f.zip_member!.path && e.sha256 === f.sha256));
+  if (listed.length === 0) return out;
   const bad = (): never => {
     throw new CaseStudyStop("CASE_STUDY_ZIP_MEMBER_MISMATCH");
   };
   const known = recorded.get(c.id) ?? new Set<string>();
-  const zips = new Map<string, ReturnType<typeof readZip>>();
-  for (const f of marked) {
+  for (const f of listed) {
     const m = f.zip_member!;
     if (!safeMemberName(m.path) || !isImagePath(f.path) || extname(m.path).toLowerCase() !== extname(f.path).toLowerCase()) bad();
     const archive = c.files.find((x) => isArchivePath(x.path) && x.sha256 === m.zip_sha256 && !x.zip_member);
     if (!archive || !known.has(archive.sha256)) bad();
-    let zip = zips.get(archive!.sha256);
-    if (!zip) {
-      const h = await open(located.get(archive!.path)!, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => bad());
-      let buf: Buffer;
-      try {
-        const st = await h.stat();
-        if (!st.isFile() || st.nlink !== 1 || st.size > ZIP_MAX_BYTES) bad();
-        buf = await h.readFile();
-      } finally {
-        await h.close();
-      }
-      if (sha256(buf!) !== archive!.sha256) bad();
-      zip = readZip(buf!);
-      zips.set(archive!.sha256, zip);
+  }
+  for (const zipSha of [...new Set(listed.map((f) => f.zip_member!.zip_sha256))]) {
+    const archive = c.files.find((x) => isArchivePath(x.path) && x.sha256 === zipSha && !x.zip_member)!;
+    const h = await open(located.get(archive.path)!, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => bad());
+    let buf: Buffer;
+    try {
+      const st = await h.stat();
+      if (!st.isFile() || st.nlink !== 1 || st.size > ZIP_MEMBER_ZIP_MAX_BYTES) bad();
+      buf = await h.readFile();
+    } finally {
+      await h.close();
     }
+    if (sha256(buf!) !== zipSha) bad();
+    const zip = readZip(buf!);
     if (!zip.ok) return bad();
-    const entry = zip.entries.find((e) => e.name === m.path);
-    if (!entry || sha256(entry.data) !== f.sha256) bad();
-    // the ZIP's own SHA256SUMS: present, every line matching its member, and this member listed with this SHA-256
+    // the ZIP's own SHA256SUMS: present, and every line of it matching its member
     const sums = zip.entries.find((e) => /(^|\/)SHA256SUMS(\.txt)?$/i.test(e.name));
     if (!sums) return bad();
     const dir = sums.name.includes("/") ? sums.name.slice(0, sums.name.lastIndexOf("/") + 1) : "";
     const byName = new Map(zip.entries.map((e) => [e.name, e]));
-    let listedHere = false;
+    const inSums = new Set<string>();
     for (const line of sums.data.toString("utf8").split(/\r?\n/)) {
       const l = /^([0-9a-fA-F]{64}) [ *]?(.+)$/.exec(line.trim());
       if (!l) continue;
       const rel = l[2]!.replace(/^\.\//, "");
       const e = byName.get(dir + rel) ?? byName.get(rel);
       if (!e || sha256(e.data) !== l[1]!.toLowerCase()) bad();
-      if (e === entry) listedHere = true;
+      inSums.add(e!.name);
     }
-    if (!listedHere) bad();
-    if (!PREVIEW_MEMBER.test(m.path)) out.add(memberKey(c.id, f));
+    for (const f of listed.filter((x) => x.zip_member!.zip_sha256 === zipSha)) {
+      const entry = byName.get(f.zip_member!.path);
+      if (!entry || sha256(entry.data) !== f.sha256 || !inSums.has(entry.name)) bad();
+      out.add(memberKey(c.id, f));
+    }
+    // the inflated members go out of scope here (one ZIP at a time)
   }
   return out;
 }
@@ -497,7 +504,7 @@ export async function inspectCaseStudy(bytes: Buffer, o: { repo: string }): Prom
     }
     // a zip_member only on a category-B case (a repository case's files are its index entry's)
     if (c.files.some((f) => f.zip_member) && (!index.private_original_ids.includes(c.id) || c.private_verified !== true)) throw new CaseStudyStop("CASE_STUDY_ZIP_MEMBER_MISMATCH");
-    members.set(c.id, await verifyZipMembers(c, located, recorded));
+    members.set(c.id, await verifyZipMembers(c, located, recorded, index));
   }
   const counted: string[] = [];
   const notCounted: CaseStudyInspection["not_counted"] = [];
