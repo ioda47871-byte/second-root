@@ -92,7 +92,15 @@ async function snapshot(dir) {
   return out;
 }
 const noise = (w, h) => sharp({ create: { width: w, height: h, channels: 3, noise: { type: "gaussian", mean: 128, sigma: 50 } } });
-const firstWork = async (dir) => join(dir, "content", "works", (await readdir(join(dir, "content", "works"))).sort()[0]);
+// the first SHOWN work (Issue #380, 2026-11-28: a delivered repository also holds the customer's own entries, which may
+// be hidden — a test that changes a hidden entry's photo would see nothing change on the page)
+const firstWork = async (dir) => {
+  for (const n of (await readdir(join(dir, "content", "works"))).filter((x) => x.endsWith(".json")).sort()) {
+    const p = join(dir, "content", "works", n);
+    if ((await readJson(p)).visible !== false) return p;
+  }
+  throw new Error("no shown work");
+};
 
 test("the sample builds: the shop's page, its pictures, no script; a changed .pages.yml is refused", async () => {
   const dir = await copyRepo();

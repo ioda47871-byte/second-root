@@ -53,7 +53,9 @@ function initialValue(f: Field, v: unknown): unknown {
 }
 
 function checkOne(f: Field, v: unknown, path: string, hidden: boolean, mediaExtensions: readonly string[], out: CmsIssue[]): void {
-  const add = (message: string) => out.push({ path, message, hidden });
+  const add = (message: string): void => {
+    out.push({ path, message, hidden });
+  };
   switch (f.type) {
     case "uuid":
       if (!isUuid(v)) add("Invalid UUID format");

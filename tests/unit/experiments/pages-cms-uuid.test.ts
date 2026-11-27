@@ -60,7 +60,7 @@ describe("the Pages CMS save reproduction over every fixture entry", () => {
     expect(cmsSaveIssues(works.fields, legacy, ["png"])).toEqual([{ path: "id", message: "Invalid UUID format", hidden: true }]);
     expect(cmsSaveIssues(works.fields, { ...legacy, id: uuidV5("works/job-1") }, ["png"])).toEqual([]);
     // a missing id gets a new UUID (the field's default) — only a present non-UUID fails
-    const { id: _id, ...noId } = legacy;
+    const noId = Object.fromEntries(Object.entries(legacy).filter(([k]) => k !== "id"));
     expect(cmsSaveIssues(works.fields, noId, ["png"])).toEqual([]);
     const five = { ...legacy, id: uuidV5("x"), photos: Array.from({ length: 5 }, () => legacy.photos[0]!) };
     expect(cmsSaveIssues(works.fields, five, ["png"]).map((i) => i.message)).toEqual(["Array must contain at most 4 element(s)"]);
