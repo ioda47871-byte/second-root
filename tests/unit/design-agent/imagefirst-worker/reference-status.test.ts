@@ -35,8 +35,8 @@ const REQUEST_OBJ = {
 const REQUEST_BYTES = Buffer.from(`${JSON.stringify(REQUEST_OBJ, null, 2)}\n`);
 const REQUEST = parseRequest(REQUEST_BYTES, sha(REQUEST_BYTES), REQUEST_OBJ.id).request as DesignRequest;
 const ORIGINAL: PlanReference = { id: "ref-1", case_id: "CP-001", name: "ref-1.png", sha256: sha("ref one"), media_type: "image/png" };
-const use = (references: PlanReference[], cases = ["CP-001"]): RequestCaseStudyUse => ({ sha256: CS_SHA, shop_specific_principles: ["試験用の原理"], cases: cases.map((id) => ({ id, principles_to_bring: ["原理"], do_not_copy: ["写さない"] })), references });
-const plan = (references: PlanReference[], cases?: string[]) => buildRequestPlan({ request: REQUEST, requestSha256: sha(REQUEST_BYTES), factsBytes: FACTS_BYTES, facts: FACTS, caseStudy: use(references, cases) });
+const caseUse = (references: PlanReference[], cases = ["CP-001"]): RequestCaseStudyUse => ({ sha256: CS_SHA, shop_specific_principles: ["試験用の原理"], cases: cases.map((id) => ({ id, principles_to_bring: ["原理"], do_not_copy: ["写さない"] })), references });
+const plan = (references: PlanReference[], cases?: string[]) => buildRequestPlan({ request: REQUEST, requestSha256: sha(REQUEST_BYTES), factsBytes: FACTS_BYTES, facts: FACTS, caseStudy: caseUse(references, cases) });
 
 describe("DEV-364 reference status in the whole-page prompt", () => {
   it("a plan of originals is byte-identical to origin/develop 41d35fbd (before DEV-364)", () => {
