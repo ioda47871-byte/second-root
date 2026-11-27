@@ -1,6 +1,7 @@
 # CMS の実環境の試験: 最終確認の依頼（オーナーの署名用、Issue #380）
 
 2026-11-27。状態: **確認の依頼だけ**。Claude はサインイン・アカウントの作成・GitHub App の導入・公開・送信をしていない。
+試験の目標日: **2026-11-28**（2026-11-27 オーナー）。無料枠だけ・課金なし・独自ドメインと DNS の変更なし・本番と実顧客の環境から隔離。
 オーナーは 2026-11-27 に実環境の試験（Pages CMS + GitHub + Cloudflare Pages、**架空の自動車施工店のデータだけ**）を承認した。
 実際の導入・作成・公開は、**この頁の対象と権限を見たうえでのオーナーの最終確認の後**に行う。問い合わせの送信は承認されていない。
 手順の詳細は [`cms-live-trial-owner-sheet.md`](cms-live-trial-owner-sheet.md)、構築の設定の正本は納品用 repo の雛形の `README.md`（`experiments/pages-cms/delivery-template/README.md`、PR #385 で develop にマージ済み。試験用 repo は `~/second-root-trial/sr-cms-trial-autocare`（ローカルだけ、remote なし。PR #387 の付録 A.0））。
@@ -20,6 +21,7 @@
 ## 2. 今の接続の状態
 
 **ローカルで分かること**: この開発の repo（Second Root）の remote は `github.com/ioda47871-byte/second-root`。記録（`docs/STAGING.md`）には Vercel の team `brot-yanagi` と GitHub の連携がある。
+**API で確かめたこと（2026-11-27、読むだけ）**: 開発で使っている GitHub アカウントは `ioda47871-byte`（個人、type User）。所属の組織は見えない。`ioda47871-byte/sr-cms-trial-autocare` はまだ無い（404）。入っている GitHub App の一覧は、Claude の token では読めない（403 「Resource not accessible by personal access token」）。
 **分からないこと**: Cloudflare のアカウントの有無、Cloudflare と GitHub がすでにつながっているか、どの GitHub App がどのアカウントに入っているか。Claude からは見えない。
 
 **オーナーが見る画面**（サインインはオーナーだけ）:
@@ -34,8 +36,10 @@
 
 | App | 範囲 | 公式に書かれた権限 | 確かめ方 |
 |---|---|---|---|
-| Pages CMS（hosted、github.com/apps/pages-cms、開発者 pages-cms） | **Only select repositories** = 試験用 repo だけ | **未公開**。self-host で自分の App を作る手順は、repo の Administration・Actions・Contents を読み書き、Checks・Commit statuses・Metadata を読み、アカウントの Email addresses を読み（https://pagescms.org/docs/guides/installing/github-app/）。hosted が同じかは不明 | 導入の画面に GitHub が要求する権限を出す。**撮影して残す**。Administration の読み書きがあれば、続けるかをその場で判断 ☐ |
-| Cloudflare Workers and Pages | **Only select repositories** = 試験用 repo だけ（Cloudflare も推奨） | 具体的な一覧は公式の文書に無い（install は repo への接近、authorize は本人の確認、と書かれるだけ） | 同じく導入の画面を撮影 |
+| Pages CMS（hosted、github.com/apps/pages-cms、開発者 pages-cms） | **Only select repositories** = 試験用 repo だけ | **GitHub の公開の API で確認（2026-11-27、`GET /apps/pages-cms`）**: Contents **読み書き**・Actions **読み書き**・`repository_creation` **書き込み**、Checks・Deployments・Pages・Commit statuses・Metadata・Email addresses を読み。受け取るイベント: delete・push・repository・workflow_run。**Administration は要求していない**。`repository_creation` は App が入っているアカウント（組織）に repo を作れる権限で、作った repo には自動で接近できる（下の段落の GitHub の文書） | 導入の画面の権限が上と同じかを見て**撮影して残す**。違えば止める。`repository_creation` 書き込みと Actions 書き込みを認めて続けるかをオーナーが判断 ☐ |
+| Cloudflare Workers and Pages（開発者 cloudflare） | **Only select repositories** = 試験用 repo だけ（Cloudflare も推奨） | **GitHub の公開の API で確認（2026-11-27、`GET /apps/cloudflare-workers-and-pages`）**: **Administration 読み書き**・Contents 読み書き・Checks 読み書き・Deployments 読み書き・Pull requests 読み書き、Metadata 読み。受け取るイベント: pull_request・push。**管理者の権限（Administration）を要求する**ので、範囲を試験用 repo だけに限ることが前提 | 導入の画面の権限が上と同じかを見て**撮影して残す**。Administration 読み書きを試験用 repo に限って認めるかをオーナーが判断 ☐ |
+
+GitHub App の repo の権限は「Only select repositories」で選んだ repo に効く。ただし `repository_creation` について GitHub は「Your app is automatically given access to repositories it creates」「If the app creates any repositories, the app will automatically be granted access to those repositories as well」と書く（https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app 、https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party ）。つまり**試験用 repo だけを選んでも、Pages CMS がアカウントに新しい repo を作ることは止められない**（作った repo には自動で接近できる）。導入の画面と上の一覧が違ったら、導入せずに止める。
 
 ## 4. Cloudflare Pages の設定（納品用 repo の README と同じ）
 

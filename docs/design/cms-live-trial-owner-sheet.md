@@ -29,7 +29,7 @@
    リポジトリの範囲は **Only select repositories** でこの試験用 repo だけを選ぶ。
 3. **権限について確かめられていること**: self-host で自分の App を作る公式の手順は、repo の Administration・Actions・Contents を**読み書き**、Checks・Commit statuses・Metadata を読み、アカウントの Email addresses を読み、を指定する（https://pagescms.org/docs/guides/installing/github-app/）。
    **hosted の App（github.com/apps/pages-cms、開発者は pages-cms）の権限は公式に書かれていない**（App の頁にも一覧が無い。https://github.com/apps/pages-cms）。手順 2 の画面が唯一の確かめる方法。
-   Administration の読み書きが含まれていたら、その試験用 repo だけに限る前提で続けるかをオーナーが判断する。
+   **2026-11-27 に GitHub の公開の API で実際の権限を確かめた: Pages CMS は Administration を要求せず（Contents・Actions の読み書きと `repository_creation`）、Administration の読み書きを要求するのは Cloudflare の App。** 判断の材料は [`cms-live-trial-confirmation.md`](cms-live-trial-confirmation.md) §3 を正とする。
 4. 顧客役の追加: Pages CMS の協力者としてメールで招く（「Collaborators live in the database, not in `.pages.yml`」）。協力者の書き込みは GitHub App の installation token で行われ、既定では協力者の名前は commit に残らない（`settings.commit.identity: user` で残せる）（上の協力者の文書）。
    **招く・外す画面の手順は公式に書かれていない**（not stated）。外した後に顧客役で開けないことを記録する。
 5. 後片付け: GitHub の Settings → Applications → Installed GitHub Apps → Pages CMS → Configure → **Uninstall**。さらに Authorized GitHub Apps で取り消す（https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps）。
@@ -130,7 +130,7 @@ Decap https://decapcms.org/docs/github-backend/ ・ https://github.com/decaporg/
 ## 5. オーナーへの問い
 
 1. §1 の実環境の試験を行うか（行うなら日時。11/30 より前か）。repo の名義と、Claude に試験用 repo への push を許すか。
-2. GitHub App の導入の画面で Administration の読み書きが要求された場合も続けるか。
+2. Cloudflare の App の Administration 読み書きを試験用 repo に限って認めるか。Pages CMS の App の `repository_creation` 書き込み（App を入れたアカウントに repo を作れる。試験用 repo だけには限れない）を認めるか（どちらも確認書 §3）。
 3. Pages CMS の運営者への問い合わせ（`pages-cms-hosted-terms.md` §6 の更新版、未送信）を送るか。名義は誰か。最終確認の依頼は [`cms-live-trial-confirmation.md`](cms-live-trial-confirmation.md)、第二の案の評価は [`cms-sveltia-evaluation.md`](cms-sveltia-evaluation.md)。
 4. Brot Yanagi のサイトで使っている CMS は何か（再利用の可否を判断するため）。
 5. 第二の案を Sveltia CMS と microCMS のどちらで用意するか（またはその両方を比べる試験をするか）。
