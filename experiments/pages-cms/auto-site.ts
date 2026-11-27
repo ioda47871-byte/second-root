@@ -14,6 +14,9 @@
  *     「AI生成・架空の施工イメージ」; the sample block is separate from the customer's works list, which never shows a
  *     generated picture (the model refuses one for a job).
  *
+ * The hero title keeps the supplied two lines (愛車の表情を、／一枚のフィルムで。): the supplied 4.1vw size wraps
+ * 「で。」 onto a third line at 1440 in Chromium (measured on design-preview.html), so the title is 3.4vw with each line
+ * unbroken from 1140px up. On SP the sample's AI label sits under each picture (still visible, 12px) instead of over it.
  * Deviations from the supplied CSS, each for an existing check: text under 12px is raised to 12px (Q1 / phone checks:
  * nothing smaller than 12px), the brand link gets a 44px tap height, the CMS works list is a compact card grid (the
  * supplied page shows one large pair; 50 works must stay under the render cap) — the large pair layout is kept for the
@@ -103,7 +106,7 @@ export function renderAuto(content: ShopContent, today: string, slotOf?: (image:
 <div class="notice" data-q1="section"><span>提案用デモ（架空の店）/ デザインの写真はAI生成</span><span>SECOND ROOT — CMS DESIGN STUDY</span></div>
 <header class="head" data-q1="section"><a class="brand" href="#top" aria-label="SORAIRO トップ"><span class="mark">S</span><span><span class="word">SORAIRO</span><span class="sub">${e(v.shop.name)}</span></span></a><nav aria-label="主要メニュー"><a href="#works">施工実績</a><a href="#services">サービス</a><a href="#info" class="link">店舗情報 <span>↗</span></a></nav></header>
 <main id="top">
-<section class="hero" aria-label="トップ" data-q1="section"><div class="hero-label"><span>CAR WRAPPING / VEHICLE PROTECTION</span><span>CONCEPT 01</span></div><div class="hero-grid"><div class="intro"><p class="eyebrow">A DIFFERENT FINISH.</p><h1>愛車の表情を、<br>一枚のフィルムで。</h1><p class="lead">カラーを変える。質感を選ぶ。<br>カーラッピングと車両保護の架空専門店、そらいろ。</p><a class="cta" href="#works">施工実績を見る <span>↘</span></a></div>${
+<section class="hero" aria-label="トップ" data-q1="section"><div class="hero-label"><span>CAR WRAPPING / VEHICLE PROTECTION</span><span>CONCEPT 01</span></div><div class="hero-grid"><div class="intro"><p class="eyebrow">A DIFFERENT FINISH.</p><h1><span class="nb">愛車の表情を、</span><br><span class="nb">一枚のフィルムで。</span></h1><p class="lead">カラーを変える。質感を選ぶ。<br>カーラッピングと車両保護の架空専門店、そらいろ。</p><a class="cta" href="#works">施工実績を見る <span>↘</span></a></div>${
     hero ? `<figure class="hero-art"><img src="${e(hero.src)}" alt="${e(hero.alt)}" width="1086" height="724"><figcaption class="photo-note">${AI_NOTE}</figcaption><span class="hero-code">MATTE CHARCOAL / CONCEPT</span></figure>` : '<div class="hero-art"></div>'
   }</div></section>
 <div class="bar"><div><b>01</b> カーラッピング</div><div><b>02</b> 車両保護フィルム</div><div><b>03</b> 部分ラッピング</div></div>
@@ -143,7 +146,7 @@ a:focus-visible{outline:2px solid #c9ba92;outline-offset:5px}
 .hero-grid{display:grid;grid-template-columns:35% 65%;min-height:465px}
 .intro{padding:38px 26px 32px 0;align-self:center}
 .eyebrow{font-size:12px;letter-spacing:.22em;color:#c9ba92;font-weight:700}
-.intro h1{font-size:clamp(30px,4.1vw,65px);line-height:1.25;letter-spacing:-.045em;margin:20px 0 22px;font-weight:700}
+.intro h1{font-size:clamp(30px,3.4vw,58px);line-height:1.25;letter-spacing:-.045em;margin:20px 0 22px;font-weight:700}
 .intro .lead{font-size:14px;color:#c0c3c1;max-width:300px}
 .cta{display:inline-flex;align-items:center;justify-content:space-between;min-height:49px;gap:34px;border-bottom:1px solid #c9ba92;margin-top:25px;color:#f6f3e9;font-size:13px}
 .hero-art{position:relative;overflow:hidden;min-height:100%;background:#202222}
@@ -210,6 +213,7 @@ a:focus-visible{outline:2px solid #c9ba92;outline-offset:5px}
 .muted{color:#bfc2bf}
 .footer{padding:32px 5%;border-top:1px solid #3c3e3d;color:#a6aaa6;font-size:12px;display:flex;justify-content:space-between;gap:18px}
 .footer a{min-height:44px;display:flex;align-items:center}
+@media(min-width:1140px){.intro h1 .nb{white-space:nowrap}}
 @media(max-width:1080px){.jobs{grid-template-columns:repeat(2,minmax(0,1fr))}.details{grid-template-columns:1fr 1fr}}
-@media(max-width:800px){.head{flex-wrap:wrap;padding:18px 5%;gap:12px}.head nav{width:100%;justify-content:space-between;gap:12px;font-size:13px}.head nav .link{padding:0 10px;gap:6px}.notice span:last-child{display:none}.hero{padding-bottom:35px}.hero-grid{grid-template-columns:1fr;min-height:0}.intro{padding:24px 0 28px}.intro h1{font-size:40px;margin:14px 0}.intro .lead{max-width:unset}.hero-art{min-height:0;aspect-ratio:4/3}.hero-code{display:none}.photo-note{left:10px;bottom:10px}.bar div{padding:13px 8px 13px 0;display:block;font-size:12px;line-height:1.5}.bar div+div{padding-left:10px}.bar b{display:block;margin-bottom:5px}.section{padding:48px 5%}.section-title{display:block;margin-bottom:22px}.section-title p{margin-top:12px}.jobs{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 10px}.job{padding-top:10px}.role{padding:3px 6px;gap:4px}.role .en{display:none}.job h3{font-size:15px}.desc{font-size:13px}.study{padding:12px 0}.study img{aspect-ratio:4/3}.study figcaption{padding:5px 7px;gap:5px}.study .ai{bottom:5px;right:5px;max-width:calc(100% - 10px)}.study-meta{grid-template-columns:1fr;gap:9px;padding-top:14px}.study-meta h3{font-size:21px}.service-item{grid-template-columns:72px 1fr;gap:7px 10px;padding:20px 0}.service-item p{grid-column:2}.service-item h3{font-size:19px}.details{grid-template-columns:1fr;gap:30px}.footer{flex-wrap:wrap;padding:24px 5%}}
+@media(max-width:800px){.head{flex-wrap:wrap;padding:18px 5%;gap:12px}.head nav{width:100%;justify-content:space-between;gap:12px;font-size:13px}.head nav .link{padding:0 10px;gap:6px}.notice span:last-child{display:none}.hero{padding-bottom:35px}.hero-grid{grid-template-columns:1fr;min-height:0}.intro{padding:24px 0 28px}.intro h1{font-size:40px;margin:14px 0}.intro .lead{max-width:unset}.hero-art{min-height:0;aspect-ratio:4/3}.hero-code{display:none}.photo-note{left:10px;bottom:10px}.bar div{padding:13px 8px 13px 0;display:block;font-size:12px;line-height:1.5}.bar div+div{padding-left:10px}.bar b{display:block;margin-bottom:5px}.section{padding:48px 5%}.section-title{display:block;margin-bottom:22px}.section-title p{margin-top:12px}.jobs{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 10px}.job{padding-top:10px}.role{padding:3px 6px;gap:4px}.role .en{display:none}.job h3{font-size:15px}.desc{font-size:13px}.study{padding:12px 0}.study img{aspect-ratio:4/3}.study figcaption{padding:5px 7px;gap:5px}.study .ai{position:static;display:block;background:none;padding:6px 2px 4px;font-size:12px;line-height:1.4;color:#c0c3c1}.study-meta{grid-template-columns:1fr;gap:9px;padding-top:14px}.study-meta h3{font-size:21px}.service-item{grid-template-columns:72px 1fr;gap:7px 10px;padding:20px 0}.service-item p{grid-column:2}.service-item h3{font-size:19px}.details{grid-template-columns:1fr;gap:30px}.footer{flex-wrap:wrap;padding:24px 5%}}
 `;
