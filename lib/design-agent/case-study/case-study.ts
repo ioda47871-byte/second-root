@@ -160,7 +160,9 @@ export const OriginalsIndex = z.object({
       z.object({
         id: CASE_ID,
         kind: z.enum(["image", "page_render"]),
-        files: z.array(z.object({ path: z.string().regex(REPO_PATH), sha256: SHA })).min(1),
+        // DEV-364 (owner decision 2026-11-27): `copy: "viewing"` records that the committed file is a viewing copy (a
+        // derived, possibly downscaled / recompressed / cropped WebP), not the original; absent = the original itself
+        files: z.array(z.object({ path: z.string().regex(REPO_PATH), sha256: SHA, copy: z.literal("viewing").optional() })).min(1),
         counts_as_reference: z.boolean(),
       }),
     )
@@ -322,13 +324,19 @@ export type CaseStudyInspection = {
    * files with the path and SHA-256 of its originals-index entry; a private case: its listed files whose SHA-256 is
    * recorded for that id). Anything else listed under the case is evidence only, never an original to reuse.
    */
-  counting_files: Record<string, { path: string; sha256: string }[]>;
+  counting_files: Record<string, CountingFile[]>;
 };
+/** A file that made its case count; `copy: "viewing"` when the index records it as a viewing copy (never an original). */
+export type CountingFile = { path: string; sha256: string; copy?: "viewing" };
 
 /** The listed files of a counted case that are its verified originals (see CaseStudyInspection.counting_files). */
-function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, Set<string>>): { path: string; sha256: string }[] {
+function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, Set<string>>): CountingFile[] {
   const entry = index.originals.find((o) => o.id === c.id);
-  if (entry) return c.files.filter((f) => entry.files.some((e) => e.path === f.path && e.sha256 === f.sha256)).map((f) => ({ path: f.path, sha256: f.sha256 }));
+  if (entry)
+    return c.files.flatMap((f) => {
+      const e = entry.files.find((x) => x.path === f.path && x.sha256 === f.sha256);
+      return e ? [{ path: f.path, sha256: f.sha256, ...(e.copy === "viewing" ? { copy: "viewing" as const } : {}) }] : [];
+    });
   const known = recorded.get(c.id) ?? new Set<string>();
   return c.files.filter((f) => known.has(f.sha256)).map((f) => ({ path: f.path, sha256: f.sha256 }));
 }

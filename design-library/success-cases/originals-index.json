@@ -7,7 +7,8 @@
     "private_original_ids": "Category B ids whose original is not in this repository. A case study counts one only when it marks the case private_verified, lists the private file(s) outside the repository by absolute path and SHA-256, the checker finds each file with that SHA-256, and at least one file's SHA-256 is recorded for that id: manifest.json's sha256 fields (rejected / not-preferred revisions excluded) for CP-004..024, expected_sha256 below for SR-002 and CP-033..037. A cited .zip must match a recorded SHA-256 and the viewed images must be listed with it. The owner confirms on the viewing page.",
     "expected_sha256": "From the adoption records: SR-002 the approved PNG (PR #237), CP-033 the adopted ZIP (PR #240), CP-034..037 the adopted ZIPs (Issue #193, originals-catalog.md).",
     "unavailable_ids": "Category C: only candidate file names, no recorded SHA-256; never counted until the original is found and recorded.",
-    "never_counted": "SR-001 never counts (also hard-coded in the checker)."
+    "never_counted": "SR-001 never counts (also hard-coded in the checker).",
+    "copy": "A file marked copy: \"viewing\" is a viewing copy derived from the original (downscaled / recompressed / possibly cropped WebP), not the original. It still counts where counts_as_reference is true (the checker's rule is unchanged), but it is never called an original: the whole-page prompt names it a viewing copy (DEV-364, owner decision 2026-11-27). CP-001..003's original PNG / source ZIP are not in this repository (docs/design/success-originals-handover.md)."
   },
   "originals": [
     {
@@ -17,7 +18,8 @@
         {
           "path": "design-library/success-cases/assets/CP-001_Mond.webp",
           "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82",
-          "role": "concept"
+          "role": "concept",
+          "copy": "viewing"
         }
       ],
       "counts_as_reference": true
@@ -29,7 +31,8 @@
         {
           "path": "design-library/success-cases/assets/CP-002_Sissi.webp",
           "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef",
-          "role": "concept"
+          "role": "concept",
+          "copy": "viewing"
         }
       ],
       "counts_as_reference": true
@@ -41,12 +44,14 @@
         {
           "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
           "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
-          "role": "pc"
+          "role": "pc",
+          "copy": "viewing"
         },
         {
           "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
           "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
-          "role": "sp"
+          "role": "sp",
+          "copy": "viewing"
         }
       ],
       "counts_as_reference": true

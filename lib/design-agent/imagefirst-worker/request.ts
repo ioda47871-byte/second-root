@@ -202,12 +202,14 @@ const REFERENCE_TYPES: readonly { ext: readonly string[]; media: PlanReference["
 /** The inspection fields reference selection reads. */
 type SelectionInput = Pick<CaseStudyInspection, "counted" | "record" | "files" | "counting_files">;
 /** A counted case's verified originals that can be attached: PNG / JPEG / WebP by extension and magic bytes, with bytes. */
-function usableOriginals(i: SelectionInput, caseId: string): { file: ViewedFile; type: (typeof REFERENCE_TYPES)[number] }[] {
+function usableOriginals(i: SelectionInput, caseId: string): { file: ViewedFile; type: (typeof REFERENCE_TYPES)[number]; copy?: "viewing" }[] {
   const originals = i.counting_files[caseId] ?? [];
-  const out: { file: ViewedFile; type: (typeof REFERENCE_TYPES)[number] }[] = [];
+  const out: { file: ViewedFile; type: (typeof REFERENCE_TYPES)[number]; copy?: "viewing" }[] = [];
   for (const f of i.files.filter((x) => x.case_id === caseId && originals.some((o) => o.path === x.path && o.sha256 === x.sha256))) {
     const type = REFERENCE_TYPES.find((t) => t.ext.includes(extname(f.path).toLowerCase()));
-    if (type && f.bytes !== null && type.magic(f.bytes)) out.push({ file: f, type });
+    // DEV-364: the index's record that this counted file is a viewing copy travels with it (into the plan and the prompt)
+    const copy = originals.find((o) => o.path === f.path && o.sha256 === f.sha256)?.copy;
+    if (type && f.bytes !== null && type.magic(f.bytes)) out.push({ file: f, type, ...(copy === "viewing" ? { copy } : {}) });
   }
   return out;
 }
@@ -230,12 +232,12 @@ export function selectReferences(i: SelectionInput): { references: ResolvedRefer
     const usable = usableOriginals(i, caseId);
     if (usable.length > 0) usableCases += 1;
     if (out.length >= IMAGE_TOOL_MAX_REFS) continue;
-    for (const { file: f, type } of usable) {
+    for (const { file: f, type, copy } of usable) {
       if (out.some((r) => r.sha256 === f.sha256)) continue;
       if (f.bytes!.length > REFERENCE_MAX_BYTES) throw new PromptStop("REFERENCE_IMAGE_TOO_LARGE");
       if (createHash("sha256").update(f.bytes!).digest("hex") !== f.sha256) throw new PromptStop("REFERENCE_IMAGE_SHA_MISMATCH");
       const id = `ref-${out.length + 1}`;
-      out.push({ id, case_id: caseId, name: `${id}.${type.name}`, sha256: f.sha256, media_type: type.media, bytes: f.bytes! });
+      out.push({ id, case_id: caseId, name: `${id}.${type.name}`, sha256: f.sha256, media_type: type.media, ...(copy ? { copy } : {}), bytes: f.bytes! });
       break;
     }
   }
@@ -257,7 +259,7 @@ export function caseStudyUseOf(i: SelectionInput & Pick<CaseStudyInspection, "ca
   const { references, usableCases } = selectReferences(i);
   const cases = ownerOrder(i).flatMap((id) => i.record.cases.filter((c) => c.id === id)).map((c) => ({ id: c.id, principles_to_bring: [...c.principles_to_bring], do_not_copy: [...c.do_not_copy] }));
   return {
-    use: { sha256: i.case_study_sha256, shop_specific_principles: [...i.record.shop_specific_principles], cases, references: references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type })) },
+    use: { sha256: i.case_study_sha256, shop_specific_principles: [...i.record.shop_specific_principles], cases, references: references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type, ...(r.copy ? { copy: r.copy } : {}) })) },
     references,
     usableCases,
   };
