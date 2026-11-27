@@ -26,7 +26,7 @@
 | `boolean`（`default`） | `widget: boolean` | 同上 |
 | `number`（`min`・`max`） | `widget: number`（既定で数として保存、`value_type: int`） | https://sveltiacms.app/en/docs/fields/number |
 | `select`（`values` の `name`/`label`） | `widget: select`、`options: [{label, value}]`、`default` | https://sveltiacms.app/en/docs/fields/select |
-| `date`（`yyyy-MM-dd`） | `widget: datetime`、`type: date`、`format: YYYY-MM-DD`、`picker_utc: true` | https://sveltiacms.app/en/docs/fields/datetime 。UTC にしないと時差で日付がずれうる、と公式 |
+| `date`（`yyyy-MM-dd`） | `widget: datetime`、`type: date`、`format: YYYY-MM-DD`、`input_timezone: utc`（旧 `picker_utc: true` と同じ） | https://sveltiacms.app/en/docs/fields/datetime 。UTC にしないと時差で日付がずれうる、と公式。公式は `format` を省いて ISO で保存することを勧めるが、内容の型が `yyyy-MM-dd` を求めるため `format` を残す（未検証） |
 | `object` の `list`（`min`・`max`・`summary`） | `widget: list` + `fields`（`min`・`max`・`summary`・`collapsed`） | https://sveltiacms.app/en/docs/fields/list |
 | `image`（`extensions`） | `widget: image`（`accept`、`media_folder`・`public_folder`）。値は公開の道（例 `/media/x.jpg`） | https://sveltiacms.app/en/docs/fields/file 。空なら `''` |
 | `media`（`media` → `/media`、`rename: safe`） | 全体の `media_folder: /media`、`public_folder: /media`、`slugify_filename: true` | https://sveltiacms.app/en/docs/media |
@@ -48,7 +48,7 @@
 | Second Root の保守 | 小（hosted を使うだけ。止まれば self-host か別の CMS） | 中: ① 管理画面は店のサイトの `/admin/` に置く（`index.html` と `config.yml`）② 認証の Worker を店ごとに置き、`ALLOWED_DOMAINS` などを設定 ③ 更新: 公式は版を固定しない（unpkg の版なしの URL）ことを勧め、固定は「increases maintenance burden and security risks」とする。固定しなければ CDN の変更がそのまま顧客の管理画面に入る（https://sveltiacms.app/en/docs/start）。どちらにするかは Second Root の方針で決める |
 | ライセンス | MIT（self-host の場合） | 本体 MIT（https://github.com/sveltia/sveltia-cms）、Authenticator MIT（https://github.com/sveltia/sveltia-cms-auth）、Additions MIT |
 | 商用・規約 | hosted の商用の条件は not stated | 自分の口座で動かすので運営者の規約の問題は無い（Cloudflare・GitHub の規約は別にある） |
-| 成熟度 | 公式の版 2.x | 「now out of beta」を掲げる。Additions は v0.271.0 以上が要り、一部のログインの方法は予定（成熟度は**未検証**） |
+| 成熟度 | 公式の版 2.x | 「now out of beta」という表記は公式の頁で確認できていない（出典**未検証**）。Additions は v0.271.0 以上が要り、一部のログインの方法は予定（成熟度は**未検証**） |
 
 管理画面の JavaScript について: 店の頁は JavaScript なし・外への要求なしだが、`/admin/` は CDN から Sveltia を読み込む別の頁になる。店の頁の検査（Q1 の外への要求の数）と分けて扱う。
 
@@ -152,7 +152,7 @@ collections:
       - { name: id, label: ID（自動）, widget: uuid }
       - { name: title, label: 見出し, widget: string, pattern: ['^[\s\S]{1,80}$', '80 字まで'] }
       - { name: body, label: 本文, widget: text, required: false, pattern: ['^[\s\S]{0,1000}$', '1000 字まで'] }
-      - { name: publishedAt, label: 日付, widget: datetime, type: date, format: YYYY-MM-DD, picker_utc: true }
+      - { name: publishedAt, label: 日付, widget: datetime, type: date, format: YYYY-MM-DD, input_timezone: utc }
       - { name: visible, label: 公開する, widget: boolean, default: true }
   - name: shop
     label: 営業時間・臨時休業
@@ -203,7 +203,7 @@ collections:
             collapsed: true
             summary: "{{date}} {{note}}"
             fields:
-              - { name: date, label: 日付, widget: datetime, type: date, format: YYYY-MM-DD, picker_utc: true }
+              - { name: date, label: 日付, widget: datetime, type: date, format: YYYY-MM-DD, input_timezone: utc }
               - { name: note, label: 理由など, widget: string, required: false, pattern: ['^[\s\S]{0,80}$', '80 字まで'] }
 ```
 
