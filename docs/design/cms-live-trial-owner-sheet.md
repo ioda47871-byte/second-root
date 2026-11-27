@@ -14,15 +14,16 @@
 
 | 項目 | 推奨 | 理由・出典 |
 |---|---|---|
-| 試験用 repo の名義 | オーナーの個人の GitHub アカウント（新しい組織は作らない）。名前は例 `sr-cms-trial-autocare`（実店名を入れない） | 試験と本番を分ける。後で丸ごと消す |
-| 公開 / 非公開 | **非公開（private）** | GitHub App は「always have at least read-only access to all public repositories」なので、非公開にしても App が読めなくなるわけではないが、試験の中身を外に出さない（https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party）。Pages CMS・Cloudflare の文書に非公開の repo の制限は書かれていない（not stated） |
+| 試験用 repo の名義 | オーナーの個人の GitHub アカウント（新しい組織は作らない）。名前は例 `sr-cms-trial-autocare`（実店名を入れない） | 試験と本番を分ける。後で丸ごと消す。Cloudflare は「A GitHub account should only point to one Cloudflare account」としている（https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/）ので、導入前にその GitHub アカウントが本番・顧客用の Cloudflare アカウントにつながっていない（今後もつなげない）ことを確かめる。つながっている場合は試験専用の GitHub アカウントを使う |
+| 公開 / 非公開 | **非公開（private）** | 試験の中身（架空のデータ・設定）を外から見えないようにするため。なお GitHub App は「always have at least read-only access to all public repositories」とされる（https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party）が、これは公開 repo についての話で、この判断の理由ではない。Pages CMS・Cloudflare の文書に非公開の repo の制限は書かれていない（not stated） |
 | 顧客役の編集者 | オーナーの 2 つ目のメールアドレス（GitHub アカウントなし）で Pages CMS の協力者として招く | 協力者は「does not have a GitHub account」の人向け（https://pagescms.org/docs/configuration/collaborators/） |
 | 非認可の確認用 | 招いていない別のメールアドレス、または repo に権限の無い GitHub アカウント | 書き込みが拒まれることを記録する |
 | 本番の枝 | `main`（プレビューは使わない） | §1.3 |
 
 ### 1.2 Pages CMS（hosted、app.pagescms.org）
 
-1. Claude が用意した試験用の中身（架空のデータ・合成の画像・`.pages.yml`・`build.mjs`）を、オーナーが作った空の非公開 repo に Claude が push する（オーナーが Claude に push の権限を与えた場合。与えないならオーナーが push）。
+1. Claude が用意した試験用の中身（架空のデータ・合成の画像・`.pages.yml`・`build.mjs`）を、**オーナーが** 作った空の非公開 repo に push する（既定）。
+   Claude による push は外部への書き込みにあたるため、repo 名と使う認証情報を明記したオーナーの個別の承認がある場合だけの選択肢とする。token は repo・記録・報告のどこにも残さない。
 2. https://app.pagescms.org を開き **GitHub でサインイン**し、repo の持ち主のアカウントに GitHub App を入れる（https://pagescms.org/docs/quick-start/）。
    入れるときに GitHub が**要求する権限を表示する**ので（「During the installation process, GitHub will tell you which permissions the GitHub App requested」、上の GitHub の文書）、**その画面を撮影して記録する**。
    リポジトリの範囲は **Only select repositories** でこの試験用 repo だけを選ぶ。
@@ -58,7 +59,7 @@
 | Claude（承認の範囲で） | オーナーだけ |
 |---|---|
 | 架空のデータ・合成の画像・`.pages.yml`・`build.mjs` を作り、ローカルで試験する | GitHub の repo の作成、Pages CMS・Cloudflare へのサインイン、GitHub App の導入と範囲の選択 |
-| （権限をもらえば）試験用 repo へ push する | Cloudflare のプロジェクトの作成・設定・削除、rollback の操作 |
+| 試験用 repo へ push するファイル一式を渡す（Claude 自身の push は repo と認証情報を明記した個別の承認がある場合だけ） | Cloudflare のプロジェクトの作成・設定・削除、rollback の操作 |
 | 公開された URL を読み、PC 1440 / SP 390 で撮影し、Q1 の判定をする | 協力者（顧客役）の招待・削除、顧客役でのログインと編集（スマートフォンの実機かどうかを記録） |
 | commit SHA・deployment ID・時刻を集め、報告を書く | 問い合わせの送信、課金、実案件の口座・写真・名前の使用（どれも別の承認） |
 
