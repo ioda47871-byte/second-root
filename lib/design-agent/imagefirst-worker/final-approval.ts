@@ -291,7 +291,8 @@ async function privateFolder(dir: string, repo: string, inRepo: FinalApprovalCod
 const SITE_LIMITS = { html: 384 * 1024, css: 256 * 1024, asset: 16 * 1024 * 1024, assets: 32, total: 64 * 1024 * 1024 } as const;
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.png$/;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-type Site = { files: { path: string; sha256: string; bytes: number }[]; assets: Map<string, Buffer> };
+/** contents (DEV-364 PR 3b): every file's bytes as read and hashed here, so a packager writes exactly what was checked. */
+type Site = { files: { path: string; sha256: string; bytes: number }[]; assets: Map<string, Buffer>; contents: Map<string, Buffer> };
 
 /** The finished site: outside the repository, real, index.html + style.css + assets/*.png (the comparison's listing). */
 async function readSiteFiles(siteDir: string, repo: string): Promise<Site> {
@@ -326,7 +327,7 @@ async function readSiteFiles(siteDir: string, repo: string): Promise<Site> {
       files.push({ path: `assets/${name}`, sha256: sha256(b), bytes: b.length });
     }
   }
-  return { files, assets };
+  return { files, assets, contents: new Map<string, Buffer>([["index.html", html], ["style.css", css], ...assets]) };
 }
 
 // ---- what the review must match -------------------------------------------------------------------------------------
@@ -717,6 +718,8 @@ export type ApprovedFinal = {
   design: { request_id: string; bundle_sha256: string; approval_sha256: string };
   build_files_sha256: string;
   files: { path: string; sha256: string; bytes: number }[];
+  /** DEV-364 PR 3b: the approved files' bytes, exactly as the gate read and hashed them (path → bytes). */
+  contents: ReadonlyMap<string, Buffer>;
   review_sha256: string;
   page_sha256: string;
   approval_sha256: string;
@@ -725,5 +728,5 @@ export type ApprovedFinal = {
 /** The approved finished site, or a FinalApprovalStop: the gate check above. */
 export async function approvedFinal(o: FinalInputs & { reviewPath: string; approvalPath: string; repo: string }): Promise<ApprovedFinal> {
   const c = await checkFinalApproval({ ...o, mode: "gate" });
-  return { design: c.design, build_files_sha256: c.build_files_sha256, files: c.evidence.site.files, review_sha256: c.review_sha256, page_sha256: c.page_sha256, approval_sha256: c.approval!.sha256 };
+  return { design: c.design, build_files_sha256: c.build_files_sha256, files: c.evidence.site.files, contents: c.evidence.site.contents, review_sha256: c.review_sha256, page_sha256: c.page_sha256, approval_sha256: c.approval!.sha256 };
 }
