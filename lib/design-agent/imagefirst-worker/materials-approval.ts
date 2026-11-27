@@ -168,7 +168,11 @@ export type DeliveredMaterials = {
   pictures: MaterialPicture[];
   /** DEV-303: only when the materials bundle itself is a synthetic one (bundle.ts, fictional request runs only). */
   synthetic?: true;
+  /** DEV-364 PR 3c: the run's sealed generation facts (cycle.ts MaterialsGeneration; checked by bundle.ts); null when absent. */
+  generation: MaterialsGenerationFacts | null;
 };
+/** DEV-364 PR 3c: what a materials run sealed about how its pictures were made (session model as recorded; may be null). */
+export type MaterialsGenerationFacts = { generator: string; session_model: string | null; generated_at: string; prompt_sha256: string; request_id: string };
 
 /** The delivered materials run: the sealed bundle verifies, it is image materials, its receipt names its approved design. */
 export async function readDeliveredMaterials(bundleDir: string): Promise<DeliveredMaterials> {
@@ -181,7 +185,7 @@ export async function readDeliveredMaterials(bundleDir: string): Promise<Deliver
   }
   if (v.manifest.image_material !== true || !v.manifest.photos) return stop("MATERIALS_BUNDLE_NOT_MATERIALS");
   // the bundled receipt was checked when the bundle was sealed and is covered by the manifest (receipt_sha256)
-  const receipt = JSON.parse(v.entries.find((e) => e.path === "receipt.json")!.bytes.toString("utf8")) as { approved_design?: DeliveredMaterials["approved_design"]; materials_sha256?: string };
+  const receipt = JSON.parse(v.entries.find((e) => e.path === "receipt.json")!.bytes.toString("utf8")) as { approved_design?: DeliveredMaterials["approved_design"]; materials_sha256?: string; generation?: MaterialsGenerationFacts };
   const a = receipt.approved_design;
   if (!a || typeof receipt.materials_sha256 !== "string") return stop("MATERIALS_BUNDLE_NOT_MATERIALS");
   const pictures = v.manifest.photos.map((p) => ({ file: p.file, sha256: p.sha256, bytes: v.entries.find((e) => e.path === p.file)!.bytes }));
@@ -194,6 +198,7 @@ export async function readDeliveredMaterials(bundleDir: string): Promise<Deliver
     materials_sha256: receipt.materials_sha256,
     pictures,
     ...(v.manifest.synthetic === true ? { synthetic: true as const } : {}),
+    generation: receipt.generation ?? null,
   };
 }
 
@@ -383,6 +388,8 @@ export type ApprovedMaterials = {
   page_sha256: string;
   approval_sha256: string;
   materials: (MaterialPicture & { id: string })[];
+  /** DEV-364 PR 3c: the run's sealed generation facts, or null for a run that sealed none. */
+  generation: MaterialsGenerationFacts | null;
 };
 
 /** The approved materials, or a MaterialsApprovalStop: the gate check above. */
@@ -402,5 +409,6 @@ export async function approvedMaterials(o: { design: ApprovedDesignRecords; bund
     page_sha256: c.page_sha256,
     approval_sha256: c.approval!.sha256,
     materials,
+    generation: c.run.generation,
   };
 }

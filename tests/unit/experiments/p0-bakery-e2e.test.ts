@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildSite } from "@/experiments/pages-cms/build";
+import { readPackage } from "@/lib/demo-version-package/package";
 import { DeliveryError, writeDelivery } from "@/experiments/pages-cms/delivery";
 import { boxFor, fictionalRights, Q1_TODAY, solidPng, writeFixture } from "@/experiments/pages-cms/fixtures";
 import { runQ1OnRepo } from "@/experiments/pages-cms/q1-check";
@@ -19,7 +20,7 @@ import { checkMaterialsInSite } from "@/lib/design-agent/imagefirst-worker/mater
 import { printRequestPlan, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
 import { assertCaseStudyGate, inspectCaseStudy } from "@/lib/design-agent/case-study/case-study";
 import { approveRehearsal, REHEARSAL_ID, REHEARSAL_SHOP, sealRehearsal } from "@/lib/design-agent/imagefirst-worker/rehearsal";
-import { IMAGE_FIRST_PACKAGE_SCHEMA, main as packageLocal } from "@/scripts/sales/demo-version/package-local";
+import { checkImageFirstTransforms, IMAGE_FIRST_DEPICTION_SCHEMA, IMAGE_FIRST_DEPICTION_STATEMENT, IMAGE_FIRST_MODEL_ROLE, IMAGE_FIRST_PACKAGE_SCHEMA, imageFirstProvenance, main as packageLocal, type PhotoTransform } from "@/scripts/sales/demo-version/package-local";
 import { caseStudyObject } from "../design-agent/imagefirst-worker/support";
 
 // DEV-364 P0 (the owner's reprioritisation 2026-11-26: ONE completed demo first): the fictional bakery end to end, in
@@ -220,7 +221,9 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     const { design_layout: _l, reference_images: _r, ...designOnly } = receipt;
     void _l;
     void _r;
-    const mReceipt = { ...designOnly, approval_id: MAT_ID, plan_id: MAT_ID, packet_sha256: mSha, request_sha256: mSha, run_dir: mRun, images: mImages, request_id: MAT_ID, images_total: 2, counts: { pc: 0, sp: 0, photo: 2, total: 2, stopped: 0 }, request_stage: "photo_materials", approved_design, materials_sha256: "9".repeat(64) };
+    const mReceipt = { ...designOnly, approval_id: MAT_ID, plan_id: MAT_ID, packet_sha256: mSha, request_sha256: mSha, run_dir: mRun, images: mImages, request_id: MAT_ID, images_total: 2, counts: { pc: 0, sp: 0, photo: 2, total: 2, stopped: 0 }, request_stage: "photo_materials", approved_design, materials_sha256: "9".repeat(64),
+      // DEV-364 PR 3c: the generation facts a real materials run seals (cycle.ts); here a MOCK (no Codex ran)
+      generation: { generator: "codex exec, its image generation tool (one batch) — モック／架空", session_model: "mock-session-model", generated_at: "2026-11-26T02:05:00.000Z", prompt_sha256: designOnly.prompt_sha256, request_id: MAT_ID } };
     const mReceiptPath = join(runs, "materials.receipt.json");
     write(mReceiptPath, Buffer.from(JSON.stringify(mReceipt)));
     const mSealed = await packBundle({ runDir: mRun, receiptPath: mReceiptPath, bundlesDir: join(home, "sr-runs", "review-inbox"), now: () => Date.parse("2026-11-26T02:06:00Z") });
@@ -302,8 +305,13 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     expect(q1.findings).toEqual([]);
     step("9", "Pages CMS update (product, price, a customer's photo C) + rebuild + Q1 PC/SP on that repository", "real", "clean", "local content edits stand in for Pages CMS (a real Pages CMS / Cloudflare round trip is Q2-Q4)");
 
-    // 10. demo packaging: the IMAGE_FIRST mode (owner approval 2026-11-27, option (a)) runs the second approval's gate and
-    // packages exactly the approved bytes, unconverted; the existing --source mode refuses the IMAGE_FIRST output
+    // 10. demo packaging: the IMAGE_FIRST mode runs the second approval's gate and writes the UPLOADABLE demo package (WebP
+    // via convertPhoto, image records with the sealed provenance, one transform record per photo) only when every check
+    // passes; the owner's per-photo depiction confirmation is a MOCK here
+    const depPath = join(tmp("sr-p0-dep-"), "depiction-confirmation.json");
+    const depiction = (over: (p: { sha256: string }) => Record<string, unknown> = () => ({}), only?: number) =>
+      bytesOf({ schema: IMAGE_FIRST_DEPICTION_SCHEMA, note: MOCK, photos: final.files.filter((f) => f.path.startsWith("assets/")).slice(0, only).map((f) => ({ sha256: f.sha256, depicts_real_product: false, depicts_real_interior: false, depicts_real_equipment: false, confirmation: IMAGE_FIRST_DEPICTION_STATEMENT, ...over(f) })) });
+    write(depPath, depiction());
     const pkg = async (over: Record<string, string> = {}, drop: string[] = []) => {
       const flags: Record<string, string> = {
         "--imagefirst": staged.dir,
@@ -319,6 +327,7 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
         "--impl-compare": implDir,
         "--final-review": fReviewPath,
         "--final-approval": fApprovalPath,
+        "--depiction-confirmation": depPath,
         ...over,
       };
       const out: string[] = [];
@@ -328,15 +337,41 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
       return { code, json: text ? (JSON.parse(text) as { status: string; code?: string }) : null, out: flags["--out"]! };
     };
     const packed = await pkg();
-    expect([packed.code, packed.json?.status]).toEqual([0, "OK"]);
-    const manifest = JSON.parse(readFileSync(join(packed.out, "imagefirst-package.json"), "utf8")) as { schema: string; final_approval_sha256: string; build_files_sha256: string; files: { path: string; sha256: string }[]; converted: boolean };
-    expect(manifest).toMatchObject({ schema: IMAGE_FIRST_PACKAGE_SCHEMA, final_approval_sha256: final.approval_sha256, build_files_sha256: final.build_files_sha256, converted: false });
+    expect([packed.code, packed.json?.status === "OK" ? "OK" : JSON.stringify(packed.json)]).toEqual([0, "OK"]);
+    const manifest = JSON.parse(readFileSync(join(packed.out, "imagefirst-package.json"), "utf8")) as { schema: string; final_approval_sha256: string; build_files_sha256: string; files: { path: string; sha256: string }[]; converted: boolean; uploadable_demo_package: boolean; transforms: { source: string; source_sha256: string; stored: string; delivered_sha256: string }[]; provenance_model_role: string };
+    expect(manifest).toMatchObject({ schema: IMAGE_FIRST_PACKAGE_SCHEMA, final_approval_sha256: final.approval_sha256, build_files_sha256: final.build_files_sha256, converted: true, uploadable_demo_package: true, provenance_model_role: IMAGE_FIRST_MODEL_ROLE });
     expect(manifest.files).toEqual(final.files);
     for (const f of final.files) expect(sha(readFileSync(join(packed.out, "site", f.path))), f.path).toBe(f.sha256);
-    const plain: string[] = [];
-    expect(await packageLocal(["--out", join(tmp(), "package"), "--source", staged.dir], { write: (x) => void plain.push(x), writeErr: () => undefined })).toBe(1);
-    expect(plain.join("")).toContain("IMAGE_FIRST_OUTPUT");
-    step("10", "demo packaging: the IMAGE_FIRST mode (second approval's gate, the approved bytes bound to it)", "mock", "packaged (local, unconverted)", "the approvals it checks are mocks; a local package of the approved files, not yet the uploadable demo package (WebP photos, image records and the sr_photo_transform_v1 record are a later step); --source still refuses IMAGE_FIRST output");
+    // the site copy carries the IMAGE_FIRST marker (not one of the approved files)
+    expect(JSON.parse(readFileSync(join(packed.out, "site", "sr-origin.json"), "utf8"))).toMatchObject({ origin: "image_first" });
+    expect(final.files.some((f) => f.path === "sr-origin.json")).toBe(false);
+    // the sales demo package: WebP photos whose SHA-256s the transform records name, sourced from the approved PNGs
+    expect(manifest.transforms.map((t) => [t.source, t.stored])).toEqual([["assets/photo-1.png", "photos/photo_1-desktop.webp"], ["assets/photo-3.png", "photos/photo_3-desktop.webp"]]);
+    for (const t of manifest.transforms) {
+      expect(t.source_sha256).toBe(final.files.find((f) => f.path === t.source)!.sha256);
+      expect(sha(readFileSync(join(packed.out, "package", "page", t.stored)))).toBe(t.delivered_sha256);
+      const rec = JSON.parse(readFileSync(join(packed.out, "transforms", `photo-${manifest.transforms.indexOf(t) + 1}.json`), "utf8")) as PhotoTransform;
+      expect(rec).toMatchObject({ schema: "sr_photo_transform_v1", source_sha256: t.source_sha256, delivered_sha256: t.delivered_sha256 });
+    }
+    // the package reads back and verifies again (the server's checks), with its two photos and their image records
+    const back = readPackage(join(packed.out, "package"));
+    expect(back.manifest.files.filter((f) => f.role === "photo").map((f) => f.name)).toEqual(["page/photos/photo_1-desktop.webp", "page/photos/photo_3-desktop.webp"]);
+    expect(back.images.map((i) => [i.source_kind, i.provenance.model, i.allowed_uses.public_web])).toEqual([["ai_generated_demo", "mock-session-model", false], ["ai_generated_demo", "mock-session-model", false]]);
+    // #379 review Low: the package shows which owner confirmation it relied on (its SHA-256, in both records)
+    expect((manifest as unknown as { depiction_confirmation_sha256: string }).depiction_confirmation_sha256).toBe(sha(readFileSync(depPath)));
+    expect((JSON.parse(readFileSync(join(packed.out, "package", "package.json"), "utf8")) as { local: { depiction_confirmation_sha256: string } }).local.depiction_confirmation_sha256).toBe(sha(readFileSync(depPath)));
+    // the output folder is private
+    expect(statSync(packed.out).mode & 0o077).toBe(0);
+    // the existing modes never package IMAGE_FIRST output (the staged site, or the packaged site copy)
+    for (const dir of [staged.dir, join(packed.out, "site")]) {
+      const plain: string[] = [];
+      expect(await packageLocal(["--out", join(tmp(), "package"), "--source", dir], { write: (x) => void plain.push(x), writeErr: () => undefined })).toBe(1);
+      expect(plain.join("")).toContain("IMAGE_FIRST_OUTPUT");
+      const viaCopy: string[] = [];
+      expect(await packageLocal(["--out", join(tmp(), "package"), "--copy", dir, "--facts", join(dir, "facts.json")], { write: (x) => void viaCopy.push(x), writeErr: () => undefined })).toBe(1);
+      expect(viaCopy.join("")).toContain("IMAGE_FIRST_OUTPUT");
+    }
+    step("10", "demo packaging: the uploadable IMAGE_FIRST demo package (second approval's gate, WebP + image records + transform records)", "mock", "packaged (uploadable, local only)", "the approvals, the materials run's generation facts and the depiction confirmation are mocks; nothing uploaded, published or sent; --source / --copy still refuse IMAGE_FIRST output");
 
     // deliberate mismatches: each refused with its code, nothing written
     const refused = async (over: Record<string, string>, drop: string[] = []) => {
@@ -351,6 +386,34 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
       expect(await refused({}), path).toBe(want);
       writeFileSync(path, before);
     };
+    // PR 3c: the owner's depiction confirmation missing for a photo, a photo said to show something real, or no file given
+    write(depPath, depiction(() => ({}), 1));
+    expect(await refused({})).toBe("IMAGE_FIRST_DEPICTION_NOT_CONFIRMED");
+    write(depPath, depiction((f) => (f.sha256 === sha(PICTURES["photo-3.png"]!) ? { depicts_real_product: true } : {})));
+    expect(await refused({})).toBe("IMAGE_FIRST_DEPICTS_REAL");
+    write(depPath, depiction());
+    expect(await refused({}, ["--depiction-confirmation"])).toBe("exit 2");
+    // #379 review Low: the confirmation is read as a private record: readable by others, through a link, or inside the repository → refused
+    chmodSync(depPath, 0o644);
+    expect(await refused({})).toBe("IMAGE_FIRST_DEPICTION_UNREADABLE");
+    chmodSync(depPath, 0o600);
+    const depLink = join(tmp("sr-p0-deplink-"), "depiction-confirmation.json");
+    symlinkSync(depPath, depLink);
+    expect(await refused({ "--depiction-confirmation": depLink })).toBe("IMAGE_FIRST_DEPICTION_UNREADABLE");
+    expect(await refused({ "--depiction-confirmation": join(REPO, "package.json") })).toBe("IMAGE_FIRST_DEPICTION_UNREADABLE");
+    // a bad output folder: readable by others, a file, inside the repository
+    const open = tmp();
+    chmodSync(open, 0o755);
+    expect(await refused({ "--out": open })).toBe("IMAGE_FIRST_OUT_UNSAFE");
+    const fileOut = join(tmp(), "a-file");
+    writeFileSync(fileOut, "x");
+    expect((await pkg({ "--out": fileOut })).json?.code).toBe("IMAGE_FIRST_OUT_UNSAFE");
+    expect((await pkg({ "--out": join(REPO, "tmp-imagefirst-out") })).code).toBe(2);
+    // the HTML changed, or a photo swapped, after the approval
+    await tamper(join(staged.dir, "index.html"), (b) => Buffer.from(b.toString("utf8").replace("</body>", "<p>追加</p></body>")), "FINAL_IMPL_COMPARE_MISMATCH");
+    await tamper(join(staged.dir, "assets", "photo-1.png"), () => solidPng(768, 512, [1, 1, 1]), "FINAL_IMPL_COMPARE_MISMATCH");
+    // an AI material disguised as the shop's photo (a valid B rights record for an approved picture's bytes)
+    await tamper(join(prov, `${sha(PICTURES["photo-1.png"]!)}.json`), () => bytesOf(fictionalRights(PICTURES["photo-1.png"]!)), "FINAL_GENERATED_AS_SHOP");
     // a stale second approval: the review edited after the decision
     await tamper(fReviewPath, (b) => Buffer.from(b.toString("utf8").replace("mock-review", "another-review")), "FINAL_APPROVAL_REVIEW_MISMATCH");
     // the CSS edited after the approval; a picture added that the approval does not name
@@ -379,6 +442,21 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     expect((await pkg({ "--out": full })).json?.code).toBe("IMAGE_FIRST_OUT_NOT_EMPTY");
     // and the approved package still builds after every restore
     expect((await pkg()).code).toBe(0);
+    // the transform records are checked separately: a delivered SHA-256 that is not the package's, or a source that is not approved
+    const good = manifest.transforms.map((t, n) => JSON.parse(readFileSync(join(packed.out, "transforms", `photo-${n + 1}.json`), "utf8")) as PhotoTransform);
+    const pkgPhotos = (JSON.parse(readFileSync(join(packed.out, "package", "package.json"), "utf8")) as { manifest: { files: { name: string; role: string; sha256: string; bytes: number; width?: number; height?: number }[] } }).manifest.files.filter((f) => f.role === "photo");
+    const approvedPics = final.files.filter((f) => f.path.startsWith("assets/")).map((f) => ({ path: f.path, sha256: f.sha256 }));
+    expect(checkImageFirstTransforms(good, approvedPics, pkgPhotos)).toEqual([]);
+    expect(checkImageFirstTransforms([{ ...good[0]!, delivered_sha256: "0".repeat(64) }, good[1]!], approvedPics, pkgPhotos)).toEqual(["TRANSFORM_DELIVERED_MISMATCH photos/photo_1-desktop.webp"]);
+    expect(checkImageFirstTransforms([{ ...good[0]!, source_sha256: "0".repeat(64) }, good[1]!], approvedPics, pkgPhotos)).toEqual(["TRANSFORM_SOURCE_MISMATCH assets/photo-1.png"]);
+    expect(checkImageFirstTransforms([good[0]!], approvedPics, pkgPhotos)).toEqual(expect.arrayContaining(["TRANSFORM_MISSING assets/photo-3.png", "TRANSFORM_PHOTO_COUNT"]));
+    // the AI provenance is the sealed facts only: none sealed, another run's, or no session model → refused
+    const g = { generator: "codex exec", session_model: "mock-session-model", generated_at: "2026-11-26T02:05:00.000Z", prompt_sha256: "d".repeat(64), request_id: MAT_ID };
+    expect(imageFirstProvenance(null, MAT_ID)).toEqual({ code: "IMAGE_FIRST_PROVENANCE_MISSING" });
+    expect(imageFirstProvenance({ ...g, request_id: "req-other-photos-1" }, MAT_ID)).toEqual({ code: "IMAGE_FIRST_PROVENANCE_MISMATCH" });
+    expect(imageFirstProvenance({ ...g, session_model: null }, MAT_ID)).toEqual({ code: "IMAGE_FIRST_MODEL_UNKNOWN" });
+    expect(imageFirstProvenance(g, MAT_ID)).toMatchObject({ provenance: { model: "mock-session-model", approval_id: MAT_ID } });
+    expect((imageFirstProvenance(g, MAT_ID) as { provenance: { generator: string } }).provenance.generator).toContain(IMAGE_FIRST_MODEL_ROLE);
 
     // the step report
     const reportPath = join(tmp("sr-p0-report-"), "p0-steps.json");
@@ -388,7 +466,7 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     expect(report.steps.filter((s) => s.kind === "blocked").map((s) => s.n)).toEqual([]);
     for (const s of report.steps) expect(["real", "mock", "synthetic", "blocked"]).toContain(s.kind);
     // every mock record says so
-    for (const f of [reviewPath, approvalPath, mReviewPath, mApprovalPath, fReviewPath, fApprovalPath]) expect(readFileSync(f, "utf8"), f).toContain("モック／架空");
+    for (const f of [reviewPath, approvalPath, mReviewPath, mApprovalPath, fReviewPath, fApprovalPath, depPath]) expect(readFileSync(f, "utf8"), f).toContain("モック／架空");
   });
 
   it("the delivery writer refuses what it cannot bind (PR #376 review M1-M3 included)", async () => {

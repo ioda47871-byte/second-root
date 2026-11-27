@@ -230,6 +230,9 @@ type Receipt = {
   materials_sha256?: unknown;
   ja_renderings_sha256?: unknown;
   synthetic?: unknown;
+  /** DEV-364 PR 3c: a photo-materials run's sealed generation facts (generationShapeOk). */
+  prompt_sha256?: unknown;
+  generation?: unknown;
 };
 type ReceiptImage = { file: string; sha256: string; bytes: number };
 
@@ -349,6 +352,27 @@ const REFERENCE_INPUTS_MAX_BYTES = 16 * 1024;
  * REFERENCE_INPUTS_MISMATCH otherwise (no path, no content in the code).
  */
 /** DEV-303 §6.1 change 6: a materials receipt's approved_design (bundle id and three SHA-256s, nothing else) and materials_sha256. */
+/**
+ * DEV-364 PR 3c: a photo-materials receipt's sealed generation facts, when present (cycle.ts MaterialsGeneration): exactly
+ * those five keys, the session model a slug or null, an ISO time, and the receipt's own prompt SHA-256 and request id.
+ */
+function generationShapeOk(r: Receipt): boolean {
+  const g = r.generation as Record<string, unknown> | null | undefined;
+  return (
+    !!g &&
+    typeof g === "object" &&
+    Object.keys(g).sort().join(",") === "generated_at,generator,prompt_sha256,request_id,session_model" &&
+    typeof g.generator === "string" &&
+    g.generator.length > 0 &&
+    g.generator.length <= 300 &&
+    (g.session_model === null || (typeof g.session_model === "string" && /^[0-9A-Za-z._-]{1,60}$/.test(g.session_model))) &&
+    typeof g.generated_at === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(g.generated_at) &&
+    g.prompt_sha256 === r.prompt_sha256 &&
+    g.request_id === r.request_id
+  );
+}
+
 function approvedDesignShapeOk(r: Receipt): boolean {
   const a = r.approved_design as Record<string, unknown> | null | undefined;
   return (
@@ -449,6 +473,8 @@ function parseReceipt(bytes: Buffer): { r: Receipt; images: ReceiptImage[]; phot
   // DEV-303 §6.1 change 6: a materials receipt names its approved design (bundle id, SHA-256s) and its materials list's
   // SHA-256; no other receipt carries them
   if (photo ? !approvedDesignShapeOk(r) : r.approved_design !== undefined || r.materials_sha256 !== undefined) stop("RECEIPT_INVALID");
+  // DEV-364 PR 3c: generation facts only on a photo-materials receipt, and well formed when present
+  if (r.generation !== undefined && (!photo || !generationShapeOk(r))) stop("RECEIPT_INVALID");
   if (photo) {
     if (pc !== 0 || sp !== 0 || photos < 1 || photos > 6 || photos !== images.length || !c || c.pc !== 0 || c.sp !== 0 || c.photo !== photos || c.total !== images.length || c.stopped !== 0) stop("RECEIPT_NOT_SUCCEEDED");
   } else if (photos !== 0 || pc !== design.pc || sp !== design.sp || !c || c.pc !== pc || c.sp !== sp || c.total !== images.length || c.stopped !== 0 || c.photo !== undefined) stop("RECEIPT_NOT_SUCCEEDED");
