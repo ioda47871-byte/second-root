@@ -70,6 +70,8 @@
 
 ## 5. 問い合わせ文案（未送信・要オーナー承認）
 
+**2026-11-27: 送るなら §6 の更新版を使う**（この §5 は 2026-11-26 の初版として残す）。
+
 宛先の候補: contact@pagescms.org（規約・個人情報の文書にある連絡先）。**送るかどうか、誰の名義で送るかはオーナーが決める。** 名義・会社名は空欄のまま。
 
 ### 日本語
@@ -113,3 +115,38 @@
 >
 > Thank you for building Pages CMS.
 > [name / contact]
+
+## 6. 商用利用の問い合わせ 更新版（2026-11-27）— **未送信・送信は別途承認**
+
+**この文案は送っていない。送るかどうか・名義・宛先は、オーナーの別の明示の承認で決める**（2026-11-27 のオーナーの承認は実環境の試験の準備までで、問い合わせの送信は含まない）。
+宛先の候補は §5 と同じ contact@pagescms.org。名義と連絡先は空欄。実案件の店名・業種の詳細は書かない。
+
+### 日本語の要旨（送る文ではない）
+
+制作会社として、有償で制作する顧客の店舗サイトに hosted の Pages CMS を組み込んでよいかを聞く。聞くこと:
+1. 代理店の利用: 制作会社が顧客のサイトのために設定し、制作費を受け取ることは認められるか。顧客の数の想定（年に数十店）を伝える。
+2. hosted のアプリの商用利用: 規約（2024-02-07 版、対象は pagescms.org の Website）が app.pagescms.org に適用されるか。商用の顧客に使わせてよいか。
+3. 上限と SLA: 利用者・repo・協力者・保存・API の上限、稼働の目標・保証の有無、変更・終了の通知期間と通知の方法、有料化の予定。
+4. データの保存と削除: hosted の DB に入るもの（トークン・協力者・内容のキャッシュ）の保存期間・保存場所（国・事業者）、アンインストールや退会の後の削除、持ち出しの方法。
+5. 権限: hosted の GitHub App（github.com/apps/pages-cms）が要求する権限の一覧と、Administration・Actions の読み書きを要求するならその用途。
+6. 運営の主体（個人・法人）と障害の連絡先。
+
+### English（送るなら、この文）
+
+> Subject: Commercial use of the hosted Pages CMS (app.pagescms.org) for client websites
+>
+> Hello,
+>
+> I am [name] of [business name]. We are a small web agency in Japan that builds websites for small local shops for a one-time production fee.
+> We would like to offer Pages CMS so that each shop can update its own content (works, photos, opening hours, news). Each site would live in a GitHub repository and a Cloudflare Pages project owned by the shop, and the shop would edit it through app.pagescms.org. We might set up a few dozen shops a year.
+> We read your Terms and Conditions (last updated February 7, 2024), the Privacy Policy and the documentation, and would appreciate answers to the following:
+>
+> 1. Agency use: Is it acceptable for an agency to set up Pages CMS for its clients' websites as part of paid work?
+> 2. Commercial use of the hosted app: Do the Terms (which define the Service as the website at pagescms.org) also cover app.pagescms.org? May commercial businesses use the hosted app for their own sites?
+> 3. Limits and service level: Are there limits on users, repositories, collaborators, storage or API usage? Is there any uptime commitment? How much notice, and through which channel, do you give before major changes to, or discontinuation of, the hosted service? Are paid plans planned?
+> 4. Data retention and deletion: What does the hosted database keep (tokens, collaborators, cached content), for how long, and where (country and provider)? Is it deleted when the GitHub App is uninstalled or a user leaves? Can data such as the collaborator list be exported?
+> 5. Permissions: Which GitHub permissions does the hosted GitHub App (github.com/apps/pages-cms) request? If it requests Administration or Actions read/write, what are they used for?
+> 6. Operator: Is the hosted service run by an individual or a company (if a company, under what name)? Where should we report outages?
+>
+> Thank you for building and maintaining Pages CMS.
+> [name / business name / contact]
