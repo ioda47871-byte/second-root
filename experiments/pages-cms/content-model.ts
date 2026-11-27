@@ -250,6 +250,7 @@ export class ContentError extends Error {
       // PR (4) photos (photos.ts)
       | "CONTENT_PHOTO_MISSING"
       | "CONTENT_PHOTO_TYPE"
+      | "CONTENT_PHOTO_HEIC"
       | "CONTENT_PHOTO_TOO_LARGE"
       | "CONTENT_PHOTO_DIMENSIONS"
       | "CONTENT_PHOTO_TOO_SMALL"
