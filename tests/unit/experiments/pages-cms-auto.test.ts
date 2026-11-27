@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -10,6 +10,8 @@ import { provenanceDirOf, Q1_TODAY, solidPng, writeFixture } from "@/experiments
 import { checkPagesConfig, pagesConfig, pagesYaml } from "@/experiments/pages-cms/pages-config";
 import { factsOf } from "@/experiments/pages-cms/q1-render";
 import { AUTO_SITE, BAKERY_SITE, CAFE_SITE } from "@/experiments/pages-cms/shop-site";
+import { stageDesignPictures } from "@/experiments/pages-cms/design-pictures";
+import { autoSiteWithDesign, writeSyntheticDesign } from "./synthetic-design";
 
 // Issue #380 (owner 2026-11-27): a third fictional shop — a car-care shop whose customer updates its 施工実績 (works)
 // and their photos in Pages CMS. FICTIONAL and LOCAL only (no GitHub, Cloudflare or Pages CMS; nothing uploaded). The
@@ -30,7 +32,11 @@ const repoOf = async (site: typeof AUTO_SITE, name: string) => {
   await writeFixture(repo, site.fixtures()[name]!);
   return repo;
 };
-const build = (repo: string, site = AUTO_SITE, extra: Partial<Parameters<typeof buildSite>[0]> = {}) => buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site, ...extra });
+// PR #390: the car-care site with SYNTHETIC design pictures and a test-only record (no picture is committed)
+const DESIGN_DIR = join(tmp(), "design");
+writeSyntheticDesign(DESIGN_DIR);
+const AUTO = autoSiteWithDesign(DESIGN_DIR);
+const build = (repo: string, site = AUTO, extra: Partial<Parameters<typeof buildSite>[0]> = {}) => buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site, ...extra });
 const codeOf = (p: Promise<unknown>) => p.then(
   () => "ok",
   (e: unknown) => (e instanceof ContentError ? `${e.code} ${e.file.replace(/^.*\/content\//, "content/")}` : String(e)),
@@ -156,7 +162,7 @@ describe("Issue #380: the car-care shop (施工実績) — its own composition, 
 
   it("B photos in a job need their rights record (private folder outside the repository), like a menu picture", async () => {
     const repo = await repoOf(AUTO_SITE, "works-10");
-    const r = await build(repo, AUTO_SITE, { provenanceDir: provenanceDirOf(repo) });
+    const r = await build(repo, AUTO, { provenanceDir: provenanceDirOf(repo) });
     expect(r.provenance.filter((p) => p.class === "B").map((p) => p.file)).toEqual(["job-7-1.png"]);
     expect(r.provenance.find((p) => p.class === "B")!.record).toMatchObject({ class: "B", provided_by: "店主" });
     // without the index entry the job's B photo is refused
@@ -234,13 +240,13 @@ describe("Issue #380: what the build refuses in a job (and keeps the last good o
     writeFileSync(join(repo, GENERATED_RECORD), JSON.stringify(generatedRecord({ "job-2-1.png": bytes })));
     expect(await codeOf(build(repo))).toBe("CONTENT_GENERATED_AS_SHOP works/job-2");
     const c = await repoOf(AUTO_SITE, "works-3");
-    expect(await codeOf(build(c, AUTO_SITE, { delivery: true, provenanceDir: provenanceDirOf(c) }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO works/job-1");
+    expect(await codeOf(build(c, AUTO, { delivery: true, provenanceDir: provenanceDirOf(c) }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO works/job-1");
   });
 
   it("broken input keeps the last good output: a failed build writes nothing, the earlier output stays byte-for-byte", async () => {
     const repo = await repoOf(AUTO_SITE, "works-10");
     const good = join(tmp(), "dist-good");
-    await buildSite({ repo, outDir: good, today: Q1_TODAY, site: AUTO_SITE });
+    await buildSite({ repo, outDir: good, today: Q1_TODAY, site: AUTO });
     const snapshot = () => Object.fromEntries(["index.html", "style.css", ...readdirSync(join(good, "media")).map((n) => `media/${n}`)].map((n) => [n, createHash("sha256").update(readFileSync(join(good, n))).digest("hex")]));
     const before = snapshot();
     const breaks: [string, () => void, string][] = [
@@ -253,14 +259,14 @@ describe("Issue #380: what the build refuses in a job (and keeps the last good o
       const savedMedia = new Map(readdirSync(join(repo, "media")).map((n) => [n, readFileSync(join(repo, "media", n))]));
       breakIt();
       const next = join(tmp(), "dist-next");
-      expect(await codeOf(buildSite({ repo, outDir: next, today: Q1_TODAY, site: AUTO_SITE })), what).toBe(code);
+      expect(await codeOf(buildSite({ repo, outDir: next, today: Q1_TODAY, site: AUTO })), what).toBe(code);
       expect(existsSync(next), what).toBe(false);
       expect(snapshot(), what).toEqual(before);
       for (const [n, b] of saved) writeFileSync(join(repo, "content", "works", n), b);
       for (const [n, b] of savedMedia) writeFileSync(join(repo, "media", n), b);
     }
     // repaired: the build passes again with the same output
-    const again = await buildSite({ repo, outDir: join(tmp(), "dist-again"), today: Q1_TODAY, site: AUTO_SITE });
+    const again = await buildSite({ repo, outDir: join(tmp(), "dist-again"), today: Q1_TODAY, site: AUTO });
     expect(again.html).toBe(readFileSync(join(good, "index.html"), "utf8"));
   });
 });
@@ -318,7 +324,8 @@ describe("Issue #380 SORAIRO (owner 2026-11-28): the static design pictures and 
       { file: "sorairo-matte-black.jpg", sha256: "20c782e075b61523aa0a27c6419d5cdf01a3db7868c679f5341862a65d21152a", source },
       { file: "sorairo-silver.jpg", sha256: "4101af37221ab2ab5501e563c5af008d4468877fc79753e87610f437b10a7809", source },
     ]);
-    for (const f of rec.files) expect(createHash("sha256").update(readFileSync(join(AUTO_SITE.design!.dir, f.file))).digest("hex"), f.file).toBe(f.sha256);
+    // PR #390 (the repository's image lock): Second Root holds the record only — the pictures stay outside its git
+    expect(readdirSync(AUTO_SITE.design!.dir)).toEqual(["generated-materials.json"]);
   });
 
   it("the build lists them as class A with that source, copies them to dist/design/, and nothing in .pages.yml can reach them", async () => {
@@ -337,7 +344,7 @@ describe("Issue #380 SORAIRO (owner 2026-11-28): the static design pictures and 
     const withDesign = (dir: string) => ({ ...AUTO_SITE, design: { ...AUTO_SITE.design!, dir } });
     const copy = () => {
       const d = join(tmp(), "design");
-      cpSync(AUTO_SITE.design!.dir, d, { recursive: true });
+      cpSync(AUTO.design!.dir, d, { recursive: true });
       return d;
     };
     const changed = copy();
@@ -353,28 +360,57 @@ describe("Issue #380 SORAIRO (owner 2026-11-28): the static design pictures and 
 
   it("Identity Lock kept: a copy of a design picture uploaded as a job's photo is refused; the B index may not list one", async () => {
     const repo = await repoOf(AUTO_SITE, "works-3");
-    writeFileSync(join(repo, "media", "IMG_9999.jpg"), readFileSync(join(AUTO_SITE.design!.dir, "sorairo-matte-black.jpg")));
+    writeFileSync(join(repo, "media", "IMG_9999.jpg"), readFileSync(join(AUTO.design!.dir, "sorairo-matte-black.jpg")));
     editWork(repo, "job-2", (w) => ({ ...w, photos: [{ image: "/media/IMG_9999.jpg", role: "after" }] }));
     expect(await codeOf(build(repo))).toBe("CONTENT_GENERATED_AS_SHOP works/job-2");
     const b = await repoOf(AUTO_SITE, "works-10");
     const index = JSON.parse(readFileSync(join(b, "content", "photo-provenance.json"), "utf8")) as { b: { sha256: string; record_sha256: string }[] };
-    index.b.push({ sha256: "20c782e075b61523aa0a27c6419d5cdf01a3db7868c679f5341862a65d21152a", record_sha256: "0".repeat(64) });
+    index.b.push({ sha256: createHash("sha256").update(readFileSync(join(AUTO.design!.dir, "sorairo-matte-black.jpg"))).digest("hex"), record_sha256: "0".repeat(64) });
     writeFileSync(join(b, "content", "photo-provenance.json"), JSON.stringify(index));
     expect(await codeOf(build(b))).toBe("CONTENT_PHOTO_CLASS_MIXED design material");
   });
 
   it("only referenced pictures are published: an unreferenced file in media/ (a test image) and a hidden job's photos never reach dist/", async () => {
     const repo = await repoOf(AUTO_SITE, "works-3");
-    writeFileSync(join(repo, "media", "kenkyu-test.jpg"), readFileSync(join(AUTO_SITE.design!.dir, "sorairo-silver.jpg")));
+    writeFileSync(join(repo, "media", "kenkyu-test.jpg"), readFileSync(join(AUTO.design!.dir, "sorairo-silver.jpg")));
     writeFileSync(join(repo, "media", "unused.png"), solidPng(640, 480, [5, 5, 5]));
     editWork(repo, "job-3", (w) => ({ ...w, visible: false }));
     const hiddenPhotos = (JSON.parse(readFileSync(workFile(repo, "job-3"), "utf8")) as { photos: { image: string }[] }).photos.map((p) => p.image.replace(/^\/media\//, ""));
     const out = join(tmp(), "dist");
-    await buildSite({ repo, outDir: out, today: Q1_TODAY, site: AUTO_SITE });
+    await buildSite({ repo, outDir: out, today: Q1_TODAY, site: AUTO });
     const shown = worksOf(await loadContent(repo, AUTO_SITE.profile)).flatMap((w) => w.photos.map((p) => `media/${p.image.replace(/^\/media\//, "")}`));
     expect(listDist(out)).toEqual(["design/sorairo-matte-black.jpg", "design/sorairo-silver.jpg", "index.html", ...shown, "style.css"].sort());
     for (const f of ["kenkyu-test.jpg", "unused.png", ...hiddenPhotos]) expect(listDist(out), f).not.toContain(`media/${f}`);
     const html = readFileSync(join(out, "index.html"), "utf8");
     for (const f of ["kenkyu-test.jpg", "unused.png", ...hiddenPhotos]) expect(html, f).not.toContain(f);
+  });
+});
+
+describe("PR #390: the design pictures come from a folder outside Second Root, checked against the record", () => {
+  it("Second Root alone cannot build the car-care site (no picture is committed): the build names the missing picture", async () => {
+    expect(await codeOf(build(await repoOf(AUTO_SITE, "works-3"), AUTO_SITE))).toBe("CONTENT_PHOTO_MISSING design/sorairo-matte-black.jpg");
+  });
+
+  it("staged from an outside folder: found by SHA-256 whatever they are called there, built and published under the record's names", async () => {
+    const outside = join(tmp(), "owner-folder");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "matte-black.jpg"), readFileSync(join(DESIGN_DIR, "sorairo-matte-black.jpg")));
+    writeFileSync(join(outside, "silver.jpg"), readFileSync(join(DESIGN_DIR, "sorairo-silver.jpg")));
+    writeFileSync(join(outside, "design-preview.html"), "<!doctype html>");
+    const recordOnly = join(tmp(), "record-only");
+    mkdirSync(recordOnly);
+    writeFileSync(join(recordOnly, "generated-materials.json"), readFileSync(join(DESIGN_DIR, "generated-materials.json")));
+    const staged = await stageDesignPictures(autoSiteWithDesign(recordOnly), outside, join(tmp(), "staged"));
+    expect(readdirSync(staged.design!.dir).sort()).toEqual(["generated-materials.json", "sorairo-matte-black.jpg", "sorairo-silver.jpg"]);
+    const out = join(tmp(), "dist");
+    const r = await buildSite({ repo: await repoOf(AUTO_SITE, "works-3"), outDir: out, today: Q1_TODAY, site: staged });
+    expect(r.design).toEqual(["sorairo-matte-black.jpg", "sorairo-silver.jpg"]);
+    expect(readFileSync(join(out, "design", "sorairo-silver.jpg")).equals(readFileSync(join(outside, "silver.jpg")))).toBe(true);
+    // a picture missing from the folder, or with other bytes, and a missing folder are refused by name
+    writeFileSync(join(outside, "silver.jpg"), Buffer.concat([readFileSync(join(outside, "silver.jpg")), Buffer.from([0])]));
+    expect(await codeOf(stageDesignPictures(autoSiteWithDesign(recordOnly), outside, join(tmp(), "staged")))).toBe("CONTENT_PHOTO_MISSING design/sorairo-silver.jpg");
+    expect(await codeOf(stageDesignPictures(autoSiteWithDesign(recordOnly), join(tmp(), "no-such-folder"), join(tmp(), "staged")))).toBe("CONTENT_PHOTO_MISSING design pictures folder");
+    // a site without design is returned as it is
+    expect(await stageDesignPictures(BAKERY_SITE, join(tmp(), "no-such-folder"), join(tmp(), "staged"))).toBe(BAKERY_SITE);
   });
 });

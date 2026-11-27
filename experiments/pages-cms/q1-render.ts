@@ -35,7 +35,7 @@ import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype
 import { buildSite } from "./build";
 import { loadContent, viewOf, worksOf, type ShopContent } from "./content-model";
 import { Q1_TODAY, writeFixture } from "./fixtures";
-import { CONTROL_PAGE, safeOutDir, serveAndMeasure, SLOT_CODES, SLOT_CONTROLS } from "./q1-check";
+import { CONTROL_PAGE, q1Site, safeOutDir, serveAndMeasure, SLOT_CODES, SLOT_CONTROLS } from "./q1-check";
 import { SHOP_SITES } from "./shop-site";
 
 /** What the render-helper path reports for one width (codes of its own vocabulary). */
@@ -177,7 +177,7 @@ export function q1Summary(rows: readonly CompareRow[]): { status: "clean" | "fin
   return { status: findings ? "findings" : truncated.length ? "incomplete" : "clean", findings, facts_truncated: truncated };
 }
 
-export async function runQ1Compare(o: { outDir: string; browser: Browser }): Promise<{ rows: CompareRow[]; controls: ControlResult[] }> {
+export async function runQ1Compare(o: { outDir: string; browser: Browser; designPictures?: string }): Promise<{ rows: CompareRow[]; controls: ControlResult[] }> {
   const out = await safeOutDir(o.outDir);
   const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1r-"));
   try {
@@ -193,7 +193,8 @@ export async function runQ1Compare(o: { outDir: string; browser: Browser }): Pro
         const repo = join(work, name, "repo");
         const dist = join(work, name, "dist");
         await writeFixture(repo, fx);
-        const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY, site });
+        // PR #390: a site's design pictures come from the outside folder (--design-dir; Second Root keeps only the record)
+        const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY, site: await q1Site(site, join(work, name), o.designPictures) });
         const content = await loadContent(repo, site.profile);
         const media = new Map<string, Buffer>();
         for (const m of built.media) media.set(`media/${m}`, await readFile(join(dist, "media", m)));
@@ -225,7 +226,8 @@ if (require.main === module) {
   (async () => {
     const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
     try {
-      const r = await runQ1Compare({ outDir, browser });
+      const di = process.argv.indexOf("--design-dir");
+      const r = await runQ1Compare({ outDir, browser, ...(di > 0 && process.argv[di + 1] ? { designPictures: process.argv[di + 1]! } : {}) });
       const s = q1Summary(r.rows);
       process.stdout.write(`${JSON.stringify({ ...s, controls: r.controls.map((c) => c.name), rows: r.rows }, null, 2)}\n`);
       process.exit(s.status === "clean" ? 0 : s.status === "findings" ? 1 : 3);
