@@ -74,12 +74,22 @@ describe("Issue #380 PR 3: the standalone delivery repository (export)", () => {
     for (const f of all) expect(readFileSync(join(out, f), "utf8"), f).not.toMatch(/(api[_-]?key|secret|password|token)\s*[:=]\s*["'][^"']+/i);
   });
 
-  it("the README names the Cloudflare Pages settings (build command, output directory, Node version) and the HEIC advice", () => {
+  it("the README names the Cloudflare Pages settings (build command, output directory, install switch, Node version) and the HEIC advice; the owner sheet says the same", () => {
     const readme = readFileSync(join(HERE, "delivery-template", "README.md"), "utf8");
-    expect(readme).toContain("`npm ci && npm run build`");
+    expect(NODE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    const settings = ["`npm ci && npm run build`", "`dist`", "`SKIP_DEPENDENCY_INSTALL`", "`1`", `\`${NODE_VERSION}\``];
+    expect(readme).toMatch(/Build command \| `npm ci && npm run build`/);
     expect(readme).toMatch(/Build output directory \| `dist`/);
-    expect(readme).toContain("`.node-version` (`22`)");
+    expect(readme).toMatch(/`SKIP_DEPENDENCY_INSTALL` = `1`/);
+    expect(readme).toContain(`\`.node-version\` (\`${NODE_VERSION}\``);
     expect(readme).toContain("互換性優先");
+    // review (template, 6c02096d) M: the owner's live-trial sheet follows the README (the single source of truth)
+    const sheet = readFileSync(join(__dirname, "../../../docs/design/cms-live-trial-owner-sheet.md"), "utf8");
+    const section = sheet.slice(sheet.indexOf("### 1.3"), sheet.indexOf("### 1.4"));
+    for (const v of settings) expect(section, v).toContain(v);
+    expect(section).toMatch(/\| Build command \| `npm ci && npm run build`/);
+    expect(section).toContain("delivery-template/README.md");
+    expect(sheet).not.toMatch(/`node build\.mjs`|依存の無い納品用の入口/);
   });
 
   it("refuses an output folder inside Second Root, a non-empty one, an unknown site or fixture", async () => {

@@ -22,7 +22,7 @@
 
 ### 1.2 Pages CMS（hosted、app.pagescms.org）
 
-1. Claude が用意した試験用の中身（架空のデータ・合成の画像・`.pages.yml`・`build.mjs`）を、**オーナーが** 作った空の非公開 repo に push する（既定）。
+1. Claude が用意した試験用の repo 一式（納品用 repo の雛形: 架空のデータ・合成の画像・`.pages.yml`・`build.mjs` ほか。`experiments/pages-cms/export-delivery.ts` で書き出す。中身と設定の正本はその `README.md`）を、**オーナーが** 作った空の非公開 repo に push する（既定）。
    Claude による push は外部への書き込みにあたるため、repo 名と使う認証情報を明記したオーナーの個別の承認がある場合だけの選択肢とする。token は repo・記録・報告のどこにも残さない。
 2. https://app.pagescms.org を開き **GitHub でサインイン**し、repo の持ち主のアカウントに GitHub App を入れる（https://pagescms.org/docs/quick-start/）。
    入れるときに GitHub が**要求する権限を表示する**ので（「During the installation process, GitHub will tell you which permissions the GitHub App requested」、上の GitHub の文書）、**その画面を撮影して記録する**。
@@ -42,11 +42,15 @@
 | 作り方 | Workers & Pages → Create application → Pages → Connect to Git → GitHub → repo を選び Install & Authorize | https://developers.cloudflare.com/pages/get-started/git-integration/ |
 | GitHub App の範囲 | **Only select repositories** で試験用 repo だけ（Cloudflare も推奨）。具体的な権限の一覧は公式に無い（not stated）→ 入れる画面を撮影 | https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/ |
 | 本番の枝 | `main`。他の枝はプレビューになるので、Branch control で Preview branch を「None」にする | https://developers.cloudflare.com/pages/configuration/git-integration/ |
-| Build command | `node build.mjs`（依存の無い納品用の入口。まだ作っていない＝実装計画 §8 の後の候補） | 同上 get-started |
+| Framework preset | None | 納品用 repo の `README.md`（正本: `experiments/pages-cms/delivery-template/README.md`） |
+| Build command | `npm ci && npm run build`（`package-lock.json` の固定の版を入れてから `build.mjs` を動かす） | 同上。Cloudflare の構築の文書 https://developers.cloudflare.com/pages/configuration/build-image/ |
 | Build output directory | `dist` | 同上 |
-| Root directory | 空（repo の直下） | https://developers.cloudflare.com/pages/configuration/build-configuration/ |
-| Node | v3 の構築の image の既定は 22.23.4。固定するなら `NODE_VERSION` か `.node-version` / `.nvmrc` | https://developers.cloudflare.com/pages/configuration/build-image/ |
-| 環境変数・秘密 | なし（構築は repo の中だけを読む） | 実装計画 §5 |
+| Root directory | 空（repo の直下） | 同上。https://developers.cloudflare.com/pages/configuration/build-configuration/ |
+| 環境変数 | `SKIP_DEPENDENCY_INSTALL` = `1`（自動の依存の導入を止め、Build command の `npm ci` だけで入れる） | 同上 |
+| Node | `.node-version`（`22.23.4`、v3 の構築の image の既定と同じ版）から読む | 同上 |
+| 秘密 | なし（構築は repo の中だけを読み、ネットワークもモデルも使わない） | 同上。実装計画 §5 |
+
+この表の値は納品用 repo の `README.md` の「Cloudflare Pages settings」と同じでなければならない（違ったら README が正しい）。実際の Pages のプロジェクトではまだ試していない。
 
 **費用と無料の上限（Free プラン）**: 構築は月 500 回、同時 1 つ、1 回 20 分まで、1 サイト 20,000 ファイル、1 ファイル 25 MiB、1 アカウント 100 プロジェクト（https://developers.cloudflare.com/pages/platform/limits/）。Pages CMS は「100% free」と案内（https://pagescms.org/）。試験では課金の設定をしない。
 
@@ -58,7 +62,7 @@
 
 | Claude（承認の範囲で） | オーナーだけ |
 |---|---|
-| 架空のデータ・合成の画像・`.pages.yml`・`build.mjs` を作り、ローカルで試験する | GitHub の repo の作成、Pages CMS・Cloudflare へのサインイン、GitHub App の導入と範囲の選択 |
+| 納品用 repo の雛形（架空のデータ・合成の画像・`.pages.yml`・`build.mjs`）を書き出し、ローカルで `npm ci`・`npm run build`・`npm test` で試験する | GitHub の repo の作成、Pages CMS・Cloudflare へのサインイン、GitHub App の導入と範囲の選択 |
 | 試験用 repo へ push するファイル一式を渡す（Claude 自身の push は repo と認証情報を明記した個別の承認がある場合だけ） | Cloudflare のプロジェクトの作成・設定・削除、rollback の操作 |
 | 公開された URL を読み、PC 1440 / SP 390 で撮影し、Q1 の判定をする | 協力者（顧客役）の招待・削除、顧客役でのログインと編集（スマートフォンの実機かどうかを記録） |
 | commit SHA・deployment ID・時刻を集め、報告を書く | 問い合わせの送信、課金、実案件の口座・写真・名前の使用（どれも別の承認） |

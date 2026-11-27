@@ -50,7 +50,7 @@ export const TEMPLATE_FILES: Record<string, string> = {
   "package-lock.template.json": "package-lock.json",
   "tests/template.test.mjs": "tests/template.test.mjs",
 };
-export const NODE_VERSION = "22";
+export const NODE_VERSION = "22.23.4";
 
 export class ExportError extends Error {
   constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN", detail: string) {

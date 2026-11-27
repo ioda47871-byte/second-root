@@ -38,7 +38,7 @@ Cloudflare への deploy、本番は、今までどおり**別にオーナーの
         |
         | Pages CMS（hosted）で顧客が編集 → GitHub へコミット
         v
-Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 `dist/`。サーバーなし）
+Cloudflare Pages（Git 連携。コミットごとに `npm ci && npm run build`（= `build.mjs`）、出力 `dist/`。サーバーなし。設定の正本は納品用 repo の雛形の `experiments/pages-cms/delivery-template/README.md`）
 ```
 
 - **共通にするのは情報の形・読み込み・`.pages.yml` の生成・構築の手順だけ。** 頁の構図・CSS・ラベルの言葉はその店のコードで、
@@ -105,7 +105,7 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 
 ## 5. 静的出力と Cloudflare Pages（§6.1 の 12）
 
-- 構築は `node build.mjs`（納品の repo では依存の少ない Node のスクリプトにする。実験は TypeScript の `build.ts`）、出力は `dist/`（`index.html`・`style.css`・`media/`）。
+- 構築は `npm ci && npm run build`（納品の repo の `build.mjs`。依存は納品の repo 自身の `package.json` に版を固定した sharp・tsx・zod だけ。頁のコードと検査は実験の `build.ts` ほかをそのまま写す。Issue #380 PR 3）、出力は `dist/`（`index.html`・`style.css`・`media/`）。
   Second Root 本体（Next.js）は static export しない。
 - 秘密の情報は要らない（構築は repo の中のファイルだけを読む）。トークンを頁・repo・記録に置かない。Deploy Hook は使わない。
 - 写真の最適化（縮小・WebP）は構築では行わない（今は元のファイルをそのまま写す）。上限は §5.1（PR (4)）。
@@ -273,7 +273,7 @@ Cloudflare Pages（Git 連携。コミットごとに `node build.mjs`、出力 
 |---|---|---|
 | 10 content への分離 | §2・§3 | 情報の形・読み込み・検査・架空の店の差し込みを実装（`experiments/pages-cms/`） |
 | 11 `.pages.yml` | §4 | 生成と文書との照合を実装。実際の Pages CMS では未確認 |
-| 12 静的出力と Cloudflare Pages | §5 | ローカルの構築だけ。`build.mjs`（依存の少ない形）と Cloudflare での構築は未着手 |
+| 12 静的出力と Cloudflare Pages | §5 | ローカルの構築と、納品用 repo の雛形（`export-delivery.ts`、`build.mjs`、Issue #380 PR 3）。Cloudflare での構築は未着手 |
 | 13 Q1 | §6 | 試験の content と PC/SP の判定のスクリプトを実装。正式な店舗の頁では未実施 |
 | 14 Q2〜Q4 | §7 | 手順の案だけ。stub/mock の実装は次の段 |
 

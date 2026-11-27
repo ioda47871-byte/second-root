@@ -26,7 +26,7 @@ project; that needs the owner's approval.
 | Build output directory | `dist` |
 | Root directory | (empty: the repository root) |
 | Environment variable | `SKIP_DEPENDENCY_INSTALL` = `1` (the build command installs the exact lockfile versions itself) |
-| Node.js | from `.node-version` (`22`) |
+| Node.js | from `.node-version` (`22.23.4`, the v3 build image's default) |
 
 No other variables or secrets are needed. The build image runs Linux x86_64, where the pinned `sharp` installs its
 prebuilt binary from the npm registry.
