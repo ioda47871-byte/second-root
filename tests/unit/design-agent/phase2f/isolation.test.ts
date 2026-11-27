@@ -233,15 +233,16 @@ describe("DEV-196r: the sales packaging script takes only renderPrototype from p
       "playwright",
     ]);
   });
-  it("DEV-364 PR 3b: final-approval.ts gives only approvedFinal and FinalApprovalStop, used only inside the IMAGE_FIRST mode", () => {
+  it("DEV-364 PR 3b / 3c: final-approval.ts gives only approvedFinal, FinalApprovalStop and readPrivateRecord, used only inside the IMAGE_FIRST mode", () => {
     const source = readFileSync(resolve(REPO, SALES_PACKAGE), "utf8");
     const named = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].filter((m) => m[3] === "../../../lib/design-agent/imagefirst-worker/final-approval").flatMap((m) => m[2]!.split(",").map((n) => n.trim()).filter(Boolean));
-    expect(named.sort()).toEqual(["FinalApprovalStop", "approvedFinal"]);
+    // #379 review Low: plus readPrivateRecord (the owner's depiction confirmation read as a private record)
+    expect(named.sort()).toEqual(["FinalApprovalStop", "approvedFinal", "readPrivateRecord"]);
     const start = source.indexOf("async function imageFirstPackage(");
     expect(start).toBeGreaterThan(0);
     const body = source.slice(start);
     const outside = source.slice(0, start).replace(/^import[^\n]*final-approval[^\n]*$/m, "").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(outside).not.toMatch(/\bapprovedFinal\b|\bFinalApprovalStop\b/);
+    expect(outside).not.toMatch(/\bapprovedFinal\b|\bFinalApprovalStop\b|\breadPrivateRecord\b/);
     expect(body).toMatch(/\bapprovedFinal\(/);
     // the existing modes reach it only through the one flag check
     expect(source.match(/imageFirstPackage\(/g)).toHaveLength(2);

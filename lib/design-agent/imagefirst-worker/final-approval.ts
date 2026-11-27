@@ -738,3 +738,15 @@ export async function approvedFinal(o: FinalInputs & { reviewPath: string; appro
   const am = c.evidence.approvedMaterials;
   return { design: c.design, build_files_sha256: c.build_files_sha256, files: c.evidence.site.files, contents: c.evidence.site.contents, pictures, materials_generation: am?.generation ?? null, materials_request_id: am?.request_id ?? null, review_sha256: c.review_sha256, page_sha256: c.page_sha256, approval_sha256: c.approval!.sha256 };
 }
+
+/**
+ * DEV-364 PR 3c (#379 review Low): a private record a packager relies on (e.g. the owner's depiction confirmation), read
+ * with the records' rules — outside the repository (links resolved), a regular file, no link at the last step, one link,
+ * small — and ours, not readable by others (0600). Returns its bytes and their SHA-256, or a FinalApprovalStop.
+ */
+export async function readPrivateRecord(path: string, repo: string): Promise<{ bytes: Buffer; sha256: string }> {
+  await readFinalRecord(path, repo);
+  const bytes = await readNoFollow(resolve(path), RECORD_MAX_BYTES, "FINAL_RECORD_UNSAFE", "FINAL_RECORD_TOO_LARGE", true);
+  if (!bytes) return stop("FINAL_RECORD_MISSING");
+  return { bytes, sha256: sha256(bytes) };
+}

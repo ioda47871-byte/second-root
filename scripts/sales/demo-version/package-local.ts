@@ -79,7 +79,11 @@
  *     `model` is the image run's SESSION model, and says so (generator text and model_role
  *     "run_session_model_image_model_not_reported"): the image model itself is not reported;
  *   - the owner's per-photo depiction confirmation (--depiction-confirmation, sr_imagefirst_depiction_confirmation_v1;
- *     never replaced by the materials approval): every picture listed, nothing real (IMAGE_FIRST_DEPICTION_* / _DEPICTS_REAL);
+ *     never replaced by the materials approval), read as a private record (outside the repository, ours, 0600, no link)
+ *     and bound by its SHA-256 (depiction_confirmation_sha256 in the output and the package's local record): every
+ *     picture listed, nothing real (IMAGE_FIRST_DEPICTION_* / _DEPICTS_REAL);
+ *   - the image records' rights AWAITING THE OWNER'S CONFIRMATION (set here for internal proposal materials):
+ *     allowed_uses { edit: false, crop: true, commercial: false, public_web: false } and rights_expiry: null;
  *   - each picture converted with the existing convertPhoto (WebP within the server's limit, same pixel size); only its
  *     <img src> rewritten (assets/<name>.png → photos/<name>-desktop.webp; CSS may not name a picture; a marker proof
  *     that nothing else changed); renders at PC 1440 / SP 390; buildPackage's own server checks;
@@ -97,7 +101,7 @@ import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
 import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib/demo-version-package/local-inputs";
 import { convertPhoto } from "../../../lib/demo-version-package/photos";
-import { approvedFinal, FinalApprovalStop } from "../../../lib/design-agent/imagefirst-worker/final-approval";
+import { approvedFinal, FinalApprovalStop, readPrivateRecord } from "../../../lib/design-agent/imagefirst-worker/final-approval";
 import { buildPackage, insideRepo, PackageError, swapCopyInput, writePackage } from "../../../lib/demo-version-package/package";
 import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
 
@@ -435,9 +439,18 @@ async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_
   const prov = imageFirstProvenance(approved.materials_generation, approved.materials_request_id);
   if ("code" in prov) return fail(prov.code);
   // the owner's per-photo depiction confirmation (never replaced by the materials approval)
+  // #379 review Low: read with the private-record rules (outside the repository, ours, 0600, no link, a regular file); its
+  // SHA-256 is recorded in the output, so the package shows which owner confirmation it relied on
+  let depictionRecord: { bytes: Buffer; sha256: string };
+  try {
+    depictionRecord = await readPrivateRecord(resolve(o["--depiction-confirmation"]!), REPO);
+  } catch (e) {
+    if (e instanceof FinalApprovalStop) return fail("IMAGE_FIRST_DEPICTION_UNREADABLE", [e.code]);
+    throw e;
+  }
   let depictions: { sha256: string; depicts_real_product: unknown; depicts_real_interior: unknown; depicts_real_equipment: unknown; confirmation: unknown }[];
   try {
-    const d = JSON.parse(readFileSync(resolve(o["--depiction-confirmation"]!), "utf8")) as { schema?: unknown; photos?: unknown };
+    const d = JSON.parse(depictionRecord.bytes.toString("utf8")) as { schema?: unknown; photos?: unknown };
     if (d.schema !== IMAGE_FIRST_DEPICTION_SCHEMA || !Array.isArray(d.photos)) return fail("IMAGE_FIRST_DEPICTION_INVALID");
     depictions = d.photos as typeof depictions;
   } catch {
@@ -521,7 +534,7 @@ async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_
   } catch {
     commit = null;
   }
-  const pkg = await buildPackageFor(rewritten, css, renders, photos, images, commit, { conversions, transforms: transforms.map((t) => ({ source_sha256: t.source_sha256, delivered_sha256: t.delivered_sha256 })), model_role: IMAGE_FIRST_MODEL_ROLE, final_approval_sha256: approved.approval_sha256 });
+  const pkg = await buildPackageFor(rewritten, css, renders, photos, images, commit, { conversions, transforms: transforms.map((t) => ({ source_sha256: t.source_sha256, delivered_sha256: t.delivered_sha256 })), model_role: IMAGE_FIRST_MODEL_ROLE, final_approval_sha256: approved.approval_sha256, depiction_confirmation_sha256: depictionRecord.sha256 });
   if (typeof pkg === "string") return fail(pkg);
   const photoFiles = pkg.manifest.files.filter((f) => f.role === "photo");
   const problems = checkImageFirstTransforms(transforms, approved.pictures, photoFiles);
@@ -546,6 +559,7 @@ async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_
     package_bundle_sha256: pkg.bundleSha256,
     transforms: transforms.map((t) => ({ source: t.source, source_sha256: t.source_sha256, stored: t.stored, delivered_sha256: t.delivered_sha256 })),
     provenance_model_role: IMAGE_FIRST_MODEL_ROLE,
+    depiction_confirmation_sha256: depictionRecord.sha256,
     converted: true,
     uploadable_demo_package: true,
     note: "local only: nothing uploaded, published or sent",

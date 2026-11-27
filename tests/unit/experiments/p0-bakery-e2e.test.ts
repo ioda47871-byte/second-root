@@ -357,6 +357,9 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     const back = readPackage(join(packed.out, "package"));
     expect(back.manifest.files.filter((f) => f.role === "photo").map((f) => f.name)).toEqual(["page/photos/photo_1-desktop.webp", "page/photos/photo_3-desktop.webp"]);
     expect(back.images.map((i) => [i.source_kind, i.provenance.model, i.allowed_uses.public_web])).toEqual([["ai_generated_demo", "mock-session-model", false], ["ai_generated_demo", "mock-session-model", false]]);
+    // #379 review Low: the package shows which owner confirmation it relied on (its SHA-256, in both records)
+    expect((manifest as unknown as { depiction_confirmation_sha256: string }).depiction_confirmation_sha256).toBe(sha(readFileSync(depPath)));
+    expect((JSON.parse(readFileSync(join(packed.out, "package", "package.json"), "utf8")) as { local: { depiction_confirmation_sha256: string } }).local.depiction_confirmation_sha256).toBe(sha(readFileSync(depPath)));
     // the output folder is private
     expect(statSync(packed.out).mode & 0o077).toBe(0);
     // the existing modes never package IMAGE_FIRST output (the staged site, or the packaged site copy)
@@ -390,6 +393,14 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     expect(await refused({})).toBe("IMAGE_FIRST_DEPICTS_REAL");
     write(depPath, depiction());
     expect(await refused({}, ["--depiction-confirmation"])).toBe("exit 2");
+    // #379 review Low: the confirmation is read as a private record: readable by others, through a link, or inside the repository → refused
+    chmodSync(depPath, 0o644);
+    expect(await refused({})).toBe("IMAGE_FIRST_DEPICTION_UNREADABLE");
+    chmodSync(depPath, 0o600);
+    const depLink = join(tmp("sr-p0-deplink-"), "depiction-confirmation.json");
+    symlinkSync(depPath, depLink);
+    expect(await refused({ "--depiction-confirmation": depLink })).toBe("IMAGE_FIRST_DEPICTION_UNREADABLE");
+    expect(await refused({ "--depiction-confirmation": join(REPO, "package.json") })).toBe("IMAGE_FIRST_DEPICTION_UNREADABLE");
     // a bad output folder: readable by others, a file, inside the repository
     const open = tmp();
     chmodSync(open, 0o755);
