@@ -89,9 +89,10 @@ schema only". With `merge: true`, keys outside the schema are kept, but arrays f
 arrays (https://pagescms.org/docs/configuration/settings/; `route.ts`: `mergeWith`, arrays replaced). So any field we
 keep out of `.pages.yml` is lost the next time the customer saves that entry, for example a job photo's `imageKind`
 (B, shop-provided) or a menu item's `shop_provided`. In practice, Second Root's B marking on an entry does not survive
-a customer save, and the build then stops with `CONTENT_PHOTO_CLASS_MIXED`, keeping the last good page. PR 3 handles this: the B class follows the picture's bytes (the B index), not the entry. An entry whose class became C
-in a save stays B, and its rights record is still required. The delivery template's test "content as Pages CMS saves
-it" drops the class the way Pages CMS does, and the page still builds.
+a customer save, and the build then stops with `CONTENT_PHOTO_CLASS_MIXED`, keeping the last good page. PR 3 handles
+this: the B class follows the picture's bytes (the B index), not the entry. An entry whose class became C in a save
+stays B, and its rights record is still required. The delivery template's test "content as Pages CMS saves it" drops
+the class the way Pages CMS does, and the page still builds.
 
 ## 4. The plan: build-time resize in the delivery repository (PR 3)
 
