@@ -130,7 +130,7 @@ Decap https://decapcms.org/docs/github-backend/ ・ https://github.com/decaporg/
 ## 5. オーナーへの問い
 
 1. §1 の実環境の試験を行うか（行うなら日時。11/30 より前か）。repo の名義と、Claude に試験用 repo への push を許すか。
-2. Cloudflare の App の Administration 読み書き、Pages CMS の App の `repository_creation` 書き込み（どちらも確認書 §3）を、試験用 repo に限る前提で認めるか。
+2. Cloudflare の App の Administration 読み書きを試験用 repo に限って認めるか。Pages CMS の App の `repository_creation` 書き込み（App を入れたアカウントに repo を作れる。試験用 repo だけには限れない）を認めるか（どちらも確認書 §3）。
 3. Pages CMS の運営者への問い合わせ（`pages-cms-hosted-terms.md` §6 の更新版、未送信）を送るか。名義は誰か。最終確認の依頼は [`cms-live-trial-confirmation.md`](cms-live-trial-confirmation.md)、第二の案の評価は [`cms-sveltia-evaluation.md`](cms-sveltia-evaluation.md)。
 4. Brot Yanagi のサイトで使っている CMS は何か（再利用の可否を判断するため）。
 5. 第二の案を Sveltia CMS と microCMS のどちらで用意するか（またはその両方を比べる試験をするか）。
