@@ -71,7 +71,7 @@ export async function buildSite(o: { repo: string; outDir: string; today: string
 
 /** Writes the generated .pages.yml at the repository root (the CMS configuration, derived from the content model). */
 export async function writePagesYaml(repo: string, site: ShopSite = BAKERY_SITE): Promise<string> {
-  const text = pagesYaml({ extensions: site.profile.extensions });
+  const text = pagesYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) });
   await writeFile(join(repo, ".pages.yml"), text);
   return text;
 }

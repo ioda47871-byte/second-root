@@ -31,7 +31,7 @@ import { createHash } from "node:crypto";
 import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { ContentError, type ShopContent, type ShopProfile, viewOf } from "./content-model";
+import { ContentError, type ShopContent, type ShopProfile, shownPictures } from "./content-model";
 import { imageMeta, isHeif, type ImageMeta } from "./image-meta";
 import { CLASS_OF, customerRecord, loadProvenanceIndex, loadRightsRecord, PROVENANCE_SCHEMA, type Provenance } from "./provenance";
 
@@ -55,9 +55,12 @@ export function checkPhoto(file: string, bytes: Buffer): PhotoCheck {
   return { file, bytes: bytes.length, format: meta.format, width, height, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
-/** Every picture the page shows (visible items in visible categories), checked; the media/ file names in order. */
+/**
+ * Every picture the page shows (visible items in visible categories; Issue #380: and the shown works' photos), checked;
+ * the media/ file names in order.
+ */
 export async function checkPhotos(repo: string, content: ShopContent, profile?: ShopProfile): Promise<PhotoCheck[]> {
-  const shown = viewOf(content).sections.flatMap((s) => s.items).filter((m) => m.image);
+  const shown = shownPictures(content);
   const names = [...new Set(shown.map((m) => m.image.replace(/^\/media\//, "")))].sort();
   const out: PhotoCheck[] = [];
   for (const n of names) {
@@ -72,7 +75,7 @@ export async function checkPhotos(repo: string, content: ShopContent, profile?: 
   // review #365 M1: a delivered generated material stays labelled whatever the item says
   const generated = await loadGeneratedRecord(repo, profile?.generatedDelivered === true);
   const shaOf = new Map(out.map((p) => [p.file, p.sha256]));
-  for (const m of shown) if (m.imageKind !== "generated" && generated.has(shaOf.get(m.image.replace(/^\/media\//, ""))!)) throw new ContentError("CONTENT_GENERATED_AS_SHOP", `menu/${m.id}`);
+  for (const m of shown) if (m.imageKind !== "generated" && generated.has(shaOf.get(m.image.replace(/^\/media\//, ""))!)) throw new ContentError("CONTENT_GENERATED_AS_SHOP", m.ref);
   return out;
 }
 
@@ -120,20 +123,20 @@ export async function photoProvenance(repo: string, content: ShopContent, photos
   const handover = await loadGeneratedEntries(repo);
   const index = await loadProvenanceIndex(repo);
   const shaOf = new Map(photos.map((p) => [p.file, p.sha256]));
-  const shown = viewOf(content).sections.flatMap((s) => s.items).filter((x) => x.image);
+  const shown = shownPictures(content);
   // review #371 M1 (owner rule: A / B / C never mixed): the class belongs to the picture's bytes, not to the item
   for (const e of handover) if (index.has(e.sha256)) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", e.file);
   const classOfSha = new Map<string, "A" | "B" | "C">();
   for (const m of shown) {
     const sha256 = shaOf.get(m.image.replace(/^\/media\//, ""))!;
     const cls = CLASS_OF[m.imageKind];
-    if (index.has(sha256) && cls !== "B") throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", `menu/${m.id}`);
+    if (index.has(sha256) && cls !== "B") throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", m.ref);
     const seen = classOfSha.get(sha256);
-    if (seen && seen !== cls) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", `menu/${m.id}`);
+    if (seen && seen !== cls) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", m.ref);
     classOfSha.set(sha256, cls);
     // review #371 L3: Second Root's delivery build never places a customer's picture. Delivery is its own explicit
     // option: an audit given the private folder (without delivery) keeps the customer's legitimate C pictures.
-    if (o.delivery && cls === "C") throw new ContentError("CONTENT_DELIVERY_CUSTOMER_PHOTO", `menu/${m.id}`);
+    if (o.delivery && cls === "C") throw new ContentError("CONTENT_DELIVERY_CUSTOMER_PHOTO", m.ref);
   }
   const out: PhotoProvenance[] = [];
   for (const m of shown) {

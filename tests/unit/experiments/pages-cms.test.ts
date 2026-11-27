@@ -505,7 +505,7 @@ describe("DEV-303 Pages CMS (3): the shop-site interface and a second, non-baker
     expect(yml).toBe(pagesYaml({ extensions: CAFE_SITE.profile.extensions }));
     expect(yml).toContain('name: "sizes"');
     expect(yml).not.toMatch(/name: "allergens"|name: "shelfLife"/);
-    expect(SHOP_SITES.map((s) => s.id)).toEqual(["bakery", "cafe"]);
+    expect(SHOP_SITES.map((s) => s.id)).toEqual(["bakery", "cafe", "auto"]);
     // the phone checks' facts: distinct, the shop's details first, within the measure's limit of 200
     const content = await loadContent((await buildOf(CAFE_SITE, "items-50")).repo, CAFE_SITE.profile);
     const { facts, truncated } = factsOf(content);
@@ -608,7 +608,8 @@ describe("DEV-303 Pages CMS (4): photos — header-only size limits, generated v
   });
 
   it("a generated material is shown in a <figure> with <figcaption>イメージ</figcaption>; a shop photo is not labelled — both shops", async () => {
-    for (const site of SHOP_SITES) {
+    // (Issue #380: the car-care shop shows no generated material — the model refuses one for a job; pages-cms-auto.test.ts)
+    for (const site of [BAKERY_SITE, CAFE_SITE]) {
       const siteRepo = join(tmp(), "repo");
       await writeFixture(siteRepo, site.fixtures()["photos-large-odd"]!);
       const r = await buildSite({ repo: siteRepo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site });
@@ -655,7 +656,7 @@ describe("DEV-303 Pages CMS (4): photos — header-only size limits, generated v
     // a broken record stops the build; the record is nowhere in the CMS configuration
     writeFileSync(join(repo, GENERATED_RECORD), "{}");
     await expect(buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY })).rejects.toMatchObject({ code: "CONTENT_INVALID" });
-    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions })).not.toMatch(/generated-materials/);
+    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions, collections: site.profile.collections })).not.toMatch(/generated-materials/);
   });
 
   it("#365 re-review: only a missing record means none; any other read error stops; a shop that received generated materials must have it", async () => {
@@ -749,7 +750,7 @@ describe("DEV-364 PR 2a: photo provenance A (generated) / B (shop_provided, righ
     expect(secondRoot.provenance.find((p) => p.class === "B")!.record).toMatchObject({ class: "B", provided_by: "店主", permission: { confirmed_at: "2026-11-26", confirmed_by: "Second Root 担当" } });
     expect(secondRoot.provenance.some((p) => p.class === "C")).toBe(false);
     // the index and the private records are nowhere in the CMS configuration
-    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions })).not.toMatch(/photo-provenance|provenance/);
+    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions, collections: site.profile.collections })).not.toMatch(/photo-provenance|provenance/);
   });
 
   it("an A record names the material and its approval when the handover says so", async () => {

@@ -8,7 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { createHash } from "node:crypto";
-import type { Announcement, Category, ImageKind, MenuItem, ShopInfo } from "./content-model";
+import type { Announcement, Category, ImageKind, MenuItem, ShopInfo, Work } from "./content-model";
 import { PROVENANCE_INDEX, PROVENANCE_SCHEMA, rightsFiles, type ProvenanceB } from "./provenance";
 import { GENERATED_RECORD, generatedRecord } from "./photos";
 import { PHOTO_SLOTS_FILE, PHOTO_SLOTS_SCHEMA, SLOT_FRAME_RATIOS, type ApprovedDesign, type PhotoSlots, type SlotView } from "./photo-slots";
@@ -66,6 +66,8 @@ export type Fixture = {
   /** DEV-364 PR 2b: the material id of each handed-over generated file (written into the handover record), and the photo-slot spec. */
   materials?: Record<string, string>;
   slots?: PhotoSlots;
+  /** Issue #380: the 施工実績 (content/works/), for a site that turns the collection on. */
+  works?: Work[];
 };
 
 /** Where a fixture's private B records go: a folder next to the fixture's repository, never inside it. */
@@ -232,6 +234,10 @@ export async function writeFixture(dir: string, fx: Fixture): Promise<void> {
   for (const c of fx.categories) await writeFile(join(dir, "content", "categories", `${c.id}.json`), json(c));
   for (const m of fx.menu) await writeFile(join(dir, "content", "menu", `${m.id}.json`), json(m));
   for (const n of fx.news) await writeFile(join(dir, "content", "news", `${n.id}.json`), json(n));
+  if (fx.works) {
+    await mkdir(join(dir, "content", "works"), { recursive: true });
+    for (const w of fx.works) await writeFile(join(dir, "content", "works", `${w.id}.json`), json(w));
+  }
   for (const [name, bytes] of Object.entries(fx.media)) await writeFile(join(dir, "media", name), bytes);
   if (fx.generated) {
     const record = generatedRecord(Object.fromEntries(fx.generated.map((n) => [n, fx.media[n]!])));
