@@ -73,6 +73,11 @@ describe("Issue #380: iPhone photos against today's limits (synthetic)", () => {
       expect(imageMeta(heic(major, [...compat])), major).toBeNull();
     }
     expect(isHeif(heic("isom", ["mp41"]))).toBe(false); // an MP4, not HEIF
+    // an ftyp box claiming to run to the end (size 0) or a huge size is read only to its first 64 bytes
+    const runaway = heic("isom", ["mp41"]);
+    runaway.writeUInt32BE(0xffffffff, 0);
+    runaway.write("heic", 200, "latin1");
+    expect(isHeif(runaway)).toBe(false);
     expect(isHeif(phoneJpeg(4032, 3024, 4096))).toBe(false);
     // a HEIC renamed .jpg (reported for converted / shared files) is named for what it is
     expect(codeOf(() => checkPhoto("IMG_0008.jpg", heic()))).toBe("CONTENT_PHOTO_HEIC");
@@ -100,6 +105,10 @@ describe("Issue #380: iPhone photos against today's limits (synthetic)", () => {
     expect(await withImage("IMG_0001.HEIC", heic())).toBe("CONTENT_INVALID content/menu/item-1.json");
     expect(await withImage("IMG_0001.jpg", heic())).toBe("CONTENT_PHOTO_HEIC IMG_0001.jpg");
     expect(await withImage("IMG_0002.JPG", phoneJpeg(4032, 3024, 4 * MB))).toBe("CONTENT_PHOTO_TOO_LARGE IMG_0002.JPG");
+    // #384 review M: a typical 1.5–3 MB HEIC saved as .jpg is named HEIC first (never "make it smaller" first)
+    const bigHeic = Buffer.concat([heic(), Buffer.alloc(3 * MB)]);
+    expect(await withImage("big.jpg", bigHeic)).toBe("CONTENT_PHOTO_HEIC big.jpg");
+    expect(codeOf(() => checkPhoto("big.jpg", bigHeic))).toBe("CONTENT_PHOTO_HEIC");
   });
 
   it("every photo code has plain customer advice; the HEIC advice names the iPhone setting (互換性優先) and the limits match PHOTO_LIMITS", () => {
