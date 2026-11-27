@@ -9,6 +9,9 @@
  * type exif / APP1 / xmp" text chunks (inflated with node:zlib, bounded), and JPEG Extended XMP (its parts joined). What
  * it cannot read is reported in `unknown` — never as "no GPS": a HEIF / HEIC file, any other non-JPEG / PNG / WebP
  * bytes, a compressed chunk that does not inflate, an oversized one.
+ * Kit re-review Low: also a damaged file — an Exif block whose TIFF does not parse ("exif unreadable"), and a JPEG /
+ * PNG / WebP whose segments or chunks end before the image data / IEND / the end of the file ("<format> truncated"):
+ * metadata after the damage cannot be ruled out, so such a file is never read as "no GPS".
  */
 import { inflateSync } from "node:zlib";
 
@@ -72,7 +75,7 @@ function merge(scan: MetaScan, tiff: Buffer | null, xmpText: string | null): Met
       out.exif = true;
       out.gps ||= t.gps;
       out.orientation ??= t.orientation;
-    }
+    } else out.unknown.push("exif unreadable");
   }
   if (xmpText !== null) {
     out.xmp = true;
@@ -85,14 +88,23 @@ function jpeg(b: Buffer): MetaScan {
   let scan = fresh();
   const extended: Buffer[] = [];
   let i = 2;
-  for (let guard = 0; guard < 1000 && i + 4 <= b.length; guard++) {
+  let ended = false; // reached the image data (SOS) or the end of the image (EOI) normally
+  for (let guard = 0; guard < 1000 && i + 2 <= b.length; guard++) {
     if (b[i] !== 0xff) break;
     const marker = b[i + 1]!;
+    if (marker === 0xff) {
+      i += 1; // a fill byte before the marker
+      continue;
+    }
     if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
       i += 2;
       continue;
     }
-    if (marker === 0xda || marker === 0xd9) break; // image data: no more metadata segments
+    if (marker === 0xda || marker === 0xd9) {
+      ended = true; // image data: no more metadata segments
+      break;
+    }
+    if (i + 4 > b.length) break;
     const len = b.readUInt16BE(i + 2);
     if (len < 2 || i + 2 + len > b.length) break;
     const body = b.subarray(i + 4, i + 2 + len);
@@ -103,6 +115,7 @@ function jpeg(b: Buffer): MetaScan {
     i += 2 + len;
   }
   if (extended.length) scan = merge(scan, null, Buffer.concat(extended).toString("utf8"));
+  if (!ended) scan.unknown.push("jpeg truncated");
   return scan;
 }
 
@@ -151,9 +164,10 @@ function png(b: Buffer): MetaScan {
         }
       }
     }
-    if (type === "IEND") break;
+    if (type === "IEND") return scan;
     i += 12 + len;
   }
+  scan.unknown.push("png truncated");
   return scan;
 }
 
@@ -169,6 +183,7 @@ function webp(b: Buffer): MetaScan {
     else if (type === "XMP ") scan = merge(scan, null, body.toString("utf8"));
     i += 8 + len + (len % 2);
   }
+  if (i < b.length) scan.unknown.push("webp truncated");
   return scan;
 }
 

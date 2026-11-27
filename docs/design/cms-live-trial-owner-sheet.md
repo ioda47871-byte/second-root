@@ -197,7 +197,7 @@ Decap https://decapcms.org/docs/github-backend/ ・ https://github.com/decaporg/
 - repo は非公開だが、repo に入れる人（オーナー、Pages CMS の App、Cloudflare の App）は元の写真の位置情報を読める。
 - **公開の写真の合格の条件**は A.6 のとおり（`TOOL images` が exit 0 で、測れなかった写真が無いこと）。測れなかった写真（HTTP 200 でない、形式が分からない、メタデータが読めない）は `failures` に出る。それを「GPS 無し」と読まない。
 - **道具が読めるもの・読めないもの**（`exif-scan.ts`）: JPEG の Exif と XMP（Extended XMP をつないだもの）、PNG の eXIf・XMP（圧縮も含む）・ImageMagick の「Raw profile type exif / APP1 / xmp」、WebP の EXIF・XMP。
-  読めないもの（`unknown` として出し、`TOOL originals` では `unscannable` に並ぶ）: HEIC・HEIF・AVIF、JPEG・PNG・WebP 以外の形式、展開できない圧縮のかたまり。これらに位置情報が無いとは言えないので、手で確かめる（例: Mac のプレビューの「情報を見る」）。
+  読めないもの（`unknown` として出し、`TOOL originals` では `unscannable` に並ぶ）: HEIC・HEIF・AVIF、JPEG・PNG・WebP 以外の形式、展開できない圧縮のかたまり、壊れた・途中で切れたファイル（読めない Exif を含む）。これらに位置情報が無いとは言えないので、手で確かめる（例: Mac のプレビューの「情報を見る」）。
   そのほか、知られていない置き場所（独自のメーカーの領域など）は調べていない。
 - **案（どれも今は作らない。決めるのはオーナー）**:
   1. 顧客に、店の写真を撮るカメラの位置情報を切ってもらう（iPhone は「設定」→「プライバシーとセキュリティ」→「位置情報サービス」→「カメラ」→「なし」。Apple の文書での確認は未）。

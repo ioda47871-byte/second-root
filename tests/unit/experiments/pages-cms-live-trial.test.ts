@@ -1,5 +1,6 @@
 import { deflateSync } from "node:zlib";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -83,7 +84,7 @@ describe("exif-scan: metadata from the bytes", () => {
     expect(scanMeta(solidPng(320, 320, [1, 2, 3]))).toMatchObject({ exif: false, gps: false });
   });
 
-  it("PNG eXIf and WebP EXIF chunks are read; cut or malformed blocks read as nothing, never a crash", () => {
+  it("PNG eXIf and WebP EXIF chunks are read; cut or malformed blocks never crash and are reported as unknown (never 'no GPS')", () => {
     const t = tiff({ gps: true });
     const png = solidPng(320, 320, [1, 2, 3]);
     const chunk = Buffer.concat([Buffer.alloc(4), Buffer.from("eXIf"), t, Buffer.alloc(4)]);
@@ -96,8 +97,24 @@ describe("exif-scan: metadata from the bytes", () => {
     const webp = Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP"), ex]);
     expect(scanMeta(webp)).toMatchObject({ exif: true, gps: true });
     expect(scanTiff(Buffer.from("IIxx"))).toBeNull();
+    // kit re-review Low (an intended rule change): a damaged file is unknown, not "no GPS"
     const full = jpeg(800, 600, { exif: tiff({ orientation: 6, gps: true }) });
-    for (let cut = 2; cut < full.length; cut += 7) expect(() => scanMeta(full.subarray(0, cut))).not.toThrow();
+    for (let cut = 2; cut < full.length; cut++) {
+      const r = scanMeta(full.subarray(0, cut));
+      expect(r.unknown.length > 0, `cut at ${cut}`).toBe(true);
+    }
+    expect(scanMeta(full).unknown).toEqual([]);
+    // an Exif block whose TIFF does not parse
+    expect(scanMeta(jpeg(800, 600, { exif: Buffer.from("IIxx not a tiff") })).unknown).toEqual(["exif unreadable"]);
+    const badPng = solidPng(320, 320, [1, 2, 3]);
+    const badChunk = Buffer.concat([Buffer.from([0, 0, 0, 4]), Buffer.from("eXIf"), Buffer.from("IIxx"), Buffer.alloc(4)]);
+    expect(scanMeta(Buffer.concat([badPng.subarray(0, badPng.length - 12), badChunk, badPng.subarray(badPng.length - 12)])).unknown).toEqual(["exif unreadable"]);
+    // a PNG cut before IEND, a WebP whose chunk runs past the end, a JPEG with garbage before SOS
+    expect(scanMeta(badPng.subarray(0, badPng.length - 12)).unknown).toEqual(["png truncated"]);
+    expect(scanMeta(webp.subarray(0, webp.length - 3)).unknown).toEqual(["webp truncated"]);
+    expect(scanMeta(Buffer.concat([Buffer.from([0xff, 0xd8, 0x00, 0x11]), full.subarray(2)])).unknown).toEqual(["jpeg truncated"]);
+    // fill bytes before a marker are allowed (the Exif after them is still read)
+    expect(scanMeta(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xff]), full.subarray(2)]))).toMatchObject({ gps: true, orientation: 6, unknown: [] });
     expect(scanMeta(Buffer.from("not an image"))).toMatchObject({ exif: false, gps: false });
   });
 });
@@ -334,6 +351,27 @@ describe("kit review M1 / L1 / L2: images reports what it could not measure; red
       expect(r.with_gps).toEqual([]);
     } finally {
       rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("live-trial-data.mjs refuses an output folder inside Second Root or inside a git repository (kit review L5)", () => {
+  const script = join(__dirname, "../../../experiments/pages-cms/live-trial-data.mjs");
+  const run = (out: string) => {
+    const r = spawnSync(process.execPath, [script, "--sharp-from", join(tmpdir(), "no-such-trial-repo"), "--out", out], { encoding: "utf8" });
+    return { status: r.status, out: r.stdout.trim() };
+  };
+  it("refuses before writing anything", () => {
+    const inside = join(__dirname, "../../../.live-trial-pack-test");
+    expect(run(inside)).toEqual({ status: 2, out: '{"status":"refused","code":"OUT_IN_SECOND_ROOT"}' });
+    expect(existsSync(inside)).toBe(false);
+    const git = realpathSync(mkdtempSync(join(tmpdir(), "sr-trial-gitrepo-")));
+    try {
+      mkdirSync(join(git, ".git"));
+      expect(run(join(git, "pack"))).toEqual({ status: 2, out: '{"status":"refused","code":"OUT_IN_GIT_REPO"}' });
+      expect(existsSync(join(git, "pack"))).toBe(false);
+    } finally {
+      rmSync(git, { recursive: true, force: true });
     }
   });
 });
