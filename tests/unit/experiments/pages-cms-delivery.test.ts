@@ -26,7 +26,7 @@ const HERE = join(__dirname, "../../../experiments/pages-cms");
 const DESIGN = (() => {
   const d = join(tmp(), "design");
   writeSyntheticDesign(d);
-  return { designDir: d, designRecordDir: d };
+  return { designDir: d, testOnlyDesignRecordDir: d };
 })();
 const shaOf = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
@@ -106,11 +106,21 @@ describe("Issue #380 PR 3: the standalone delivery repository (export)", () => {
   });
 
   it("refuses an output folder inside Second Root, a non-empty one, an unknown site or fixture", async () => {
-    await expect(exportDelivery({ outDir: join(__dirname, "export-here") })).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
+    // #390 review: the output folder is checked before the design pictures (a deterministic order)
+    await expect(exportDelivery({ outDir: join(__dirname, "export-here"), ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
+    await expect(exportDelivery({ outDir: join(__dirname, "export-here"), designDir: join(tmp(), "no-such-folder") })).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
     const full = tmp();
     await expect(exportDelivery({ outDir: full, site: "auto", ...DESIGN }).then(() => exportDelivery({ outDir: full, ...DESIGN }))).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
-    await expect(exportDelivery({ outDir: join(tmp(), "x"), site: "garage" })).rejects.toMatchObject({ code: "EXPORT_SITE_UNKNOWN" });
-    await expect(exportDelivery({ outDir: join(tmp(), "y"), fixture: "nope" })).rejects.toMatchObject({ code: "EXPORT_FIXTURE_UNKNOWN" });
+    await expect(exportDelivery({ outDir: join(tmp(), "x"), site: "garage", ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_SITE_UNKNOWN" });
+    await expect(exportDelivery({ outDir: join(tmp(), "y"), fixture: "nope", ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_FIXTURE_UNKNOWN" });
+    // the test-only record override is refused outside vitest
+    const saved = process.env.VITEST;
+    process.env.VITEST = "false";
+    try {
+      await expect(exportDelivery({ outDir: join(tmp(), "w"), ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_TEST_ONLY" });
+    } finally {
+      process.env.VITEST = saved;
+    }
     // PR #390: design pictures missing, or not the recorded bytes (the committed record with synthetic pictures), refuse
     // before anything is written
     const noDesign = join(tmp(), "z");

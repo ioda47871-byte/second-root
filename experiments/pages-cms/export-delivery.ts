@@ -68,12 +68,13 @@ export const TEMPLATE_FILES: Record<string, string> = {
 export const NODE_VERSION = "22.23.4";
 
 export class ExportError extends Error {
-  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING", detail: string) {
+  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING" | "EXPORT_TEST_ONLY", detail: string) {
     super(`${code} ${detail}`);
     this.name = "ExportError";
   }
 }
 
+/** The output folder's safety, checked first (nothing is created here; writeExport creates it). */
 async function safeOut(outDir: string): Promise<string> {
   const out = resolve(outDir);
   const realRepo = await realpath(REPO);
@@ -82,26 +83,29 @@ async function safeOut(outDir: string): Promise<string> {
   if (!parent || !outside(parent)) throw new ExportError("EXPORT_OUT_UNSAFE", basename(out));
   const st = await lstat(out).catch(() => null);
   if (st && (!st.isDirectory() || st.isSymbolicLink() || (await readdir(out)).length > 0)) throw new ExportError("EXPORT_OUT_UNSAFE", basename(out));
-  await mkdir(out, { recursive: true });
   return out;
 }
 
 /**
  * Writes the standalone repository into <outDir> (absent or empty, outside Second Root). Returns its files.
- * designDir: the outside folder of the design pictures (default DEFAULT_DESIGN_DIR). designRecordDir (tests only): a
- * record to use instead of the committed one (the tests make synthetic pictures and their own record).
+ * designDir: the outside folder of the design pictures (default DEFAULT_DESIGN_DIR). testOnlyDesignRecordDir: a record
+ * to use instead of the committed one — for the unit tests only (they make synthetic pictures and their own record);
+ * refused outside vitest (EXPORT_TEST_ONLY), so a real export always follows the committed record.
+ * Order (#390 review): the site, the fixture, the output folder's safety, then the design pictures, then writing.
  */
-export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string; designDir?: string; designRecordDir?: string }): Promise<string[]> {
+export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string; designDir?: string; testOnlyDesignRecordDir?: string }): Promise<string[]> {
+  if (o.testOnlyDesignRecordDir !== undefined && process.env.VITEST !== "true") throw new ExportError("EXPORT_TEST_ONLY", "testOnlyDesignRecordDir");
   const site = SHOP_SITES.find((s) => s.id === (o.site ?? "auto"));
   if (!site) throw new ExportError("EXPORT_SITE_UNKNOWN", String(o.site));
   const fixtureName = o.fixture ?? (site.id === "auto" ? "works-10" : "items-10");
   const fixture = site.fixtures()[fixtureName];
   if (!fixture) throw new ExportError("EXPORT_FIXTURE_UNKNOWN", fixtureName);
-  // the design pictures first, so a missing or changed picture refuses before anything is written
+  const out = await safeOut(o.outDir);
+  // then the design pictures, so a missing or changed picture refuses before anything is written
   const designScratch = site.design ? await mkdtemp(join(tmpdir(), "sr-export-design-")) : null;
   try {
     const staged = site.design
-      ? await stageDesignPictures(site, o.designDir ?? DEFAULT_DESIGN_DIR, designScratch!, o.designRecordDir)
+      ? await stageDesignPictures(site, o.designDir ?? DEFAULT_DESIGN_DIR, designScratch!, o.testOnlyDesignRecordDir)
           .then(async (s) => {
             await loadDesignMaterials(s.design!);
             return s;
@@ -110,14 +114,14 @@ export async function exportDelivery(o: { outDir: string; site?: string; fixture
             throw new ExportError("EXPORT_DESIGN_MISSING", error instanceof Error ? error.message : "design pictures");
           })
       : site;
-    return await writeExport(o.outDir, site, fixture, staged.design?.dir ?? null);
+    return await writeExport(out, site, fixture, staged.design?.dir ?? null);
   } finally {
     if (designScratch) await rm(designScratch, { recursive: true, force: true });
   }
 }
 
-async function writeExport(outDir: string, site: (typeof SHOP_SITES)[number], fixture: NonNullable<ReturnType<(typeof SHOP_SITES)[number]["fixtures"]>[string]>, stagedDesign: string | null): Promise<string[]> {
-  const out = await safeOut(outDir);
+async function writeExport(out: string, site: (typeof SHOP_SITES)[number], fixture: NonNullable<ReturnType<(typeof SHOP_SITES)[number]["fixtures"]>[string]>, stagedDesign: string | null): Promise<string[]> {
+  await mkdir(out, { recursive: true });
   // the sample content: written by the fixture writer into a scratch folder; only content/ and media/ are taken
   // (a fixture's private B records go next to its folder — they never enter the exported repository)
   const scratch = await mkdtemp(join(tmpdir(), "sr-export-delivery-"));
