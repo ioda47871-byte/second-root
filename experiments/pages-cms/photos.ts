@@ -5,6 +5,8 @@
  *
  *   CONTENT_PHOTO_MISSING      the file named in the content is not in media/
  *   CONTENT_PHOTO_TYPE         not PNG / JPEG / WebP by its bytes, or its bytes disagree with its extension
+ *   CONTENT_PHOTO_HEIC         Issue #380: the bytes are an iPhone's HEIC (HEIF family) whatever the name says — not
+ *                              accepted either; named so the customer can be told what to change (PHOTO_ADVICE)
  *   CONTENT_PHOTO_TOO_LARGE    more than PHOTO_LIMITS.bytes (a phone's full-size photo: ask for a smaller copy)
  *   CONTENT_PHOTO_DIMENSIONS   a side longer than PHOTO_LIMITS.maxSide, or more than PHOTO_LIMITS.maxPixels
  *   CONTENT_PHOTO_TOO_SMALL    a side shorter than PHOTO_LIMITS.minSide (it would show blurred in the frame)
@@ -30,7 +32,7 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { ContentError, type ShopContent, type ShopProfile, shownPictures } from "./content-model";
-import { imageMeta, type ImageMeta } from "./image-meta";
+import { imageMeta, isHeif, type ImageMeta } from "./image-meta";
 import { CLASS_OF, customerRecord, loadProvenanceIndex, loadRightsRecord, PROVENANCE_SCHEMA, type Provenance } from "./provenance";
 
 export const PHOTO_LIMITS = { bytes: 2 * 1024 * 1024, maxSide: 4096, maxPixels: 16_000_000, minSide: 320, maxRatio: 3 } as const;
@@ -43,6 +45,7 @@ export type PhotoCheck = { file: string; bytes: number; format: ImageMeta["forma
 export function checkPhoto(file: string, bytes: Buffer): PhotoCheck {
   const meta = imageMeta(bytes);
   const ext = file.split(".").pop()!.toLowerCase();
+  if (!meta && isHeif(bytes)) throw new ContentError("CONTENT_PHOTO_HEIC", file);
   if (!meta || EXT_FORMAT[ext] !== meta.format) throw new ContentError("CONTENT_PHOTO_TYPE", file);
   if (bytes.length > PHOTO_LIMITS.bytes) throw new ContentError("CONTENT_PHOTO_TOO_LARGE", file);
   const { width, height } = meta;
@@ -73,6 +76,21 @@ export async function checkPhotos(repo: string, content: ShopContent, profile?: 
   for (const m of shown) if (m.imageKind !== "generated" && generated.has(shaOf.get(m.image.replace(/^\/media\//, ""))!)) throw new ContentError("CONTENT_GENERATED_AS_SHOP", m.ref);
   return out;
 }
+
+/**
+ * Issue #380: what to tell the customer when a photo stops the build (plain Japanese, for the owner-operations sheet and
+ * the delivery repository's build message). The build still decides; this only explains. A stopped build keeps the
+ * last good page.
+ */
+export const PHOTO_ADVICE = {
+  CONTENT_PHOTO_MISSING: "写真のファイルが見つかりません。もう一度写真を選び直して保存してください。",
+  CONTENT_PHOTO_TYPE: "この写真の形式は使えません。JPEG・PNG・WebP の写真を選んでください。",
+  CONTENT_PHOTO_HEIC: "iPhone の HEIC 形式の写真は使えません。iPhone の「設定」→「カメラ」→「フォーマット」で「互換性優先」にしてから撮った写真か、JPEG で書き出した写真を選んでください。",
+  CONTENT_PHOTO_TOO_LARGE: `写真のファイルが大きすぎます（${PHOTO_LIMITS.bytes / 1024 / 1024}MB まで）。小さいサイズで書き出した写真を選んでください。`,
+  CONTENT_PHOTO_DIMENSIONS: `写真の画素数が多すぎます（長い辺 ${PHOTO_LIMITS.maxSide}px・${PHOTO_LIMITS.maxPixels / 10_000} 万画素まで）。小さいサイズで書き出した写真を選んでください。`,
+  CONTENT_PHOTO_TOO_SMALL: `写真が小さすぎます（短い辺 ${PHOTO_LIMITS.minSide}px 以上）。もとの大きさの写真を選んでください。`,
+  CONTENT_PHOTO_RATIO: `写真が細長すぎます（縦横の比は ${PHOTO_LIMITS.maxRatio}:1 まで）。切り抜かずに撮った写真を選んでください。`,
+} as const;
 
 export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" | "C"; record: Provenance | null };
 
