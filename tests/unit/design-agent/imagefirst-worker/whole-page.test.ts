@@ -486,7 +486,8 @@ describe("review M1 (integration): inspectCaseStudy names the files that made a 
     cases[0]!.files.unshift({ path: board, sha256: sha(readFileSync(resolve(REPO, board))) });
     const i = await inspectCaseStudy(Buffer.from(JSON.stringify(record)), { repo: REPO });
     expect(i.counted).toEqual(["CP-001", "CP-002", "CP-003"]);
-    expect(i.counting_files["CP-001"]).toEqual([{ path: CASE_STUDY_REPO_FILES[1], sha256: sha(readFileSync(resolve(REPO, CASE_STUDY_REPO_FILES[1]!))) }]);
+    // DEV-364: the index records CP-001's committed WebP as a viewing copy; that status travels with the counting file
+    expect(i.counting_files["CP-001"]).toEqual([{ path: CASE_STUDY_REPO_FILES[1], sha256: sha(readFileSync(resolve(REPO, CASE_STUDY_REPO_FILES[1]!))), copy: "viewing" }]);
     const refs = selectReferenceImages(i);
     expect(refs.map((r) => [r.case_id, r.sha256])).toEqual(["CP-001", "CP-002", "CP-003"].map((id, n) => [id, sha(readFileSync(resolve(REPO, CASE_STUDY_REPO_FILES[n + 1]!)))]));
     expect(refs.map((r) => r.sha256)).not.toContain(sha(readFileSync(resolve(REPO, board))));

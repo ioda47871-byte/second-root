@@ -445,7 +445,28 @@ export function requestSections(facts: FactsPack): RequestSection[] {
  * DEV-303 §6.1 row 3: one success-case original attached to a whole_page run as a reference picture: its staged name
  * (ref-N.<ext>), the case it comes from, its SHA-256 and media type. Never a path (the worker resolved and checked it).
  */
-export type PlanReference = { id: string; case_id: string; name: string; sha256: string; media_type: "image/png" | "image/jpeg" | "image/webp" };
+/**
+ * copy (DEV-364, owner decision 2026-11-27): "viewing" when the originals index records the file as a viewing copy, not
+ * the original. Absent for an original, so a plan of originals (and its prompt and plan_sha256) is unchanged.
+ */
+export type PlanReference = { id: string; case_id: string; name: string; sha256: string; media_type: "image/png" | "image/jpeg" | "image/webp"; copy?: "viewing" };
+/**
+ * DEV-364: what the attached references are, as the prompt says it: originals only — the wording as before (byte for
+ * byte); viewing copies are named as such, never as originals.
+ */
+const referenceCounts = (refs: readonly PlanReference[]) => ({ originals: refs.filter((r) => r.copy === undefined).length, copies: refs.filter((r) => r.copy === "viewing").length });
+export function referencesJa(refs: readonly PlanReference[]): string {
+  const { originals, copies } = referenceCounts(refs);
+  if (copies === 0) return `成功例の原本 ${originals} 枚`;
+  if (originals === 0) return `成功例の閲覧用コピー ${copies} 枚（原本ではない）`;
+  return `成功例の原本 ${originals} 枚と閲覧用コピー ${copies} 枚（閲覧用コピーは原本ではない）`;
+}
+export function referencesEn(refs: readonly PlanReference[]): string {
+  const { originals, copies } = referenceCounts(refs);
+  if (copies === 0) return `${originals} success-case originals`;
+  if (originals === 0) return `${copies} success-case viewing copies, not the originals`;
+  return `${originals} success-case originals and ${copies} viewing copies (not originals)`;
+}
 /**
  * DEV-303 §6.1 row 3: what a whole_page plan takes from the gate-checked case study (request.ts readRequestCaseStudy):
  * its SHA-256, the shop's own principles, each counted case's principles and do-not-copy list (owner-selected order),
@@ -689,7 +710,7 @@ function checkCaseStudyUse(request: DesignRequest, cs: RequestCaseStudyUse | nul
   if (refs.length === 0) throw new PromptStop("REFERENCE_IMAGES_MISSING");
   if (refs.length > IMAGE_TOOL_MAX_REFS) throw new PromptStop("REFERENCE_IMAGES_OVER_TOOL_LIMIT");
   const caseIds = new Set(cs.cases.map((c) => c.id));
-  const ok = refs.every((r, n) => REFERENCE_ID_RE.exec(r.id)?.[1] === String(n + 1) && Object.hasOwn(REFERENCE_EXT, r.media_type) && r.name === `${r.id}.${REFERENCE_EXT[r.media_type]}` && /^[0-9a-f]{64}$/.test(r.sha256) && caseIds.has(r.case_id));
+  const ok = refs.every((r, n) => REFERENCE_ID_RE.exec(r.id)?.[1] === String(n + 1) && Object.hasOwn(REFERENCE_EXT, r.media_type) && r.name === `${r.id}.${REFERENCE_EXT[r.media_type]}` && /^[0-9a-f]{64}$/.test(r.sha256) && caseIds.has(r.case_id) && (r.copy === undefined || r.copy === "viewing"));
   if (!ok || new Set(refs.map((r) => r.sha256)).size !== refs.length) throw new PromptStop("REFERENCE_IMAGES_INVALID");
   return cs;
 }
@@ -783,7 +804,7 @@ function wholePagePrompt(o: { inputs: RequestInputs; viewport: ImageFirstViewpor
   lines.push("この店固有のデザインの原理（この店の事実から導いたもの。画像には書かない）:");
   for (const p of cs.shop_specific_principles) lines.push(`- ${p}`);
   lines.push("");
-  lines.push(`参照画像: 成功例の原本 ${cs.references.length} 枚を参照画像として渡す。構図・配色・文字・写真・ロゴをそのまま写さない。各成功例から持ち込むのは次の原理だけで、写さないことは必ず避ける（成功例の名前は画像に書かない）:`);
+  lines.push(`参照画像: ${referencesJa(cs.references)}を参照画像として渡す。構図・配色・文字・写真・ロゴをそのまま写さない。各成功例から持ち込むのは次の原理だけで、写さないことは必ず避ける（成功例の名前は画像に書かない）:`);
   for (const c of cs.cases) lines.push(`- ${c.id}: 持ち込む原理: ${c.principles_to_bring.join(" / ")}。写さないこと: ${c.do_not_copy.join(" / ")}。`);
   lines.push("");
   lines.push("情報の言語: ページの情報は日本語で示す（日本の客に向けた店。下の文字列が情報の中心）。英字の見出し・飾りの英文を加えない。");
@@ -845,7 +866,7 @@ function buildWholePagePlan(inputs: RequestInputs): RequestPlan {
 Rules for this run:
 - Call the image generation tool exactly ${all.length} times, once per image below, in the order given (Image 1 first, Image ${all.length} last). Never more than ${all.length} calls in all.
 - For each call, the image prompt is that image's text between <<< and >>>, exactly as written: do not shorten, translate, reorder or add to it.
-- For each call, set referenced_image_paths to exactly ${refPaths} (${cs.references.length} success-case originals, absolute paths, also attached as input images; never another path, never more than ${IMAGE_TOOL_MAX_REFS}). They are references for design principles only: never copy their layout, text, colours, photographs or logos.
+- For each call, set referenced_image_paths to exactly ${refPaths} (${referencesEn(cs.references)}, absolute paths, also attached as input images; never another path, never more than ${IMAGE_TOOL_MAX_REFS}). They are references for design principles only: never copy their layout, text, colours, photographs or logos.
 - Each image is a portrait frame 2:3 (taller than wide, 1024x1536).
 - If any call fails or is refused, stop at once: do not retry it, do not change the prompt, do not make any further call.
 - Do not run shell commands, do not read or write files yourself, do not browse (the image tool reads the referenced images itself).
@@ -857,7 +878,8 @@ ${all.map(({ vp, p }, i) => `Image ${i + 1} of ${all.length} — ${vp} — ${p.n
   if (batchPrompt.split(REFERENCE_DIR_TOKEN).length - 1 !== cs.references.length) throw new PromptStop("REFERENCE_TOKEN_IN_TEXT");
   const value = (key: string) => facts.facts.find((f) => f.key === key)?.value ?? "";
   const batch = { prompt: batchPrompt, sha256: sha256(batchPrompt), chars: batchPrompt.length, images: all.length };
-  const references = cs.references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type }));
+  // DEV-364: a viewing copy's status is kept (and so bound into plan_sha256); an original's entry is as before
+  const references = cs.references.map((r) => ({ id: r.id, case_id: r.case_id, name: r.name, sha256: r.sha256, media_type: r.media_type, ...(r.copy === "viewing" ? { copy: "viewing" as const } : {}) }));
   const body = {
     schema: REQUEST_PLAN_SCHEMA,
     prompt_version: WHOLE_PAGE_PROMPT_VERSION,
