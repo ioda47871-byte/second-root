@@ -115,6 +115,12 @@ export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" |
  * private folder (or CONTENT_PHOTO_RIGHTS_MISSING); C: the record of the automatic checks it passed. Run after
  * checkPhotos (which has refused B / C pictures that are delivered generated materials). delivery: true is Second
  * Root's delivery build, which refuses C (CONTENT_DELIVERY_CUSTOMER_PHOTO); provenanceDir alone does not imply it.
+ *
+ * Issue #380 PR 3 (the #383 review Low; Pages CMS rewrites an entry from its .pages.yml fields on save, so a class kept
+ * on the entry outside the CMS's choices does not survive a customer save): B belongs to the BYTES. A picture whose
+ * SHA-256 is in the B index is B even when its entry says C (`customer_cms`, or the earlier `shop`) — its rights record
+ * is required and checked as before. An entry saying `generated` on B bytes is still refused
+ * (CONTENT_PHOTO_CLASS_MIXED): the page would label a real photo イメージ.
  */
 export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string; delivery?: boolean } = {}): Promise<PhotoProvenance[]> {
   // #371 re-review: a delivery build checks the full B rights records, so it needs the private folder
@@ -127,9 +133,10 @@ export async function photoProvenance(repo: string, content: ShopContent, photos
   // review #371 M1 (owner rule: A / B / C never mixed): the class belongs to the picture's bytes, not to the item
   for (const e of handover) if (index.has(e.sha256)) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", e.file);
   const classOfSha = new Map<string, "A" | "B" | "C">();
+  const classOf = (kind: (typeof shown)[number]["imageKind"], sha256: string) => (index.has(sha256) && CLASS_OF[kind] === "C" ? "B" : CLASS_OF[kind]);
   for (const m of shown) {
     const sha256 = shaOf.get(m.image.replace(/^\/media\//, ""))!;
-    const cls = CLASS_OF[m.imageKind];
+    const cls = classOf(m.imageKind, sha256);
     if (index.has(sha256) && cls !== "B") throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", m.ref);
     const seen = classOfSha.get(sha256);
     if (seen && seen !== cls) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", m.ref);
@@ -142,7 +149,7 @@ export async function photoProvenance(repo: string, content: ShopContent, photos
   for (const m of shown) {
     const file = m.image.replace(/^\/media\//, "");
     const sha256 = shaOf.get(file)!;
-    const cls = CLASS_OF[m.imageKind];
+    const cls = classOf(m.imageKind, sha256);
     if (out.some((p) => p.file === file && p.class === cls)) continue;
     if (cls === "B") out.push({ file, sha256, class: cls, record: await loadRightsRecord(index, o.provenanceDir, sha256, file) });
     else if (cls === "C") out.push({ file, sha256, class: cls, record: customerRecord(sha256) });
