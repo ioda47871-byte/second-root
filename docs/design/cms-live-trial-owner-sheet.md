@@ -155,8 +155,8 @@ Decap https://decapcms.org/docs/github-backend/ ・ https://github.com/decaporg/
 | 測る道具 | Second Root の `experiments/pages-cms/live-trial-measure.ts` | 読むだけ。公開 URL を GET するか、ローカルの checkout を読む。サインインも書き込みもしない |
 
 試験データの中身:
-- `phone/IMG_4001〜4003.JPG`: 4032×3024、約 5 MB。EXIF の向き 6（横に保存し、縦に表示）、偽の GPS（0°N 0°E）。
-- `phone/IMG_4800.JPG`: 8064×6048（4800 万画素）、約 11.6 MB、偽の GPS。
+- `phone/IMG_4001〜4003.JPG`: 4032×3024、約 5 MB。EXIF の向き 6（横に保存し、縦に表示）、架空の位置情報（北緯 0°・東経 0°。実在の場所の位置情報は入れない）。
+- `phone/IMG_4800.JPG`: 8064×6048（4800 万画素）、約 11.6 MB、同じ架空の位置情報。
 - `before-after/pair-1|2-before|after.jpg`: 施工前と施工後の組。
 - `multi/*.jpg`: 4:3・3:4・16:9・1:1。
 - `heic/IMG_4002-fake-heic.jpg`: HEIC の頭だけを持つ偽のファイル。**本物の HEIC は作れなかった**（sharp の既製のバイナリは HEVC を書けない）。本物は iPhone で撮って試す。
@@ -166,10 +166,10 @@ Decap https://decapcms.org/docs/github-backend/ ・ https://github.com/decaporg/
 公開 URL は `URL` と書く。例: `https://sr-cms-trial-autocare.pages.dev/`。
 
 事前の作業（オーナー。順に）:
-1. GitHub に**空の非公開 repo** を作る（例 `sr-cms-trial-autocare`。README などは作らない）。
+1. GitHub のオーナーの個人のアカウントに**空の非公開（private）repo** `sr-cms-trial-autocare` を作る（README などは作らない。名前と非公開は `cms-live-trial-confirmation.md` §1 で決めたとおり）。
 2. `~/second-root-trial/sr-cms-trial-autocare/` で `git remote add origin <その repo の URL>` を実行し、`git push -u origin main` で push する。commit の作者を自分にしたい場合は、push の前に `git commit --amend --reset-author --no-edit` を実行する。
 3. §1.2 の手順で Pages CMS の GitHub App を**この repo だけ**に入れ、要求された権限の画面を撮影する。
-4. §1.3 の表のとおり Cloudflare Pages を設定する（値の正本は repo の `README.md`）。最初の構築が成功し、`URL` に「架空のカーケア工房 そらいろ」が出ることを確かめる。
+4. §1.3 の表のとおり Cloudflare Pages を設定する（値の正本は repo の `README.md`）。Cloudflare の GitHub App も **Only select repositories** でこの repo だけにする。最初の構築が成功し、`URL` に「架空のカーケア工房 そらいろ」が出ることを確かめる。
 
 ### A.1〜A.12 各項目の手順
 
