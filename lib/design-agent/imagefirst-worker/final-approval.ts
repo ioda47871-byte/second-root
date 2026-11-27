@@ -720,6 +720,12 @@ export type ApprovedFinal = {
   files: { path: string; sha256: string; bytes: number }[];
   /** DEV-364 PR 3b: the approved files' bytes, exactly as the gate read and hashed them (path → bytes). */
   contents: ReadonlyMap<string, Buffer>;
+  /** DEV-364 PR 3c: each picture's provenance class (A / B) and SHA-256, as the gate bound them. */
+  pictures: { path: string; class: "A" | "B"; sha256: string }[];
+  /** DEV-364 PR 3c: the approved materials' sealed generation facts (null when the run sealed none). */
+  materials_generation: ApprovedMaterials["generation"];
+  /** DEV-364 PR 3c: the materials approval's request id (the AI provenance's approval id). */
+  materials_request_id: string | null;
   review_sha256: string;
   page_sha256: string;
   approval_sha256: string;
@@ -728,5 +734,7 @@ export type ApprovedFinal = {
 /** The approved finished site, or a FinalApprovalStop: the gate check above. */
 export async function approvedFinal(o: FinalInputs & { reviewPath: string; approvalPath: string; repo: string }): Promise<ApprovedFinal> {
   const c = await checkFinalApproval({ ...o, mode: "gate" });
-  return { design: c.design, build_files_sha256: c.build_files_sha256, files: c.evidence.site.files, contents: c.evidence.site.contents, review_sha256: c.review_sha256, page_sha256: c.page_sha256, approval_sha256: c.approval!.sha256 };
+  const pictures = c.review.materials.map((m) => ({ path: m.asset, class: m.class, sha256: m.sha256 }));
+  const am = c.evidence.approvedMaterials;
+  return { design: c.design, build_files_sha256: c.build_files_sha256, files: c.evidence.site.files, contents: c.evidence.site.contents, pictures, materials_generation: am?.generation ?? null, materials_request_id: am?.request_id ?? null, review_sha256: c.review_sha256, page_sha256: c.page_sha256, approval_sha256: c.approval!.sha256 };
 }

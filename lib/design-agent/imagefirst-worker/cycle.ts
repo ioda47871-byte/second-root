@@ -126,7 +126,18 @@ export type WorkerReceipt = {
   /** Every picture's SHA-256 on disk equals the one the entry recorded in call.json. */
   verified: boolean;
   timings: { started_at: string; finished_at: string; elapsed_ms: number };
+  /**
+   * DEV-364 PR 3c (Lead's decision 2026-11-27, option (1)): a completed photo-materials run's generation facts, sealed
+   * with the receipt into its bundle: what produced the pictures (generator), the Codex SESSION model as the entry
+   * recorded it (null when unknown; the image model itself is not reported by Codex), when (the call's finish), the batch
+   * prompt's SHA-256 and the request id. A receipt without it stays valid; such materials just cannot be packaged as an
+   * uploadable demo (package-local.ts --imagefirst refuses them).
+   */
+  generation?: MaterialsGeneration;
 } & Partial<RequestReceiptFields>;
+/** DEV-364 PR 3c: a photo-materials run's generation facts (see WorkerReceipt.generation). */
+export type MaterialsGeneration = { generator: string; session_model: string | null; generated_at: string; prompt_sha256: string; request_id: string };
+export const MATERIALS_GENERATOR = "codex exec, its image generation tool (one batch)";
 /**
  * DEV-303: what a request run's receipt adds (request-cycle.ts). shop is the request's shop_id, direction "request",
  * approval_id and plan_id the request id, packet_sha256 the request bytes' SHA-256 (the request is the run's approval).
@@ -517,6 +528,19 @@ export async function settleRun(s: SettleSpec, res: BoundedResult | null, interr
       stage = out?.stage === "precheck" || res.code === 2 ? "precheck" : "call";
     }
   }
+  // DEV-364 PR 3c: a completed photo-materials run seals its generation facts (the entry's photo-plan.json, written once)
+  let generation: MaterialsGeneration | undefined;
+  if (complete && s.extra?.request_stage === "photo_materials" && typeof s.extra.request_id === "string") {
+    const planText = await readFile(join(runDir, "photo-plan.json"), "utf8").catch(() => null);
+    let g: { session_model?: unknown; finished_at?: unknown } | null = null;
+    try {
+      g = planText ? ((JSON.parse(planText) as { generation?: { session_model?: unknown; finished_at?: unknown } }).generation ?? null) : null;
+    } catch {
+      g = null;
+    }
+    if (g && typeof g.finished_at === "string" && (g.session_model === null || typeof g.session_model === "string"))
+      generation = { generator: MATERIALS_GENERATOR, session_model: g.session_model, generated_at: g.finished_at, prompt_sha256: s.fields.prompt_sha256, request_id: s.extra.request_id };
+  }
   const receipt: WorkerReceipt = {
     schema: "imagefirst_worker_receipt_v1",
     status: complete ? "succeeded" : "stopped",
@@ -534,6 +558,7 @@ export async function settleRun(s: SettleSpec, res: BoundedResult | null, interr
     timings: { started_at: new Date(started).toISOString(), finished_at: new Date(finished).toISOString(), elapsed_ms: finished - started },
     // DEV-303: a request run reports its picture count (parts + stopped) for root's after-run check (<= 6)
     ...(s.extra ? { ...s.extra, images_total: images.length + stopped.length } : {}),
+    ...(generation ? { generation } : {}),
   };
   const receiptPath = join(s.runsDir, `${s.receiptName}.receipt.json`);
   const written = await open(receiptPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)

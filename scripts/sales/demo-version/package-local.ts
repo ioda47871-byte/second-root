@@ -70,16 +70,33 @@
  * with exactly the bytes the gate read and hashed (approvedFinal's contents: the approved build, UNCONVERTED; nothing is
  * read a second time) and <out>/imagefirst-package.json (sr_imagefirst_package_v1: the files bound to the final
  * approval's SHA-256s). Any refusal of the gate is FAIL with its FINAL_* / DESIGN_* / MATERIALS_* code; nothing is written.
- * This is a LOCAL package of the approved files, not the uploadable sales demo package (that format needs WebP photos and
- * their image records: converting the photos needs the sr_photo_transform_v1 record, left for a later step). No DB, no
- * send guard, nothing published or sent.
+ * DEV-364 PR 3c (owner decision 2026-11-27, option (a) again: the one import of lib/demo-version-package/photos, for this
+ * mode only, convertPhoto): the package is now the UPLOADABLE sales demo package as well, written only when every check
+ * passed (otherwise FAIL, nothing written):
+ *   - the approved pictures are A only (a shop's photo, B, has no record in this format: IMAGE_FIRST_SHOP_PHOTO_NOT_UPLOADABLE);
+ *   - the AI provenance is the approved materials run's SEALED generation facts (cycle.ts / bundle.ts), never invented:
+ *     none sealed → IMAGE_FIRST_PROVENANCE_MISSING; the session model unknown → IMAGE_FIRST_MODEL_UNKNOWN. The record's
+ *     `model` is the image run's SESSION model, and says so (generator text and model_role
+ *     "run_session_model_image_model_not_reported"): the image model itself is not reported;
+ *   - the owner's per-photo depiction confirmation (--depiction-confirmation, sr_imagefirst_depiction_confirmation_v1;
+ *     never replaced by the materials approval): every picture listed, nothing real (IMAGE_FIRST_DEPICTION_* / _DEPICTS_REAL);
+ *   - each picture converted with the existing convertPhoto (WebP within the server's limit, same pixel size); only its
+ *     <img src> rewritten (assets/<name>.png → photos/<name>-desktop.webp; CSS may not name a picture; a marker proof
+ *     that nothing else changed); renders at PC 1440 / SP 390; buildPackage's own server checks;
+ *   - one sr_photo_transform_v1 record per picture (the approved source SHA-256 → the delivered SHA-256), checked
+ *     separately (checkImageFirstTransforms); materials-impl-check stays exact-match on the approved PNGs.
+ * Output (a private folder: ours, 0700, its real path re-checked after mkdir; files O_EXCL, never through a link):
+ * <out>/site/ (the approved files + the IMAGE_FIRST origin marker, not part of the approved files), <out>/package/ (the
+ * sales demo package), <out>/transforms/, <out>/imagefirst-package.json (converted: true, uploadable_demo_package: true).
+ * No DB, no send guard, nothing uploaded, published or sent.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
 import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib/demo-version-package/local-inputs";
+import { convertPhoto } from "../../../lib/demo-version-package/photos";
 import { approvedFinal, FinalApprovalStop } from "../../../lib/design-agent/imagefirst-worker/final-approval";
 import { buildPackage, insideRepo, PackageError, swapCopyInput, writePackage } from "../../../lib/demo-version-package/package";
 import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
@@ -276,20 +293,103 @@ export async function main(argv: string[], seams: PackageLocalSeams = {}): Promi
   }
 }
 
-const IMAGE_FIRST_FLAGS = ["--imagefirst", "--out", "--design-bundle", "--design-review", "--design-approval", "--materials-bundle", "--materials-review", "--materials-approval", "--slots", "--provenance-dir", "--impl-compare", "--final-review", "--final-approval"] as const;
+const IMAGE_FIRST_FLAGS = ["--imagefirst", "--out", "--design-bundle", "--design-review", "--design-approval", "--materials-bundle", "--materials-review", "--materials-approval", "--slots", "--provenance-dir", "--impl-compare", "--final-review", "--final-approval", "--depiction-confirmation"] as const;
 export const IMAGE_FIRST_PACKAGE_SCHEMA = "sr_imagefirst_package_v1";
+export const PHOTO_TRANSFORM_SCHEMA = "sr_photo_transform_v1";
+export const IMAGE_FIRST_DEPICTION_SCHEMA = "sr_imagefirst_depiction_confirmation_v1";
+/** The statement every depiction entry carries, exactly (the swap's own wording, swap-rights.ts, restated). */
+export const IMAGE_FIRST_DEPICTION_STATEMENT =
+  "The admin looked at this image and confirmed it shows no real product, no real shop interior and no real equipment. / 管理者がこの画像を目で確かめ、実在の商品・店内・設備を写していないことを確認した。";
+/** How the AI provenance names its model: the image run's session model, never the image model (it is not reported). */
+export const IMAGE_FIRST_MODEL_ROLE = "run_session_model_image_model_not_reported";
+/** The image records' fixed rights for IMAGE_FIRST proposal materials (internal AI demo pictures; no public web use). */
+const IMAGE_FIRST_ALLOWED_USES = { edit: false, crop: true, commercial: false, public_web: false } as const;
+
+/** One converted photo's record: the approved source picture → the delivered WebP (checked by checkImageFirstTransforms). */
+export type PhotoTransform = { schema: typeof PHOTO_TRANSFORM_SCHEMA; source: string; source_sha256: string; stored: string; delivered_sha256: string; width: number; height: number; transform: { to: "webp"; mode: string; quality: number | null } };
 
 /**
- * DEV-364 PR 3b: the IMAGE_FIRST packaging mode (see the header). The only code path that uses final-approval.ts.
- * Exit 0 written, 1 refused (FAIL with a code), 2 usage.
+ * DEV-364 PR 3c: the transform records, checked SEPARATELY from the gates (materials-impl-check stays exact-match):
+ * every approved A picture has exactly one record, its source SHA-256 is that approved picture's, its delivered SHA-256,
+ * size and pixel size are the package's stored photo's, and nothing else is in the package as a photo. Returns the
+ * problems (empty when in order).
+ */
+export function checkImageFirstTransforms(records: readonly PhotoTransform[], approvedPictures: readonly { path: string; sha256: string }[], packagePhotos: readonly { name: string; sha256: string; bytes: number; width?: number; height?: number }[]): string[] {
+  const problems: string[] = [];
+  const bySource = new Map(records.map((r) => [r.source, r]));
+  if (bySource.size !== records.length) problems.push("TRANSFORM_DUPLICATE");
+  for (const p of approvedPictures) {
+    const r = bySource.get(p.path);
+    if (!r) problems.push(`TRANSFORM_MISSING ${p.path}`);
+    else if (r.schema !== PHOTO_TRANSFORM_SCHEMA || r.source_sha256 !== p.sha256) problems.push(`TRANSFORM_SOURCE_MISMATCH ${p.path}`);
+  }
+  for (const r of records) {
+    if (!approvedPictures.some((p) => p.path === r.source)) problems.push(`TRANSFORM_SOURCE_UNKNOWN ${r.source}`);
+    const f = packagePhotos.find((x) => x.name === `page/${r.stored}`);
+    if (!f || f.sha256 !== r.delivered_sha256 || f.width !== r.width || f.height !== r.height) problems.push(`TRANSFORM_DELIVERED_MISMATCH ${r.stored}`);
+  }
+  if (packagePhotos.length !== records.length) problems.push("TRANSFORM_PHOTO_COUNT");
+  return problems;
+}
+
+/** The approved materials run's sealed generation facts, as approvedFinal returns them (null when none were sealed). */
+export type SealedGeneration = { generator: string; session_model: string | null; generated_at: string; prompt_sha256: string; request_id: string } | null;
+/**
+ * DEV-364 PR 3c: the image records' AI provenance from the SEALED facts only, or the refusal code: none sealed
+ * (IMAGE_FIRST_PROVENANCE_MISSING), another run's (IMAGE_FIRST_PROVENANCE_MISMATCH), the session model unknown
+ * (IMAGE_FIRST_MODEL_UNKNOWN). `model` is the image run's SESSION model and the generator text says so.
+ */
+export function imageFirstProvenance(g: SealedGeneration, materialsRequestId: string | null): { code: string } | { provenance: { generator: string; model: string; generated_at: string; prompt_sha256: string; approval_id: string; admin_preview_only: true } } {
+  if (!g || !materialsRequestId) return { code: "IMAGE_FIRST_PROVENANCE_MISSING" };
+  if (g.request_id !== materialsRequestId) return { code: "IMAGE_FIRST_PROVENANCE_MISMATCH" };
+  if (g.session_model === null) return { code: "IMAGE_FIRST_MODEL_UNKNOWN" };
+  return { provenance: { generator: `${g.generator}; model = the image run's session model, not the image model (${IMAGE_FIRST_MODEL_ROLE})`, model: g.session_model, generated_at: g.generated_at, prompt_sha256: g.prompt_sha256, approval_id: materialsRequestId, admin_preview_only: true } };
+}
+
+/** The stored name of an approved asset (assets/<name>.png → photos/<name, lowercase, _>-desktop.webp), or null. */
+const storedNameOf = (asset: string): string | null => {
+  const m = /^assets\/([A-Za-z0-9][A-Za-z0-9._-]{0,80})\.png$/.exec(asset);
+  if (!m) return null;
+  const base = m[1]!.toLowerCase().replace(/[^a-z0-9]/g, "_");
+  return /^[a-z][a-z0-9_]{0,39}$/.test(base) ? `photos/${base}-desktop.webp` : null;
+};
+
+/** A private output folder (#377 sharing Low): outside the repository, ours, 0700, its real path re-checked after mkdir. */
+function privateOut(out: string): "ok" | "IMAGE_FIRST_OUT_NOT_EMPTY" | "IMAGE_FIRST_OUT_UNSAFE" {
+  const st = lstatSync(out, { throwIfNoEntry: false });
+  if (st) {
+    if (!st.isDirectory() || st.isSymbolicLink()) return "IMAGE_FIRST_OUT_UNSAFE";
+    if (readdirSync(out).length > 0) return "IMAGE_FIRST_OUT_NOT_EMPTY";
+    if (st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0) return "IMAGE_FIRST_OUT_UNSAFE";
+  }
+  mkdirSync(out, { recursive: true, mode: 0o700 });
+  const real = realpathSync(out);
+  if (insideRepo(real) || real !== out) return "IMAGE_FIRST_OUT_UNSAFE";
+  return "ok";
+}
+/** A new private file (O_EXCL, never through a link, 0600). */
+function writeNew(path: string, bytes: Uint8Array | string): void {
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    writeSync(fd, typeof bytes === "string" ? Buffer.from(bytes) : bytes);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * DEV-364 PR 3b / 3c: the IMAGE_FIRST packaging mode (see the header). The only code path that uses final-approval.ts and
+ * photos.ts (convertPhoto). Exit 0 written, 1 refused (FAIL with a code; an incomplete output is never marked uploadable),
+ * 2 usage.
  */
 async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_: (s: string) => void): Promise<number> {
+  const fail = (code: string, details?: readonly string[]) => (out_(`${JSON.stringify({ status: "FAIL", code, ...(details ? { details } : {}) })}\n`), 1);
   const o: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i]!;
     const v = argv[i + 1];
     if (!(IMAGE_FIRST_FLAGS as readonly string[]).includes(k) || !v || v.startsWith("--") || k in o) {
-      err_("usage: package-local.ts --imagefirst <staged site> --out <dir> --design-bundle <dir> --design-review <f> --design-approval <f> --materials-bundle <dir> --materials-review <f> --materials-approval <f> --slots <f> --provenance-dir <dir> --impl-compare <dir> --final-review <f> --final-approval <f>\n");
+      err_(`usage: package-local.ts ${IMAGE_FIRST_FLAGS.map((f) => `${f} <…>`).join(" ")}\n`);
       return 2;
     }
     o[k] = v;
@@ -303,9 +403,11 @@ async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_
     err_("refused: write the package outside the repository\n");
     return 2;
   }
-  if (existsSync(out) && (!lstatSync(out).isDirectory() || readdirSync(out).length > 0)) {
-    out_(`${JSON.stringify({ status: "FAIL", code: "IMAGE_FIRST_OUT_NOT_EMPTY" })}\n`);
-    return 1;
+  {
+    const st = lstatSync(out, { throwIfNoEntry: false });
+    if (st && (!st.isDirectory() || st.isSymbolicLink())) return fail("IMAGE_FIRST_OUT_UNSAFE");
+    if (st && readdirSync(out).length > 0) return fail("IMAGE_FIRST_OUT_NOT_EMPTY");
+    if (st && (st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0)) return fail("IMAGE_FIRST_OUT_UNSAFE");
   }
   let approved;
   try {
@@ -321,20 +423,118 @@ async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_
       repo: REPO,
     });
   } catch (e) {
-    if (e instanceof FinalApprovalStop) {
-      out_(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
-      return 1;
-    }
+    if (e instanceof FinalApprovalStop) return fail(e.code);
     throw e;
   }
-  // the bytes written are exactly the ones the gate read and hashed (approvedFinal's contents): no second read here
+  // the bytes used are exactly the ones the gate read and hashed (approvedFinal's contents): no second read here
   const listed = approved.files;
-  if (listed.length !== approved.contents.size || listed.some((f) => approved.contents.get(f.path)?.length !== f.bytes)) {
-    out_(`${JSON.stringify({ status: "FAIL", code: "IMAGE_FIRST_FILES_MISMATCH" })}\n`);
-    return 1;
+  if (listed.length !== approved.contents.size || listed.some((f) => approved.contents.get(f.path)?.length !== f.bytes)) return fail("IMAGE_FIRST_FILES_MISMATCH");
+  // the uploadable format carries AI demo pictures only: a shop's photo (B) has no record there (A and B never merge)
+  if (approved.pictures.some((p) => p.class !== "A")) return fail("IMAGE_FIRST_SHOP_PHOTO_NOT_UPLOADABLE");
+  // the AI provenance: the approved materials run's sealed facts, never invented
+  const prov = imageFirstProvenance(approved.materials_generation, approved.materials_request_id);
+  if ("code" in prov) return fail(prov.code);
+  // the owner's per-photo depiction confirmation (never replaced by the materials approval)
+  let depictions: { sha256: string; depicts_real_product: unknown; depicts_real_interior: unknown; depicts_real_equipment: unknown; confirmation: unknown }[];
+  try {
+    const d = JSON.parse(readFileSync(resolve(o["--depiction-confirmation"]!), "utf8")) as { schema?: unknown; photos?: unknown };
+    if (d.schema !== IMAGE_FIRST_DEPICTION_SCHEMA || !Array.isArray(d.photos)) return fail("IMAGE_FIRST_DEPICTION_INVALID");
+    depictions = d.photos as typeof depictions;
+  } catch {
+    return fail("IMAGE_FIRST_DEPICTION_INVALID");
   }
+  const bySha = new Map(depictions.map((d) => [d.sha256, d]));
+  if (bySha.size !== depictions.length || depictions.some((d) => d.confirmation !== IMAGE_FIRST_DEPICTION_STATEMENT || typeof d.depicts_real_product !== "boolean" || typeof d.depicts_real_interior !== "boolean" || typeof d.depicts_real_equipment !== "boolean")) return fail("IMAGE_FIRST_DEPICTION_INVALID");
+  for (const p of approved.pictures) {
+    const d = bySha.get(p.sha256);
+    if (!d) return fail("IMAGE_FIRST_DEPICTION_NOT_CONFIRMED", [p.path]);
+    if (d.depicts_real_product || d.depicts_real_interior || d.depicts_real_equipment) return fail("IMAGE_FIRST_DEPICTS_REAL", [p.path]);
+  }
+  if (depictions.some((d) => !approved.pictures.some((p) => p.sha256 === d.sha256))) return fail("IMAGE_FIRST_DEPICTION_PHOTO_UNKNOWN");
+  // convert (the existing converter) and rewrite ONLY the pictures' <img src> (CSS may not name them)
+  const html = approved.contents.get("index.html")!.toString("utf8");
+  const css = approved.contents.get("style.css")!.toString("utf8");
+  if (css.includes("assets/")) return fail("IMAGE_FIRST_CSS_ASSET_REFERENCE");
+  const photos = new Map<string, Uint8Array>();
+  const transforms: PhotoTransform[] = [];
+  const conversions: { stored: string; mode: string; quality: number | null }[] = [];
+  let rewritten = html;
+  let proofOld = html;
+  let proofNew = "";
+  for (const p of approved.pictures) {
+    const stored = storedNameOf(p.path);
+    if (!stored || photos.has(stored)) return fail("IMAGE_FIRST_PHOTO_NAME", [p.path]);
+    let c;
+    try {
+      c = await convertPhoto(approved.contents.get(p.path)!);
+    } catch (e) {
+      if (e instanceof PhotoError) return fail(`IMAGE_FIRST_${e.code}`, [p.path]);
+      throw e;
+    }
+    if (c.original.sha256 !== p.sha256) return fail("IMAGE_FIRST_SOURCE_MISMATCH", [p.path]);
+    const quoted = `src="${p.path}"`;
+    const all = rewritten.split(p.path).length - 1;
+    const inSrc = rewritten.split(quoted).length - 1;
+    if (all === 0 || all !== inSrc) return fail("IMAGE_FIRST_PHOTO_REF_POSITION", [p.path]);
+    rewritten = rewritten.split(quoted).join(`src="${stored}"`);
+    proofOld = proofOld.split(quoted).join('src="\u0000photo\u0000"');
+    photos.set(stored, c.webp);
+    conversions.push({ stored, mode: c.mode, quality: c.quality });
+    transforms.push({ schema: PHOTO_TRANSFORM_SCHEMA, source: p.path, source_sha256: p.sha256, stored, delivered_sha256: c.webp_sha256, width: c.width, height: c.height, transform: { to: "webp", mode: c.mode, quality: c.quality } });
+  }
+  proofNew = rewritten;
+  for (const t of transforms) proofNew = proofNew.split(`src="${t.stored}"`).join('src="\u0000photo\u0000"');
+  if (proofOld !== proofNew || rewritten.includes("assets/")) return fail("IMAGE_FIRST_REWRITE_CHANGED_MORE");
+  const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+  let renders;
+  try {
+    renders = await renderPrototype(browser, { html: rewritten, css }, new Map([...photos].map(([k, v]) => [k, Buffer.from(v)])), []);
+  } finally {
+    await browser.close();
+  }
+  if (renders.desktop_1440.blocked || renders.mobile_390.blocked) return fail("IMAGE_FIRST_RENDER_BLOCKED");
+  // the image records: AI demo pictures, nothing real (the owner's confirmation), no public web, the sealed provenance
+  const images = [...photos].map(([, webp], n) => {
+    const t = transforms[n]!;
+    return {
+      sha256: t.delivered_sha256,
+      bytes: webp.byteLength,
+      width: t.width,
+      height: t.height,
+      format: "webp" as const,
+      record_schema: "photo_rights_v0" as const,
+      source_kind: "ai_generated_demo" as const,
+      rights_status: "ai_demo_internal" as const,
+      depicts_real_shop: false as const,
+      depicts_identifiable_person: false as const,
+      depicts_real_product: false as const,
+      depicts_real_interior: false as const,
+      depicts_real_equipment: false as const,
+      allowed_uses: { ...IMAGE_FIRST_ALLOWED_USES },
+      rights_expiry: null,
+      provenance: { ...prov.provenance },
+    };
+  });
+  let commit: string | null = null;
+  try {
+    commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim();
+  } catch {
+    commit = null;
+  }
+  const pkg = await buildPackageFor(rewritten, css, renders, photos, images, commit, { conversions, transforms: transforms.map((t) => ({ source_sha256: t.source_sha256, delivered_sha256: t.delivered_sha256 })), model_role: IMAGE_FIRST_MODEL_ROLE, final_approval_sha256: approved.approval_sha256 });
+  if (typeof pkg === "string") return fail(pkg);
+  const photoFiles = pkg.manifest.files.filter((f) => f.role === "photo");
+  const problems = checkImageFirstTransforms(transforms, approved.pictures, photoFiles);
+  if (problems.length) return fail("IMAGE_FIRST_TRANSFORM_MISMATCH", problems);
+  // write: a private output folder; every file new (O_EXCL, no link)
+  const outState = privateOut(out);
+  if (outState !== "ok") return fail(outState);
   mkdirSync(join(out, "site", "assets"), { recursive: true, mode: 0o700 });
-  for (const f of listed) writeFileSync(join(out, "site", f.path), approved.contents.get(f.path)!, { mode: 0o600 });
+  for (const f of listed) writeNew(join(out, "site", f.path), approved.contents.get(f.path)!);
+  writeNew(join(out, "site", IMAGE_FIRST_ORIGIN_MARKER), `${JSON.stringify({ schema: "sr_build_origin_v1", origin: "image_first", tripwire_only: true, note: "the approved IMAGE_FIRST site (not part of the approved files); package it only with the IMAGE_FIRST mode" }, null, 2)}\n`);
+  mkdirSync(join(out, "transforms"), { mode: 0o700 });
+  for (const [n, t] of transforms.entries()) writeNew(join(out, "transforms", `photo-${n + 1}.json`), `${JSON.stringify(t, null, 2)}\n`);
+  writePackage(join(out, "package"), pkg);
   const manifest = {
     schema: IMAGE_FIRST_PACKAGE_SCHEMA,
     design: approved.design,
@@ -343,13 +543,36 @@ async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_
     final_approval_sha256: approved.approval_sha256,
     build_files_sha256: approved.build_files_sha256,
     files: listed,
-    converted: false,
-    uploadable_demo_package: false,
-    note: "the approved files, unconverted; the uploadable sales demo package (WebP photos and their image records, with sr_photo_transform_v1) is a later step",
+    package_bundle_sha256: pkg.bundleSha256,
+    transforms: transforms.map((t) => ({ source: t.source, source_sha256: t.source_sha256, stored: t.stored, delivered_sha256: t.delivered_sha256 })),
+    provenance_model_role: IMAGE_FIRST_MODEL_ROLE,
+    converted: true,
+    uploadable_demo_package: true,
+    note: "local only: nothing uploaded, published or sent",
   };
-  writeFileSync(join(out, "imagefirst-package.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
-  out_(`${JSON.stringify({ status: "OK", mode: "imagefirst", final_approval_sha256: approved.approval_sha256, build_files_sha256: approved.build_files_sha256, files: listed }, null, 2)}\n`);
+  writeNew(join(out, "imagefirst-package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  out_(`${JSON.stringify({ status: "OK", mode: "imagefirst", final_approval_sha256: approved.approval_sha256, build_files_sha256: approved.build_files_sha256, package_bundle_sha256: pkg.bundleSha256, transforms: manifest.transforms, uploadable_demo_package: true }, null, 2)}\n`);
   return 0;
+}
+
+/** buildPackage for the IMAGE_FIRST mode; a refusal is its code. */
+async function buildPackageFor(html: string, css: string, renders: { desktop_1440: { png: Uint8Array }; mobile_390: { png: Uint8Array } }, photos: ReadonlyMap<string, Uint8Array>, images: readonly unknown[], commit: string | null, local: Record<string, unknown> | null) {
+  try {
+    return await buildPackage({
+      html,
+      css,
+      renders: { desktop_1440: renders.desktop_1440.png, mobile_390: renders.mobile_390.png },
+      photos,
+      images: images as Parameters<typeof buildPackage>[0]["images"],
+      photoChecks: { count: photos.size, source: "imagefirst" },
+      ...(local ? { local } : {}),
+      source: "imagefirst",
+      validatorCommit: commit,
+    });
+  } catch (e) {
+    if (e instanceof PackageError) return `IMAGE_FIRST_${e.code}`;
+    throw e;
+  }
 }
 
 if (require.main === module) main(process.argv.slice(2)).then((code) => process.exit(code));

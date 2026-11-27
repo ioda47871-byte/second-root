@@ -217,6 +217,8 @@ export type ConvertedPhoto = {
   mode: "lossless" | "lossless_after_srgb8_conversion" | "lossy";
   quality: number | null;
   original: PhotoOriginal;
+  /** DEV-364 PR 3c: the WebP's own SHA-256 (what the package's manifest will name it by). */
+  webp_sha256: string;
 };
 
 /**
@@ -242,7 +244,7 @@ export async function convertPhoto(bytes: Uint8Array, limit: number = ARTIFACT_L
   const encode = (o: WebpOptions) => sharp(bytes, { failOn: "warning" }).toColorspace("srgb").webp({ ...PHOTO_WEBP, ...o }).toBuffer({ resolveWithObject: true });
   const done = (r: { data: Buffer; info: OutputInfo }, mode: ConvertedPhoto["mode"], quality: number | null): ConvertedPhoto => {
     if (r.info.width !== meta.width || r.info.height !== meta.height) throw new PhotoError("PHOTO_SIZE_CHANGED");
-    return { webp: new Uint8Array(r.data), width: r.info.width, height: r.info.height, mode, quality, original };
+    return { webp: new Uint8Array(r.data), width: r.info.width, height: r.info.height, mode, quality, original, webp_sha256: sha256(r.data) };
   };
   const lossless = await encode({ lossless: true });
   if (lossless.data.byteLength <= limit) return done(lossless, converted ? "lossless_after_srgb8_conversion" : "lossless", null);

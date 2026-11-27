@@ -218,9 +218,12 @@ describe("DEV-196r: the sales packaging script takes only renderPrototype from p
     // DEV-196s (owner approval 2026-11-11): swap-package reads 輪's photo-swapped page, rights and originals read-only
     // DEV-263a: local-inputs reads a comp's page and copy (copy.json, copy-review.json, copy-rounds/) for --copy, read-only
     // DEV-364 PR 3b (owner approval 2026-11-27, option (a)): plus final-approval.ts, for the IMAGE_FIRST mode only
+    // DEV-364 PR 3c (owner decision 2026-11-27, option (a)): plus demo-version-package/photos (convertPhoto), for the
+    // IMAGE_FIRST mode only (a separate entry from PR 3b's)
     expect(specifiers(source).sort()).toEqual([
       "../../../lib/demo-version-package/local-inputs",
       "../../../lib/demo-version-package/package",
+      "../../../lib/demo-version-package/photos",
       "../../../lib/demo-version-package/swap-package",
       "../../../lib/design-agent/imagefirst-worker/final-approval",
       "../../../lib/design-agent/phase2f/render-prototype",
@@ -242,6 +245,15 @@ describe("DEV-196r: the sales packaging script takes only renderPrototype from p
     expect(body).toMatch(/\bapprovedFinal\(/);
     // the existing modes reach it only through the one flag check
     expect(source.match(/imageFirstPackage\(/g)).toHaveLength(2);
+  });
+  it("DEV-364 PR 3c: photos.ts gives only convertPhoto, used only inside the IMAGE_FIRST mode", () => {
+    const source = readFileSync(resolve(REPO, SALES_PACKAGE), "utf8");
+    const named = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].filter((m) => m[3] === "../../../lib/demo-version-package/photos").flatMap((m) => m[2]!.split(",").map((n) => n.trim()).filter(Boolean));
+    expect(named).toEqual(["convertPhoto"]);
+    const start = source.indexOf("async function imageFirstPackage(");
+    const outside = source.slice(0, start).replace(/^import[^\n]*demo-version-package\/photos[^\n]*$/m, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(outside).not.toMatch(/\bconvertPhoto\b/);
+    expect(source.slice(start)).toMatch(/\bconvertPhoto\(/);
   });
 });
 
