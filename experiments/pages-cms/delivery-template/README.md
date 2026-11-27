@@ -10,6 +10,7 @@ not depend on Second Root, holds no secrets and uses no model.
 | `.pages.yml` | the Pages CMS configuration (customer-editable fields only) | nobody: generated; the build refuses a changed one |
 | `site/` | the page code and the content checks (a copy of Second Root's) | nobody: generated |
 | `build.mjs`, `photo-prep.mjs` | the build | nobody |
+| `migrate-ids.mjs` | one-off: gives entries delivered with a readable id (`job-1`) a UUID id, so Pages CMS can save them (dry run unless `--write`) | Second Root, once |
 | `site.config.json` | which site the page code builds | nobody |
 | `content/generated-materials.json`, `content/photo-provenance.json` (when present) | records written at delivery | nobody (not in `.pages.yml`) |
 

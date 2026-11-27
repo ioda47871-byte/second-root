@@ -9,6 +9,14 @@
 import type { Announcement, ShopInfo, Work, WorkPhoto } from "./content-model";
 import { WORK_PHOTO_MAX } from "./content-model";
 import { fictionalRights, solidPng, uniqueColour, type Fixture } from "./fixtures";
+import { uuidV5 } from "./uuid";
+
+/**
+ * Issue #380 live trial (2026-11-28): every pre-registered entry's id is a UUID, as Pages CMS's hidden `uuid` id field
+ * requires on save (uuid.ts) — a deterministic version-5 UUID of "<collection>/<key>" (key: the earlier readable id,
+ * e.g. works/job-1), the same id migrate-ids.ts gives a delivered entry that still has the readable one.
+ */
+export const autoEntryId = (collection: "works" | "news", key: string) => uuidV5(`${collection}/${key}`);
 
 const SHOP: ShopInfo = {
   name: "架空のカーケア工房 そらいろ",
@@ -49,7 +57,7 @@ function jobs(n: number, prefix = "job"): Built {
       return { image: `/media/${file}`, imageAlt: `試験の施工写真 ${k + 1}-${j + 1}`, role: pair && j < 2 ? (j === 0 ? "before" : "after") : "other", imageKind: kind };
     });
     return {
-      id: `${prefix}-${k + 1}`,
+      id: autoEntryId("works", `${prefix}-${k + 1}`),
       vehicle: `架空車 タイプ${k + 1}`,
       service: SERVICES[k % SERVICES.length]!,
       description: k % 2 ? "架空の施工の説明です。" : "",
@@ -104,7 +112,7 @@ function make(): Record<string, Fixture> {
     media[file] = solidPng(w, h, uniqueColour(COLOURS[k % 3]!, 200 + k));
     return { image: `/media/${file}`, imageAlt: `試験の比率 ${w}×${h}`, role, imageKind: "customer_cms" };
   };
-  const job = (k: number, photos: WorkPhoto[]): Work => ({ id: `ratio-job-${k + 1}`, vehicle: `架空車 比率${k + 1}`, service: SERVICES[k % SERVICES.length]!, description: "", photos, visible: true, displayOrder: k });
+  const job = (k: number, photos: WorkPhoto[]): Work => ({ id: autoEntryId("works", `ratio-job-${k + 1}`), vehicle: `架空車 比率${k + 1}`, service: SERVICES[k % SERVICES.length]!, description: "", photos, visible: true, displayOrder: k });
   ratios.works = [job(0, [photo(0, "before"), photo(1, "after"), photo(2), photo(3)]), job(1, [photo(4)]), job(2, [photo(5), photo(6)]), job(3, [photo(7, "after")])];
   ratios.media = media;
   f["photo-ratios"] = ratios;
@@ -124,10 +132,10 @@ function make(): Record<string, Fixture> {
   };
   f["hours-closures"] = hours;
   const one = base(3);
-  one.news = [{ id: "news-1", title: "冬の下回り洗浄を始めました", body: "試験用のお知らせです。", publishedAt: "2026-11-30", visible: true }];
+  one.news = [{ id: autoEntryId("news", "news-1"), title: "冬の下回り洗浄を始めました", body: "試験用のお知らせです。", publishedAt: "2026-11-30", visible: true }];
   f["news-1"] = one;
   const many = base(3);
-  many.news = Array.from({ length: 12 }, (_, k) => ({ id: `news-${k + 1}`, title: k === 0 ? `${LONG_VEHICLE}のお知らせ` : `お知らせ ${k + 1}`, body: k % 2 ? "" : "試験用の本文です。".repeat(k + 1), publishedAt: `2026-11-${String(k + 1).padStart(2, "0")}`, visible: k !== 3 }));
+  many.news = Array.from({ length: 12 }, (_, k) => ({ id: autoEntryId("news", `news-${k + 1}`), title: k === 0 ? `${LONG_VEHICLE}のお知らせ` : `お知らせ ${k + 1}`, body: k % 2 ? "" : "試験用の本文です。".repeat(k + 1), publishedAt: `2026-11-${String(k + 1).padStart(2, "0")}`, visible: k !== 3 }));
   f["news-many"] = many;
   return f;
 }

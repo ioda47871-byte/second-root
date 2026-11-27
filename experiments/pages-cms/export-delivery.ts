@@ -35,12 +35,14 @@ export const SITE_FILES = [
   "content-model.ts",
   "fixtures.ts",
   "image-meta.ts",
+  "migrate-ids.ts",
   "pages-config.ts",
   "photo-slots.ts",
   "photos.ts",
   "price-display.ts",
   "provenance.ts",
   "shop-site.ts",
+  "uuid.ts",
 ] as const;
 /**
  * Issue #380 (SORAIRO): the page code's static design folder (its pictures and their generated-materials record),
@@ -58,6 +60,7 @@ export { DEFAULT_DESIGN_DIR };
 /** Template file → its name in the exported repository. */
 export const TEMPLATE_FILES: Record<string, string> = {
   "build.mjs": "build.mjs",
+  "migrate-ids.mjs": "migrate-ids.mjs",
   "photo-prep.mjs": "photo-prep.mjs",
   "README.md": "README.md",
   "gitignore.template": ".gitignore",

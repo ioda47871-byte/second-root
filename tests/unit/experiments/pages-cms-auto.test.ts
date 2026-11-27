@@ -11,6 +11,7 @@ import { checkPagesConfig, pagesConfig, pagesYaml } from "@/experiments/pages-cm
 import { factsOf } from "@/experiments/pages-cms/q1-render";
 import { AUTO_SITE, BAKERY_SITE, CAFE_SITE } from "@/experiments/pages-cms/shop-site";
 import { stageDesignPictures } from "@/experiments/pages-cms/design-pictures";
+import { autoEntryId } from "@/experiments/pages-cms/auto-fixtures";
 import { autoSiteWithDesign, writeSyntheticDesign } from "./synthetic-design";
 
 // Issue #380 (owner 2026-11-27): a third fictional shop — a car-care shop whose customer updates its 施工実績 (works)
@@ -41,7 +42,10 @@ const codeOf = (p: Promise<unknown>) => p.then(
   () => "ok",
   (e: unknown) => (e instanceof ContentError ? `${e.code} ${e.file.replace(/^.*\/content\//, "content/")}` : String(e)),
 );
-const workFile = (repo: string, id: string) => join(repo, "content", "works", `${id}.json`);
+// Issue #380 (2026-11-28): the fixtures' works ids are UUIDs (Pages CMS's uuid field); J("job-1") is the id of the job
+// the earlier readable id named, and its file name
+const J = (key: string) => autoEntryId("works", key);
+const workFile = (repo: string, key: string) => join(repo, "content", "works", `${J(key)}.json`);
 const editWork = (repo: string, id: string, change: (w: Record<string, unknown>) => Record<string, unknown>) =>
   writeFileSync(workFile(repo, id), JSON.stringify(change(JSON.parse(readFileSync(workFile(repo, id), "utf8")) as Record<string, unknown>)));
 
@@ -199,7 +203,7 @@ describe("Issue #380: what the build refuses in a job (and keeps the last good o
     for (const [what, change] of cases) {
       const repo = await repoOf(AUTO_SITE, "works-3");
       editWork(repo, "job-1", change);
-      expect(await codeOf(build(repo)), what).toBe("CONTENT_INVALID content/works/job-1.json");
+      expect(await codeOf(build(repo)), what).toBe(`CONTENT_INVALID content/works/${J("job-1")}.json`);
     }
     // the earlier value "shop" is read as the customer's photo (C), as for a menu item
     const repo = await repoOf(AUTO_SITE, "works-3");
@@ -238,9 +242,9 @@ describe("Issue #380: what the build refuses in a job (and keeps the last good o
     const repo = await repoOf(AUTO_SITE, "works-3");
     const bytes = readFileSync(join(repo, "media", "job-2-1.png"));
     writeFileSync(join(repo, GENERATED_RECORD), JSON.stringify(generatedRecord({ "job-2-1.png": bytes })));
-    expect(await codeOf(build(repo))).toBe("CONTENT_GENERATED_AS_SHOP works/job-2");
+    expect(await codeOf(build(repo))).toBe(`CONTENT_GENERATED_AS_SHOP works/${J("job-2")}`);
     const c = await repoOf(AUTO_SITE, "works-3");
-    expect(await codeOf(build(c, AUTO, { delivery: true, provenanceDir: provenanceDirOf(c) }))).toBe("CONTENT_DELIVERY_CUSTOMER_PHOTO works/job-1");
+    expect(await codeOf(build(c, AUTO, { delivery: true, provenanceDir: provenanceDirOf(c) }))).toBe(`CONTENT_DELIVERY_CUSTOMER_PHOTO works/${J("job-1")}`);
   });
 
   it("broken input keeps the last good output: a failed build writes nothing, the earlier output stays byte-for-byte", async () => {
@@ -250,7 +254,7 @@ describe("Issue #380: what the build refuses in a job (and keeps the last good o
     const snapshot = () => Object.fromEntries(["index.html", "style.css", ...readdirSync(join(good, "media")).map((n) => `media/${n}`)].map((n) => [n, createHash("sha256").update(readFileSync(join(good, n))).digest("hex")]));
     const before = snapshot();
     const breaks: [string, () => void, string][] = [
-      ["a half-saved JSON", () => writeFileSync(workFile(repo, "job-1"), '{"id":"job-1","vehicle":'), "CONTENT_INVALID content/works/job-1.json"],
+      ["a half-saved JSON", () => writeFileSync(workFile(repo, "job-1"), '{"id":"job-1","vehicle":'), `CONTENT_INVALID content/works/${J("job-1")}.json`],
       ["a photo over the limit", () => writeFileSync(join(repo, "media", "job-2-1.png"), Buffer.concat([solidPng(640, 480, [9, 9, 9]), Buffer.alloc(2 * 1024 * 1024)])), "CONTENT_PHOTO_TOO_LARGE job-2-1.png"],
       ["a photo deleted", () => rmSync(join(repo, "media", "job-3-1.png")), "CONTENT_PHOTO_MISSING job-3-1.png"],
     ];
@@ -362,7 +366,7 @@ describe("Issue #380 SORAIRO (owner 2026-11-28): the static design pictures and 
     const repo = await repoOf(AUTO_SITE, "works-3");
     writeFileSync(join(repo, "media", "IMG_9999.jpg"), readFileSync(join(AUTO.design!.dir, "sorairo-matte-black.jpg")));
     editWork(repo, "job-2", (w) => ({ ...w, photos: [{ image: "/media/IMG_9999.jpg", role: "after" }] }));
-    expect(await codeOf(build(repo))).toBe("CONTENT_GENERATED_AS_SHOP works/job-2");
+    expect(await codeOf(build(repo))).toBe(`CONTENT_GENERATED_AS_SHOP works/${J("job-2")}`);
     const b = await repoOf(AUTO_SITE, "works-10");
     const index = JSON.parse(readFileSync(join(b, "content", "photo-provenance.json"), "utf8")) as { b: { sha256: string; record_sha256: string }[] };
     index.b.push({ sha256: createHash("sha256").update(readFileSync(join(AUTO.design!.dir, "sorairo-matte-black.jpg"))).digest("hex"), record_sha256: "0".repeat(64) });
