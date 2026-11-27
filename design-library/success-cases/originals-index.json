@@ -8,7 +8,7 @@
     "expected_sha256": "From the adoption records: SR-002 the approved PNG (PR #237), CP-033 the adopted ZIP (PR #240), CP-034..037 the adopted ZIPs (Issue #193, originals-catalog.md).",
     "unavailable_ids": "Category C: only candidate file names, no recorded SHA-256; never counted until the original is found and recorded.",
     "never_counted": "SR-001 never counts (also hard-coded in the checker).",
-    "copy": "A file marked copy: \"viewing\" is a viewing copy derived from the original (downscaled / recompressed / possibly cropped WebP), not the original. It still counts where counts_as_reference is true (the checker's rule is unchanged), but it is never called an original: the whole-page prompt names it a viewing copy (DEV-364, owner decision 2026-11-27). CP-001..003's original PNG / source ZIP are not in this repository (docs/design/success-originals-handover.md)."
+    "copy": "A file marked copy: \"viewing\" is a viewing copy derived from the original (downscaled / recompressed / possibly cropped WebP), not the original, and it is never called an original: the whole-page prompt and the case-study viewing page name it a viewing copy (DEV-364, owner decision 2026-11-27). The marker does not change the counting rule above (counts_as_reference is unchanged). Whether viewing copies may count toward the 3 originals beyond the owner's one-time exception for req-hoshigama-wp-01 (a fictional shop) is pending the owner's decision. CP-001..003's original PNG / source ZIP are not in this repository (docs/design/success-originals-handover.md)."
   },
   "originals": [
     {

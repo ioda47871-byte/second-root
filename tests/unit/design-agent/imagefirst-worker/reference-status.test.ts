@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { inspectCaseStudy, ORIGINALS_INDEX_PATH } from "@/lib/design-agent/case-study/case-study";
+import { inspectCaseStudy, ORIGINALS_INDEX_PATH, readOriginalsIndex, SUCCESS_MANIFEST_PATH, viewingPageHtml } from "@/lib/design-agent/case-study/case-study";
 import { PromptStop } from "@/lib/design-agent/image-first/prompt";
 import { buildRequestPlan, parseRequest, referencesEn, referencesJa, type DesignRequest, type PlanReference, type RequestCaseStudyUse } from "@/lib/design-agent/image-first/request-prompt";
 import { caseStudyUseOf } from "@/lib/design-agent/imagefirst-worker/request";
 import type { FactsPack } from "@/lib/design-agent/quality-pipeline/facts-pack";
-import { caseStudyObject, cleanupTemps, REPO, sha } from "./support";
+import { caseStudyObject, cleanupTemps, REPO, sha, tmp } from "./support";
 
 // DEV-364 (owner decision 2026-11-27): the whole-page prompt says what the attached references are — originals, or
 // viewing copies (never called originals) — from the status the originals index records. A plan of originals stays byte
@@ -82,5 +82,64 @@ describe("DEV-364 reference status in the whole-page prompt", () => {
     const u = caseStudyUseOf(i);
     expect(u.use.references.map((r) => [r.case_id, r.copy])).toEqual([["CP-001", "viewing"], ["CP-002", "viewing"], ["CP-003", "viewing"]]);
     expect(u.references.every((r) => r.copy === "viewing")).toBe(true);
+  });
+});
+
+describe("PR #378 review M1 / M2: category-B viewing copies, and the owner's page labels", () => {
+  it("readOriginalsIndex marks manifest preview / WebP SHA-256s as viewing copies (CP-006's preview_webp_sha256), never its originals", async () => {
+    const { recorded, viewing } = await readOriginalsIndex(REPO);
+    const manifest = JSON.parse(readFileSync(resolve(REPO, SUCCESS_MANIFEST_PATH), "utf8")) as { records: Record<string, string>[] };
+    const r = manifest.records.find((x) => x.id === "CP-006")!;
+    expect(recorded.get("CP-006")!.has(r.preview_webp_sha256!)).toBe(true);
+    expect(viewing.get("CP-006")).toEqual(new Set([r.preview_webp_sha256]));
+    for (const k of ["original_b_png_sha256", "selected_polished_png_sha256", "source_archive_sha256"]) expect(viewing.get("CP-006")!.has(r[k]!), k).toBe(false);
+  });
+
+  it("a private case counted through its preview WebP is a viewing copy in the references, the prompt and the page", async () => {
+    // a temporary repository: the real index, and a manifest whose CP-006 preview_webp_sha256 is a private file's here
+    const repo = tmp("sr-refstatus-repo-");
+    const priv = tmp("sr-refstatus-priv-");
+    const webp = readFileSync(resolve(REPO, "design-library/success-cases/assets/CP-001_Mond.webp"));
+    const copyBytes = Buffer.concat([webp, Buffer.from("private preview copy (test)")]);
+    writeFileSync(join(priv, "cp006-preview.webp"), copyBytes);
+    const manifest = JSON.parse(readFileSync(resolve(REPO, SUCCESS_MANIFEST_PATH), "utf8")) as { records: Record<string, unknown>[] };
+    manifest.records = manifest.records.map((x) => (x.id === "CP-006" ? { ...x, preview_webp_sha256: sha(copyBytes) } : x));
+    mkdirSync(join(repo, "design-library/success-cases/assets"), { recursive: true });
+    writeFileSync(join(repo, SUCCESS_MANIFEST_PATH), JSON.stringify(manifest));
+    for (const f of [ORIGINALS_INDEX_PATH, "design-library/success-cases/assets/CP-001_Mond.webp", "design-library/success-cases/assets/CP-002_Sissi.webp"]) writeFileSync(join(repo, f), readFileSync(resolve(REPO, f)));
+    const obs = { composition: "構図", information_design: "情報設計", shop_character: "店らしさ", pc_sp: "PC と SP" };
+    const caseOf = (id: string, path: string, s: string, extra: Record<string, unknown> = {}) => ({ id, evidence_kind: "image", files: [{ path, sha256: s }], observations: obs, principles_to_bring: ["原理"], do_not_copy: ["写さない"], ...extra });
+    const record = {
+      schema: "sr_case_study_v1",
+      shop_id: "test-shop-w",
+      cases: [
+        caseOf("CP-006", join(priv, "cp006-preview.webp"), sha(copyBytes), { private_verified: true }),
+        caseOf("CP-002", "design-library/success-cases/assets/CP-002_Sissi.webp", sha(readFileSync(resolve(REPO, "design-library/success-cases/assets/CP-002_Sissi.webp")))),
+      ],
+      shop_specific_principles: ["店の原理"],
+    };
+    const i = await inspectCaseStudy(Buffer.from(JSON.stringify(record)), { repo });
+    expect(i.counted).toEqual(["CP-006", "CP-002"]);
+    expect(i.counting_files["CP-006"]).toEqual([{ path: join(priv, "cp006-preview.webp"), sha256: sha(copyBytes), copy: "viewing" }]);
+    expect(caseStudyUseOf(i).use.references.map((x) => [x.case_id, x.copy])).toEqual([["CP-006", "viewing"], ["CP-002", "viewing"]]);
+    // the owner's page: never 「原本」 for a viewing copy
+    const html = viewingPageHtml(i);
+    expect(html).toContain('alt="CP-006 の閲覧用コピー（原本ではない）"');
+    expect(html).toContain("参照に数える成功例: 2 件（うち 2 件は閲覧用コピーで数えたもの。閲覧用コピーは原本ではない）");
+    expect(html).toContain("成功例（閲覧用コピーを含む。原本ではない）と採用する原理");
+    expect(html).not.toMatch(/の原本"|参照に数える原本|成功例の原本と採用する原理/);
+  });
+
+  it("a page with no viewing copy is byte-identical to origin/develop 41d35fbd (computed there from exactly this inspection)", () => {
+    const obs = { composition: "構図", information_design: "情報設計", shop_character: "店らしさ", pc_sp: "PC と SP" };
+    const caseOf = (id: string, path: string, s: string) => ({ id, evidence_kind: "image", files: [{ path, sha256: s }], observations: obs, principles_to_bring: ["原理"], do_not_copy: ["写さない"] });
+    const files = [
+      { case_id: "CP-001", path: "design-library/a.webp", sha256: "a".repeat(64), bytes: Buffer.from("a") },
+      { case_id: "CP-002", path: "design-library/b.webp", sha256: "b".repeat(64), bytes: Buffer.from("b") },
+      { case_id: "CP-006", path: "/private/c.png", sha256: "c".repeat(64), bytes: Buffer.from("c") },
+    ];
+    const record = { schema: "sr_case_study_v1", shop_id: "test-shop", cases: files.map((f) => caseOf(f.case_id, f.path, f.sha256)), shop_specific_principles: ["店の原理"] };
+    const inspection = { shop_id: "test-shop", case_study_sha256: "d".repeat(64), counted: ["CP-001", "CP-002", "CP-006"], not_counted: [], owner_confirmed: false, record, files, counting_files: Object.fromEntries(files.map((f) => [f.case_id, [{ path: f.path, sha256: f.sha256 }]])) };
+    expect(sha(viewingPageHtml(inspection as unknown as Parameters<typeof viewingPageHtml>[0]))).toBe("cfba0c69e0f783325a4f6ac1b0ec80a9e7b16b829812986bc5283f754fac2c6c");
   });
 });

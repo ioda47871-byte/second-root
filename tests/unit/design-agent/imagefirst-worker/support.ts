@@ -119,7 +119,15 @@ const caseOf = (id: string, path: string) => ({
 export function pageShaOf(record: Record<string, unknown>): string {
   const cases = record.cases as { id: string; files: { path: string; sha256: string }[] }[];
   const files = cases.flatMap((c) => c.files.map((f) => ({ case_id: c.id, path: f.path, sha256: f.sha256, bytes: readFileSync(resolve(REPO, f.path)) })));
-  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files, counting_files: {} });
+  // DEV-364: the files that made each case count, with the index's viewing-copy status (the page labels them by it)
+  const index = JSON.parse(readFileSync(resolve(REPO, "design-library/success-cases/originals-index.json"), "utf8")) as { originals: { id: string; files: { path: string; sha256: string; copy?: "viewing" }[] }[] };
+  const counting = Object.fromEntries(
+    cases.map((c) => [c.id, c.files.flatMap((f) => {
+      const e = index.originals.find((o) => o.id === c.id)?.files.find((x) => x.path === f.path && x.sha256 === f.sha256);
+      return e ? [{ path: f.path, sha256: f.sha256, ...(e.copy === "viewing" ? { copy: "viewing" as const } : {}) }] : [];
+    })]),
+  );
+  return viewingPageSha256({ shop_id: record.shop_id as string, case_study_sha256: "", counted: cases.map((c) => c.id), not_counted: [], owner_confirmed: false, record: record as unknown as CaseStudy, files, counting_files: counting });
 }
 /** An owner-confirmed case study for `shopId` that counts CP-001..003 (the repository's images; the text is invented). */
 export function caseStudyObject(shopId: string, over: Record<string, unknown> = {}): Record<string, unknown> {

@@ -201,22 +201,38 @@ export function parseCaseStudy(bytes: Buffer): CaseStudy {
 
 /** manifest.json's field names that record a version that was NOT adopted (never evidence of the original). */
 const NOT_ADOPTED_KEY = /rejected|not_preferred/;
+/**
+ * DEV-364 (PR #378 review M1): manifest.json's field names that record a viewing copy (a preview / WebP derived from the
+ * original, e.g. preview_webp_sha256, mobile_webp_sha256, offline_preview_sha256). Such a SHA-256 still makes a private
+ * case count as before; the file is only marked as a viewing copy, never called an original.
+ */
+const VIEWING_COPY_KEY = /webp|preview/;
 
 /**
  * The repository's originals index plus, per category B id, the SHA-256s recorded for it: manifest.json's 64-hex fields
  * (rejected / not-preferred revisions excluded) and the index's expected_sha256.
  */
-export async function readOriginalsIndex(repo: string): Promise<{ index: OriginalsIndex; recorded: Map<string, Set<string>> }> {
+export async function readOriginalsIndex(repo: string): Promise<{ index: OriginalsIndex; recorded: Map<string, Set<string>>; viewing: Map<string, Set<string>> }> {
   try {
     const index = OriginalsIndex.parse(JSON.parse(await readFile(join(repo, ORIGINALS_INDEX_PATH), "utf8")));
     const manifest = JSON.parse(await readFile(join(repo, SUCCESS_MANIFEST_PATH), "utf8")) as { records?: Record<string, unknown>[] };
     const recorded = new Map<string, Set<string>>();
+    const viewing = new Map<string, Set<string>>();
     for (const id of index.private_original_ids) {
       const set = new Set(index.expected_sha256[id] ?? []);
-      for (const [k, v] of Object.entries(manifest.records?.find((r) => r.id === id) ?? {})) if (typeof v === "string" && /^[0-9a-f]{64}$/.test(v) && !NOT_ADOPTED_KEY.test(k)) set.add(v);
+      const copies = new Set<string>();
+      for (const [k, v] of Object.entries(manifest.records?.find((r) => r.id === id) ?? {})) {
+        if (typeof v !== "string" || !/^[0-9a-f]{64}$/.test(v) || NOT_ADOPTED_KEY.test(k)) continue;
+        set.add(v);
+        if (VIEWING_COPY_KEY.test(k)) copies.add(v);
+      }
+      // a SHA-256 recorded for the id under another (original) field too is not a viewing copy
+      for (const [k, v] of Object.entries(manifest.records?.find((r) => r.id === id) ?? {})) if (typeof v === "string" && !VIEWING_COPY_KEY.test(k) && !NOT_ADOPTED_KEY.test(k)) copies.delete(v);
+      for (const v of index.expected_sha256[id] ?? []) copies.delete(v);
       recorded.set(id, set);
+      viewing.set(id, copies);
     }
-    return { index, recorded };
+    return { index, recorded, viewing };
   } catch {
     throw new CaseStudyStop("CASE_STUDY_INDEX_INVALID");
   }
@@ -330,7 +346,7 @@ export type CaseStudyInspection = {
 export type CountingFile = { path: string; sha256: string; copy?: "viewing" };
 
 /** The listed files of a counted case that are its verified originals (see CaseStudyInspection.counting_files). */
-function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, Set<string>>): CountingFile[] {
+function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, Set<string>>, viewing: Map<string, Set<string>>): CountingFile[] {
   const entry = index.originals.find((o) => o.id === c.id);
   if (entry)
     return c.files.flatMap((f) => {
@@ -338,7 +354,8 @@ function countingFiles(c: CaseEntry, index: OriginalsIndex, recorded: Map<string
       return e ? [{ path: f.path, sha256: f.sha256, ...(e.copy === "viewing" ? { copy: "viewing" as const } : {}) }] : [];
     });
   const known = recorded.get(c.id) ?? new Set<string>();
-  return c.files.filter((f) => known.has(f.sha256)).map((f) => ({ path: f.path, sha256: f.sha256 }));
+  const copies = viewing.get(c.id) ?? new Set<string>();
+  return c.files.filter((f) => known.has(f.sha256)).map((f) => ({ path: f.path, sha256: f.sha256, ...(copies.has(f.sha256) ? { copy: "viewing" as const } : {}) }));
 }
 
 /** Why a case does not count, or null when it counts (its files already verified). */
@@ -368,7 +385,7 @@ function countReason(c: CaseEntry, index: OriginalsIndex, recorded: Map<string, 
  */
 export async function inspectCaseStudy(bytes: Buffer, o: { repo: string }): Promise<CaseStudyInspection> {
   const record = parseCaseStudy(bytes);
-  const { index, recorded } = await readOriginalsIndex(o.repo);
+  const { index, recorded, viewing } = await readOriginalsIndex(o.repo);
   const repoOriginals = new Set(index.originals.flatMap((x) => x.files.map((f) => f.sha256)));
   const files: ViewedFile[] = [];
   for (const c of record.cases) {
@@ -389,7 +406,7 @@ export async function inspectCaseStudy(bytes: Buffer, o: { repo: string }): Prom
     const reason = countReason(c, index, recorded);
     if (reason === null) {
       counted.push(c.id);
-      counting[c.id] = countingFiles(c, index, recorded);
+      counting[c.id] = countingFiles(c, index, recorded, viewing);
     } else notCounted.push({ id: c.id, reason });
   }
   return { shop_id: record.shop_id, case_study_sha256: sha256(bytes), counted, not_counted: notCounted, owner_confirmed: record.owner_confirmation?.confirmed === true, record, files, counting_files: counting };
@@ -457,6 +474,10 @@ export function renderViewingPage(i: CaseStudyInspection, imageNames: Map<Viewed
   const e = escapeHtml;
   const list = (items: string[]) => `<ul>${items.map((t) => `<li>${e(t)}</li>`).join("")}</ul>`;
   const enough = i.counted.length >= MIN_COUNTED_ORIGINALS;
+  // DEV-364 (PR #378 review M2): a file recorded as a viewing copy is labelled so, never as an original; a page with no
+  // viewing copy is byte for byte what it was
+  const isCopy = (f: ViewedFile) => (i.counting_files[f.case_id] ?? []).some((x) => x.path === f.path && x.sha256 === f.sha256 && x.copy === "viewing");
+  const copyCases = i.counted.filter((id) => (i.counting_files[id] ?? []).length > 0 && i.counting_files[id]!.every((x) => x.copy === "viewing"));
   const cases = i.record.cases
     .map((c) => {
       const counted = i.counted.includes(c.id);
@@ -466,13 +487,13 @@ export function renderViewingPage(i: CaseStudyInspection, imageNames: Map<Viewed
         .map((f) => {
           const name = imageNames.get(f);
           const caption = `<figcaption>${e(f.path)}<br><code>${e(f.sha256)}</code></figcaption>`;
-          if (name) return `<figure><img src="${e(name)}" alt="${e(`${c.id} の原本`)}" loading="lazy">${caption}</figure>`;
+          if (name) return `<figure><img src="${e(name)}" alt="${e(isCopy(f) ? `${c.id} の閲覧用コピー（原本ではない）` : `${c.id} の原本`)}" loading="lazy">${caption}</figure>`;
           const what = isArchivePath(f.path) ? "原本の ZIP（SHA-256 を照合済み。中の画像は別に並べる）" : "画像ではないファイル（頁の HTML/CSS など）。原本の場所で開いて確認する。";
           return `<figure class="nofile"><p>${e(what)}</p>${caption}</figure>`;
         })
         .join("");
       return `<section class="case">
-<h2>${e(c.id)} <span class="kind">${e(EVIDENCE_LABEL[c.evidence_kind])}</span> <span class="${counted ? "ok" : "no"}">${counted ? "参照に数える" : reason ? `数えない: ${e(REASON_LABEL[reason])}` : "数えない"}</span></h2>
+<h2>${e(c.id)} <span class="kind">${e(EVIDENCE_LABEL[c.evidence_kind])}</span> <span class="${counted ? "ok" : "no"}">${counted ? (copyCases.includes(c.id) ? "参照に数える（閲覧用コピー。原本ではない）" : "参照に数える") : reason ? `数えない: ${e(REASON_LABEL[reason])}` : "数えない"}</span></h2>
 <div class="figs">${figures || "<p>見たファイルの記録なし</p>"}</div>
 <div class="cols">
 <div><h3>持ち込む原理</h3>${list(c.principles_to_bring)}</div>
@@ -519,9 +540,15 @@ code { font-size: 0.75rem; }
 </head>
 <body>
 <main>
-<h1>${e(i.shop_id)} — 成功例の原本と採用する原理（非公開・ローカル）</h1>
+${
+  copyCases.length === 0
+    ? `<h1>${e(i.shop_id)} — 成功例の原本と採用する原理（非公開・ローカル）</h1>
 <p>参照に数える原本: ${i.counted.length} 件（${MIN_COUNTED_ORIGINALS} 件以上が必要）${enough ? "" : " — <strong class=\"no\">足りない</strong>"}。</p>
-<p>オーナーが原本の選定と原理を確認したら、Claude がその旨を記録の owner_confirmation に書く（selected_ids と、このページの index.html の SHA-256 を page_sha256 に）。このページの内容が変われば、確認はやり直しになる。</p>
+<p>オーナーが原本の選定と原理を確認したら、`
+    : `<h1>${e(i.shop_id)} — 成功例（閲覧用コピーを含む。原本ではない）と採用する原理（非公開・ローカル）</h1>
+<p>参照に数える成功例: ${i.counted.length} 件（うち ${copyCases.length} 件は閲覧用コピーで数えたもの。閲覧用コピーは原本ではない）（${MIN_COUNTED_ORIGINALS} 件以上が必要）${enough ? "" : " — <strong class=\"no\">足りない</strong>"}。</p>
+<p>オーナーが成功例の選定と原理を確認したら、`
+}Claude がその旨を記録の owner_confirmation に書く（selected_ids と、このページの index.html の SHA-256 を page_sha256 に）。このページの内容が変われば、確認はやり直しになる。</p>
 <section>
 <h2>この店固有のデザインの原理</h2>
 ${list(i.record.shop_specific_principles)}
