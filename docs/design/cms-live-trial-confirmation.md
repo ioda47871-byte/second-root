@@ -3,7 +3,7 @@
 2026-11-27。状態: **確認の依頼だけ**。Claude はサインイン・アカウントの作成・GitHub App の導入・公開・送信をしていない。
 オーナーは 2026-11-27 に実環境の試験（Pages CMS + GitHub + Cloudflare Pages、**架空の自動車施工店のデータだけ**）を承認した。
 実際の導入・作成・公開は、**この頁の対象と権限を見たうえでのオーナーの最終確認の後**に行う。問い合わせの送信は承認されていない。
-手順の詳細は [`cms-live-trial-owner-sheet.md`](cms-live-trial-owner-sheet.md)、構築の設定の正本は納品用 repo の雛形の `README.md`（`experiments/pages-cms/delivery-template/README.md`、PR #385、2026-11-27 時点で未マージ）。
+手順の詳細は [`cms-live-trial-owner-sheet.md`](cms-live-trial-owner-sheet.md)、構築の設定の正本は納品用 repo の雛形の `README.md`（`experiments/pages-cms/delivery-template/README.md`、PR #385 で develop にマージ済み。試験用 repo は `~/second-root-trial/sr-cms-trial-autocare`（ローカルだけ、remote なし。PR #387 の付録 A.0））。
 
 ## 1. 対象
 
