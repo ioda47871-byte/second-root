@@ -4,7 +4,9 @@
  * PC 1440 and SP 390 (JS off, every request outside the built site blocked).
  *
  *   npx tsx experiments/pages-cms/q1-check.ts --out <empty dir outside the repository>
- *   npx tsx experiments/pages-cms/q1-check.ts --out <dir> --repo <a shop repository> --site <bakery|cafe>
+ *   npx tsx experiments/pages-cms/q1-check.ts --out <dir> --repo <a shop repository> --site <bakery|cafe|auto>
+ *   (either form: [--design-dir <folder of a site's design pictures>], default export-delivery.ts DEFAULT_DESIGN_DIR —
+ *   PR #390: Second Root keeps only the design record; the pictures stay outside its git)
  *
  * DEV-364 P0: --repo checks ONE given shop repository (content/ + media/, e.g. after a Pages CMS update) instead of the
  * built-in fixtures: it is built with the named site's page code (its photo slots applied) and measured at PC and SP,
@@ -33,9 +35,10 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 import { chromium, type Browser } from "playwright";
 import { waitForFrame } from "../../lib/design-agent/frame-ready";
 import { buildSite } from "./build";
+import { DEFAULT_DESIGN_DIR, stageDesignPictures } from "./design-pictures";
 import { Q1_TODAY, solidPng, writeFixture } from "./fixtures";
 import { SLOT_FRAME_RATIOS, subjectVisible, type AppliedSlot } from "./photo-slots";
-import { SHOP_SITES } from "./shop-site";
+import { SHOP_SITES, type ShopSite } from "./shop-site";
 
 const REPO = resolve(__dirname, "../..");
 const VIEWPORTS = { pc: { width: 1440, height: 900 }, sp: { width: 390, height: 844 } } as const;
@@ -216,10 +219,17 @@ export async function safeOutDir(outDir: string): Promise<string> {
 }
 
 /**
+ * PR #390: the site as Q1 builds it — its design pictures staged from the outside folder into <work>/design
+ * (design-pictures.ts; Second Root keeps only their record); a site without design is returned as it is. Shared with
+ * q1-render.ts, which builds with it itself.
+ */
+export const q1Site = (site: ShopSite, work: string, designPictures?: string) => stageDesignPictures(site, designPictures ?? DEFAULT_DESIGN_DIR, join(work, "design"));
+
+/**
  * Runs the direct checks over every site's fixtures. Since PR (3) fixtures are named "<site>-<fixture>" (e.g.
  * "bakery-items-50", "cafe-sizes-prices") in the report, in the file names and in `only`.
  */
-export async function runQ1(o: { outDir: string; browser: Browser; only?: string[] }): Promise<{ fixtures: string[]; findings: Q1Finding[] }> {
+export async function runQ1(o: { outDir: string; browser: Browser; only?: string[]; designPictures?: string }): Promise<{ fixtures: string[]; findings: Q1Finding[] }> {
   const out = await safeOutDir(o.outDir);
   const work = await mkdtemp(join(tmpdir(), "sr-pages-cms-q1-"));
   try {
@@ -237,7 +247,7 @@ export async function runQ1(o: { outDir: string; browser: Browser; only?: string
         const repo = join(work, name, "repo");
         const dist = join(work, name, "dist");
         await writeFixture(repo, all[fixture]!);
-        const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY, site });
+        const built = await buildSite({ repo, outDir: dist, today: Q1_TODAY, site: await q1Site(site, join(work, name), o.designPictures) });
         for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out, built.slots)));
       }
     }
@@ -253,7 +263,7 @@ export async function runQ1(o: { outDir: string; browser: Browser; only?: string
  * DEV-364 P0: the direct checks on ONE given shop repository, built here (into a temporary folder that is removed) with
  * the named site's page code, measured at PC and SP after the controls. Reported as "<site>-<name>".
  */
-export async function runQ1OnRepo(o: { outDir: string; browser: Browser; repo: string; siteId: string; name?: string }): Promise<{ fixture: string; findings: Q1Finding[] }> {
+export async function runQ1OnRepo(o: { outDir: string; browser: Browser; repo: string; siteId: string; name?: string; designPictures?: string }): Promise<{ fixture: string; findings: Q1Finding[] }> {
   const site = SHOP_SITES.find((s) => s.id === o.siteId);
   if (!site) throw new Error("Q1_SITE_UNKNOWN");
   const out = await safeOutDir(o.outDir);
@@ -263,7 +273,7 @@ export async function runQ1OnRepo(o: { outDir: string; browser: Browser; repo: s
     if (missed.length > 0) throw new Error(`Q1_CONTROL_MISSED ${missed.join(",")}`);
     const name = `${site.id}-${o.name ?? "repo"}`;
     const dist = join(work, "dist");
-    const built = await buildSite({ repo: resolve(o.repo), outDir: dist, today: Q1_TODAY, site });
+    const built = await buildSite({ repo: resolve(o.repo), outDir: dist, today: Q1_TODAY, site: await q1Site(site, work, o.designPictures) });
     const findings: Q1Finding[] = [];
     for (const view of ["pc", "sp"] as const) findings.push(...(await serveAndMeasure(o.browser, dist, name, view, out, built.slots)));
     await writeFile(join(out, "q1-report.json"), `${JSON.stringify({ schema: "pages_cms_q1_experiment_v0", fixtures: [name], viewports: VIEWPORTS, findings }, null, 2)}\n`);
@@ -279,6 +289,8 @@ if (require.main === module) {
   const ri = process.argv.indexOf("--repo");
   const si = process.argv.indexOf("--site");
   const repoArg = ri > 0 ? process.argv[ri + 1] : undefined;
+  const di = process.argv.indexOf("--design-dir");
+  const designPictures = di > 0 ? process.argv[di + 1] : undefined;
   const siteArg = si > 0 ? process.argv[si + 1] : undefined;
   if (!outDir || (ri > 0) !== (si > 0) || (ri > 0 && (!repoArg || !siteArg))) {
     process.stdout.write('{"status":"refused","code":"ARGS_INVALID"}\n');
@@ -288,11 +300,11 @@ if (require.main === module) {
     const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
     try {
       if (repoArg && siteArg) {
-        const one = await runQ1OnRepo({ outDir, browser, repo: repoArg, siteId: siteArg });
+        const one = await runQ1OnRepo({ outDir, browser, repo: repoArg, siteId: siteArg, ...(designPictures ? { designPictures } : {}) });
         process.stdout.write(`${JSON.stringify({ status: one.findings.length ? "findings" : "clean", fixtures: 1, findings: one.findings }, null, 2)}\n`);
         process.exit(one.findings.length ? 1 : 0);
       }
-      const r = await runQ1({ outDir, browser });
+      const r = await runQ1({ outDir, browser, ...(designPictures ? { designPictures } : {}) });
       process.stdout.write(`${JSON.stringify({ status: r.findings.length ? "findings" : "clean", fixtures: r.fixtures.length, findings: r.findings }, null, 2)}\n`);
       process.exit(r.findings.length ? 1 : 0);
     } finally {

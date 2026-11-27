@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { exportDelivery, listFiles, NODE_VERSION, SITE_FILES, TEMPLATE_FILES } from "@/experiments/pages-cms/export-delivery";
+import { exportDelivery, listFiles, NODE_VERSION, SITE_DIRS, SITE_FILES, TEMPLATE_FILES } from "@/experiments/pages-cms/export-delivery";
 import { pagesYaml } from "@/experiments/pages-cms/pages-config";
 import { AUTO_SITE } from "@/experiments/pages-cms/shop-site";
+import { writeSyntheticDesign } from "./synthetic-design";
 
 // Issue #380 PR 3: the standalone delivery-repo template, written by export-delivery.ts. No install and no build here
 // (its dependencies are not Second Root's): this checks what is written. The repository's own tests
@@ -21,24 +22,36 @@ afterAll(() => {
   for (const d of temps) rmSync(d, { recursive: true, force: true });
 });
 const HERE = join(__dirname, "../../../experiments/pages-cms");
+// PR #390: no design picture is committed — the exports here take SYNTHETIC pictures and a test-only record
+const DESIGN = (() => {
+  const d = join(tmp(), "design");
+  writeSyntheticDesign(d);
+  return { designDir: d, testOnlyDesignRecordDir: d };
+})();
 const shaOf = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
 describe("Issue #380 PR 3: the standalone delivery repository (export)", () => {
   it("is deterministic: two exports write the same files with the same bytes", async () => {
     const a = join(tmp(), "a");
     const b = join(tmp(), "b");
-    const fa = await exportDelivery({ outDir: a });
-    const fb = await exportDelivery({ outDir: b });
+    const fa = await exportDelivery({ outDir: a, ...DESIGN });
+    const fb = await exportDelivery({ outDir: b, ...DESIGN });
     expect(fa).toEqual(fb);
     for (const f of fa) expect(shaOf(join(a, f)), f).toBe(shaOf(join(b, f)));
   });
 
   it("holds the build, the page code copied verbatim, the generated .pages.yml, the sample, the settings — and nothing of Second Root's private records", async () => {
     const out = join(tmp(), "repo");
-    const files = await exportDelivery({ outDir: out });
+    const files = await exportDelivery({ outDir: out, ...DESIGN });
     for (const f of [".gitignore", ".node-version", ".pages.yml", "README.md", "build.mjs", "package-lock.json", "package.json", "photo-prep.mjs", "site.config.json", "tests/template.test.mjs"]) expect(files, f).toContain(f);
     for (const f of SITE_FILES) expect(readFileSync(join(out, "site", f), "utf8"), f).toBe(readFileSync(join(HERE, f), "utf8"));
-    expect(files.filter((f) => f.startsWith("site/"))).toEqual(SITE_FILES.map((f) => `site/${f}`));
+    // the page code, plus its static design folder (Issue #380 SORAIRO), copied byte for byte
+    // the design folder: Second Root holds its record only; the export adds the pictures from the outside folder,
+    // under the record's names, and the record it checked them against
+    expect((await Promise.all(SITE_DIRS.map(async (d) => listFiles(join(HERE, d))))).flat()).toEqual(["sorairo/generated-materials.json"]);
+    const designFiles = ["site/design/sorairo/generated-materials.json", "site/design/sorairo/sorairo-matte-black.jpg", "site/design/sorairo/sorairo-silver.jpg"];
+    expect(files.filter((f) => f.startsWith("site/"))).toEqual([...SITE_FILES.map((f) => `site/${f}`), ...designFiles].sort());
+    for (const f of designFiles) expect(shaOf(join(out, f)), f).toBe(shaOf(join(DESIGN.designDir, f.replace(/^site\/design\/sorairo\//, ""))));
     expect(readFileSync(join(out, ".pages.yml"), "utf8")).toBe(pagesYaml({ extensions: AUTO_SITE.profile.extensions, collections: AUTO_SITE.profile.collections }));
     expect(JSON.parse(readFileSync(join(out, "site.config.json"), "utf8"))).toEqual({ site: "auto" });
     expect(readFileSync(join(out, ".node-version"), "utf8")).toBe(`${NODE_VERSION}\n`);
@@ -53,7 +66,7 @@ describe("Issue #380 PR 3: the standalone delivery repository (export)", () => {
 
   it("pins every dependency exactly in its own package.json and lockfile (none added to Second Root); no secret, no network call, no model in the build", async () => {
     const out = join(tmp(), "repo");
-    await exportDelivery({ outDir: out });
+    await exportDelivery({ outDir: out, ...DESIGN });
     const pkg = JSON.parse(readFileSync(join(out, "package.json"), "utf8")) as { dependencies: Record<string, string>; devDependencies?: unknown; scripts: Record<string, string>; private: boolean };
     expect(pkg.private).toBe(true);
     expect(Object.keys(pkg.dependencies).sort()).toEqual(["sharp", "tsx", "zod"]);
@@ -93,10 +106,28 @@ describe("Issue #380 PR 3: the standalone delivery repository (export)", () => {
   });
 
   it("refuses an output folder inside Second Root, a non-empty one, an unknown site or fixture", async () => {
-    await expect(exportDelivery({ outDir: join(__dirname, "export-here") })).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
+    // #390 review: the output folder is checked before the design pictures (a deterministic order)
+    await expect(exportDelivery({ outDir: join(__dirname, "export-here"), ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
+    await expect(exportDelivery({ outDir: join(__dirname, "export-here"), designDir: join(tmp(), "no-such-folder") })).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
     const full = tmp();
-    await expect(exportDelivery({ outDir: full, site: "auto" }).then(() => exportDelivery({ outDir: full }))).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
-    await expect(exportDelivery({ outDir: join(tmp(), "x"), site: "garage" })).rejects.toMatchObject({ code: "EXPORT_SITE_UNKNOWN" });
-    await expect(exportDelivery({ outDir: join(tmp(), "y"), fixture: "nope" })).rejects.toMatchObject({ code: "EXPORT_FIXTURE_UNKNOWN" });
+    await expect(exportDelivery({ outDir: full, site: "auto", ...DESIGN }).then(() => exportDelivery({ outDir: full, ...DESIGN }))).rejects.toMatchObject({ code: "EXPORT_OUT_UNSAFE" });
+    await expect(exportDelivery({ outDir: join(tmp(), "x"), site: "garage", ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_SITE_UNKNOWN" });
+    await expect(exportDelivery({ outDir: join(tmp(), "y"), fixture: "nope", ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_FIXTURE_UNKNOWN" });
+    // the test-only record override is refused outside vitest
+    const saved = process.env.VITEST;
+    process.env.VITEST = "false";
+    try {
+      await expect(exportDelivery({ outDir: join(tmp(), "w"), ...DESIGN })).rejects.toMatchObject({ code: "EXPORT_TEST_ONLY" });
+    } finally {
+      process.env.VITEST = saved;
+    }
+    // PR #390: design pictures missing, or not the recorded bytes (the committed record with synthetic pictures), refuse
+    // before anything is written
+    const noDesign = join(tmp(), "z");
+    await expect(exportDelivery({ outDir: noDesign, designDir: join(tmp(), "no-such-folder") })).rejects.toMatchObject({ code: "EXPORT_DESIGN_MISSING" });
+    await expect(exportDelivery({ outDir: noDesign, designDir: DESIGN.designDir })).rejects.toMatchObject({ code: "EXPORT_DESIGN_MISSING" });
+    expect(existsSync(noDesign)).toBe(false);
+    // a site without design pictures exports without them
+    expect((await exportDelivery({ outDir: join(tmp(), "bakery"), site: "bakery", designDir: join(tmp(), "no-such-folder") })).filter((f) => f.endsWith(".jpg"))).toEqual([]);
   });
 });

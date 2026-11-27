@@ -59,7 +59,7 @@ export function checkPhoto(file: string, bytes: Buffer): PhotoCheck {
  * Every picture the page shows (visible items in visible categories; Issue #380: and the shown works' photos), checked;
  * the media/ file names in order.
  */
-export async function checkPhotos(repo: string, content: ShopContent, profile?: ShopProfile): Promise<PhotoCheck[]> {
+export async function checkPhotos(repo: string, content: ShopContent, profile?: ShopProfile, designGenerated: ReadonlySet<string> = new Set()): Promise<PhotoCheck[]> {
   const shown = shownPictures(content);
   const names = [...new Set(shown.map((m) => m.image.replace(/^\/media\//, "")))].sort();
   const out: PhotoCheck[] = [];
@@ -73,7 +73,8 @@ export async function checkPhotos(repo: string, content: ShopContent, profile?: 
     out.push(checkPhoto(n, await readFile(path)));
   }
   // review #365 M1: a delivered generated material stays labelled whatever the item says
-  const generated = await loadGeneratedRecord(repo, profile?.generatedDelivered === true);
+  // Issue #380 (SORAIRO): the site's own static design materials are generated too — their bytes may not be shown as B / C
+  const generated = new Set([...(await loadGeneratedRecord(repo, profile?.generatedDelivered === true)), ...designGenerated]);
   const shaOf = new Map(out.map((p) => [p.file, p.sha256]));
   for (const m of shown) if (m.imageKind !== "generated" && generated.has(shaOf.get(m.image.replace(/^\/media\//, ""))!)) throw new ContentError("CONTENT_GENERATED_AS_SHOP", m.ref);
   return out;
@@ -107,7 +108,7 @@ async function readHead(path: string): Promise<Buffer> {
   }
 }
 
-export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" | "C"; record: Provenance | null };
+export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" | "C"; record: Provenance | null; source?: GeneratedSource };
 
 /**
  * DEV-364 PR 2a: the provenance of every picture the page shows. A: its record from the handover entry when it names the
@@ -122,7 +123,7 @@ export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" |
  * is required and checked as before. An entry saying `generated` on B bytes is still refused
  * (CONTENT_PHOTO_CLASS_MIXED): the page would label a real photo イメージ.
  */
-export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string; delivery?: boolean } = {}): Promise<PhotoProvenance[]> {
+export async function photoProvenance(repo: string, content: ShopContent, photos: readonly PhotoCheck[], o: { provenanceDir?: string; delivery?: boolean; designGenerated?: ReadonlySet<string> } = {}): Promise<PhotoProvenance[]> {
   // #371 re-review: a delivery build checks the full B rights records, so it needs the private folder
   if (o.delivery && !o.provenanceDir) throw new ContentError("CONTENT_DELIVERY_RIGHTS_DIR_MISSING", "provenanceDir");
   if (o.provenanceDir) await assertOutsideRepo(o.provenanceDir, repo);
@@ -132,6 +133,7 @@ export async function photoProvenance(repo: string, content: ShopContent, photos
   const shown = shownPictures(content);
   // review #371 M1 (owner rule: A / B / C never mixed): the class belongs to the picture's bytes, not to the item
   for (const e of handover) if (index.has(e.sha256)) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", e.file);
+  for (const sha of o.designGenerated ?? []) if (index.has(sha)) throw new ContentError("CONTENT_PHOTO_CLASS_MIXED", "design material");
   const classOfSha = new Map<string, "A" | "B" | "C">();
   const classOf = (kind: (typeof shown)[number]["imageKind"], sha256: string) => (index.has(sha256) && CLASS_OF[kind] === "C" ? "B" : CLASS_OF[kind]);
   for (const m of shown) {
@@ -172,6 +174,14 @@ async function assertOutsideRepo(dir: string, repo: string): Promise<void> {
   if (inside(real, realRepo) || inside(resolve(dir), resolve(repo))) throw new ContentError("CONTENT_PROVENANCE_IN_REPO", "provenanceDir");
 }
 
+const GeneratedSourceSchema = z.strictObject({
+  supplied_by: z.literal("owner"),
+  made_with: z.string().min(1).max(80),
+  model: z.string().min(1).max(80).nullable(),
+  prompt: z.string().min(1).max(4000).nullable(),
+  received_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
 /** The handover record of delivered generated materials (written at delivery; not editable in the CMS). */
 export const GENERATED_RECORD = "content/generated-materials.json";
 const GeneratedRecord = z.strictObject({
@@ -184,11 +194,16 @@ const GeneratedRecord = z.strictObject({
         // DEV-364 PR 2a: the A provenance (optional, so earlier records stay valid): the material and its approval
         material_id: z.string().regex(/^[a-z][a-z0-9-]{1,30}$/).optional(),
         materials_approval_sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+        // Issue #380 (SORAIRO, owner 2026-11-28): where a material came from when it was NOT made by Second Root's run
+        // (optional, so earlier records stay valid). Unknown facts are null — never filled in: the owner supplied the
+        // picture, made on the ChatGPT side; the model and the prompt were not given to us.
+        source: GeneratedSourceSchema.optional(),
       }),
     )
     .max(500),
 });
 export type GeneratedRecord = z.infer<typeof GeneratedRecord>;
+export type GeneratedSource = z.infer<typeof GeneratedSourceSchema>;
 
 /**
  * The SHA-256s of the delivered generated materials. Only a file that does not exist (ENOENT) means "no record";
@@ -224,4 +239,35 @@ export async function loadGeneratedEntries(repo: string): Promise<GeneratedRecor
 /** The record for a set of delivered generated pictures (what the handover writes). */
 export function generatedRecord(files: Record<string, Buffer>): GeneratedRecord {
   return { schema: "generated_materials_v1", files: Object.entries(files).map(([file, b]) => ({ file, sha256: createHash("sha256").update(b).digest("hex") })).sort((a, b) => (a.file < b.file ? -1 : 1)) };
+}
+
+/**
+ * Issue #380 (SORAIRO, owner 2026-11-28): a site's own STATIC design materials (the page code's pictures, not the
+ * customer's content): files in the site's design folder with their record (the same generated_materials_v1 schema,
+ * `generated-materials.json` next to them). Every material the site names must be in the record with exactly its bytes
+ * (else CONTENT_GENERATED_RECORD_MISSING), and pass the photo limits. They are class A: the page labels them, works can
+ * never show their bytes (checkPhotos), and the B index may not list them (photoProvenance). The folder belongs to the
+ * page code (site/design/ in the delivery repository), never to content/ or media/, so the CMS cannot change them.
+ */
+export type SiteDesign = { dir: string; pictures: readonly { id: string; file: string; alt: string }[] };
+export const DESIGN_RECORD = "generated-materials.json";
+export async function loadDesignMaterials(design: SiteDesign): Promise<{ checks: PhotoCheck[]; entries: GeneratedRecord["files"]; shas: Set<string> }> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse((await readFile(join(design.dir, DESIGN_RECORD))).toString("utf8"));
+  } catch {
+    throw new ContentError("CONTENT_GENERATED_RECORD_MISSING", `design/${DESIGN_RECORD}`);
+  }
+  const r = GeneratedRecord.safeParse(raw);
+  if (!r.success) throw new ContentError("CONTENT_INVALID", `design/${DESIGN_RECORD}`);
+  const checks: PhotoCheck[] = [];
+  for (const file of [...new Set(design.pictures.map((p) => p.file))].sort()) {
+    const bytes = await readFile(join(design.dir, file)).catch(() => null);
+    if (!bytes) throw new ContentError("CONTENT_PHOTO_MISSING", `design/${file}`);
+    const c = checkPhoto(file, bytes);
+    if (!r.data.files.some((e) => e.file === file && e.sha256 === c.sha256)) throw new ContentError("CONTENT_GENERATED_RECORD_MISSING", `design/${file}`);
+    checks.push(c);
+  }
+  const entries = r.data.files.filter((e) => checks.some((c) => c.file === e.file));
+  return { checks, entries, shas: new Set(entries.map((e) => e.sha256)) };
 }

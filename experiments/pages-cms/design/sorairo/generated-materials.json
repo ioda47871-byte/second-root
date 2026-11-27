@@ -1,0 +1,15 @@
+{
+  "schema": "generated_materials_v1",
+  "files": [
+    {
+      "file": "sorairo-matte-black.jpg",
+      "sha256": "20c782e075b61523aa0a27c6419d5cdf01a3db7868c679f5341862a65d21152a",
+      "source": { "supplied_by": "owner", "made_with": "ChatGPT (owner side)", "model": null, "prompt": null, "received_on": "2026-11-28" }
+    },
+    {
+      "file": "sorairo-silver.jpg",
+      "sha256": "4101af37221ab2ab5501e563c5af008d4468877fc79753e87610f437b10a7809",
+      "source": { "supplied_by": "owner", "made_with": "ChatGPT (owner side)", "model": null, "prompt": null, "received_on": "2026-11-28" }
+    }
+  ]
+}

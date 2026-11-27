@@ -70,7 +70,10 @@ export async function build({ root = HERE, today = tokyoToday() } = {}) {
   // 3. the customer's photos, fitted (only the pictures the page shows; the rest is not published)
   const content = await m.contentModel.loadContent(repo, site.profile);
   const names = [...new Set(m.contentModel.shownPictures(content).map((p) => p.image.replace(/^\/media\//, "")))].sort();
-  const protectedShas = new Set([...(await m.photos.loadGeneratedRecord(repo, site.profile.generatedDelivered === true)), ...(await m.provenance.loadProvenanceIndex(repo)).keys()]);
+  // (the site's own static design pictures count as generated too: a copy of their bytes in media/ is never re-encoded,
+  // so the content checks still recognise it)
+  const designShas = site.design ? (await m.photos.loadDesignMaterials(site.design)).shas : new Set();
+  const protectedShas = new Set([...(await m.photos.loadGeneratedRecord(repo, site.profile.generatedDelivered === true)), ...(await m.provenance.loadProvenanceIndex(repo)).keys(), ...designShas]);
   const photos = await preparePhotos({ media: join(repo, "media"), names, protectedShas, limits: m.photos.PHOTO_LIMITS });
   // 4. the page, with every check
   const next = join(work, "dist");

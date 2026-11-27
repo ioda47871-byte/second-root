@@ -5,7 +5,7 @@
  * site/ (one implementation: these very files, never a rewrite), its own pinned package.json and lockfile, its tests,
  * and the Cloudflare Pages settings in its README. It does not depend on Second Root, holds no secret and no model.
  *
- *   npx tsx experiments/pages-cms/export-delivery.ts --out <empty dir outside the repository> [--site auto] [--fixture works-10]
+ *   npx tsx experiments/pages-cms/export-delivery.ts --out <empty dir outside the repository> [--site auto] [--fixture works-10] [--design-dir <folder of the design pictures>]
  *
  * LOCAL only: nothing is pushed, uploaded or published (a real repository / Pages project needs the owner's approval).
  * The output is deterministic: the same commit writes the same bytes (tests/unit/experiments/pages-cms-delivery.test.ts).
@@ -15,6 +15,8 @@ import { copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, w
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { writeFixture } from "./fixtures";
+import { DEFAULT_DESIGN_DIR, stageDesignPictures } from "./design-pictures";
+import { loadDesignMaterials } from "./photos";
 import { pagesYaml } from "./pages-config";
 import { SHOP_SITES } from "./shop-site";
 
@@ -40,6 +42,19 @@ export const SITE_FILES = [
   "provenance.ts",
   "shop-site.ts",
 ] as const;
+/**
+ * Issue #380 (SORAIRO): the page code's static design folder (its pictures and their generated-materials record),
+ * copied as it is into site/design/ — part of the page code, never content/ or media/.
+ */
+export const SITE_DIRS = ["design"] as const;
+/**
+ * PR #390 (the repository's image lock): the design pictures are not in Second Root's git — only their record is. The
+ * export takes them from an outside folder (--design-dir; default $SR_DESIGN_DIR, else ~/second-root-trial/sorairo-source,
+ * where the owner's files are), finds each by the SHA-256 in the committed record, and writes it under the record's file
+ * name next to the record in site/design/<site>/ (design-pictures.ts stageDesignPictures, then the build's own check
+ * photos.ts loadDesignMaterials). Missing or different bytes refuse the export (EXPORT_DESIGN_MISSING).
+ */
+export { DEFAULT_DESIGN_DIR };
 /** Template file → its name in the exported repository. */
 export const TEMPLATE_FILES: Record<string, string> = {
   "build.mjs": "build.mjs",
@@ -53,12 +68,13 @@ export const TEMPLATE_FILES: Record<string, string> = {
 export const NODE_VERSION = "22.23.4";
 
 export class ExportError extends Error {
-  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN", detail: string) {
+  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING" | "EXPORT_TEST_ONLY", detail: string) {
     super(`${code} ${detail}`);
     this.name = "ExportError";
   }
 }
 
+/** The output folder's safety, checked first (nothing is created here; writeExport creates it). */
 async function safeOut(outDir: string): Promise<string> {
   const out = resolve(outDir);
   const realRepo = await realpath(REPO);
@@ -67,18 +83,45 @@ async function safeOut(outDir: string): Promise<string> {
   if (!parent || !outside(parent)) throw new ExportError("EXPORT_OUT_UNSAFE", basename(out));
   const st = await lstat(out).catch(() => null);
   if (st && (!st.isDirectory() || st.isSymbolicLink() || (await readdir(out)).length > 0)) throw new ExportError("EXPORT_OUT_UNSAFE", basename(out));
-  await mkdir(out, { recursive: true });
   return out;
 }
 
-/** Writes the standalone repository into <outDir> (absent or empty, outside Second Root). Returns its files. */
-export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string }): Promise<string[]> {
+/**
+ * Writes the standalone repository into <outDir> (absent or empty, outside Second Root). Returns its files.
+ * designDir: the outside folder of the design pictures (default DEFAULT_DESIGN_DIR). testOnlyDesignRecordDir: a record
+ * to use instead of the committed one — for the unit tests only (they make synthetic pictures and their own record);
+ * refused outside vitest (EXPORT_TEST_ONLY), so a real export always follows the committed record.
+ * Order (#390 review): the site, the fixture, the output folder's safety, then the design pictures, then writing.
+ */
+export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string; designDir?: string; testOnlyDesignRecordDir?: string }): Promise<string[]> {
+  if (o.testOnlyDesignRecordDir !== undefined && process.env.VITEST !== "true") throw new ExportError("EXPORT_TEST_ONLY", "testOnlyDesignRecordDir");
   const site = SHOP_SITES.find((s) => s.id === (o.site ?? "auto"));
   if (!site) throw new ExportError("EXPORT_SITE_UNKNOWN", String(o.site));
   const fixtureName = o.fixture ?? (site.id === "auto" ? "works-10" : "items-10");
   const fixture = site.fixtures()[fixtureName];
   if (!fixture) throw new ExportError("EXPORT_FIXTURE_UNKNOWN", fixtureName);
   const out = await safeOut(o.outDir);
+  // then the design pictures, so a missing or changed picture refuses before anything is written
+  const designScratch = site.design ? await mkdtemp(join(tmpdir(), "sr-export-design-")) : null;
+  try {
+    const staged = site.design
+      ? await stageDesignPictures(site, o.designDir ?? DEFAULT_DESIGN_DIR, designScratch!, o.testOnlyDesignRecordDir)
+          .then(async (s) => {
+            await loadDesignMaterials(s.design!);
+            return s;
+          })
+          .catch((error: unknown) => {
+            throw new ExportError("EXPORT_DESIGN_MISSING", error instanceof Error ? error.message : "design pictures");
+          })
+      : site;
+    return await writeExport(out, site, fixture, staged.design?.dir ?? null);
+  } finally {
+    if (designScratch) await rm(designScratch, { recursive: true, force: true });
+  }
+}
+
+async function writeExport(out: string, site: (typeof SHOP_SITES)[number], fixture: NonNullable<ReturnType<(typeof SHOP_SITES)[number]["fixtures"]>[string]>, stagedDesign: string | null): Promise<string[]> {
+  await mkdir(out, { recursive: true });
   // the sample content: written by the fixture writer into a scratch folder; only content/ and media/ are taken
   // (a fixture's private B records go next to its folder — they never enter the exported repository)
   const scratch = await mkdtemp(join(tmpdir(), "sr-export-delivery-"));
@@ -92,6 +135,13 @@ export async function exportDelivery(o: { outDir: string; site?: string; fixture
   }
   await mkdir(join(out, "site"), { recursive: true });
   for (const f of SITE_FILES) await copyFile(join(HERE, f), join(out, "site", f));
+  for (const d of SITE_DIRS) await cp(join(HERE, d), join(out, "site", d), { recursive: true });
+  if (site.design && stagedDesign) {
+    // the staged record and pictures (checked), where the exported page code looks for them
+    const target = join(out, "site", relative(HERE, site.design.dir));
+    await mkdir(target, { recursive: true });
+    for (const f of await readdir(stagedDesign)) await copyFile(join(stagedDesign, f), join(target, f));
+  }
   await mkdir(join(out, "tests"), { recursive: true });
   for (const [from, to] of Object.entries(TEMPLATE_FILES)) await copyFile(join(TEMPLATE, from), join(out, to));
   await writeFile(join(out, ".pages.yml"), pagesYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) }));
@@ -123,7 +173,7 @@ if (require.main === module) {
     process.stdout.write('{"status":"refused","code":"ARGS_INVALID"}\n');
     process.exit(2);
   }
-  exportDelivery({ outDir, ...(arg("--site") ? { site: arg("--site")! } : {}), ...(arg("--fixture") ? { fixture: arg("--fixture")! } : {}) }).then(
+  exportDelivery({ outDir, ...(arg("--site") ? { site: arg("--site")! } : {}), ...(arg("--fixture") ? { fixture: arg("--fixture")! } : {}), ...(arg("--design-dir") ? { designDir: arg("--design-dir")! } : {}) }).then(
     (files) => process.stdout.write(`${JSON.stringify({ status: "written", files: files.length })}\n`),
     (error: unknown) => {
       process.stdout.write(`${JSON.stringify({ status: "stopped", code: error instanceof Error ? error.message : "EXPORT_FAILED" })}\n`);
