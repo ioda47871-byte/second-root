@@ -8,7 +8,8 @@
     "expected_sha256": "From the adoption records: SR-002 the approved PNG (PR #237), CP-033 the adopted ZIP (PR #240), CP-034..037 the adopted ZIPs (Issue #193, originals-catalog.md).",
     "unavailable_ids": "Category C: only candidate file names, no recorded SHA-256; never counted until the original is found and recorded.",
     "never_counted": "SR-001 never counts (also hard-coded in the checker).",
-    "copy": "A file marked copy: \"viewing\" is a viewing copy derived from the original (downscaled / recompressed / possibly cropped WebP), not the original, and it is never called an original: the whole-page prompt and the case-study viewing page name it a viewing copy (DEV-364, owner decision 2026-11-27). The marker does not change the counting rule above (counts_as_reference is unchanged). Whether viewing copies may count toward the 3 originals beyond the owner's one-time exception for req-hoshigama-wp-01 (a fictional shop) is pending the owner's decision. CP-001..003's original PNG / source ZIP are not in this repository (docs/design/success-originals-handover.md)."
+    "copy": "A file marked copy: \"viewing\" is a viewing copy derived from the original (downscaled / recompressed / possibly cropped WebP), not the original, and it is never called an original: the whole-page prompt and the case-study viewing page name it a viewing copy (DEV-364, owner decision 2026-11-27). The marker does not change the counting rule above (counts_as_reference is unchanged). Whether viewing copies may count toward the 3 originals beyond the owner's one-time exception for req-hoshigama-wp-01 (a fictional shop) is pending the owner's decision. CP-001..003's original PNG / source ZIP are not in this repository (docs/design/success-originals-handover.md).",
+    "zip_member_originals": "DEV-364 (PR #381 review H1): the members of adopted success ZIPs (originals-handover.json role success_zip) that ARE the original — only the final adopted full pages (PC and SP), each checked by eye on 2026-11-27 — by member path, member SHA-256 and the ZIP SHA-256 they must come from. A case-study file marked zip_member counts as an original only when it is listed here and verifyZipMembers confirms it inside that ZIP and its SHA256SUMS; any other member (sheets, overviews, comparisons, first views, intermediate versions) stays evidence only. Hashes and paths only; no image is in the repository. CP-034..036 are not listed yet (their adopted full pages have not been checked)."
   },
   "originals": [
     {
@@ -136,5 +137,31 @@
     "CP-030",
     "CP-031",
     "CP-032"
-  ]
+  ],
+  "zip_member_originals": {
+    "CP-033": [
+      {
+        "zip_sha256": "5f18b6672bbc60d7db18c2af7b123fd2db448a78b8272c5e085746f1634edd77",
+        "path": "desktop_1440_full.png",
+        "sha256": "36734ba7af5a28d74fddab67fcea28af0497e8d7b19ffd14ab03c373b9bb1dc9"
+      },
+      {
+        "zip_sha256": "5f18b6672bbc60d7db18c2af7b123fd2db448a78b8272c5e085746f1634edd77",
+        "path": "mobile_390_full.png",
+        "sha256": "aa8846058ef218fd4adcd48e3e2d540982e2674a6ee93b8e67a39513e1b8328d"
+      }
+    ],
+    "CP-037": [
+      {
+        "zip_sha256": "4c4202266eb6b3814b012ea3c237feffc38428327f7fc27d64087b69105260eb",
+        "path": "screenshots/1440_full.png",
+        "sha256": "71b679322b046c0c98db6ade4c023568b0e4d0f6458e2e0f4fa1da8ccf384771"
+      },
+      {
+        "zip_sha256": "4c4202266eb6b3814b012ea3c237feffc38428327f7fc27d64087b69105260eb",
+        "path": "screenshots/390_full.png",
+        "sha256": "0bb361cf2d40aff415a44c226c837bae4cfaa9bf22ac927ce6c69689475782c0"
+      }
+    ]
+  }
 }
