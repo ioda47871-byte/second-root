@@ -9,9 +9,10 @@
 // dependency. A real HEIC cannot be made here (sharp's prebuilt binaries do not write HEVC), so the pack holds only a
 // HEIC-headed fake for the build's refusal check; a real HEIC comes from the iPhone itself (its default format).
 import { createHash } from "node:crypto";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const arg = (name) => {
   const i = process.argv.indexOf(name);
@@ -22,6 +23,33 @@ const out = arg("--out");
 if (!from || !out) {
   process.stdout.write('{"status":"refused","code":"ARGS_INVALID"}\n');
   process.exit(2);
+}
+// kit review L5: the pack goes outside Second Root and outside any git repository (links resolved), so it is never
+// committed by accident; the trial repository's folder is refused too
+const refuse = (code) => {
+  process.stdout.write(`${JSON.stringify({ status: "refused", code })}\n`);
+  process.exit(2);
+};
+async function nearestReal(p) {
+  let c = resolve(p);
+  for (;;) {
+    const r = await realpath(c).catch(() => null);
+    if (r) return r;
+    const parent = dirname(c);
+    if (parent === c) return c;
+    c = parent;
+  }
+}
+const inside = (p, root) => {
+  const rel = relative(root, p);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
+const secondRoot = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), "../.."));
+const realOut = await nearestReal(out);
+if (inside(realOut, secondRoot)) refuse("OUT_IN_SECOND_ROOT");
+for (let c = realOut; ; c = dirname(c)) {
+  if (await stat(join(c, ".git")).then(() => true, () => false)) refuse("OUT_IN_GIT_REPO");
+  if (dirname(c) === c) break;
 }
 const sharp = createRequire(join(resolve(from), "package.json"))("sharp");
 const MB = 1024 * 1024;

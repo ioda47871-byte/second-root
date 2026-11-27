@@ -4,11 +4,34 @@
  * position). JPEG (APP1 Exif / XMP), PNG (eXIf, iTXt / tEXt XMP), WebP (EXIF / XMP chunks). Bounds-checked: a cut or
  * malformed block reads as "not found", never as a crash. Used by live-trial-measure.ts to tell the published (fitted,
  * stripped) pictures from the originals in the repository.
+ *
+ * Kit review L3: also read — PNG compressed XMP (iTXt with the compression flag, zTXt) and ImageMagick's hex "Raw profile
+ * type exif / APP1 / xmp" text chunks (inflated with node:zlib, bounded), and JPEG Extended XMP (its parts joined). What
+ * it cannot read is reported in `unknown` — never as "no GPS": a HEIF / HEIC file, any other non-JPEG / PNG / WebP
+ * bytes, a compressed chunk that does not inflate, an oversized one.
  */
+import { inflateSync } from "node:zlib";
 
-export type MetaScan = { exif: boolean; gps: boolean; orientation: number | null; xmp: boolean; xmpGps: boolean };
+export type MetaScan = { exif: boolean; gps: boolean; orientation: number | null; xmp: boolean; xmpGps: boolean; unknown: string[] };
 
-const NONE: MetaScan = { exif: false, gps: false, orientation: null, xmp: false, xmpGps: false };
+const NONE: MetaScan = { exif: false, gps: false, orientation: null, xmp: false, xmpGps: false, unknown: [] };
+const fresh = (): MetaScan => ({ ...NONE, unknown: [] });
+const INFLATE_MAX = 4 * 1024 * 1024;
+const inflate = (b: Buffer): Buffer | null => {
+  try {
+    return inflateSync(b, { maxOutputLength: INFLATE_MAX });
+  } catch {
+    return null;
+  }
+};
+/** ImageMagick's "Raw profile type <x>" text: "\n<type>\n<length>\n<hex lines>" → the bytes. */
+function rawProfile(text: string): Buffer | null {
+  const m = /^\s*\n?\s*[A-Za-z0-9]+\s*\n\s*(\d+)\s*\n([\s0-9a-fA-F]*)$/.exec(text);
+  if (!m) return null;
+  const hex = m[2]!.replace(/\s+/g, "");
+  if (hex.length % 2 || hex.length / 2 !== Number(m[1])) return null;
+  return Buffer.from(hex, "hex");
+}
 const XMP_GPS = /exif:GPS(Latitude|Longitude)|GPSLatitude|GPSLongitude/;
 
 /** A TIFF block (the body of an Exif segment): orientation, and whether the GPS IFD has any entry. */
@@ -42,7 +65,7 @@ export function scanTiff(t: Buffer): { orientation: number | null; gps: boolean 
 }
 
 function merge(scan: MetaScan, tiff: Buffer | null, xmpText: string | null): MetaScan {
-  const out = { ...scan };
+  const out = { ...scan, unknown: [...scan.unknown] };
   if (tiff) {
     const t = scanTiff(tiff);
     if (t) {
@@ -59,7 +82,8 @@ function merge(scan: MetaScan, tiff: Buffer | null, xmpText: string | null): Met
 }
 
 function jpeg(b: Buffer): MetaScan {
-  let scan = { ...NONE };
+  let scan = fresh();
+  const extended: Buffer[] = [];
   let i = 2;
   for (let guard = 0; guard < 1000 && i + 4 <= b.length; guard++) {
     if (b[i] !== 0xff) break;
@@ -74,13 +98,36 @@ function jpeg(b: Buffer): MetaScan {
     const body = b.subarray(i + 4, i + 2 + len);
     if (marker === 0xe1 && body.toString("latin1", 0, 6) === "Exif\0\0") scan = merge(scan, body.subarray(6), null);
     else if (marker === 0xe1 && body.toString("latin1", 0, 29) === "http://ns.adobe.com/xap/1.0/\0") scan = merge(scan, null, body.subarray(29).toString("utf8"));
+    // Extended XMP: namespace (35 bytes incl. NUL), GUID (32), full length (4), offset (4), then the part
+    else if (marker === 0xe1 && body.toString("latin1", 0, 35) === "http://ns.adobe.com/xmp/extension/\0") extended.push(body.subarray(75));
     i += 2 + len;
   }
+  if (extended.length) scan = merge(scan, null, Buffer.concat(extended).toString("utf8"));
   return scan;
 }
 
+/** A PNG text chunk (tEXt / zTXt / iTXt): its keyword and text, inflated when compressed (null text: could not read). */
+function pngText(type: string, body: Buffer): { keyword: string; text: string | null } | null {
+  const nul = body.indexOf(0);
+  if (nul < 1) return null;
+  const keyword = body.toString("latin1", 0, nul);
+  if (type === "tEXt") return { keyword, text: body.subarray(nul + 1).toString("latin1") };
+  if (type === "zTXt") {
+    const z = inflate(body.subarray(nul + 2));
+    return { keyword, text: z ? z.toString("latin1") : null };
+  }
+  // iTXt: keyword NUL, compression flag, method, language NUL, translated keyword NUL, text
+  const flag = body[nul + 1];
+  const lang = body.indexOf(0, nul + 3);
+  const trans = lang < 0 ? -1 : body.indexOf(0, lang + 1);
+  if (trans < 0) return { keyword, text: null };
+  const raw = body.subarray(trans + 1);
+  const t = flag === 1 ? inflate(raw) : raw;
+  return { keyword, text: t ? t.toString("utf8") : null };
+}
+
 function png(b: Buffer): MetaScan {
-  let scan = { ...NONE };
+  let scan = fresh();
   let i = 8;
   for (let guard = 0; guard < 10000 && i + 12 <= b.length; guard++) {
     const len = b.readUInt32BE(i);
@@ -88,7 +135,22 @@ function png(b: Buffer): MetaScan {
     if (i + 12 + len > b.length) break;
     const body = b.subarray(i + 8, i + 8 + len);
     if (type === "eXIf") scan = merge(scan, body, null);
-    else if ((type === "iTXt" || type === "tEXt") && body.toString("latin1", 0, 17) === "XML:com.adobe.xmp") scan = merge(scan, null, body.toString("utf8"));
+    else if (type === "iTXt" || type === "tEXt" || type === "zTXt") {
+      const t = pngText(type, body);
+      const key = t?.keyword ?? "";
+      const isXmp = key === "XML:com.adobe.xmp" || key === "Raw profile type xmp";
+      const isExif = key === "Raw profile type exif" || key === "Raw profile type APP1";
+      if (t && (isXmp || isExif)) {
+        if (t.text === null) scan.unknown.push(`png ${type} ${key}`);
+        else if (key === "XML:com.adobe.xmp") scan = merge(scan, null, t.text);
+        else {
+          const bytes = rawProfile(t.text);
+          if (!bytes) scan.unknown.push(`png ${key}`);
+          else if (isXmp) scan = merge(scan, null, bytes.toString("utf8"));
+          else scan = merge(scan, bytes.toString("latin1", 0, 6) === "Exif\0\0" ? bytes.subarray(6) : bytes, null);
+        }
+      }
+    }
     if (type === "IEND") break;
     i += 12 + len;
   }
@@ -96,7 +158,7 @@ function png(b: Buffer): MetaScan {
 }
 
 function webp(b: Buffer): MetaScan {
-  let scan = { ...NONE };
+  let scan = fresh();
   let i = 12;
   for (let guard = 0; guard < 10000 && i + 8 <= b.length; guard++) {
     const type = b.toString("latin1", i, i + 4);
@@ -110,12 +172,13 @@ function webp(b: Buffer): MetaScan {
   return scan;
 }
 
-/** The metadata of a JPEG / PNG / WebP (anything else: nothing found). */
+/** The metadata of a JPEG / PNG / WebP; anything else is `unknown` (not scanned — never read as "no GPS"). */
 export function scanMeta(b: Buffer): MetaScan {
   if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) return jpeg(b);
   if (b.length >= 8 && b.toString("latin1", 1, 4) === "PNG") return png(b);
   if (b.length >= 12 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return webp(b);
-  return { ...NONE };
+  if (b.length >= 12 && b.toString("latin1", 4, 8) === "ftyp") return { ...fresh(), unknown: ["heif"] };
+  return { ...fresh(), unknown: ["format"] };
 }
 
 /** A position is present in the picture's metadata (EXIF GPS block with entries, or an XMP GPS field). */

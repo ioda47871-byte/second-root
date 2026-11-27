@@ -1,3 +1,4 @@
+import { deflateSync } from "node:zlib";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -73,10 +74,10 @@ describe("the owner sheet's live-trial appendix", () => {
 describe("exif-scan: metadata from the bytes", () => {
   it("finds EXIF, the orientation and a GPS block in a JPEG; nothing in a stripped one; XMP GPS too", () => {
     const phone = scanMeta(jpeg(4032, 3024, { exif: tiff({ orientation: 6, gps: true }) }));
-    expect(phone).toEqual({ exif: true, gps: true, orientation: 6, xmp: false, xmpGps: false });
+    expect(phone).toEqual({ exif: true, gps: true, orientation: 6, xmp: false, xmpGps: false, unknown: [] });
     expect(hasGps(phone)).toBe(true);
     expect(scanMeta(jpeg(4032, 3024, { exif: tiff({ orientation: 1 }) }))).toMatchObject({ exif: true, gps: false, orientation: 1 });
-    expect(scanMeta(jpeg(1920, 2560))).toEqual({ exif: false, gps: false, orientation: null, xmp: false, xmpGps: false });
+    expect(scanMeta(jpeg(1920, 2560))).toEqual({ exif: false, gps: false, orientation: null, xmp: false, xmpGps: false, unknown: [] });
     const xmp = scanMeta(jpeg(800, 600, { xmp: '<x:xmpmeta><rdf:Description exif:GPSLatitude="35,0.0N"/></x:xmpmeta>' }));
     expect([xmp.xmp, xmp.xmpGps, hasGps(xmp)]).toEqual([true, true, true]);
     expect(scanMeta(solidPng(320, 320, [1, 2, 3]))).toMatchObject({ exif: false, gps: false });
@@ -189,6 +190,148 @@ describe("live-trial-measure: URL rule, page images, originals, waiting (local s
       expect(r.with_gps).toEqual(["IMG_0001.JPG"]);
       expect(readFileSync(join(repo, "media", "IMG_0001.JPG")).equals(before)).toBe(true);
       expect((await main(["originals", "--repo", join(repo, "missing")])).out).toMatchObject({ code: "MEASURE_REPO_INVALID" });
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+/** A PNG with one extra chunk before IEND. */
+function pngWith(type: string, body: Buffer): Buffer {
+  const png = solidPng(320, 320, [1, 2, 3]);
+  const chunk = Buffer.concat([Buffer.alloc(4), Buffer.from(type, "latin1"), body, Buffer.alloc(4)]);
+  chunk.writeUInt32BE(body.length, 0);
+  return Buffer.concat([png.subarray(0, png.length - 12), chunk, png.subarray(png.length - 12)]);
+}
+const XMP_WITH_GPS = '<x:xmpmeta><rdf:Description exif:GPSLatitude="35,0.0N" exif:GPSLongitude="139,0.0E"/></x:xmpmeta>';
+
+describe("kit review L3: what the scanner also reads, and what it reports as unknown (never as no GPS)", () => {
+  it("PNG compressed XMP (iTXt flag 1, zTXt) and ImageMagick's hex Raw profile exif are read", () => {
+    const itxt = Buffer.concat([Buffer.from("XML:com.adobe.xmp\0", "latin1"), Buffer.from([1, 0]), Buffer.from("\0\0", "latin1"), deflateSync(Buffer.from(XMP_WITH_GPS))]);
+    expect(scanMeta(pngWith("iTXt", itxt))).toMatchObject({ xmp: true, xmpGps: true, unknown: [] });
+    const ztxt = Buffer.concat([Buffer.from("XML:com.adobe.xmp\0", "latin1"), Buffer.from([0]), deflateSync(Buffer.from(XMP_WITH_GPS))]);
+    expect(scanMeta(pngWith("zTXt", ztxt))).toMatchObject({ xmpGps: true, unknown: [] });
+    const exif = Buffer.concat([Buffer.from("Exif\0\0", "latin1"), tiff({ orientation: 6, gps: true })]);
+    const hex = exif.toString("hex").replace(/(.{72})/g, "$1\n");
+    const raw = Buffer.concat([Buffer.from("Raw profile type exif\0", "latin1"), Buffer.from([0]), deflateSync(Buffer.from(`\nexif\n${exif.length}\n${hex}\n`, "latin1"))]);
+    expect(scanMeta(pngWith("zTXt", raw))).toMatchObject({ exif: true, gps: true, orientation: 6, unknown: [] });
+    // a compressed chunk that does not inflate, and a malformed raw profile: unknown, not "no GPS"
+    const broken = Buffer.concat([Buffer.from("XML:com.adobe.xmp\0", "latin1"), Buffer.from([0]), Buffer.from("not zlib")]);
+    expect(scanMeta(pngWith("zTXt", broken)).unknown).toEqual(["png zTXt XML:com.adobe.xmp"]);
+    expect(scanMeta(pngWith("tEXt", Buffer.from("Raw profile type exif\0garbage", "latin1"))).unknown).toEqual(["png Raw profile type exif"]);
+  });
+
+  it("JPEG Extended XMP parts are joined (a GPS field split across parts is found); HEIF and other formats are unknown", () => {
+    const head = (part: string) => Buffer.concat([Buffer.from("http://ns.adobe.com/xmp/extension/\0", "latin1"), Buffer.from("0".repeat(32)), Buffer.alloc(8), Buffer.from(part)]);
+    const cut = XMP_WITH_GPS.indexOf("GPSLat") + 3;
+    const ext = Buffer.concat([Buffer.from([0xff, 0xd8]), segment(0xe1, head(XMP_WITH_GPS.slice(0, cut))), segment(0xe1, head(XMP_WITH_GPS.slice(cut))), Buffer.from([0xff, 0xd9])]);
+    expect(scanMeta(ext)).toMatchObject({ xmpGps: true });
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypheic"), Buffer.alloc(4), Buffer.from("mif1heic"), Buffer.alloc(64)]);
+    expect(scanMeta(heic)).toMatchObject({ gps: false, unknown: ["heif"] });
+    expect(scanMeta(Buffer.from("GIF89a....")).unknown).toEqual(["format"]);
+  });
+});
+
+describe("kit review M1 / L1 / L2: images reports what it could not measure; redirects; the timing arguments", () => {
+  let server: Server;
+  let base = "";
+  let other = "";
+  const heic = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypheic"), Buffer.alloc(4), Buffer.from("mif1heic"), Buffer.alloc(64)]);
+  const pages: Record<string, string> = {
+    "/ok/": '<img src="/m/a.jpg"><img src="/m/b.png">',
+    "/broken/": '<img src="/m/a.jpg"><img src="/m/missing.jpg"><img src="/m/html.jpg"><img src="/m/heic.jpg"><img src="/m/away.jpg"><img src="/m/hop.jpg">',
+    "/none/": "<h1>写真なし</h1>",
+  };
+  let otherServer: Server;
+  beforeAll(async () => {
+    otherServer = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "image/jpeg" });
+      res.end(jpeg(100, 100));
+    });
+    await new Promise<void>((r) => otherServer.listen(0, "127.0.0.1", () => r()));
+    other = `http://localhost:${(otherServer.address() as AddressInfo).port}`;
+    server = createServer((req, res) => {
+      const path = new URL(req.url ?? "/", "http://x").pathname;
+      const send = (status: number, type: string, body: Buffer | string, headers: Record<string, string> = {}) => {
+        res.writeHead(status, { "content-type": type, ...headers });
+        res.end(body);
+      };
+      if (pages[path] !== undefined) return send(200, "text/html", `<!doctype html><html><body>${pages[path]}</body></html>`);
+      if (path === "/gone/") return send(404, "text/html", "<h1>404</h1>");
+      if (path === "/huge/") {
+        // no content-length: the cap must hold while streaming
+        res.writeHead(200, { "content-type": "text/html" });
+        const chunk = Buffer.alloc(1024 * 1024, 0x61);
+        for (let k = 0; k < 6; k++) res.write(chunk);
+        return res.end();
+      }
+      if (path === "/m/a.jpg") return send(200, "image/jpeg", jpeg(1920, 2560));
+      if (path === "/m/b.png") return send(200, "image/png", solidPng(400, 300, [9, 9, 9]));
+      if (path === "/m/html.jpg") return send(200, "text/html", "<h1>not found, but 200</h1>");
+      if (path === "/m/heic.jpg") return send(200, "image/jpeg", heic);
+      if (path === "/m/away.jpg") return send(302, "text/plain", "", { location: `${other}/x.jpg` });
+      if (path === "/m/hop.jpg") return send(301, "text/plain", "", { location: "/m/a.jpg" });
+      return send(404, "text/plain", "");
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await new Promise<void>((r) => server.close(() => r()));
+    await new Promise<void>((r) => otherServer.close(() => r()));
+  });
+
+  it("a complete page: every picture HTTP 200 with a known format; the count is reported; --min-images holds", async () => {
+    const r = await main(["images", "--url", `${base}/ok/`, "--min-images", "2"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatchObject({ status: "measured", count: { found: 2, measured: 2, failed: 0 }, failures: [] });
+    const more = await main(["images", "--url", `${base}/ok/`, "--min-images", "3"]);
+    expect([more.code, (more.out as { failures: { problem: string }[] }).failures.map((f) => f.problem)]).toEqual([1, ["2 pictures measured, fewer than 3"]]);
+    expect((await main(["images", "--url", `${base}/ok/`, "--min-images", "-1"])).code).toBe(2);
+  });
+
+  it("a 404, an HTML body, a HEIC, a redirect to another origin are failures (exit 1), never 'no GPS'; a same-origin redirect is followed", async () => {
+    const r = await scanPublished({ url: `${base}/broken/` });
+    expect(r.status).toBe("incomplete");
+    expect(r.failures.map((f) => [f.src, f.problem.replace(/:\d+/, ":PORT")])).toEqual([
+      ["/m/missing.jpg", "HTTP 404"],
+      ["/m/html.jpg", "not a JPEG / PNG / WebP"],
+      ["/m/heic.jpg", "not a JPEG / PNG / WebP"],
+      ["/m/away.jpg", "MEASURE_REDIRECT_REFUSED http://localhost:PORT"],
+    ]);
+    expect(r.count).toEqual({ found: 6, measured: 2, failed: 4 });
+    // only measured pictures can be "without GPS"
+    expect(r.with_gps).toEqual([]);
+    expect(r.images.find((i) => i.src === "/m/hop.jpg")).toMatchObject({ status: 200, format: "jpeg", width: 1920 });
+    expect((await main(["images", "--url", `${base}/broken/`])).code).toBe(1);
+  });
+
+  it("no picture at all, a 404 page, and a page over the cap while streaming are not a pass", async () => {
+    const none = await main(["images", "--url", `${base}/none/`]);
+    expect([none.code, (none.out as { failures: { problem: string }[] }).failures.map((f) => f.problem)]).toEqual([1, ["no picture measured"]]);
+    const gone = await main(["images", "--url", `${base}/gone/`]);
+    expect([gone.code, (gone.out as { failures: { problem: string }[] }).failures.map((f) => f.problem)]).toEqual([1, ["page HTTP 404", "no picture measured"]]);
+    expect((await main(["images", "--url", `${base}/huge/`])).out).toMatchObject({ status: "refused", code: "MEASURE_TOO_LARGE" });
+  });
+
+  it("wait refuses a non-finite or too short interval and a missing or non-finite timeout", async () => {
+    for (const extra of [["--interval", "1"], ["--interval", "abc"], ["--interval", "Infinity"], ["--timeout", "Infinity"], ["--timeout", ""], []]) {
+      const args = ["wait", "--url", `${base}/ok/`, "--marker", "x", ...(extra.includes("--timeout") ? [] : ["--timeout", "5"]), ...extra];
+      if (extra.length === 0) args.splice(args.indexOf("--timeout"), 2);
+      expect((await main(args)).out, extra.join(" ") || "no --timeout").toMatchObject({ status: "refused", code: "MEASURE_ARGS_INVALID" });
+    }
+    await expect(waitForMarker({ url: `${base}/ok/`, marker: "x", intervalMs: 500, timeoutMs: 5000 })).rejects.toMatchObject({ code: "MEASURE_ARGS_INVALID" });
+  });
+
+  it("originals lists files it cannot read (a HEIC) as unscannable", async () => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "sr-trial-unscan-")));
+    try {
+      mkdirSync(join(repo, "media"));
+      writeFileSync(join(repo, "media", "IMG_0001.HEIC"), heic);
+      writeFileSync(join(repo, "media", "ok.jpg"), jpeg(800, 600));
+      const r = await scanOriginals({ repo });
+      expect(r.unscannable).toEqual([{ file: "IMG_0001.HEIC", why: ["heif"] }]);
+      expect(r.with_gps).toEqual([]);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
