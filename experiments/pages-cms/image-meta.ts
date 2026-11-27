@@ -75,7 +75,8 @@ const HEIF_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "he
 export function isHeif(b: Buffer): boolean {
   if (b.length < 16 || b.toString("latin1", 4, 8) !== "ftyp") return false;
   const size = b.readUInt32BE(0);
-  const end = Math.min(b.length, size >= 16 ? size : 16);
+  // the ftyp box's brands; a size of 0 / 1 (to the end / 64-bit) or an oversized one is read only to 64 bytes
+  const end = Math.min(b.length, size >= 16 && size <= 64 ? size : 64);
   for (let i = 8; i + 4 <= end; i += 4) {
     if (i === 12) continue; // the minor version, not a brand
     if (HEIF_BRANDS.has(b.toString("latin1", i, i + 4))) return true;

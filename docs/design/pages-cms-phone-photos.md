@@ -20,7 +20,11 @@ only. The build checks the header and the byte count; it never decodes or change
 | 16:9 crop 4032×2268 | passes |
 | panorama beyond 3:1 | `CONTENT_PHOTO_RATIO` |
 | HEIC under a `.HEIC` name | `CONTENT_INVALID` on the content file (the content model accepts `.png/.jpg/.jpeg/.webp` paths only) |
-| HEIC bytes under a `.jpg` name | `CONTENT_PHOTO_HEIC` (new in this PR; before, it was the generic `CONTENT_PHOTO_TYPE`) |
+| HEIC bytes under a `.jpg` name, any size | `CONTENT_PHOTO_HEIC` (new in this PR; before, it was the generic `CONTENT_PHOTO_TYPE`) |
+
+Order of the checks for each picture the page shows: missing → **HEIC** (from the first 64 bytes) → too large (bytes) →
+type → dimensions → too small → ratio. HEIC comes before the size, so a 1.5–3 MB HEIC is told "HEIC" at once, not
+"make it smaller" first (#384 review).
 
 A stopped build writes nothing, so the last good page stays published (Cloudflare Pages keeps the last successful
 deployment; Q2 is still to be confirmed on the real service).

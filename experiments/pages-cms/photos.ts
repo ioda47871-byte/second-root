@@ -28,7 +28,7 @@
  * The page frames crop with object-fit: cover, so any ratio within the limit keeps the layout.
  */
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { ContentError, type ShopContent, type ShopProfile, shownPictures } from "./content-model";
@@ -67,6 +67,8 @@ export async function checkPhotos(repo: string, content: ShopContent, profile?: 
     const path = join(repo, "media", n);
     const st = await lstat(path).catch(() => null);
     if (!st || !st.isFile()) throw new ContentError("CONTENT_PHOTO_MISSING", n);
+    // #384 review M: HEIC is named before the size, so a large HEIC is never first told to be made smaller
+    if (isHeif(await readHead(path))) throw new ContentError("CONTENT_PHOTO_HEIC", n);
     if (st.size > PHOTO_LIMITS.bytes) throw new ContentError("CONTENT_PHOTO_TOO_LARGE", n);
     out.push(checkPhoto(n, await readFile(path)));
   }
@@ -91,6 +93,19 @@ export const PHOTO_ADVICE = {
   CONTENT_PHOTO_TOO_SMALL: `写真が小さすぎます（短い辺 ${PHOTO_LIMITS.minSide}px 以上）。もとの大きさの写真を選んでください。`,
   CONTENT_PHOTO_RATIO: `写真が細長すぎます（縦横の比は ${PHOTO_LIMITS.maxRatio}:1 まで）。切り抜かずに撮った写真を選んでください。`,
 } as const;
+
+/** The first HEAD_BYTES of a file (enough for the `ftyp` box isHeif reads), without reading the rest. */
+const HEAD_BYTES = 64;
+async function readHead(path: string): Promise<Buffer> {
+  const f = await open(path, "r");
+  try {
+    const b = Buffer.alloc(HEAD_BYTES);
+    const { bytesRead } = await f.read(b, 0, HEAD_BYTES, 0);
+    return b.subarray(0, bytesRead);
+  } finally {
+    await f.close();
+  }
+}
 
 export type PhotoProvenance = { file: string; sha256: string; class: "A" | "B" | "C"; record: Provenance | null };
 
