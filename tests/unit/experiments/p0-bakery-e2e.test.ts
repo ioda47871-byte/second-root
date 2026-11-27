@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -18,7 +18,8 @@ import { approvedMaterials, materialsReviewPageSha256, parseMaterialsReview, rea
 import { checkMaterialsInSite } from "@/lib/design-agent/imagefirst-worker/materials-impl-check";
 import { printRequestPlan, validateRequestFile } from "@/lib/design-agent/imagefirst-worker/request";
 import { assertCaseStudyGate, inspectCaseStudy } from "@/lib/design-agent/case-study/case-study";
-import { main as packageLocal } from "@/scripts/sales/demo-version/package-local";
+import { approveRehearsal, REHEARSAL_ID, REHEARSAL_SHOP, sealRehearsal } from "@/lib/design-agent/imagefirst-worker/rehearsal";
+import { IMAGE_FIRST_PACKAGE_SCHEMA, main as packageLocal } from "@/scripts/sales/demo-version/package-local";
 import { caseStudyObject } from "../design-agent/imagefirst-worker/support";
 
 // DEV-364 P0 (the owner's reprioritisation 2026-11-26: ONE completed demo first): the fictional bakery end to end, in
@@ -94,6 +95,36 @@ async function drawing(siteDir: string): Promise<{ pc: Buffer; sp: Buffer }> {
     }
   };
   return { pc: await shot(1440), sp: await shot(390) };
+}
+
+/** A mock materials run (sealed with packBundle), its review and its approval, for a given approved design. */
+async function sealMockMaterials(o: { id: string; shop: string; approved_design: { bundle_id: string; bundle_sha256: string; review_sha256: string; approval_sha256: string }; reviews: string; inbox: string }) {
+  const runs = tmp("sr-p0-mruns-");
+  const mRun = join(runs, `${o.id}-20261126T020000Z`);
+  mkdirSync(join(mRun, "parts"), { recursive: true, mode: 0o700 });
+  chmodSync(mRun, 0o700);
+  const mImages = Object.entries(PICTURES).map(([name, b]) => {
+    write(join(mRun, "parts", name), b);
+    return { file: `parts/${name}`, sha256: sha(b), bytes: b.length };
+  });
+  write(join(mRun, "approved-design-input.json"), Buffer.from(JSON.stringify({ schema: "image_first_approved_design_input_v0", ...o.approved_design, materials_sha256: "9".repeat(64) })));
+  const receipt = {
+    schema: "imagefirst_worker_receipt_v1", status: "succeeded", stop_code: null, stage: null, cli_exit: 0, cli_timed_out: false, interrupted: false,
+    shop: o.shop, direction: "request", approval_id: o.id, plan_id: o.id, commit: "c".repeat(40), packet_sha256: "a".repeat(64), plan_sha256: "b".repeat(64), prompt_sha256: "d".repeat(64), prompt_chars: 4000,
+    run_dir: mRun, images: mImages, stopped_images: [], verified: true,
+    timings: { started_at: "2026-11-26T02:00:00.000Z", finished_at: "2026-11-26T02:05:00.000Z", elapsed_ms: 300_000 },
+    mode: "request", kind: "fictional", request_id: o.id, request_sha256: "a".repeat(64), facts_sha256: "e".repeat(64), images_total: mImages.length,
+    counts: { pc: 0, sp: 0, photo: mImages.length, total: mImages.length, stopped: 0 }, request_stage: "photo_materials", approved_design: o.approved_design, materials_sha256: "9".repeat(64),
+  };
+  const receiptPath = join(runs, "materials.receipt.json");
+  write(receiptPath, Buffer.from(JSON.stringify(receipt)));
+  const sealed = await packBundle({ runDir: mRun, receiptPath, bundlesDir: o.inbox, now: () => Date.parse("2026-11-26T02:06:00Z") });
+  const review = bytesOf({ schema: "sr_materials_review_v1", request_id: o.id, bundle_sha256: sealed.bundle_sha256, materials: mImages.map((img, n) => ({ id: MATERIALS[n]!.id, file: img.file, sha256: img.sha256, verdict: "pass", note: MOCK })), reviewer: "mock-review", reviewed_at: "2026-11-26T03:00:00Z" });
+  const reviewPath = join(o.reviews, `${o.id}.materials-review.json`);
+  write(reviewPath, review);
+  const approvalPath = join(o.reviews, `${o.id}.materials-approval.json`);
+  write(approvalPath, bytesOf({ schema: "sr_materials_approval_v1", request_id: o.id, bundle_sha256: sealed.bundle_sha256, review_sha256: sha(review), page_sha256: materialsReviewPageSha256(parseMaterialsReview(review), await readDeliveredMaterials(sealed.dir)), approved_materials: mImages.map((i) => ({ file: i.file, sha256: i.sha256 })), decision: "approve", decided_at: "2026-11-26T04:00:00Z", note: MOCK }));
+  return { bundleDir: sealed.dir, reviewPath, approvalPath };
 }
 
 describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner decisions; no generation)", () => {
@@ -271,19 +302,90 @@ describe("DEV-364 P0: the fictional bakery end to end (temp only; mock owner dec
     expect(q1.findings).toEqual([]);
     step("9", "Pages CMS update (product, price, a customer's photo C) + rebuild + Q1 PC/SP on that repository", "real", "clean", "local content edits stand in for Pages CMS (a real Pages CMS / Cloudflare round trip is Q2-Q4)");
 
-    // 10. demo packaging: the existing --source mode cannot carry the photos (the IMAGE_FIRST mode awaits the owner)
-    const err: string[] = [];
-    const out: string[] = [];
-    const code = await packageLocal(["--out", join(tmp(), "package"), "--source", staged.dir], { write: (s) => void out.push(s), writeErr: (s) => void err.push(s) });
-    expect(code).toBe(1);
-    step("10", "demo packaging pre-share check", "blocked", `package-local --source refused (${(err.join("") || out.join("")).trim().slice(0, 80)})`, "the existing mode packages HTML/CSS only; the IMAGE_FIRST packaging mode awaits the owner's pin decision");
+    // 10. demo packaging: the IMAGE_FIRST mode (owner approval 2026-11-27, option (a)) runs the second approval's gate and
+    // packages exactly the approved bytes, unconverted; the existing --source mode refuses the IMAGE_FIRST output
+    const pkg = async (over: Record<string, string> = {}, drop: string[] = []) => {
+      const flags: Record<string, string> = {
+        "--imagefirst": staged.dir,
+        "--out": join(tmp(), "package"),
+        "--design-bundle": design.bundleDir,
+        "--design-review": design.reviewPath,
+        "--design-approval": design.approvalPath,
+        "--materials-bundle": materials.bundleDir,
+        "--materials-review": materials.reviewPath,
+        "--materials-approval": materials.approvalPath,
+        "--slots": slotsPath,
+        "--provenance-dir": prov,
+        "--impl-compare": implDir,
+        "--final-review": fReviewPath,
+        "--final-approval": fApprovalPath,
+        ...over,
+      };
+      const out: string[] = [];
+      const err: string[] = [];
+      const code = await packageLocal(Object.entries(flags).filter(([k]) => !drop.includes(k)).flat(), { write: (x) => void out.push(x), writeErr: (x) => void err.push(x) });
+      const text = out.join("").trim();
+      return { code, json: text ? (JSON.parse(text) as { status: string; code?: string }) : null, out: flags["--out"]! };
+    };
+    const packed = await pkg();
+    expect([packed.code, packed.json?.status]).toEqual([0, "OK"]);
+    const manifest = JSON.parse(readFileSync(join(packed.out, "imagefirst-package.json"), "utf8")) as { schema: string; final_approval_sha256: string; build_files_sha256: string; files: { path: string; sha256: string }[]; converted: boolean };
+    expect(manifest).toMatchObject({ schema: IMAGE_FIRST_PACKAGE_SCHEMA, final_approval_sha256: final.approval_sha256, build_files_sha256: final.build_files_sha256, converted: false });
+    expect(manifest.files).toEqual(final.files);
+    for (const f of final.files) expect(sha(readFileSync(join(packed.out, "site", f.path))), f.path).toBe(f.sha256);
+    const plain: string[] = [];
+    expect(await packageLocal(["--out", join(tmp(), "package"), "--source", staged.dir], { write: (x) => void plain.push(x), writeErr: () => undefined })).toBe(1);
+    expect(plain.join("")).toContain("IMAGE_FIRST_OUTPUT");
+    step("10", "demo packaging: the IMAGE_FIRST mode (second approval's gate, the approved bytes bound to it)", "mock", "packaged (local, unconverted)", "the approvals it checks are mocks; a local package of the approved files, not yet the uploadable demo package (WebP photos, image records and the sr_photo_transform_v1 record are a later step); --source still refuses IMAGE_FIRST output");
+
+    // deliberate mismatches: each refused with its code, nothing written
+    const refused = async (over: Record<string, string>, drop: string[] = []) => {
+      const r = await pkg(over, drop);
+      expect(r.code, JSON.stringify(over)).not.toBe(0);
+      expect(readdirSync(join(r.out, "..")).includes("package") && readdirSync(r.out).length > 0).toBe(false);
+      return r.json?.code ?? `exit ${r.code}`;
+    };
+    const tamper = async (path: string, change: (b: Buffer) => Buffer, want: string) => {
+      const before = readFileSync(path);
+      writeFileSync(path, change(before));
+      expect(await refused({}), path).toBe(want);
+      writeFileSync(path, before);
+    };
+    // a stale second approval: the review edited after the decision
+    await tamper(fReviewPath, (b) => Buffer.from(b.toString("utf8").replace("mock-review", "another-review")), "FINAL_APPROVAL_REVIEW_MISMATCH");
+    // the CSS edited after the approval; a picture added that the approval does not name
+    await tamper(join(staged.dir, "style.css"), (b) => Buffer.concat([b, Buffer.from(".x{color:red}")]), "FINAL_IMPL_COMPARE_MISMATCH");
+    writeFileSync(join(staged.dir, "assets", "extra.png"), solidPng(400, 400, [1, 2, 3]));
+    expect(await refused({})).toBe("FINAL_IMPL_COMPARE_MISMATCH");
+    unlinkSync(join(staged.dir, "assets", "extra.png"));
+    // a picture recorded as a customer's upload (C): an approved material's bytes as C
+    await tamper(join(prov, `${sha(PICTURES["photo-1.png"]!)}.json`), () => bytesOf({ schema: "sr_photo_provenance_v1", class: "C", sha256: sha(PICTURES["photo-1.png"]!), uploaded_via: "pages_cms", checks: { type: "ok", bytes: "ok", dimensions: "ok", ratio: "ok" } }), "FINAL_GENERATED_AS_SHOP");
+    // a wrong first-approval SHA-256 in the second approval
+    await tamper(fApprovalPath, (b) => Buffer.from(b.toString("utf8").replace(/"design_approval_sha256": "[0-9a-f]+"/, `"design_approval_sha256": "${"0".repeat(64)}"`)), "FINAL_APPROVAL_DESIGN_MISMATCH");
+    // missing records
+    expect(await refused({ "--final-approval": join(tmp(), "none.json") })).toBe("FINAL_RECORD_MISSING");
+    expect(await refused({ "--provenance-dir": tmp() })).toBe("FINAL_PROVENANCE_MISSING");
+    expect(await refused({}, ["--materials-approval"])).toBe("exit 2");
+    // a synthetic first approval (the rehearsal): materials for it never pass, so it never packages
+    const rehHome = tmp("sr-p0-reh-");
+    const reh = await sealRehearsal({ home: rehHome, repo: REPO, now: () => Date.parse("2026-11-26T01:00:00Z") });
+    const rehDraft = await checkDesignApproval({ bundleDir: reh.bundle_dir, reviewPath: reh.review, repo: REPO, mode: "draft" });
+    const rehApproval = await approveRehearsal({ home: rehHome, repo: REPO, pageSha256: rehDraft.page_sha256, now: () => Date.parse("2026-11-26T01:01:00Z") });
+    const rehMaterials = await sealMockMaterials({ id: "req-cafe-p0-photos-1", shop: REHEARSAL_SHOP, approved_design: { bundle_id: REHEARSAL_ID, bundle_sha256: reh.bundle_sha256, review_sha256: rehDraft.review_sha256, approval_sha256: rehApproval.approval_sha256 }, reviews: tmp("sr-p0-rehrec-"), inbox: join(tmp("sr-p0-rehinbox-"), "review-inbox") });
+    expect(await refused({ "--design-bundle": reh.bundle_dir, "--design-review": reh.review, "--design-approval": rehApproval.approval, "--materials-bundle": rehMaterials.bundleDir, "--materials-review": rehMaterials.reviewPath, "--materials-approval": rehMaterials.approvalPath })).toBe("MATERIALS_DESIGN_SYNTHETIC");
+    // an output that is not empty
+    const full = tmp();
+    writeFileSync(join(full, "x"), "x");
+    expect((await pkg({ "--out": full })).json?.code).toBe("IMAGE_FIRST_OUT_NOT_EMPTY");
+    // and the approved package still builds after every restore
+    expect((await pkg()).code).toBe(0);
 
     // the step report
     const reportPath = join(tmp("sr-p0-report-"), "p0-steps.json");
     writeFileSync(reportPath, bytesOf({ schema: "sr_p0_bakery_e2e_v0", fictional: true, note: "temp only; mock records carry モック／架空; the first-approved design is a circular mock", steps }));
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as { steps: StepRow[] };
     expect(report.steps.map((s) => s.n)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
-    expect(report.steps.filter((s) => s.kind === "blocked").map((s) => s.n)).toEqual(["10"]);
+    expect(report.steps.filter((s) => s.kind === "blocked").map((s) => s.n)).toEqual([]);
     for (const s of report.steps) expect(["real", "mock", "synthetic", "blocked"]).toContain(s.kind);
     // every mock record says so
     for (const f of [reviewPath, approvalPath, mReviewPath, mApprovalPath, fReviewPath, fApprovalPath]) expect(readFileSync(f, "utf8"), f).toContain("モック／架空");

@@ -55,13 +55,32 @@
  * which needs the second approval (a later PR). The marker is a TRIPWIRE against a mistake, NOT tamper-proof (deleting
  * it defeats it); the real binding is the page's SHA-256 in the second approval and, later, the DB send gate. A folder
  * without the marker is packaged exactly as before.
+ *
+ * DEV-364 PR 3b (the owner's approval 2026-11-27, option (a): the one import of final-approval.ts, for this mode only):
+ * the IMAGE_FIRST packaging mode, the only way an IMAGE_FIRST page is packaged:
+ *
+ *   npx tsx scripts/sales/demo-version/package-local.ts --imagefirst <staged site> --out <dir outside the repository> \
+ *     --design-bundle <dir> --design-review <f> --design-approval <f> \
+ *     --materials-bundle <dir> --materials-review <f> --materials-approval <f> \
+ *     --slots <photo-slots.json> --provenance-dir <private dir> --impl-compare <comparison dir> \
+ *     --final-review <f> --final-approval <f>
+ *
+ * It runs the second approval's gate (final-approval.ts approvedFinal: the first approval, the approved materials, the
+ * slot spec, A / B provenance only, the comparison and its captures, every SHA-256 recomputed) and writes <out>/site/
+ * with exactly the bytes the gate read and hashed (approvedFinal's contents: the approved build, UNCONVERTED; nothing is
+ * read a second time) and <out>/imagefirst-package.json (sr_imagefirst_package_v1: the files bound to the final
+ * approval's SHA-256s). Any refusal of the gate is FAIL with its FINAL_* / DESIGN_* / MATERIALS_* code; nothing is written.
+ * This is a LOCAL package of the approved files, not the uploadable sales demo package (that format needs WebP photos and
+ * their image records: converting the photos needs the sr_photo_transform_v1 record, left for a later step). No DB, no
+ * send guard, nothing published or sent.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { renderPrototype } from "../../../lib/design-agent/phase2f/render-prototype";
 import { compCopyInput, LocalInputError, type CompCopyInput } from "../../../lib/demo-version-package/local-inputs";
+import { approvedFinal, FinalApprovalStop } from "../../../lib/design-agent/imagefirst-worker/final-approval";
 import { buildPackage, insideRepo, PackageError, swapCopyInput, writePackage } from "../../../lib/demo-version-package/package";
 import { forbiddenHashes, PhotoError, pixelDiff, prepareSwap, readOriginals, readSwapCopyInputs, readSwapPage, SwapInputError, SwapRightsError, type PixelDiff, type PreparedSwap } from "../../../lib/demo-version-package/swap-package";
 
@@ -92,6 +111,8 @@ export async function main(argv: string[], seams: PackageLocalSeams = {}): Promi
   };
   const out_ = seams.write ?? ((s: string) => void process.stdout.write(s));
   const err_ = seams.writeErr ?? ((s: string) => void process.stderr.write(s));
+  // DEV-364 PR 3b: the IMAGE_FIRST mode is its own path (the other modes below are unchanged)
+  if (argv.includes("--imagefirst")) return imageFirstPackage(argv, out_, err_);
   const out = arg("--out");
   const page = arg("--page");
   const rightsPath = arg("--rights");
@@ -253,6 +274,82 @@ export async function main(argv: string[], seams: PackageLocalSeams = {}): Promi
     }
     throw e;
   }
+}
+
+const IMAGE_FIRST_FLAGS = ["--imagefirst", "--out", "--design-bundle", "--design-review", "--design-approval", "--materials-bundle", "--materials-review", "--materials-approval", "--slots", "--provenance-dir", "--impl-compare", "--final-review", "--final-approval"] as const;
+export const IMAGE_FIRST_PACKAGE_SCHEMA = "sr_imagefirst_package_v1";
+
+/**
+ * DEV-364 PR 3b: the IMAGE_FIRST packaging mode (see the header). The only code path that uses final-approval.ts.
+ * Exit 0 written, 1 refused (FAIL with a code), 2 usage.
+ */
+async function imageFirstPackage(argv: string[], out_: (s: string) => void, err_: (s: string) => void): Promise<number> {
+  const o: Record<string, string> = {};
+  for (let i = 0; i < argv.length; i += 2) {
+    const k = argv[i]!;
+    const v = argv[i + 1];
+    if (!(IMAGE_FIRST_FLAGS as readonly string[]).includes(k) || !v || v.startsWith("--") || k in o) {
+      err_("usage: package-local.ts --imagefirst <staged site> --out <dir> --design-bundle <dir> --design-review <f> --design-approval <f> --materials-bundle <dir> --materials-review <f> --materials-approval <f> --slots <f> --provenance-dir <dir> --impl-compare <dir> --final-review <f> --final-approval <f>\n");
+      return 2;
+    }
+    o[k] = v;
+  }
+  if (IMAGE_FIRST_FLAGS.some((k) => !o[k])) {
+    err_("usage: package-local.ts --imagefirst needs every one of its flags\n");
+    return 2;
+  }
+  const out = resolve(o["--out"]!);
+  if (insideRepo(out)) {
+    err_("refused: write the package outside the repository\n");
+    return 2;
+  }
+  if (existsSync(out) && (!lstatSync(out).isDirectory() || readdirSync(out).length > 0)) {
+    out_(`${JSON.stringify({ status: "FAIL", code: "IMAGE_FIRST_OUT_NOT_EMPTY" })}\n`);
+    return 1;
+  }
+  let approved;
+  try {
+    approved = await approvedFinal({
+      design: { bundleDir: resolve(o["--design-bundle"]!), reviewPath: resolve(o["--design-review"]!), approvalPath: resolve(o["--design-approval"]!) },
+      materials: { bundleDir: resolve(o["--materials-bundle"]!), reviewPath: resolve(o["--materials-review"]!), approvalPath: resolve(o["--materials-approval"]!) },
+      slotsPath: resolve(o["--slots"]!),
+      provenanceDir: resolve(o["--provenance-dir"]!),
+      siteDir: resolve(o["--imagefirst"]!),
+      implCompareDir: resolve(o["--impl-compare"]!),
+      reviewPath: resolve(o["--final-review"]!),
+      approvalPath: resolve(o["--final-approval"]!),
+      repo: REPO,
+    });
+  } catch (e) {
+    if (e instanceof FinalApprovalStop) {
+      out_(`${JSON.stringify({ status: "FAIL", code: e.code })}\n`);
+      return 1;
+    }
+    throw e;
+  }
+  // the bytes written are exactly the ones the gate read and hashed (approvedFinal's contents): no second read here
+  const listed = approved.files;
+  if (listed.length !== approved.contents.size || listed.some((f) => approved.contents.get(f.path)?.length !== f.bytes)) {
+    out_(`${JSON.stringify({ status: "FAIL", code: "IMAGE_FIRST_FILES_MISMATCH" })}\n`);
+    return 1;
+  }
+  mkdirSync(join(out, "site", "assets"), { recursive: true, mode: 0o700 });
+  for (const f of listed) writeFileSync(join(out, "site", f.path), approved.contents.get(f.path)!, { mode: 0o600 });
+  const manifest = {
+    schema: IMAGE_FIRST_PACKAGE_SCHEMA,
+    design: approved.design,
+    final_review_sha256: approved.review_sha256,
+    final_page_sha256: approved.page_sha256,
+    final_approval_sha256: approved.approval_sha256,
+    build_files_sha256: approved.build_files_sha256,
+    files: listed,
+    converted: false,
+    uploadable_demo_package: false,
+    note: "the approved files, unconverted; the uploadable sales demo package (WebP photos and their image records, with sr_photo_transform_v1) is a later step",
+  };
+  writeFileSync(join(out, "imagefirst-package.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+  out_(`${JSON.stringify({ status: "OK", mode: "imagefirst", final_approval_sha256: approved.approval_sha256, build_files_sha256: approved.build_files_sha256, files: listed }, null, 2)}\n`);
+  return 0;
 }
 
 if (require.main === module) main(process.argv.slice(2)).then((code) => process.exit(code));
