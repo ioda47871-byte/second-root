@@ -131,7 +131,7 @@ Pages CMS には縮小が無いので、2 MiB を超える写真は構築で止�
 
 1. §1 の実環境の試験を行うか（行うなら日時。11/30 より前か）。repo の名義と、Claude に試験用 repo への push を許すか。
 2. GitHub App の導入の画面で Administration の読み書きが要求された場合も続けるか。
-3. Pages CMS の運営者への問い合わせ（`pages-cms-hosted-terms.md` §5）を送るか。名義は誰か。
+3. Pages CMS の運営者への問い合わせ（`pages-cms-hosted-terms.md` §6 の更新版、未送信）を送るか。名義は誰か。最終確認の依頼は [`cms-live-trial-confirmation.md`](cms-live-trial-confirmation.md)、第二の案の評価は [`cms-sveltia-evaluation.md`](cms-sveltia-evaluation.md)。
 4. Brot Yanagi のサイトで使っている CMS は何か（再利用の可否を判断するため）。
 5. 第二の案を Sveltia CMS と microCMS のどちらで用意するか（またはその両方を比べる試験をするか）。
 
