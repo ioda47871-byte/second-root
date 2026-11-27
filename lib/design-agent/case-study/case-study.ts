@@ -160,6 +160,18 @@ export const CaseStudy = z.strictObject({
   shop_id: SHOP_ID,
   cases: z.array(CaseEntry).min(1).max(12),
   shop_specific_principles: z.array(Text(400)).min(1).max(10),
+  /**
+   * DEV-364 (owner request 2026-11-27): what the owner must see on the confirmation page besides the cases — why these
+   * originals were chosen, the planned direction and the questions to answer. Shown on the page only (bound by its
+   * page_sha256); never read by the prompt builder. A record without it renders exactly as before.
+   */
+  owner_review: z
+    .strictObject({
+      selection_reasons: z.array(Text(400)).min(1).max(12),
+      planned_direction: z.array(Text(400)).min(1).max(12),
+      questions: z.array(Text(300)).min(1).max(8),
+    })
+    .optional(),
   owner_confirmation: OwnerConfirmation.optional(),
 });
 export type CaseStudy = z.infer<typeof CaseStudy>;
@@ -641,7 +653,20 @@ ${
 <h2>この店固有のデザインの原理</h2>
 ${list(i.record.shop_specific_principles)}
 </section>
-${cases}
+${
+  i.record.owner_review
+    ? `<section>
+<h2>オーナーに見てほしいこと（記録と確認のため。画像の指示には入らない）</h2>
+<h3>原本を選んだ理由</h3>
+${list(i.record.owner_review.selection_reasons)}
+<h3>予定する方向</h3>
+${list(i.record.owner_review.planned_direction)}
+<h3>確認してほしいこと</h3>
+${list(i.record.owner_review.questions)}
+</section>
+`
+    : ""
+}${cases}
 </main>
 </body>
 </html>
