@@ -19,7 +19,7 @@
  * GitHub App: owner approval).
  */
 import { z } from "zod";
-import type { TradeExtension } from "./content-model";
+import { WORK_PHOTO_MAX, type ShopCollection, type TradeExtension } from "./content-model";
 import { PHOTO_LIMITS } from "./photos";
 
 type Field = {
@@ -77,8 +77,60 @@ const EXTENSION_FIELDS: Record<TradeExtension, Field> = {
   shelfLife: { name: "shelfLife", label: "日持ち", type: "string", options: { maxlength: 40 } },
 };
 
-/** The configuration as data (what `.pages.yml` holds), for a shop with the given trade extensions turned on. */
-export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) {
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"];
+
+/**
+ * Issue #380: the 施工実績 collection (only in the .pages.yml of a shop whose profile turns `works` on). The customer
+ * edits 車種, 施工種別, the description, the photos (1 to WORK_PHOTO_MAX, provisional), whether it is shown and its
+ * order. The photo's class is not offered: a photo added here is the customer's own (C, the model's default), and a
+ * generated material cannot be chosen (content-model.ts Work).
+ */
+const WORKS_ENTRY = {
+  name: "works",
+  label: "施工実績",
+  type: "collection" as const,
+  path: "content/works",
+  format: "json" as const,
+  filename: "{id}.json",
+  view: { fields: ["vehicle", "service", "visible"], primary: "vehicle", sort: ["displayOrder", "vehicle"], default: { sort: "displayOrder", order: "asc" as const } },
+  fields: [
+    ID,
+    { name: "vehicle", label: "車種", type: "string", required: true, description: "例: 架空車 ワゴン 2019年式", options: { maxlength: 60 } },
+    { name: "service", label: "施工の種類", type: "string", required: true, description: "例: ガラスコーティング、車内清掃", options: { maxlength: 40 } },
+    { name: "description", label: "ひとこと説明", type: "text", options: { maxlength: 300 } },
+    {
+      name: "photos",
+      label: `写真（1枚以上・${WORK_PHOTO_MAX}枚まで。試行中の上限です）`,
+      type: "object",
+      list: { min: 1, max: WORK_PHOTO_MAX, collapsible: { collapsed: false, summary: "{role} {imageAlt}" } },
+      fields: [
+        { name: "image", label: "写真", type: "image", required: true, description: PHOTO_HINT, options: { extensions: IMAGE_EXTENSIONS } },
+        { name: "imageAlt", label: "写真の説明（読み上げ用）", type: "string", options: { maxlength: 120 } },
+        {
+          name: "role",
+          label: "施工前・施工後",
+          type: "select",
+          default: "other",
+          description: "施工前と施工後はそれぞれ1件に1枚まで（試行中）。頁で写真に「施工前」「施工後」と出ます",
+          options: { values: [{ name: "other", label: "指定なし" }, { name: "before", label: "施工前" }, { name: "after", label: "施工後" }] },
+        },
+      ],
+    },
+    { name: "visible", label: "公開する", type: "boolean", default: true },
+    { name: "displayOrder", label: "並び順（小さいほど上）", type: "number", default: 0, options: { min: 0, max: 9999 } },
+  ] as Field[],
+};
+
+/** What a shop's .pages.yml depends on: its trade extensions and (Issue #380) the collections it shows. */
+export type PagesOptions = { extensions?: readonly TradeExtension[]; collections?: readonly ShopCollection[] };
+
+/**
+ * The configuration as data (what `.pages.yml` holds), for a shop with the given trade extensions turned on. Issue #380:
+ * with `works` in the collections the 施工実績 collection comes first; without `menu` the menu and its categories are
+ * left out. A menu-only shop's configuration is exactly as before.
+ */
+export function pagesConfig(o: PagesOptions = {}) {
+  const on = o.collections ?? ["menu"];
   const menuFields: Field[] = [
     ID,
     { name: "name", label: "商品名", type: "string", required: true, options: { maxlength: 80 } },
@@ -103,87 +155,96 @@ export function pagesConfig(o: { extensions?: readonly TradeExtension[] } = {}) 
   return {
     media: { input: "media", output: "/media", extensions: ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"], rename: "safe" },
     content: [
-      {
-        name: "menu",
-        label: "メニュー",
-        type: "collection",
-        path: "content/menu",
-        format: "json",
-        filename: "{id}.json",
-        view: { fields: ["name", "priceDisplay", "soldOut", "visible"], primary: "name", sort: ["displayOrder", "name"], default: { sort: "displayOrder", order: "asc" } },
-        fields: menuFields,
-      },
-      {
-        name: "categories",
-        label: "分類",
-        type: "collection",
-        path: "content/categories",
-        format: "json",
-        filename: "{id}.json",
-        view: { fields: ["name", "visible"], primary: "name", sort: ["displayOrder", "name"], default: { sort: "displayOrder", order: "asc" } },
-        fields: [
-          ID,
-          { name: "name", label: "分類名", type: "string", required: true, options: { maxlength: 40 } },
-          { name: "displayOrder", label: "並び順", type: "number", default: 0, options: { min: 0, max: 9999 } },
-          { name: "visible", label: "公開する", type: "boolean", default: true },
-        ],
-      },
-      {
-        name: "shop",
-        label: "営業時間・臨時休業",
-        type: "file",
-        path: "content/shop.json",
-        format: "json",
-        operations: { delete: false },
-        fields: [
-          // owner decision 2026-11-26: the name stays fixed; address and phone are editable with validation
-          { name: "name", label: "店名（変更できません）", type: "string", readonly: true },
-          { name: "address", label: "住所", type: "string", pattern: ADDRESS, options: { maxlength: 120 } },
-          { name: "phone", label: "電話", type: "string", pattern: PHONE, options: { maxlength: 24 } },
-          {
-            name: "hours",
-            label: "営業時間（曜日ごと）",
-            type: "object",
-            list: { max: 7, collapsible: { collapsed: true, summary: "{day} {open}–{close}" } },
-            fields: [
-              { name: "day", label: "曜日", type: "select", required: true, options: { values: DAYS } },
-              { name: "closed", label: "定休日", type: "boolean", default: false },
-              { name: "open", label: "開店", type: "string", pattern: HHMM },
-              { name: "close", label: "閉店", type: "string", pattern: HHMM },
-            ],
-          },
-          { name: "hoursNote", label: "営業時間の補足", type: "string", options: { maxlength: 120 } },
-          {
-            name: "specialClosures",
-            label: "臨時休業",
-            type: "object",
-            list: { max: 60, collapsible: { collapsed: true, summary: "{date} {note}" } },
-            fields: [
-              { name: "date", label: "日付", type: "date", required: true, options: { format: "yyyy-MM-dd" } },
-              { name: "note", label: "理由など", type: "string", options: { maxlength: 80 } },
-            ],
-          },
-        ],
-      },
-      {
-        name: "news",
-        label: "お知らせ",
-        type: "collection",
-        path: "content/news",
-        format: "json",
-        filename: "{id}.json",
-        view: { fields: ["title", "publishedAt", "visible"], primary: "title", sort: ["publishedAt"], default: { sort: "publishedAt", order: "desc" } },
-        fields: [
-          ID,
-          { name: "title", label: "見出し", type: "string", required: true, options: { maxlength: 80 } },
-          { name: "body", label: "本文", type: "text", options: { maxlength: 1000 } },
-          { name: "publishedAt", label: "日付", type: "date", required: true, options: { format: "yyyy-MM-dd" } },
-          { name: "visible", label: "公開する", type: "boolean", default: true },
-        ],
-      },
+      ...(on.includes("works") ? [WORKS_ENTRY] : []),
+      ...(on.includes("menu") ? menuEntries(menuFields) : []),
+      SHOP_ENTRY,
+      NEWS_ENTRY,
     ],
   };
 }
+
+const menuEntries = (menuFields: Field[]) => [
+  {
+    name: "menu",
+    label: "メニュー",
+    type: "collection",
+    path: "content/menu",
+    format: "json",
+    filename: "{id}.json",
+    view: { fields: ["name", "priceDisplay", "soldOut", "visible"], primary: "name", sort: ["displayOrder", "name"], default: { sort: "displayOrder", order: "asc" } },
+    fields: menuFields,
+  },
+  {
+    name: "categories",
+    label: "分類",
+    type: "collection",
+    path: "content/categories",
+    format: "json",
+    filename: "{id}.json",
+    view: { fields: ["name", "visible"], primary: "name", sort: ["displayOrder", "name"], default: { sort: "displayOrder", order: "asc" } },
+    fields: [
+      ID,
+      { name: "name", label: "分類名", type: "string", required: true, options: { maxlength: 40 } },
+      { name: "displayOrder", label: "並び順", type: "number", default: 0, options: { min: 0, max: 9999 } },
+      { name: "visible", label: "公開する", type: "boolean", default: true },
+    ],
+  },
+];
+
+const SHOP_ENTRY = {
+  name: "shop",
+  label: "営業時間・臨時休業",
+  type: "file",
+  path: "content/shop.json",
+  format: "json",
+  operations: { delete: false },
+  fields: [
+    // owner decision 2026-11-26: the name stays fixed; address and phone are editable with validation
+    { name: "name", label: "店名（変更できません）", type: "string", readonly: true },
+    { name: "address", label: "住所", type: "string", pattern: ADDRESS, options: { maxlength: 120 } },
+    { name: "phone", label: "電話", type: "string", pattern: PHONE, options: { maxlength: 24 } },
+    {
+      name: "hours",
+      label: "営業時間（曜日ごと）",
+      type: "object",
+      list: { max: 7, collapsible: { collapsed: true, summary: "{day} {open}–{close}" } },
+      fields: [
+        { name: "day", label: "曜日", type: "select", required: true, options: { values: DAYS } },
+        { name: "closed", label: "定休日", type: "boolean", default: false },
+        { name: "open", label: "開店", type: "string", pattern: HHMM },
+        { name: "close", label: "閉店", type: "string", pattern: HHMM },
+      ],
+    },
+    { name: "hoursNote", label: "営業時間の補足", type: "string", options: { maxlength: 120 } },
+    {
+      name: "specialClosures",
+      label: "臨時休業",
+      type: "object",
+      list: { max: 60, collapsible: { collapsed: true, summary: "{date} {note}" } },
+      fields: [
+        { name: "date", label: "日付", type: "date", required: true, options: { format: "yyyy-MM-dd" } },
+        { name: "note", label: "理由など", type: "string", options: { maxlength: 80 } },
+      ],
+    },
+  ],
+};
+
+const NEWS_ENTRY = {
+  name: "news",
+  label: "お知らせ",
+  type: "collection",
+  path: "content/news",
+  format: "json",
+  filename: "{id}.json",
+  view: { fields: ["title", "publishedAt", "visible"], primary: "title", sort: ["publishedAt"], default: { sort: "publishedAt", order: "desc" } },
+  fields: [
+    ID,
+    { name: "title", label: "見出し", type: "string", required: true, options: { maxlength: 80 } },
+    { name: "body", label: "本文", type: "text", options: { maxlength: 1000 } },
+    { name: "publishedAt", label: "日付", type: "date", required: true, options: { format: "yyyy-MM-dd" } },
+    { name: "visible", label: "公開する", type: "boolean", default: true },
+  ],
+};
 
 // ---- the documented schema (offline check) ------------------------------------------------------------------------
 
@@ -313,4 +374,4 @@ export function toYaml(value: unknown, indent = 0): string {
   return `${pad}${scalar(value)}\n`;
 }
 
-export const pagesYaml = (o: { extensions?: readonly TradeExtension[] } = {}) => `# Generated from the content model (experiments/pages-cms). Edit the model, not this file.\n${toYaml(pagesConfig(o))}`;
+export const pagesYaml = (o: PagesOptions = {}) => `# Generated from the content model (experiments/pages-cms). Edit the model, not this file.\n${toYaml(pagesConfig(o))}`;

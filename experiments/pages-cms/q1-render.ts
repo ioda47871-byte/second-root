@@ -11,7 +11,7 @@
  *
  *   npx tsx experiments/pages-cms/q1-render.ts --out <empty dir outside the repository>
  *
- * For every Q1 fixture of every fictional shop site (shop-site.ts SHOP_SITES: the bakery and the café), built with
+ * For every Q1 fixture of every fictional shop site (shop-site.ts SHOP_SITES: the bakery, the café and the car-care shop), built with
  * that site's own page code, it runs BOTH this path and the
  * direct-Playwright path (q1-check.ts serveAndMeasure) and writes <out>/q1-compare.json (per fixture and width: the
  * codes each path found) and <out>/render-<fixture>-<pc|sp>.png. Exit 0 only when the status is clean (q1Summary: no
@@ -33,7 +33,7 @@ import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
 import { buildSite } from "./build";
-import { loadContent, viewOf, type ShopContent } from "./content-model";
+import { loadContent, viewOf, worksOf, type ShopContent } from "./content-model";
 import { Q1_TODAY, writeFixture } from "./fixtures";
 import { CONTROL_PAGE, safeOutDir, serveAndMeasure, SLOT_CODES, SLOT_CONTROLS } from "./q1-check";
 import { SHOP_SITES } from "./shop-site";
@@ -158,7 +158,9 @@ export function factsOf(content: ShopContent): { facts: string[]; truncated: num
   // items do not use the budget; whatever is still cut is counted and recorded (facts_truncated)
   const v = viewOf(content);
   const items = v.sections.flatMap((s) => s.items);
-  const all = [...new Set([v.shop.name, v.shop.address, v.shop.phone, ...items.flatMap((m) => [m.name, m.priceDisplay, ...(m.sizes ?? []).flatMap((s) => [s.label, s.priceDisplay])])].filter(Boolean))];
+  // Issue #380: then the shown works' 車種 and 施工種別 (none for a menu-only shop, so its facts are as before)
+  const works = worksOf(content).flatMap((w) => [w.vehicle, w.service]);
+  const all = [...new Set([v.shop.name, v.shop.address, v.shop.phone, ...items.flatMap((m) => [m.name, m.priceDisplay, ...(m.sizes ?? []).flatMap((s) => [s.label, s.priceDisplay])]), ...works].filter(Boolean))];
   return { facts: all.slice(0, FACTS_MAX), truncated: Math.max(0, all.length - FACTS_MAX) };
 }
 

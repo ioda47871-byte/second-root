@@ -193,7 +193,50 @@ export const ShopInfo = z.strictObject({
 });
 export type ShopInfo = z.infer<typeof ShopInfo>;
 
-export type ShopContent = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[] };
+/**
+ * Issue #380 (owner 2026-11-27): 施工実績 (works) — a shop's finished jobs, each with its 車種, its 施工種別, a short
+ * description and the photos of the job. Its own collection (content/works/<id>.json), NOT a menu item: a job is not
+ * something for sale, and the owner asked not to hide the difference behind a generic model. A shop turns it on in its
+ * profile (ShopProfile.collections).
+ *
+ * PROVISIONAL (PoC, to be confirmed with the customer): at most WORK_PHOTO_MAX photos per job, and the 施工前 / 施工後
+ * pairing as an optional role on a photo (at most one of each per job).
+ *
+ * A job's photos are the shop's real work: B (`shop_provided`, Second Root placed it with a rights record) or C
+ * (`customer_cms`, the customer uploaded it in Pages CMS — the default, as the CMS shows no choice for it). A generated
+ * picture (A) is refused here (CONTENT_INVALID): an image material shown as a finished job would present a made-up job
+ * as a fact (Identity Lock). Every shown photo goes through the same checks as a menu picture (photos.ts: format, bytes,
+ * pixel size, ratio, the handover record of generated materials, the provenance classes).
+ */
+export const WORK_PHOTO_MAX = 4;
+export const WORK_PHOTO_ROLES = ["other", "before", "after"] as const;
+export const WorkPhoto = z.strictObject({
+  image: MediaPath.refine((s) => s !== "", "empty"),
+  imageAlt: Line(120).default(""),
+  /** 施工前 / 施工後 (provisional); `other` shows no label. */
+  role: z.enum(WORK_PHOTO_ROLES).default("other"),
+  imageKind: z.preprocess((v) => (v === "shop" ? "customer_cms" : v), z.enum(["shop_provided", "customer_cms"]).default("customer_cms")),
+});
+export type WorkPhoto = z.infer<typeof WorkPhoto>;
+export const Work = z.strictObject({
+  id: Id,
+  /** 車種 (free text, e.g. 「架空車 ワゴン 2019年式」). */
+  vehicle: Line(60).refine((s) => s.trim().length > 0, "empty"),
+  /** 施工種別 (free text, e.g. 「ガラスコーティング」). */
+  service: Line(40).refine((s) => s.trim().length > 0, "empty"),
+  description: Para(300).default(""),
+  photos: z
+    .array(WorkPhoto)
+    .min(1)
+    .max(WORK_PHOTO_MAX)
+    .refine((list) => list.filter((p) => p.role === "before").length <= 1 && list.filter((p) => p.role === "after").length <= 1, "before_after_twice"),
+  visible: z.boolean().default(true),
+  displayOrder: z.number().int().min(0).max(9999).default(0),
+});
+export type Work = z.infer<typeof Work>;
+
+/** works: absent unless the shop's profile turns the collection on (the bakery and the café never carry it). */
+export type ShopContent = { shop: ShopInfo; categories: Category[]; menu: MenuItem[]; news: Announcement[]; works?: Work[] };
 
 export class ContentError extends Error {
   constructor(
@@ -234,7 +277,7 @@ export class ContentError extends Error {
 }
 
 /** Limits of one shop's content (a small shop: the owner's 45-item PoC fits with room). */
-export const CONTENT_LIMITS = { menu: 200, categories: 30, news: 100, fileBytes: 64 * 1024 } as const;
+export const CONTENT_LIMITS = { menu: 200, categories: 30, news: 100, works: 100, fileBytes: 64 * 1024 } as const;
 
 async function readJsonDir<T>(dir: string, schema: z.ZodType<T>, max: number): Promise<T[]> {
   const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).sort();
@@ -259,22 +302,35 @@ async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T> {
 
 /** What one shop's page code declares about its content: its fixed name, and the trade extensions it turns on. */
 /** generatedDelivered (#365 re-review): generated materials were handed over, so the handover record must exist. */
-export type ShopProfile = { fixedName: string; extensions: readonly TradeExtension[]; generatedDelivered?: boolean };
+/**
+ * Issue #380: collections (which of the optional collections the site shows): `menu` (menu items and their categories;
+ * the default when absent) and `works` (施工実績). Content of a collection the site does not show is refused
+ * (CONTENT_EXTENSION_OFF), so an edit cannot sit unseen in the repository.
+ */
+export const SHOP_COLLECTIONS = ["menu", "works"] as const;
+export type ShopCollection = (typeof SHOP_COLLECTIONS)[number];
+export type ShopProfile = { fixedName: string; extensions: readonly TradeExtension[]; generatedDelivered?: boolean; collections?: readonly ShopCollection[] };
+export const collectionsOf = (p?: ShopProfile): readonly ShopCollection[] => p?.collections ?? ["menu"];
 
 /**
  * Reads and checks the content folder of a shop repository (content/ next to media/). With a profile: the shop name
  * must be the shop's fixed name (CONTENT_FIXED_CHANGED; the CMS shows it read-only, and this also catches an edit
  * made outside the CMS), and no item may carry an extension the shop has not turned on (CONTENT_EXTENSION_OFF).
+ * Issue #380: content/works/ is read when there is any; with a profile it must turn `works` on, and a profile without
+ * `menu` refuses menu items and categories (both CONTENT_EXTENSION_OFF). `works` is in the result only when the profile
+ * turns it on or (without a profile) when there are works, so a menu-only shop's content is exactly as before.
  */
 export async function loadContent(root: string, profile?: ShopProfile): Promise<ShopContent> {
   const shop = await readJson(join(root, "content", "shop.json"), ShopInfo);
   const categories = await readJsonDir(join(root, "content", "categories"), Category, CONTENT_LIMITS.categories);
   const menu = await readJsonDir(join(root, "content", "menu"), MenuItem, CONTENT_LIMITS.menu);
   const news = await readJsonDir(join(root, "content", "news"), Announcement, CONTENT_LIMITS.news);
+  const works = await readJsonDir(join(root, "content", "works"), Work, CONTENT_LIMITS.works);
   for (const [list, what] of [
     [categories, "categories"],
     [menu, "menu"],
     [news, "news"],
+    [works, "works"],
   ] as const) {
     if (new Set(list.map((x) => x.id)).size !== list.length) throw new ContentError("CONTENT_DUPLICATE_ID", what);
   }
@@ -283,8 +339,12 @@ export async function loadContent(root: string, profile?: ShopProfile): Promise<
   if (profile) {
     if (shop.name !== profile.fixedName) throw new ContentError("CONTENT_FIXED_CHANGED", "shop.json name");
     for (const m of menu) for (const x of TRADE_EXTENSIONS) if (m[x] !== undefined && !profile.extensions.includes(x)) throw new ContentError("CONTENT_EXTENSION_OFF", `menu/${m.id} ${x}`);
+    const on = collectionsOf(profile);
+    if (!on.includes("menu") && (menu.length > 0 || categories.length > 0)) throw new ContentError("CONTENT_EXTENSION_OFF", "menu");
+    if (!on.includes("works") && works.length > 0) throw new ContentError("CONTENT_EXTENSION_OFF", "works");
   }
-  return { shop, categories, menu, news };
+  const withWorks = profile ? collectionsOf(profile).includes("works") : works.length > 0;
+  return withWorks ? { shop, categories, menu, news, works } : { shop, categories, menu, news };
 }
 
 /** What the page shows: visible categories and items in their display order (then by name), visible news newest first. */
@@ -297,6 +357,26 @@ export function viewOf(c: ShopContent): { shop: ShopInfo; sections: { category: 
     .filter((s) => s.items.length > 0);
   const news = c.news.filter((n) => n.visible).sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0));
   return { shop: c.shop, sections, news };
+}
+
+/** Issue #380: the works the page shows — visible ones in their display order (then by 車種, then id). */
+export function worksOf(c: ShopContent): Work[] {
+  const key = (w: Work) => `${w.vehicle}\u0000${w.id}`;
+  return (c.works ?? []).filter((w) => w.visible).sort((a, b) => a.displayOrder - b.displayOrder || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+}
+
+/**
+ * Issue #380: every picture the page shows, with where it comes from (`menu/<id>` or `works/<id>`) — the menu items'
+ * pictures first, in page order (exactly the list the photo checks used before works existed), then the shown works'
+ * photos. The photo checks and the provenance (photos.ts) walk this list.
+ */
+export function shownPictures(c: ShopContent): { ref: string; image: string; imageKind: ImageKind }[] {
+  const menu = viewOf(c)
+    .sections.flatMap((s) => s.items)
+    .filter((m) => m.image)
+    .map((m) => ({ ref: `menu/${m.id}`, image: m.image, imageKind: m.imageKind }));
+  const works = worksOf(c).flatMap((w) => w.photos.map((p) => ({ ref: `works/${w.id}`, image: p.image, imageKind: p.imageKind as ImageKind })));
+  return [...menu, ...works];
 }
 
 /** PR (4): whether the page shows any generated image material (each shop's footer then explains the イメージ label). */

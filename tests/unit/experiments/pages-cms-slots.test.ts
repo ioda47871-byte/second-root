@@ -55,7 +55,8 @@ describe("DEV-364 PR 2b: the photo-slot spec sr_photo_slots_v1", () => {
     expect([...MIRROR.kinds]).toEqual([...MATERIAL_KINDS]);
     expect([...MIRROR.aspects]).toEqual([...MATERIAL_ASPECTS]);
     // every material id in the fixtures is a valid Material id; the approval is a valid ApprovedDesignRef
-    for (const site of SHOP_SITES)
+    // (Issue #380: the car-care shop shows no generated material — a job's photos are the shop's own — so it has no slots)
+    for (const site of [BAKERY_SITE, CAFE_SITE])
       for (const id of spec(site).slots.flatMap((s) => s.material_ids)) expect(Material.safeParse({ id, kind: "photo", aspect: "landscape_3x2", placement: "左上の枠", note: "試験" }).success, id).toBe(true);
     const ref = { bundle_id: FICTIONAL_APPROVAL.bundle_id, bundle_sha256: FICTIONAL_APPROVAL.bundle_sha256, review_file: FICTIONAL_APPROVAL.review_file, approval_file: FICTIONAL_APPROVAL.approval_file };
     expect(ApprovedDesignRef.safeParse(ref).success).toBe(true);
@@ -169,7 +170,7 @@ describe("DEV-364 PR 2b: the shop pages apply the slots (object-position at PC a
       expect(plain.css).not.toContain("data-slot");
     }
     // the spec is written at delivery, never offered in the CMS
-    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions })).not.toMatch(/photo-slots|slots/);
+    for (const site of SHOP_SITES) expect(pagesYaml({ extensions: site.profile.extensions, collections: site.profile.collections })).not.toMatch(/photo-slots|slots/);
   });
 
   it("the build refuses a spec that is not well-formed, and a slot whose subject a real picture's ratio would crop", async () => {
