@@ -119,12 +119,12 @@ Decap https://decapcms.org/docs/github-backend/ ・ https://github.com/decaporg/
 | Pages CMS | 文書に記載なし。`extensions` で許す拡張子を決める（今の設定は jpg・jpeg・png・webp と大文字だけ＝HEIC は選べない） | 文書に記載なし | 文書に記載なし（例に「Optimize images」の action があるが、中身は GitHub の workflow で説明なし） |
 | microCMS | アップロードの文書に記載なし（拡張子の制限はしていない、ただし Hobby は画像だけ）。画像 API の主な形式に「HEIC/HEIF」がある（配信のときの変換の話） | 1 ファイル 40MB（Hobby）。マネジメント API からは 5MB | 画像 API の URL の引数で縮小（例 `?w=600`）。`?auto=format` は非対応 |
 | Sveltia CMS | 変換（`raster_image` か `heic`）を設定すれば、アップロードのときに変換。設定しないと画像の欄で HEIC を選べない | `max_file_size`（既定は無制限） | WebP への変換と最大の幅・高さへの縮小、Exif を消す |
-| 今の実験（`experiments/pages-cms/photos.ts`） | 受け付けない（JPEG・PNG・WebP だけ） | 2 MiB・長辺 4096px・16MP・短辺 320px・縦横比 3:1 まで（構築で検査して止める） | しない |
+| 今の実験（`experiments/pages-cms/photos.ts`） | 受け付けない（JPEG・PNG・WebP だけ。HEIC は CONTENT_PHOTO_HEIC で止まり、案内を出す） | 公開する写真は 2 MiB・長辺 4096px・16MP・短辺 320px・縦横比 3:1 まで（構築で検査して止める） | 納品用 repo の構築（`photo-prep.mjs`）が顧客の写真を縮める: 向きを直し、2560px に収め、Exif（GPS を含む）を消した写しを公開する。repo の元の写真は変えない |
 
 出典: https://pagescms.org/docs/configuration/media/ ・ https://pagescms.org/docs/configuration/fields/image/ ・ https://help.microcms.io/ja/knowledge/media-types-for-upload ・ https://document.microcms.io/image-api/introduction ・ https://microcms.io/pricing ・ https://sveltiacms.app/en/docs/media。microCMS のマネジメント API の 5MB は https://document.microcms.io/management-api/post-media の記載（検索の結果での確認、頁の本文は未読）。
 
-**顧客の負担（今の Pages CMS の案）**: iPhone の既定の写真（HEIC、数 MB）はそのまま上げられない。案内は「カメラの設定で互換性優先（JPEG）にする」か「上げる前に縮小・JPEG で書き出す」。
-Pages CMS には縮小が無いので、2 MiB を超える写真は構築で止まる（前の公開は残る）。自動の縮小（構築で縮める・GitHub Actions で縮める）は別に決める（実装計画 §9 の問い 4）。
+**顧客の負担（今の Pages CMS の案）**: iPhone の既定の写真（HEIC）は使えない。案内は「カメラの設定で互換性優先（JPEG）にする」か「Safari から上げる」（Safari は JPEG にして送る見込み。未検証。`pages-cms-phone-photos.md`）。
+大きな JPEG（数 MB）は納品用 repo の構築が縮めて公開するので、顧客が縮める必要は無い（Issue #380 PR 3）。
 納品の前に、写真の Exif の位置情報・ナンバープレートの扱いを確かめる（Issue #380）。
 
 ## 5. オーナーへの問い
@@ -139,3 +139,72 @@ Pages CMS には縮小が無いので、2 MiB を超える写真は構築で止�
 
 2026-11-27: pagescms.org/docs/configuration/media/・fields/image/・github.com/apps/pages-cms、developers.cloudflare.com の 6 頁、docs.github.com の 2 頁、microCMS の 7 頁、sveltiacms.app の 3 頁と github.com/sveltia/sveltia-cms、decapcms.org と github.com/decaporg/decap-cms。
 2026-11-26（`pages-cms-hosted-terms.md` の調べ）: pagescms.org の規約・個人情報・quick-start・collaborators・installing/github-app・database・caching・environment-variables。
+
+## 付録 A. 実環境の試験の手順（12 項目、架空の車の店だけ）
+
+オーナーの承認（2026-11-27）: 実環境の試験に進む。使うのは架空の車の店のデータだけ。
+**App の導入・repo の作成・公開は、その場でオーナーが最後に確かめてから行う。** Claude はどの外部の操作もしない。
+1 回の作業で終わるように、必要な物は先にローカルに用意してある。
+
+### A.0 用意してある物と事前の作業
+
+| 物 | 場所 | 中身 |
+|---|---|---|
+| 試験用 repo（push の前の状態） | `~/second-root-trial/sr-cms-trial-autocare/` | `export-delivery.ts` で書き出した納品用 repo。`main` に commit が 1 つ（作者は中立の仮名 `Trial Kit <trial-kit@example.invalid>`）。remote は無い。きれいな clone で `npm ci && npm run build && npm test` が通ることを確認済み |
+| 試験データ | `~/second-root-trial/test-data/`（repo の外） | 合成の画像と壊れた entry。`manifest.json` に一覧。作り方は `experiments/pages-cms/live-trial-data.mjs` |
+| 測る道具 | Second Root の `experiments/pages-cms/live-trial-measure.ts` | 読むだけ。公開 URL を GET するか、ローカルの checkout を読む。サインインも書き込みもしない |
+
+試験データの中身:
+- `phone/IMG_4001〜4003.JPG`: 4032×3024、約 5 MB。EXIF の向き 6（横に保存し、縦に表示）、架空の位置情報（北緯 0°・東経 0°。実在の場所の位置情報は入れない）。
+- `phone/IMG_4800.JPG`: 8064×6048（4800 万画素）、約 11.6 MB、同じ架空の位置情報。
+- `before-after/pair-1|2-before|after.jpg`: 施工前と施工後の組。
+- `multi/*.jpg`: 4:3・3:4・16:9・1:1。
+- `heic/IMG_4002-fake-heic.jpg`: HEIC の頭だけを持つ偽のファイル。**本物の HEIC は作れなかった**（sharp の既製のバイナリは HEVC を書けない）。本物は iPhone で撮って試す。
+- `broken/*.json`: 途中で切れた JSON、写真が 0 枚、存在しない写真。
+
+以下では測る道具を `TOOL` と書く。Second Root の checkout で次のように動かす: `npx tsx experiments/pages-cms/live-trial-measure.ts`。
+公開 URL は `URL` と書く。例: `https://sr-cms-trial-autocare.pages.dev/`。
+
+事前の作業（オーナー。順に）:
+1. GitHub のオーナーの個人のアカウントに**空の非公開（private）repo** `sr-cms-trial-autocare` を作る（README などは作らない。名前と非公開は `cms-live-trial-confirmation.md` §1 で決めたとおり）。
+2. `~/second-root-trial/sr-cms-trial-autocare/` で `git remote add origin <その repo の URL>` を実行し、`git push -u origin main` で push する。commit の作者を自分にしたい場合は、push の前に `git commit --amend --reset-author --no-edit` を実行する。
+3. §1.2 の手順で Pages CMS の GitHub App を**この repo だけ**に入れ、要求された権限の画面を撮影する。
+4. §1.3 の表のとおり Cloudflare Pages を設定する（値の正本は repo の `README.md`）。Cloudflare の GitHub App も **Only select repositories** でこの repo だけにする。最初の構築が成功し、`URL` に「架空のカーケア工房 そらいろ」が出ることを確かめる。
+
+### A.1〜A.12 各項目の手順
+
+どの項目でも記録すること: 操作した時刻、CMS で保存した時刻、commit SHA（GitHub の commit の一覧）、Cloudflare の deployment ID と構築の開始・終了の時刻、`TOOL` の出力（JSON をそのまま保存する）、PC 1440 / SP 390 の撮影。実機ではないときは「エミュレーション」と書く。
+
+| # | 項目 | 手順 | 期待する結果 | 記録・道具 |
+|---|---|---|---|---|
+| 1 | 施工実績の追加・編集・削除 | CMS の「施工実績」で ① 追加: 車種「架空車 試験 新規」・施工の種類・写真 1 枚で保存する ② 編集: 車種を「架空車 試験 編集」に変える ③ 削除: その entry を消す | 保存のたびに commit が 1 つでき、構築が成功し、頁に出る・変わる・消える。entry の file 名は自動の ID（uuid）になる見込み（**未検証**。Pages CMS の source を読んだだけ。実際の file 名を記録する） | 操作ごとに `TOOL wait --url URL --marker "架空車 試験 新規" --timeout 900`（編集は「架空車 試験 編集」）。削除は頁から消えたことを撮影する。GitHub で新しい file の名前を記録する |
+| 2 | 1 件に複数枚の写真 | 1 つの entry に `multi/` の 4 枚を付ける。5 枚目を足そうとする | 4 枚まで保存でき、頁の 1 つの札に大 1 枚と小 3 枚が出る。5 枚目は、CMS が保存を止めるか、保存できても構築が `CONTENT_INVALID` で止まって前の公開が残るか、のどちらでも合格（試行の上限 4 枚）。どちらだったかを記録する | `TOOL images --url URL --min-images <公開されているはずの枚数>` が exit 0 で、4 枚が公開されていること |
+| 3 | 施工前・施工後 | `before-after/pair-1-before.jpg` を「施工前」、`pair-1-after.jpg` を「施工後」にして保存する | 頁で 2 枚が並び、「施工前」「施工後」の札が付く | PC と SP の撮影 |
+| 4 | スマートフォンからの更新 | 顧客役が iPhone の Safari で招待のメールから入り、1 と同じ追加をする。写真は「写真ライブラリ」から選ぶ | 保存でき、頁に出る。iPhone の HEIC の写真も Safari が JPEG にして送る見込み（**未検証**。`pages-cms-phone-photos.md` §2） | 機種・iOS の版・ブラウザ。repo に入った写真の拡張子と大きさ（GitHub の画面）。`TOOL originals --repo <手元の clone>` |
+| 5 | 4〜6 MB の JPEG | `phone/IMG_4001.JPG`（約 5 MB）を PC のブラウザの CMS から上げて保存する。続けて `IMG_4800.JPG`（約 11.6 MB） | CMS が受け付け、repo に元のまま入り、構築が成功する。11.6 MB は hosted の Pages CMS がリクエストの大きさで断る可能性がある（**未検証**）。断られたらその表示を記録する | 上げた時刻と結果。GitHub での file の大きさ |
+| 6 | 自動の最適化 | 5 の後の公開の頁を測る | 合格の条件（すべて）: ① `TOOL images` が exit 0（`status` が `measured`、`failures` が空。どの写真も HTTP 200 で、JPEG・PNG・WebP のどれか） ② `count.measured` が、上げた写真の枚数以上 ③ `IMG_4001.JPG` が 1920×2560 で、`exif` と `gps` が false ④ `with_gps` と `with_metadata` が空 | `TOOL images --url URL --min-images <上げた写真の枚数>`。exit 1 なら `failures` を記録する（測れなかった写真は「GPS 無し」ではない） |
+| 7 | GitHub への保存 | 1〜5 の保存の後、GitHub の commit の一覧と `content/works/`・`media/` を見る | 保存ごとに commit があり、content は JSON、写真は `media/` に入っている。`.pages.yml` と `site/` は変わっていない | commit SHA と作者（既定は App の名前。§1.2 の 4） |
+| 8 | Cloudflare の自動公開 | 7 の各 commit について Cloudflare の Deployments を見る | commit ごとに本番の deployment が自動ででき、成功する | deployment ID、開始・終了の時刻、構築の記録の最後の行（`build ok: …`） |
+| 9 | 反映までの時間 | CMS で保存する直前に `TOOL wait --url URL --marker "<新しい車種>" --interval 10 --timeout 900` を始めて、保存する | 数分以内に `"status": "found"` が出る（目安。保証ではない） | 出力の `elapsed_ms`（保存の操作から見つかるまで）。3 回測って中央値を記録する |
+| 10 | 編集者の権限の管理 | ① 顧客役をメールで招く ② 顧客役で入り、施工実績を編集できること、`.pages.yml`・`site/`・`build.mjs` が CMS に出ないことを確かめる ③ 招いていない人で開く ④ 顧客役を外し、もう一度開く | ② 編集できるのは content と写真だけ ③ と ④ は入れない・保存できない | それぞれの画面の撮影と時刻 |
+| 11 | 構築の失敗で前の公開が残る | GitHub の画面で `test-data/broken/no-photo.json` の中身の file を `content/works/` に作る（または CMS で写真の無い保存を試す。CMS は写真 0 枚を止めるので、GitHub の画面で入れる）。もう 1 つ、写真の欄を `heic/IMG_4002-fake-heic.jpg` にした entry でも試す | 構築が失敗し（構築の記録に `CONTENT_INVALID`、HEIC なら `CONTENT_PHOTO_HEIC` と案内）、`URL` は前の公開のまま | Cloudflare の失敗の deployment の撮影。失敗の後に `TOOL images --url URL` を動かし、前と同じであること |
+| 12 | 復旧 | ① 11 の壊れた file を GitHub で消す（または直す）→ 構築が成功する ② Deployments で前の成功した deployment に Rollback し、それから最新に戻す（§1.3 の rollback） | ① 次の構築が成功し、頁が戻る ② rollback の直後に前の頁、戻した後に最新の頁 | 時刻、deployment ID、`TOOL wait` の出力 |
+
+### A.13 位置情報（GPS）について（はっきり分けて記録する）
+
+- **公開される写真**: 納品用 repo の構築（`photo-prep.mjs`）が、顧客の写真の EXIF（GPS を含む）を消した写しを公開する。項目 6 で `TOOL images` の `with_gps` が空であることを確かめる。ローカルの試し（2026-11-27）で、偽の GPS 付きの 5.0 MB の写真は 1920×2560・416 KB の EXIF の無い写しとして公開された。
+- **repo の中の元の写真**: Pages CMS は写真をそのまま GitHub に保存する（縮小・変換・メタデータの除去は無い。`pages-cms-phone-photos.md` §3）。そのため、**顧客の電話や Safari が上げる前に位置情報を消さない限り、repo の元の写真には GPS が残る**。iOS の Safari が写真を JPEG にするときに位置情報を消すかは**未検証**（消すという報告はあるが、公式の文書は無い）。項目 4 と 5 の後に `TOOL originals --repo <手元の clone>` を動かし、`with_gps` に出た file を記録する（ローカルの試しでは、偽の GPS 付きの元の写真は repo の中で GPS を持ったままだった）。
+- repo は非公開だが、repo に入れる人（オーナー、Pages CMS の App、Cloudflare の App）は元の写真の位置情報を読める。
+- **公開の写真の合格の条件**は A.6 のとおり（`TOOL images` が exit 0 で、測れなかった写真が無いこと）。測れなかった写真（HTTP 200 でない、形式が分からない、メタデータが読めない）は `failures` に出る。それを「GPS 無し」と読まない。
+- **道具が読めるもの・読めないもの**（`exif-scan.ts`）: JPEG の Exif と XMP（Extended XMP をつないだもの）、PNG の eXIf・XMP（圧縮も含む）・ImageMagick の「Raw profile type exif / APP1 / xmp」、WebP の EXIF・XMP。
+  読めないもの（`unknown` として出し、`TOOL originals` では `unscannable` に並ぶ）: HEIC・HEIF・AVIF、JPEG・PNG・WebP 以外の形式、展開できない圧縮のかたまり、壊れた・途中で切れたファイル（読めない Exif を含む）。これらに位置情報が無いとは言えないので、手で確かめる（例: Mac のプレビューの「情報を見る」）。
+  そのほか、知られていない置き場所（独自のメーカーの領域など）は調べていない。
+- **案（どれも今は作らない。決めるのはオーナー）**:
+  1. 顧客に、店の写真を撮るカメラの位置情報を切ってもらう（iPhone は「設定」→「プライバシーとセキュリティ」→「位置情報サービス」→「カメラ」→「なし」。Apple の文書での確認は未）。
+  2. 後で CMS の側で手当てする: GitHub Actions で `media/` の元の写真から位置情報を消す commit を自動で作る、または位置情報を消せる CMS（Sveltia CMS は Exif の除去を持つ。§4）に替える。
+  3. 納品の前に、`TOOL originals` で位置情報の残る元の写真を確かめて報告する（今回の確認の手順）。
+
+### A.14 試験の後
+
+- §1.3 の「全部を消す順」で片付ける。試験データは `~/second-root-trial/` に残る（Second Root の git には入れない）。
+- 結果は項目ごとに「通った・通らない・試せない（理由）」で報告する。未検証と書いた点（4・5・A.13）は、実際の結果で書き換える。
