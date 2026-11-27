@@ -77,7 +77,7 @@ describe("Issue #380: the bakery and the café are unchanged by the works collec
 });
 
 describe("Issue #380: the car-care shop (施工実績) — its own composition, every fixture", () => {
-  it("builds every fixture: one job card per shown work, one picture per shown photo, 施工前 / 施工後 labels, no イメージ, no script or link", async () => {
+  it("builds every fixture: one job card per shown work, one picture per shown photo, 施工前 / 施工後 labels, イメージ only on the static design pictures, no script or link", async () => {
     for (const name of Object.keys(AUTO_SITE.fixtures())) {
       const repo = await repoOf(AUTO_SITE, name);
       const r = await build(repo);
@@ -87,24 +87,35 @@ describe("Issue #380: the car-care shop (施工実績) — its own composition, 
       expect(r.html, name).not.toMatch(/<script|javascript:|https?:\/\//i);
       expect(r.html, name).toContain("架空のカーケア工房 そらいろ");
       expect(r.html, name).toContain("提案用デモ（架空の店）");
-      expect(r.html, name).not.toContain("イメージ");
+      // Issue #380 SORAIRO: the AI label is on the 3 static design pictures (hero, sample before / after) and the footer
+      // note — never inside the customer's works list
+      expect(count(/AI生成・架空の施工イメージ/g), name).toBe(5);
+      const worksList = r.html.slice(r.html.indexOf('id="works"'), r.html.indexOf('id="sample"'));
+      expect(worksList, name).not.toMatch(/イメージ|AI生成|design\//);
       expect(count(/<li class="job" data-q1="item">/g), name).toBe(shown.length);
-      expect(count(/<img /g), name).toBe(shown.reduce((n, w) => n + w.photos.length, 0));
-      expect(count(/<figcaption class="role">施工前<\/figcaption>/g), name).toBe(shown.filter((w) => w.photos.some((p) => p.role === "before")).length);
-      expect(count(/<figcaption class="role">施工後<\/figcaption>/g), name).toBe(shown.filter((w) => w.photos.some((p) => p.role === "after")).length);
+      expect(count(/<img /g), name).toBe(shown.reduce((n, w) => n + w.photos.length, 0) + 3);
+      expect(count(/<figcaption class="role"><span class="en">BEFORE<\/span> <b>施工前<\/b><\/figcaption>/g), name).toBe(shown.filter((w) => w.photos.some((p) => p.role === "before")).length);
+      expect(count(/<figcaption class="role"><span class="en">AFTER<\/span> <b>施工後<\/b><\/figcaption>/g), name).toBe(shown.filter((w) => w.photos.some((p) => p.role === "after")).length);
       // a pair only when the job has both
       expect(count(/<div class="pair">/g), name).toBe(shown.filter((w) => w.photos.some((p) => p.role === "before") && w.photos.some((p) => p.role === "after")).length);
       // every shown photo was checked and copied; hidden jobs' photos were not
       expect(new Set(r.media), name).toEqual(new Set(shown.flatMap((w) => w.photos.map((p) => p.image.replace(/^\/media\//, "")))));
-      expect(r.provenance.every((p) => p.class === "B" || p.class === "C"), name).toBe(true);
+      // the customer's pictures are B or C; the only A pictures are the two recorded design materials
+      expect(r.provenance.filter((p) => !p.file.startsWith("design/")).every((p) => p.class === "B" || p.class === "C"), name).toBe(true);
+      expect(r.provenance.filter((p) => p.file.startsWith("design/")).map((p) => [p.file, p.class]), name).toEqual([
+        ["design/sorairo-matte-black.jpg", "A"],
+        ["design/sorairo-silver.jpg", "A"],
+      ]);
+      expect(r.design, name).toEqual(["sorairo-matte-black.jpg", "sorairo-silver.jpg"]);
     }
   });
 
   it("a different composition from the bakery and the café; the empty state; hidden and reordered jobs; long 車種 names escaped", async () => {
     const r = await build(await repoOf(AUTO_SITE, "works-3"));
     expect(r.html).toContain('<ol class="jobs">');
-    expect(r.html).toContain('<div class="info">');
-    expect(r.html).not.toMatch(/class="grid"|class="hero"|<aside class="side">|<ul class="list">/);
+    // the SORAIRO design (owner 2026-11-28): notice line, brand header, hero, service bar, sample, service list, details
+    for (const part of ['<div class="notice"', '<a class="brand"', '<section class="hero"', '<div class="bar">', '<section class="section sample" id="sample"', '<div class="service-list">', '<section class="section details"']) expect(r.html, part).toContain(part);
+    expect(r.html).not.toMatch(/class="grid"|<aside class="side">|<ul class="list">/);
     expect(r.html).not.toContain('href="#menu"');
     for (const other of [BAKERY_SITE, CAFE_SITE]) expect(r.css).not.toBe((await build(await repoOf(other, "items-3"), other)).css);
     expect((await build(await repoOf(AUTO_SITE, "works-0"))).html).toContain('<p class="empty">施工実績は準備中です。</p>');
@@ -121,7 +132,9 @@ describe("Issue #380: the car-care shop (施工実績) — its own composition, 
     editWork(repo, "job-1", (w) => ({ ...w, vehicle: '<img src=x onerror="alert(1)">', description: "<b>強調</b>" }));
     const escaped = await build(repo);
     expect(escaped.html).toContain("<h3>&lt;img src=x onerror=&quot;alert(1)&quot;&gt;</h3>");
-    expect(escaped.html).not.toContain("<b>");
+    // (the design itself uses <b> in its fixed labels; the customer's text never becomes markup)
+    expect(escaped.html).toContain("&lt;b&gt;強調&lt;/b&gt;");
+    expect(escaped.html).not.toContain("<b>強調</b>");
   });
 
   it("photo-ratios: every allowed edge shape is checked as it is; the 3:1 / 1:3 strips and the largest pass", async () => {
@@ -138,7 +151,7 @@ describe("Issue #380: the car-care shop (施工実績) — its own composition, 
         [1600, 900],
       ].sort(),
     );
-    expect(r.provenance.map((p) => p.class)).toEqual(Array(8).fill("C"));
+    expect(r.provenance.filter((p) => !p.file.startsWith("design/")).map((p) => p.class)).toEqual(Array(8).fill("C"));
   });
 
   it("B photos in a job need their rights record (private folder outside the repository), like a menu picture", async () => {
@@ -290,5 +303,78 @@ describe("Issue #380: the car-care shop's .pages.yml (customer-editable fields o
     expect(yml).not.toMatch(/name: "menu"|name: "categories"|soldOut|priceDisplay/);
     // the shop's name stays read-only
     expect(yml).toMatch(/- name: "name"\n\s+label: "店名（変更できません）"\n\s+type: "string"\n\s+readonly: true/);
+  });
+});
+
+describe("Issue #380 SORAIRO (owner 2026-11-28): the static design pictures and what the build publishes", () => {
+  const listDist = (dir: string, rel = ""): string[] =>
+    readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? listDist(dir, `${rel}${e.name}/`) : [`${rel}${e.name}`])).sort();
+
+  it("the design record states the provenance honestly: the owner supplied them (made on the ChatGPT side), model and prompt unknown (null), received 2026-11-28, exact bytes", () => {
+    const rec = JSON.parse(readFileSync(join(AUTO_SITE.design!.dir, "generated-materials.json"), "utf8")) as { schema: string; files: { file: string; sha256: string; source: unknown }[] };
+    expect(rec.schema).toBe("generated_materials_v1");
+    const source = { supplied_by: "owner", made_with: "ChatGPT (owner side)", model: null, prompt: null, received_on: "2026-11-28" };
+    expect(rec.files).toEqual([
+      { file: "sorairo-matte-black.jpg", sha256: "20c782e075b61523aa0a27c6419d5cdf01a3db7868c679f5341862a65d21152a", source },
+      { file: "sorairo-silver.jpg", sha256: "4101af37221ab2ab5501e563c5af008d4468877fc79753e87610f437b10a7809", source },
+    ]);
+    for (const f of rec.files) expect(createHash("sha256").update(readFileSync(join(AUTO_SITE.design!.dir, f.file))).digest("hex"), f.file).toBe(f.sha256);
+  });
+
+  it("the build lists them as class A with that source, copies them to dist/design/, and nothing in .pages.yml can reach them", async () => {
+    const r = await build(await repoOf(AUTO_SITE, "works-3"));
+    const a = r.provenance.filter((p) => p.class === "A");
+    expect(a.map((p) => [p.file, p.record, p.source?.model, p.source?.prompt, p.source?.received_on])).toEqual([
+      ["design/sorairo-matte-black.jpg", null, null, null, "2026-11-28"],
+      ["design/sorairo-silver.jpg", null, null, null, "2026-11-28"],
+    ]);
+    expect(r.html).toContain('<img src="design/sorairo-matte-black.jpg" alt="AI生成によるマットブラックの架空SUV"');
+    expect(pagesYaml({ extensions: AUTO_SITE.profile.extensions, collections: AUTO_SITE.profile.collections })).not.toMatch(/design|sorairo|generated/);
+  });
+
+  it("refused: a design picture whose bytes are not the recorded ones, a missing record, a missing picture", async () => {
+    const repo = await repoOf(AUTO_SITE, "works-3");
+    const withDesign = (dir: string) => ({ ...AUTO_SITE, design: { ...AUTO_SITE.design!, dir } });
+    const copy = () => {
+      const d = join(tmp(), "design");
+      cpSync(AUTO_SITE.design!.dir, d, { recursive: true });
+      return d;
+    };
+    const changed = copy();
+    writeFileSync(join(changed, "sorairo-silver.jpg"), Buffer.concat([readFileSync(join(changed, "sorairo-silver.jpg")), Buffer.from([0])]));
+    expect(await codeOf(build(repo, withDesign(changed)))).toBe("CONTENT_GENERATED_RECORD_MISSING design/sorairo-silver.jpg");
+    const noRecord = copy();
+    rmSync(join(noRecord, "generated-materials.json"));
+    expect(await codeOf(build(repo, withDesign(noRecord)))).toBe("CONTENT_GENERATED_RECORD_MISSING design/generated-materials.json");
+    const noPicture = copy();
+    rmSync(join(noPicture, "sorairo-matte-black.jpg"));
+    expect(await codeOf(build(repo, withDesign(noPicture)))).toBe("CONTENT_PHOTO_MISSING design/sorairo-matte-black.jpg");
+  });
+
+  it("Identity Lock kept: a copy of a design picture uploaded as a job's photo is refused; the B index may not list one", async () => {
+    const repo = await repoOf(AUTO_SITE, "works-3");
+    writeFileSync(join(repo, "media", "IMG_9999.jpg"), readFileSync(join(AUTO_SITE.design!.dir, "sorairo-matte-black.jpg")));
+    editWork(repo, "job-2", (w) => ({ ...w, photos: [{ image: "/media/IMG_9999.jpg", role: "after" }] }));
+    expect(await codeOf(build(repo))).toBe("CONTENT_GENERATED_AS_SHOP works/job-2");
+    const b = await repoOf(AUTO_SITE, "works-10");
+    const index = JSON.parse(readFileSync(join(b, "content", "photo-provenance.json"), "utf8")) as { b: { sha256: string; record_sha256: string }[] };
+    index.b.push({ sha256: "20c782e075b61523aa0a27c6419d5cdf01a3db7868c679f5341862a65d21152a", record_sha256: "0".repeat(64) });
+    writeFileSync(join(b, "content", "photo-provenance.json"), JSON.stringify(index));
+    expect(await codeOf(build(b))).toBe("CONTENT_PHOTO_CLASS_MIXED design material");
+  });
+
+  it("only referenced pictures are published: an unreferenced file in media/ (a test image) and a hidden job's photos never reach dist/", async () => {
+    const repo = await repoOf(AUTO_SITE, "works-3");
+    writeFileSync(join(repo, "media", "kenkyu-test.jpg"), readFileSync(join(AUTO_SITE.design!.dir, "sorairo-silver.jpg")));
+    writeFileSync(join(repo, "media", "unused.png"), solidPng(640, 480, [5, 5, 5]));
+    editWork(repo, "job-3", (w) => ({ ...w, visible: false }));
+    const hiddenPhotos = (JSON.parse(readFileSync(workFile(repo, "job-3"), "utf8")) as { photos: { image: string }[] }).photos.map((p) => p.image.replace(/^\/media\//, ""));
+    const out = join(tmp(), "dist");
+    await buildSite({ repo, outDir: out, today: Q1_TODAY, site: AUTO_SITE });
+    const shown = worksOf(await loadContent(repo, AUTO_SITE.profile)).flatMap((w) => w.photos.map((p) => `media/${p.image.replace(/^\/media\//, "")}`));
+    expect(listDist(out)).toEqual(["design/sorairo-matte-black.jpg", "design/sorairo-silver.jpg", "index.html", ...shown, "style.css"].sort());
+    for (const f of ["kenkyu-test.jpg", "unused.png", ...hiddenPhotos]) expect(listDist(out), f).not.toContain(`media/${f}`);
+    const html = readFileSync(join(out, "index.html"), "utf8");
+    for (const f of ["kenkyu-test.jpg", "unused.png", ...hiddenPhotos]) expect(html, f).not.toContain(f);
   });
 });

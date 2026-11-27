@@ -197,6 +197,8 @@ export async function runQ1Compare(o: { outDir: string; browser: Browser }): Pro
         const content = await loadContent(repo, site.profile);
         const media = new Map<string, Buffer>();
         for (const m of built.media) media.set(`media/${m}`, await readFile(join(dist, "media", m)));
+        // Issue #380 SORAIRO: the site's static design pictures are page files too
+        for (const d of built.design) media.set(`design/${d}`, await readFile(join(dist, "design", d)));
         const { facts, truncated } = factsOf(content);
         const render = await renderQ1(o.browser, { html: built.html, css: built.css }, media, facts, content.shop.name, out, name);
         for (const view of ["pc", "sp"] as const) {

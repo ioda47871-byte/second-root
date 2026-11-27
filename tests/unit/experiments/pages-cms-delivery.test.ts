@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { exportDelivery, listFiles, NODE_VERSION, SITE_FILES, TEMPLATE_FILES } from "@/experiments/pages-cms/export-delivery";
+import { exportDelivery, listFiles, NODE_VERSION, SITE_DIRS, SITE_FILES, TEMPLATE_FILES } from "@/experiments/pages-cms/export-delivery";
 import { pagesYaml } from "@/experiments/pages-cms/pages-config";
 import { AUTO_SITE } from "@/experiments/pages-cms/shop-site";
 
@@ -38,7 +38,11 @@ describe("Issue #380 PR 3: the standalone delivery repository (export)", () => {
     const files = await exportDelivery({ outDir: out });
     for (const f of [".gitignore", ".node-version", ".pages.yml", "README.md", "build.mjs", "package-lock.json", "package.json", "photo-prep.mjs", "site.config.json", "tests/template.test.mjs"]) expect(files, f).toContain(f);
     for (const f of SITE_FILES) expect(readFileSync(join(out, "site", f), "utf8"), f).toBe(readFileSync(join(HERE, f), "utf8"));
-    expect(files.filter((f) => f.startsWith("site/"))).toEqual(SITE_FILES.map((f) => `site/${f}`));
+    // the page code, plus its static design folder (Issue #380 SORAIRO), copied byte for byte
+    const designFiles = (await Promise.all(SITE_DIRS.map(async (d) => (await listFiles(join(HERE, d))).map((f) => `site/${d}/${f}`)))).flat();
+    expect(files.filter((f) => f.startsWith("site/"))).toEqual([...SITE_FILES.map((f) => `site/${f}`), ...designFiles].sort());
+    for (const f of designFiles) expect(shaOf(join(out, f)), f).toBe(shaOf(join(HERE, f.replace(/^site\//, ""))));
+    expect(designFiles).toEqual(["site/design/sorairo/generated-materials.json", "site/design/sorairo/sorairo-matte-black.jpg", "site/design/sorairo/sorairo-silver.jpg"]);
     expect(readFileSync(join(out, ".pages.yml"), "utf8")).toBe(pagesYaml({ extensions: AUTO_SITE.profile.extensions, collections: AUTO_SITE.profile.collections }));
     expect(JSON.parse(readFileSync(join(out, "site.config.json"), "utf8"))).toEqual({ site: "auto" });
     expect(readFileSync(join(out, ".node-version"), "utf8")).toBe(`${NODE_VERSION}\n`);

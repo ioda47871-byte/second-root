@@ -40,6 +40,11 @@ export const SITE_FILES = [
   "provenance.ts",
   "shop-site.ts",
 ] as const;
+/**
+ * Issue #380 (SORAIRO): the page code's static design folder (its pictures and their generated-materials record),
+ * copied as it is into site/design/ — part of the page code, never content/ or media/.
+ */
+export const SITE_DIRS = ["design"] as const;
 /** Template file → its name in the exported repository. */
 export const TEMPLATE_FILES: Record<string, string> = {
   "build.mjs": "build.mjs",
@@ -92,6 +97,7 @@ export async function exportDelivery(o: { outDir: string; site?: string; fixture
   }
   await mkdir(join(out, "site"), { recursive: true });
   for (const f of SITE_FILES) await copyFile(join(HERE, f), join(out, "site", f));
+  for (const d of SITE_DIRS) await cp(join(HERE, d), join(out, "site", d), { recursive: true });
   await mkdir(join(out, "tests"), { recursive: true });
   for (const [from, to] of Object.entries(TEMPLATE_FILES)) await copyFile(join(TEMPLATE, from), join(out, to));
   await writeFile(join(out, ".pages.yml"), pagesYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) }));
