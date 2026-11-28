@@ -149,7 +149,7 @@ export const sveltiaYaml = (o: PagesOptions = {}, backend: SveltiaBackend = SVEL
   `# Generated from the content model (experiments/pages-cms), the same source as .pages.yml. Edit the model, not this file.\n${toYaml(sveltiaConfig(o, backend))}`;
 
 /**
- * PR #396 review L1: the admin page's Content Security Policy. The base directives are Sveltia's documented "Merged CSP"
+ * PR #396 review L1: the admin page's Content Security Policy (live-trial fix: + 'wasm-unsafe-eval', see script-src). The base directives are Sveltia's documented "Merged CSP"
  * (https://sveltiacms.app/docs/security: style-src 'self' 'unsafe-inline'; font-src 'self' https://cdn.jsdelivr.net;
  * img-src 'self' blob: data:; media-src blob:; frame-src blob:; script-src 'self' https://unpkg.com; connect-src 'self'
  * blob: data: https://unpkg.com; manifest-src blob:), plus worker-src blob: (the HEIC decoder runs in a worker; the docs
@@ -163,7 +163,11 @@ export function sveltiaCsp(backend: SveltiaBackend = SVELTIA_PLACEHOLDER_BACKEND
   const connect = ["'self'", "blob:", "data:", "https://unpkg.com", "https://api.github.com", "https://www.githubstatus.com", ...(additions ? [additions.origin, `wss://${additions.host}`] : [])];
   return [
     "default-src 'self'",
-    "script-src 'self' https://unpkg.com",
+    // live trial 2026-11-28 ("Load failed" on iPhone): WebKit cannot encode WebP natively, so Sveltia encodes it with
+    // @jsquash/webp — WebAssembly, which a CSP blocks unless script-src has 'wasm-unsafe-eval'. Without it Sveltia falls
+    // back silently to PNG (~13 MB per phone photo; three in one commit ≈ 51 MB of base64). Narrower than 'unsafe-eval'
+    // (WebAssembly only; no eval of strings).
+    "script-src 'self' 'wasm-unsafe-eval' https://unpkg.com",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' https://cdn.jsdelivr.net",
     "img-src 'self' blob: data: https://avatars.githubusercontent.com",
