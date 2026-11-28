@@ -147,7 +147,12 @@ describe("the build accepts content exactly as Sveltia saves it", () => {
 describe("PR #396 review L1 / L3: the admin page's CSP, and the backend the export accepts", () => {
   it("the CSP holds Sveltia's documented base directives, worker-src blob:, the GitHub API, and the Additions Worker (https + wss) only when configured", () => {
     const csp = sveltiaCsp({ repo: "o/r" });
-    for (const d of ["style-src 'self' 'unsafe-inline'", "font-src 'self' https://cdn.jsdelivr.net", "img-src 'self' blob: data:", "media-src blob:", "frame-src blob:", "script-src 'self' https://unpkg.com", "manifest-src blob:", "worker-src blob:"]) expect(csp, d).toContain(d);
+    for (const d of ["style-src 'self' 'unsafe-inline'", "font-src 'self' https://cdn.jsdelivr.net", "img-src 'self' blob: data:", "media-src blob:", "frame-src blob:", "script-src 'self' 'wasm-unsafe-eval' https://unpkg.com", "manifest-src blob:", "worker-src blob:"]) expect(csp, d).toContain(d);
+    // live trial 2026-11-28 ("Load failed" on iPhone): WebKit encodes WebP with WebAssembly (@jsquash/webp), which needs
+    // 'wasm-unsafe-eval'; without it Sveltia silently stored ~13 MB PNGs (reproduced in Chromium with WebKit's encoder
+    // behaviour). Only WebAssembly is allowed — never 'unsafe-eval' (string eval).
+    expect(csp).toMatch(/script-src [^;]*'wasm-unsafe-eval'/);
+    expect(csp).not.toMatch(/'unsafe-eval'/);
     expect(csp).toMatch(/connect-src 'self' blob: data: https:\/\/unpkg\.com https:\/\/api\.github\.com https:\/\/www\.githubstatus\.com(;|$)/);
     const withAdditions = sveltiaCsp({ repo: "o/r", auth_type: "additions", base_url: "https://auth.example.workers.dev/x" });
     expect(withAdditions).toContain("https://auth.example.workers.dev wss://auth.example.workers.dev");
