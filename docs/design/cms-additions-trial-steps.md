@@ -10,7 +10,7 @@ Second Root がしたのは**ローカルの作業だけ**（サインイン・�
 | ファイル | sha256 |
 |---|---|
 | `additions-update.zip`（更新、4 ファイル） | `c2dea122d7c64e3aa385404d961a061d3f53242b20667e2ce101d30769f1f85c` |
-| `additions-rollback.zip`（戻し、同じ 4 ファイルの今の版） | `c31d060f6e2ec4f1b44191c083d6be2d8da26219fcbdf5aca7b14a6597f897ef` |
+| `additions-rollback.zip`（戻し、同じ 4 ファイル。token/GitHub のログインに戻し、#398 の CSP は残す。§9） | `e9c2318e787b5d5849d5e43f6b3c5e83f560c4811c75e059ca81e800b115a882` |
 | `manifest.json`（各ファイルの sha256） | — |
 
 更新の ZIP の中身（全て「変更」。追加・削除なし。`content/`・`media/` は含まない）:
@@ -51,7 +51,9 @@ Second Root がしたのは**ローカルの作業だけ**（サインイン・�
 ## 3. GitHub App（ウィザードの手順 2）
 
 1. 対象の repo に `sr-cms-trial/sr-cms-trial-autocare` を指定する。ウィザードが github.com の App の作成の頁へ送る（Organization `sr-cms-trial` の owner でサインインしておく）。
-2. **作る前に権限を見比べる**。GitHub の頁の表示と、次の表が全て一致したら作る。**1 つでも違えば（多い・少ない・Read と Write の違い）作らずに止まり、画面を撮って Second Root に送る**。権限の一覧は Sveltia の文書に書かれていない（Worker が作るので、ローカルでは確かめられない）。
+2. **作る前に権限を見比べる**。GitHub の頁の表示と、次の表が全て一致したら作る。**1 つでも違えば（多い・少ない・Read と Write の違い）作らずに止まり、画面を撮って Second Root に送る**。
+   - 表の出典: Sveltia の文書には一覧が無い。Worker のコード `sveltia/sveltia-cms-additions` の `lib/git/github/routes.js` の `buildManifest`（`default_permissions`、main の `4bbfa8c8`、2026-11-22。2026-11-28 に読んだ）。同じ所で `default_events` は空、webhook は無効（`active: false`）。
+   - **注意**: オーナーの Worker は Deploy ボタンで写した repo（`sr-cms-trial/sveltia-cms-additions`）から動くので、main より古い・新しいことがある。だから表を信じ切らず、**画面で見比べ、違えば止まる**。
 
    | 区分 | 権限 | 期待 |
    |---|---|---|
@@ -135,15 +137,18 @@ Email は空でよい（入れるならコミットのメールに使われる�
   | Worker の `/v1/auth/*`（サインイン・token・セッション）、`/v1/users`・`/v1/settings` など | サインインの後 | 同上 |
   | Worker の `wss://…/v1/socket`（ロック・コメント） | サインインの後 | `connect-src` の Worker の `wss://` |
   | `https://api.github.com`（1 時間の token で GitHub に直接） | 読み込み・保存 | `connect-src https://api.github.com` |
-  | `https://github.com/...settings/apps/new` へのフォームの POST | ウィザードの手順 2 | `form-action https://github.com`（**今回足した**。前の `form-action 'self'` では止まることをローカルの Chromium で確かめた） |
+  | `https://github.com/...settings/apps/new` へのフォームの POST | ウィザードの手順 2 | `form-action https://github.com`（**今回足した**。前の `form-action 'self'` では止まることをローカルの Chromium で確かめた）。送り先は `routes.js` の `https://github.com/organizations/<owner>/settings/apps/new` か `https://github.com/settings/apps/new` の 2 つだが、CSP は**origin だけ**にした: `form-action` は POST の後の redirect にも掛かり、GitHub が未サインイン時などにどこへ redirect するかは github.com へ実際に送らないと確かめられない（今回の範囲外）。止まると App を作れないので、確かめられない狭め方はしない |
 
 - 実際の Worker で起動の確かめ（ローカルの Chromium、`/admin/` を開くだけ）: 送ったのは `GET /version` だけ（200）。**CSP の違反 0 件**。ログイン画面に Username・Password・Sign In・Use Admin Secret が出た。資格情報の入力・ウィザード・管理の通信はしていない（他の Worker への通信は全て止める設定で、0 件だった）。ローカルの起動なので「Work with Local Repository」も出たが、pages.dev では出ない見込み（未検証）。
 - **未検証**: サインインの後の通信（REST・WebSocket）の実際、GitHub App の権限の一覧、iPhone の Safari と Brave、HEIC。
 
 ## 9. 戻し方
 
-- **すぐ戻す（repo を変えない）**: Cloudflare Pages の Deployments で、ZIP の前の deploy の **Rollback to this deployment**。
-- **repo を戻す**: `additions-rollback.zip` を §1 と同じ手順で上げる（4 ファイルが今の版に戻る。Additions の設定と、wasm・form-action の CSP が外れる）。
+- **repo を戻す（既定）**: `additions-rollback.zip` を §1 と同じ手順で上げる。token/GitHub のログイン（Additions なし）に戻り、**#398 の CSP（`'wasm-unsafe-eval'`）は残る**:
+  - `admin/config.yml`・`site.config.json` は今の版（`d9fbaa3`、Additions の設定なし）。
+  - `admin/index.html`・`site/sveltia-config.ts` は wasm の ZIP の版（sha256 `138e43b8…`・`b7b76f99…`）。CSP は `form-action 'self'` だけで、Worker の origin は入らない。
+  - Second Root の確かめ: snapshot に uuid → sveltia → additions → この ZIP を当て、`npm ci`・構築・`npm test`（8/8）が通り、`dist/admin` の CSP が上の通り（wasm の ZIP を当てた状態と同じ中身）。
+- **すぐ戻す（repo を変えない、別の方法）**: Cloudflare Pages の Deployments で、ZIP の前の deploy の **Rollback to this deployment**。repo は Additions のままなので、次の push で Additions に戻る。落ち着いたら上の ZIP で repo も戻す。
 - Additions をやめる: GitHub の `sr-cms-trial` → Settings → GitHub Apps で App を Uninstall し、App を削除。Cloudflare で Worker を削除（Durable Object の消し方は公式に記載なし、未確認）。
 - `ADMIN_SECRET` が漏れた疑い: Cloudflare で新しい値に変え、ウィザードで前の値を聞かれたら入れる（全員そのまま）。前の値が分からなければ Start Over（全員サインアウト、private key の入れ直し）。
 - 保存された写真と entry は content として残る（消すなら CMS で消す）。
