@@ -156,6 +156,9 @@ describe("PR #396 review L1 / L3: the admin page's CSP, and the backend the expo
     expect(csp).toMatch(/connect-src 'self' blob: data: https:\/\/unpkg\.com https:\/\/api\.github\.com https:\/\/www\.githubstatus\.com(;|$)/);
     const withAdditions = sveltiaCsp({ repo: "o/r", auth_type: "additions", base_url: "https://auth.example.workers.dev/x" });
     expect(withAdditions).toContain("https://auth.example.workers.dev wss://auth.example.workers.dev");
+    // Additions trial (Step B2): the setup wizard POSTs the GitHub App manifest form to github.com; only with Additions.
+    expect(withAdditions).toMatch(/form-action 'self' https:\/\/github\.com(;|$)/);
+    expect(csp).toMatch(/form-action 'self'(;|$)/);
   });
 
   it("refuses an Additions URL that is not https:, a malformed repo or branch", () => {
