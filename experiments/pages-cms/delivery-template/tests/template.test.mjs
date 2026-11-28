@@ -10,7 +10,7 @@
 //     JPEG is fitted; a HEIC renamed .jpg stops with the HEIC advice; protected bytes are never changed
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
@@ -226,4 +226,37 @@ test("a HEIC renamed .jpg stops the build with the HEIC advice; protected bytes 
   const bytes = await readFile(join(dir, "media", photoFile));
   await writeJson(join(dir, "content", "generated-materials.json"), { schema: "generated_materials_v1", files: [{ file: photoFile, sha256: sha(bytes) }] });
   assert.equal(await codeOf(build({ root: dir, today: TODAY })), "CONTENT_GENERATED_AS_SHOP");
+});
+
+test("Sveltia CMS (optional, Issue #380 PoC): admin/config.yml must be the generated one and is published at /admin only when configured; at least one CMS config", async () => {
+  const { sveltiaYaml } = await site("sveltia-config.ts");
+  const dir = await copyRepo();
+  const siteId = (await readJson(join(dir, "site.config.json"))).site;
+  const s = SHOP_SITES.find((x) => x.id === siteId);
+  const schema = { extensions: s.profile.extensions, ...(s.profile.collections ? { collections: s.profile.collections } : {}) };
+  const backend = { repo: "fictional-owner/shop-site", branch: "main" };
+  await mkdir(join(dir, "admin"), { recursive: true });
+  await writeFile(join(dir, "admin", "index.html"), "<!doctype html><title>Sveltia CMS</title>\n");
+  // an admin config the site has not opted into is refused
+  await writeFile(join(dir, "admin", "config.yml"), sveltiaYaml(schema, backend));
+  assert.equal(await codeOf(build({ root: dir, today: TODAY })), "SVELTIA_CONFIG_CHANGED");
+  // opted in: published at /admin; the shop page does not link to it
+  const cfg = await readJson(join(dir, "site.config.json"));
+  await writeJson(join(dir, "site.config.json"), { ...cfg, sveltia: backend });
+  await build({ root: dir, today: TODAY });
+  assert.equal(await readFile(join(dir, "dist", "admin", "config.yml"), "utf8"), sveltiaYaml(schema, backend));
+  assert.ok((await readFile(join(dir, "dist", "admin", "index.html"), "utf8")).includes("Sveltia CMS"));
+  assert.doesNotMatch(await readFile(join(dir, "dist", "index.html"), "utf8"), /admin/);
+  const good = await snapshot(dir);
+  // an edited admin config is refused and the last good dist/ stays
+  await writeFile(join(dir, "admin", "config.yml"), `${sveltiaYaml(schema, backend)}# edited\n`);
+  assert.equal(await codeOf(build({ root: dir, today: TODAY })), "SVELTIA_CONFIG_CHANGED");
+  assert.deepEqual(await snapshot(dir), good);
+  // Sveltia alone (no .pages.yml) builds; no CMS config at all is refused
+  await writeFile(join(dir, "admin", "config.yml"), sveltiaYaml(schema, backend));
+  await rm(join(dir, ".pages.yml"));
+  await build({ root: dir, today: TODAY });
+  await rm(join(dir, "admin"), { recursive: true });
+  await writeJson(join(dir, "site.config.json"), cfg);
+  assert.equal(await codeOf(build({ root: dir, today: TODAY })), "NO_CMS_CONFIG");
 });
