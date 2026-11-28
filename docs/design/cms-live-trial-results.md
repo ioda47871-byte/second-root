@@ -33,7 +33,7 @@
 | 案 B（Sveltia CMS Additions）の準備 | **成功** | 統合更新 ZIP 適用 commit 377f71c／deploy 455d3413。ID・パスワードの画面、ADMIN_SECRET での認証、最初の管理者の作成は成功 |
 | Additions のセットアップ「GitHub に接続」 | **不合格 → 解決** | 502「GitHub responded with 403: API rate limit exceeded」。原因: Deploy ボタンのテンプレートが Additions 1.0.0 に固定され、1.0.0 は Cloudflare の共有の送信元 IP から未認証で GitHub に問い合わせる。公式の 1.0.2 に上げて解決（token・権限の追加・Start Over なし、[`cms-additions-rate-limit.md`](cms-additions-rate-limit.md)）。今後の納品では Deploy の直後に最新版へ上げる |
 | **iPhone（Brave）から ID・パスワードでログインし、写真 3 枚つきの施工実績を新規登録 → GitHub に自動保存 → Cloudflare が自動で公開** | **成功（管理者のアカウントで）** | 2026-11-28 23:36 頃に保存。施工実績「架空車 タイプ12」（id 79c1a7d9-ad91-4285-98e6-2f47162d6782）。commit 5709a4a（コミットの実行者は `trial-admin` ＝**管理者のアカウント**。編集者の権限での成功はまだ）、deployment 8bd63e33。Second Root の手作業のデプロイなし。施工前・施工後・その他の 3 枚の表示をオーナーが確認 |
-| 上の写真の公開版の実測（deployment 8bd63e33） | **合格** | `img_4001.webp`・`img_4002.webp`・`img_4003.webp`: どれも WebP、1920×2560、約 788〜800 KB、EXIF・GPS なし。画像は計 28 枚すべて取得・判定でき、EXIF・GPS は 0 件。縦向きの表示は、元の合成画像（4032×3024、EXIF の向き 6 ＝縦向きに回して表示する）と一致し、正しい補正 |
+| 上の写真の公開版の実測（deployment 8bd63e33） | **合格** | `img_4001.webp`・`img_4002.webp`・`img_4003.webp`: どれも WebP、1920×2560、約 788〜800 KB、EXIF・GPS なし。画像は計 28 枚すべて取得・判定でき、EXIF・GPS は 0 件。縦向きの表示は、元の合成画像（4032×3024、EXIF の向き 6 ＝縦向きに回して表示する）と一致し、正しい補正。元の合成画像には架空の位置情報（北緯 0°・東経 0°）が入っていたので、公開版の「GPS なし」は位置情報が実際に消えたことを示す（repo の元のファイルに残るかは下の未検証の行） |
 | GitHub に保存された画像（アップロード前の圧縮） | **未検証** | Sveltia が変換した WebP が repo に入ったかは repo の中身を見ていないため未確認（ファイル名 `.webp` は公開版と同じだが、公開版は構築で再変換されうる） |
 | 公開までの所要時間 | **未計測** | 保存の前に待ち受けの計測を始めていない。commit と deployment の時刻からの見積もりもまだ |
 
