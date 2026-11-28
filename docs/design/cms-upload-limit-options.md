@@ -7,7 +7,7 @@
 
 ## 0. 起きたこと
 
-実環境の試験（`cms-live-trial-results.md`、枝 `feature/dev380-live-trial-record` にあり develop には未マージ。架空の店）で、実機の iPhone から hosted の Pages CMS（app.pagescms.org）に約 5 MB の JPEG を上げると
+実環境の試験（[`cms-live-trial-results.md`](cms-live-trial-results.md)、PR #392 で develop に統合済み。架空の店）で、実機の iPhone から hosted の Pages CMS（app.pagescms.org）に約 5 MB の JPEG を上げると
 「Failed to upload file: 413」で失敗した。
 
 オーナーの理想: **顧客は iPhone の写真をそのまま選ぶだけ。変換・圧縮は自動**。顧客に手で圧縮してもらうのは恒久の解決にしない。
@@ -76,7 +76,7 @@ https://github.com/hunvreus/pagescms/issues/284 （https://github.com/pages-cms/
 |---|---|---|
 | Vercel Functions | **4.5 MB**（全プラン既定）。20 MiB の Public Beta は Performance（4 GB）メモリが要り、それは Pro・Enterprise だけ（Hobby は最大 2 GB なので使えない、と読める。Hobby が 4.5 MB 固定という一文は **未確認**） | https://vercel.com/docs/functions/limitations 「Vercel Functions accept request bodies up to 4.5 MB by default」「Requests exceeding the applicable limit return 413: `FUNCTION_PAYLOAD_TOO_LARGE`.」 |
 | Netlify Functions | 6 MB（バッファ）。base64 で実質 4.5 MB | https://docs.netlify.com/build/functions/configuration.md 「Buffered request/response payload \| 6 MB」「effectively reducing the binary request payload size limit to 4.5 MB.」 |
-| Cloudflare Workers | ドメインの Cloudflare プラン次第。Free・Pro 100 MB、Business 200 MB。CPU は Free で 10 ms/要求 | https://developers.cloudflare.com/workers/platform/limits/ |
+| Cloudflare Workers | 要求の本文の上限はドメインの Cloudflare プラン次第（Free・Pro 100 MB、Business 200 MB）。これとは別に、Workers の Free プランは CPU 10 ms/要求 | https://developers.cloudflare.com/workers/platform/limits/ |
 | Next.js Server Actions（参考） | 既定 1 MB（Pages CMS のアップロードは Route Handler なので直接は関係しない。Route Handler の既定は **未確認**） | https://nextjs.org/docs/app/api-reference/config/next-config-js/serverActions |
 | 自前の Node（VPS・Render など） | プラットフォームの固定の上限は無い（前に置く Nginx などの設定次第。Nginx の既定 1 MB を上げる必要がありうる、**未検証**） | Pages CMS の self-host の文書（https://pagescms.org/docs/guides/installing/self-host/）は `npm run build`・`npm run start` と「Nginx or Caddy as reverse proxy」 |
 
@@ -153,7 +153,7 @@ media_libraries:
 - **料金**: Hobby「0円 / 月」（カード登録不要）、Team「4,900円 〜 / 月」、Business「75,000円 〜 / 月」（税抜）。Team は年 58,800 円〜（税抜、計算）。
 - **アップロード**: 「1メディアのサイズ上限」Hobby **40MB**（Team 100MB）。Hobby は「画像のみ」（https://help.microcms.io/ja/knowledge/media-types-for-upload）。マネジメント API からは「アップロード可能なファイルサイズ上限は**5MB**まで」（https://document.microcms.io/management-api/post-media、管理画面からは関係なし）。
 - **HEIC**: 画像 API の主な形式に「JPEG / PNG / GIF / WebP / HEIC/HEIF」（https://document.microcms.io/image-api/introduction）。管理画面が iPhone の HEIC を画像として受け付けるか、アップロード時に変換するかは **未確認**。
-- **縮小**: 配信の URL の引数で行う（imgix）。「アップロード時に編集を行わなくても、アップロード後の画像URLに対してパラメータを付与することで、様々な編集を行うことが可能です。」 `fm=webp`「画像をWebP形式に変換します。」、`q`（既定 75）、`w`・`h`。「パラメータを一切付与しない場合については、オリジナルの画像が表示されます。」 → **元の写真がそのまま保存・公開される**と読める（「メディアはアップロードされた時点で「公開状態」となります。」、https://document.microcms.io/manual/media-management）。元の写真の URL から GPS が見えうる（**未検証**）。
+- **縮小**: 配信の URL の引数で行う（imgix）。「アップロード時に編集を行わなくても、アップロード後の画像URLに対してパラメータを付与することで、様々な編集を行うことが可能です。」 `fm=webp`「画像をWebP形式に変換します。」、`q`（既定 75）、`w`・`h`。→ **元の写真がそのまま保存・公開される**と読める（「メディアはアップロードされた時点で「公開状態」となります。」、https://document.microcms.io/manual/media-management）。元の写真の URL から GPS が見えうる（**未検証**）。
 - **iPhone の管理画面**: 推奨環境に「iOS/iPadOS: Safari」。「スマートフォンでの表示については、画面幅の関係で一部行えない操作や、PC版と比べて操作しづらいUIがございます。」（https://document.microcms.io/manual/recommended-environment）
 - **Webhook → Cloudflare Pages**: Webhook の種類に「Cloudflare Pages」（「Deploy Hooks URL」）がある。「リトライ処理は行われません」（https://document.microcms.io/manual/webhook-setting）。**Hobby で使えるかは未確認**（料金表に Webhook の行が無く、×の一覧にも無い）。
 - **規約**: 「法人様のウェブサイトであってもHobbyプランをご利用いただくことは可能です。」（https://help.microcms.io/ja/knowledge/free-plan-for-corporation）。制作会社の導入可・代理店契約不要（https://help.microcms.io/ja/knowledge/microcms-production-contract）、「クライアントごとに新たなサービスのご契約が必要となります。」
