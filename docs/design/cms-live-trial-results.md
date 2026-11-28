@@ -25,9 +25,15 @@
 | UUID 修正の反映 | **成功** | commit 7090883、deployment f4db4a4f（自動デプロイ） |
 | **CMS から施工実績の説明を編集 → GitHub に保存 → Cloudflare が自動で公開 → サイトに反映** | **成功** | 「架空車 タイプ1」の説明を「CMS自動更新テスト001：ガラスコーティング施工が完了しました。」に変更。保存先 `content/works/job-1.json`（ファイル名は保たれ、重複ファイルなし、施工実績のファイルは計 11 件）。commit 274c2fb、deployment 8e60bafb。GitHub・Cloudflare での手作業のデプロイなし。公開サイトでの反映をオーナーが目視で確認し、Claude も公開頁の本文で確認 |
 | 反映までの時間 | 未計測 | 次の試験で `live-trial-measure.ts wait` で測る |
+| **iPhone 実機から約 5MB の JPEG をアップロード（STEP 9）** | **不合格** | iPhone からのログインと施工実績の新規登録画面までは成功。合成の試験画像（約 5MB、4032×3024）のアップロードで「Failed to upload file: 413」。Pages CMS の公式 Issue #284（https://github.com/hunvreus/pagescms/issues/284 ）で開発者が hosted の置き場（Vercel）の要求の大きさの上限を原因と認めている（オーナー確認、2026-11-28）。構築時の圧縮はアップロードの後なので解決にならない。保存・公開は起きていない（公開サイトへの影響なし。待ち受けの計測は 1 時間で打ち切り、文言は現れず） |
 
-技術的な実現性: 上の範囲（既存の施工実績の文章の編集から公開まで）は**実環境で確認済み**。
+技術的な実現性: 上の範囲（既存の施工実績の文章の編集から公開まで）は**実環境で確認済み**。約 3.3 MB を超える写真（iPhone で撮ったままの多くの JPEG）の登録は、**hosted の Pages CMS では不可**（413）。
 商用提供の可否: **未判定**（Pages CMS の hosted の商用利用の条件は問い合わせ前。文案は [`pages-cms-hosted-terms.md`](pages-cms-hosted-terms.md) §6、未送信）。
+
+## 判明した制約（2026-11-28）
+
+hosted の Pages CMS では、iPhone で撮ったままの大きな写真をそのまま選んで登録できない。上限は hosted の置き場（Vercel）の要求本体の 4.5 MB で、写真は base64 で約 4/3 倍になるため、元のファイルで約 3.3 MB と見込む（資料からの計算。実機での境界は未計測）。
+顧客に毎回手で縮めてもらう方式は恒久的な解決にしない（オーナー）。アップロードの前にブラウザで自動変換・圧縮する方式（Sveltia CMS など）、self-host、microCMS を比較する（[`cms-upload-limit-options.md`](cms-upload-limit-options.md)）。
 
 ## 残りの確認（未検証）
 
