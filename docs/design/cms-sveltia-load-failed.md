@@ -14,7 +14,7 @@
    - Sveltia の保存の仕組み（本体のコードで確認）: 変更したファイルを、**写真などのバイナリを先、entry の JSON を最後**に並べ、base64 の大きさで **約 2 MB（2,097,152 バイト）ごとの組**に分け、**組ごとに 1 回ずつ GitHub の GraphQL `createCommitOnBranch`** を送る（前の commit の上に次の commit を積む）。1 つのファイルが組の大きさを超えるときは、そのファイルだけで 1 回になる。408・413・499・502・504 か送信の失敗のとき、複数のファイルの組は分けて送り直すが、**1 つのファイルの組は分けられないので、そこで保存が止まる**。commit の作者を利用者にする設定（`user`）のときは別の道（REST の blob → tree → commit → ref）を通る。
    - PNG のままだと、写真 1 枚（約 12.9 MB）が base64 で **約 17 MB の要求 1 回**になり、3 枚で 3 回、entry は最後の回に入る。GitHub は処理に 10 秒を超える要求を打ち切り 502 か 504 を返す（https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api 「If GitHub takes more than 10 seconds to process an API request, GitHub will terminate the request」）。要求の大きさの上限は公式に書かれていない（未確認）。打ち切りの応答や途中で切れた通信には CORS の見出しが付かないことが多く、そのときブラウザには「Load failed」としか見えない（**推論**。実際の GitHub の応答は token が要るので確かめていない）。
    - したがって **途中まで保存されることがありうる**: 先の写真の commit が通り、後の写真か entry の回で止まると、repo に PNG の写真だけが入り、entry は無い、という形になる。
-   - なお、その PNG がもし保存されても、構築の写真の検査（2 MiB まで）で止まり、前の公開が残る。
+   - なお、その PNG がもし保存されても、どの施工実績からも参照されなければ構築は無視して公開しない。施工実績から参照されていれば、構築の写真の準備（photo-prep）が公開用に縮めて変換する（repo の元のファイルは大きいまま残る）。
 2. **（低い）保存の通信そのものを CSP が止めた。** 本体を読む限り、保存で使うのは `https://api.github.com`（REST の `git/trees`・`git/blobs`・`git/refs`）と `https://api.github.com/graphql` だけで、どちらも CSP の `connect-src` で許している。`uploads.github.com`・`raw.githubusercontent.com` などの別の宛先は使っていない。
 3. **（低い・未確認）Brave の Shields が unpkg か GitHub への通信を止めた。** Brave がこれらを止めるという報告は見つからなかった。Safari で同じ操作をすれば切り分けられる。
 4. 認証の方法（token か Additions か）は、この失敗の原因ではないと見る（保存の要求の大きさと WebAssembly の可否の問題）。
