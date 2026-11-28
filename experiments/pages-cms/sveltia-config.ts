@@ -177,7 +177,11 @@ export function sveltiaCsp(backend: SveltiaBackend = SVELTIA_PLACEHOLDER_BACKEND
     "manifest-src blob:",
     `connect-src ${connect.join(" ")}`,
     "base-uri 'self'",
-    "form-action 'self'",
+    // Additions trial (Step B2): the Additions setup wizard creates the GitHub App with GitHub's manifest flow — it POSTs a
+    // hidden form to the app-creation page, which the chunk refuses unless its origin is https://github.com
+    // (@sveltia/cms@5.0.3/dist/chunks/additions.js). With form-action 'self' the CSP would block that step, so the GitHub
+    // origin is added for Additions only; the plain github backend submits no forms.
+    `form-action 'self'${additions ? " https://github.com" : ""}`,
   ].join("; ");
 }
 
