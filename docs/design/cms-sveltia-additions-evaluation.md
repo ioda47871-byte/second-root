@@ -14,7 +14,7 @@
 
 - **技術**: Additions は「Cloudflare Worker + Durable Object（SQLite）+ サイト専用の GitHub App」で、顧客は **ID とパスワードだけ**で入れる（GitHub のアカウント不要）。ブラウザには **1 時間で切れる、1 つの repo だけの GitHub token** が渡り、内容は Worker を通らず GitHub に直接保存される。Workers の Free プラン（SQLite の Durable Object は Free で使える）で動く設計。
 - **安全**: 案 A（長く有効な個人 token をブラウザに置く）より良い。ただし **2FA・パスキーは未対応（予定）**、パスワードの再設定は管理者が手で行う（メールは送らない）、サーバー側のハッシュは 1 回の SHA-256（総当たりへの強さはブラウザ側の PBKDF2 600,000 回に依存）。
-- **成熟度が最大の懸念**: npm の版は `1.0.0`、repo は 6 commits・2 stars・Releases が空（2026-11-28 時点）。Sveltia CMS 本体も安定版になって 2 日（v5.0.0 が 2026-11-26）。
+- **成熟度が最大の懸念**: npm の版は `1.0.2`（2026-11-22 公開。0.0.0-stage・1.0.0・1.0.1・1.0.2）、repo は 6 commits・2 stars・Releases が空（2026-11-28 時点）。Sveltia CMS 本体も安定版になって 2 日（v5.0.0 が 2026-11-26）。
 - **自立運用**: MIT・顧客の口座で動くので、Second Root が抜けても動き続けうる。ただし **誰かが Dependabot の PR をマージし続ける**ことが前提。データの書き出し・別の Cloudflare アカウントへの移行の機能は **無い（未確認）** ので、**最初から顧客の Cloudflare アカウントに Deploy する**のが引き渡しの手間が最も少ない。
 - **推奨（技術）**: 試験専用の Organization と Cloudflare アカウントで試す価値はある。正式の納品方法にするかは、試験の結果と §8 の未決事項を見てオーナーが判断する。
 
@@ -44,7 +44,7 @@
 - **GitHub の token**: 「Tokens last one hour」（`lib/git/github/app.js` のコメント）。残り 10 分を切ると取り直す（`lib/core/git-tokens.js`）。CMS は「about once an hour」取り直す。
 - **2FA・パスキー**: **無い**。「Passkeys and two-factor authentication」は Planned Features（https://sveltiacms.app/en/docs/additions）。
 - **パスワードの再設定**: 「Sveltia CMS Additions never sends email itself, so there are no automatic invitations or password reset emails」。管理者の Reset Password が「gives the user a new temporary password and signs them out everywhere.」（users の頁）。管理者自身を忘れたら「open the wizard with the admin secret, and reset the password of an admin or create a new admin.」（https://sveltiacms.app/en/docs/additions/setup）
-- **回数の制限**: 「Repeated failed sign-ins are rate limited.」（users の頁）。ソース（https://github.com/sveltia/sveltia-cms-additions/blob/main/lib/core/routes/auth.js）: `SIGN_IN_LIMITS = { client: 30, username: 10, windowSeconds: 600 }`（IP ごとに 10 分 30 回、ID ごとに失敗 10 回／10 分）。超えると HTTP 429 `too_many_attempts` と `Retry-After`。**恒久のロックは無い**（窓が過ぎれば再開）。admin secret の誤りは「rate limited, for each visitor and for everyone together」で「can lock the wizard for up to 10 minutes, even for the right secret.」（setup の頁）。
+- **回数の制限**: 「Repeated failed sign-ins are rate limited.」（users の頁）。ソース: 上限は `lib/core/routes/auth.js` の `SIGN_IN_LIMITS = { client: 30, username: 10, windowSeconds: 600 }`（IP ごとに 10 分 30 回、ID ごとに失敗 10 回／10 分。ログインに成功すると ID ごとの数は戻る）。超えると `lib/core/rate-limit.js` が HTTP 429 `too_many_attempts` と `Retry-After` を返す（https://github.com/sveltia/sveltia-cms-additions ）。**恒久のロックは無い**（窓が過ぎれば再開）。admin secret の誤りは「rate limited, for each visitor and for everyone together」で「can lock the wizard for up to 10 minutes, even for the right secret.」（setup の頁）。
 - **監査の記録**: ソースに `logAudit`（`auth.sign_in`・`auth.password_change`・`github.app_create`・`github.app_install`・`github.private_key_replace` など、「Never include secrets.」）がある（https://github.com/sveltia/sveltia-cms-additions/blob/main/lib/core/audit.js）。**見る画面・保存期間は未確認**（文書に記載なし、保存部分のファイルは取得時 HTTP 503）。内容の変更そのものは GitHub の commit の履歴に残る（作者のメールは users の頁の通り）。
 
 ### 1.3 GitHub への権限
@@ -162,7 +162,7 @@
 ### 5.1 動き続けるか
 
 - MIT、顧客の Cloudflare と GitHub で動くので、Second Root が居なくても止まらない（技術）。
-- **更新**: 「Dependabot opens a pull request in your copy of the repository when a new version is released. Merge it, and Workers Builds deploys the update.」（setup の頁）。テンプレートの `.github/dependabot.yml` は `@sveltia/cms-additions` と `wrangler` だけを週 1 で提案し、コメント「Nothing is updated without review.」。→ **マージする人が要る**。店のオーナーに GitHub の PR のマージは難しいと見込む（見積もり）。
+- **更新**: 「Dependabot opens a pull request in your copy of the repository when a new version is released. Merge it, and Workers Builds deploys the update.」（setup の頁）。テンプレートの `templates/cloudflare/.github/dependabot.yml`（各サイトの repo に写される） は `@sveltia/cms-additions` と `wrangler` だけを週 1 で提案し、コメント「Nothing is updated without review.」。→ **マージする人が要る**。店のオーナーに GitHub の PR のマージは難しいと見込む（見積もり）。
 - 管理画面に新しい版の通知が出る（「the page shows a notice with a link to the release notes.」、administration の頁）。
 - 「Don't change `wrangler.jsonc` unless the release notes ask you to.」（setup の頁）。release notes が手作業を求める版では、技術者が要る。
 - 「Within a major version, an update only adds to the database, so going back to the previous release keeps working.」（repo の `docs/setup.md`）。
@@ -224,7 +224,7 @@ Claude がローカルで準備できるもの: `admin/config.yml` の Additions
 ## 8. 商用の提供について（技術とは別）
 
 - 決まっていないこと（オーナーの判断）:
-  - 正式の納品方法にするか（成熟度: Additions 1.0.0・Releases 空、本体は安定版 2 日目）。
+  - 正式の納品方法にするか（成熟度: Additions 1.0.2・Releases 空、本体は安定版 2 日目）。
   - 引き渡しの後の Worker の更新を誰が行うか（顧客／Second Root の有償の保守／しない）。
   - `ADMIN_SECRET` と管理者の復旧の責任。
   - 2FA が無いことを顧客にどう説明するか。
