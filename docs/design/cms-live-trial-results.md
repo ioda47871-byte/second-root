@@ -26,6 +26,10 @@
 | **CMS から施工実績の説明を編集 → GitHub に保存 → Cloudflare が自動で公開 → サイトに反映** | **成功** | 「架空車 タイプ1」の説明を「CMS自動更新テスト001：ガラスコーティング施工が完了しました。」に変更。保存先 `content/works/job-1.json`（ファイル名は保たれ、重複ファイルなし、施工実績のファイルは計 11 件）。commit 274c2fb、deployment 8e60bafb。GitHub・Cloudflare での手作業のデプロイなし。公開サイトでの反映をオーナーが目視で確認し、Claude も公開頁の本文で確認 |
 | 反映までの時間 | 未計測 | 次の試験で `live-trial-measure.ts wait` で測る |
 | **iPhone 実機から約 5MB の JPEG をアップロード（STEP 9）** | **不合格** | iPhone からのログインと施工実績の新規登録画面までは成功。合成の試験画像（約 5MB、4032×3024）のアップロードで「Failed to upload file: 413」。Pages CMS の公式 Issue #284（https://github.com/hunvreus/pagescms/issues/284 ）で開発者が hosted の置き場（Vercel）の要求の大きさの上限を原因と認めている（オーナー確認、2026-11-28）。構築時の圧縮はアップロードの後なので解決にならない。保存・公開は起きていない（公開サイトへの影響なし。待ち受けの計測は 1 時間で打ち切り、文言は現れず） |
+| Sveltia CMS の管理画面の追加（案 A の試験、token） | **成功（読み込みまで）** | 更新 ZIP 適用 commit d9fbaa3、deployment 55bd19c6。公開サイトのデザイン維持（オーナー目視）。iPhone から token でログインし、既存の施工実績 11 件を読み込めた |
+| **iPhone（Brave）から Sveltia で写真 3 枚つきの新規施工実績を保存** | **不合格 → 修正** | 保存時に「Load failed」。原因（ローカルで再現）: 管理画面の CSP が WebAssembly を許可しておらず、iPhone のブラウザで WebP 変換の部品が止められ、写真が約 12.9 MB の PNG のまま約 17 MB ずつ送られた（GitHub の応答は token が要るため未確認）。PR #398 で `'wasm-unsafe-eval'` を許可 |
+| 上の保存失敗による部分的な保存の有無 | **なし（オーナー確認）** | GitHub の最新 commit は d9fbaa3 のまま、失敗の後の新しい commit なし、`media/` に `img_4001.png` などの新しい試験画像なし。main への部分的な保存は起きておらず、片付けは不要 |
+| 案 A（token）の試験 | **中断** | token の発行・再発行・期限の管理が顧客向けに不適（オーナー判断）。顧客向けは案 B（Sveltia CMS Additions、ID・パスワード）に進む（[`cms-auth-choice.md`](cms-auth-choice.md)） |
 
 技術的な実現性: 上の範囲（既存の施工実績の文章の編集から公開まで）は**実環境で確認済み**。約 3.3 MB を超える写真（iPhone で撮ったままの多くの JPEG）の登録は、**hosted の Pages CMS では不可**（413）。
 商用提供の可否: **未判定**（Pages CMS の hosted の商用利用の条件は問い合わせ前。文案は [`pages-cms-hosted-terms.md`](pages-cms-hosted-terms.md) §6、未送信）。
