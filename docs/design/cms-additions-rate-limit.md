@@ -94,7 +94,7 @@ https://raw.githubusercontent.com/sveltia/sveltia-cms-additions/main/lib/git/git
   export const convertManifestCode = (code) =>
     fetchGitHub(`/app-manifests/${encodeURIComponent(code)}/conversions`, { method: 'POST' });
   ```
-  一度きりの code が資格の代わり（コードのコメント「needs no other authentication」）。GitHub の文書も「This endpoint is rate limited.」と書く。失敗したら setup の段階を戻して 502 `github_error` になる。その後の `https://github.com/apps/<slug>/installations/new` はブラウザの移動で、Worker は取りに行かない。
+  1 時間有効の code が資格の代わり（GitHub の文書は 1 時間以内と書く。1 時間有効かは記載なし）（コードのコメント「needs no other authentication」）。GitHub の文書も「This endpoint is rate limited.」と書く。失敗したら setup の段階を戻して 502 `github_error` になる。その後の `https://github.com/apps/<slug>/installations/new` はブラウザの移動で、Worker は取りに行かない。
 - `GET /v1/setup/github/installed`（インストール後）: App ができているので、App の JWT で `GET /app/installations/{id}` と `POST /app/installations/{id}/access_tokens`、installation token で `DELETE /installation/token`。**認証あり**。
 
 ### 1.6 エラーの形（今回の本文の出どころ）
@@ -172,7 +172,7 @@ https://raw.githubusercontent.com/sveltia/sveltia-cms-additions/main/lib/git/git
 1. GitHub をブラウザで開き、写しの repo `sr-cms-trial/sveltia-cms-additions` の `package.json` を開く。
 2. Pull requests に Dependabot の「@sveltia/cms-additions を 1.0.2 に」があれば、それをマージして 4 へ。無ければ 3 へ。
 3. 鉛筆（Edit）で `"@sveltia/cms-additions": "1.0.0"` を `"1.0.2"` に変え、`main` に commit する。**他の行と `wrangler.jsonc` は触らない**。
-4. Cloudflare の Workers & Pages → その Worker → Deployments で、新しい Deploy が成功するのを待つ（数分）。
+4. Cloudflare の Workers & Pages → その Worker → Deployments で、新しい Deploy が成功するのを待つ（数分）。新しい Deploy が出なければ、Worker → Settings → Builds で接続先の repo と本番の枝が `main` かを確かめる（GitHub の画面での編集が構築を始めるかは文書で未確認）。
 5. サイトの `/admin` を開き直す。`ADMIN_SECRET` を求められたら入れる。admin はすでにあるので、手順 2/2「Connect to GitHub」から続く。**Start Over は押さない**。
 6. 「Connect to GitHub」を押す。GitHub の App 作成ページ（`sr-cms-trial` 用）が開けば直っている。作成 → インストール（**Only select repositories** でサイトの repo だけ）へ進む。
 7. まだ 502 なら、本文を見る。
