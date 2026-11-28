@@ -5,7 +5,7 @@
  * site/ (one implementation: these very files, never a rewrite), its own pinned package.json and lockfile, its tests,
  * and the Cloudflare Pages settings in its README. It does not depend on Second Root, holds no secret and no model.
  *
- *   npx tsx experiments/pages-cms/export-delivery.ts --out <empty dir outside the repository> [--site auto] [--fixture works-10] [--design-dir <folder of the design pictures>]
+ *   npx tsx experiments/pages-cms/export-delivery.ts --out <empty dir outside the repository> [--site auto] [--fixture works-10] [--design-dir <folder of the design pictures>] [--sveltia-repo <owner/repo> [--sveltia-additions-url <Worker URL>]]
  *
  * LOCAL only: nothing is pushed, uploaded or published (a real repository / Pages project needs the owner's approval).
  * The output is deterministic: the same commit writes the same bytes (tests/unit/experiments/pages-cms-delivery.test.ts).
@@ -18,6 +18,7 @@ import { writeFixture } from "./fixtures";
 import { DEFAULT_DESIGN_DIR, stageDesignPictures } from "./design-pictures";
 import { loadDesignMaterials } from "./photos";
 import { pagesYaml } from "./pages-config";
+import { sveltiaAdminHtml, sveltiaYaml, type SveltiaBackend } from "./sveltia-config";
 import { SHOP_SITES } from "./shop-site";
 
 const HERE = __dirname;
@@ -42,6 +43,7 @@ export const SITE_FILES = [
   "price-display.ts",
   "provenance.ts",
   "shop-site.ts",
+  "sveltia-config.ts",
   "uuid.ts",
 ] as const;
 /**
@@ -71,7 +73,7 @@ export const TEMPLATE_FILES: Record<string, string> = {
 export const NODE_VERSION = "22.23.4";
 
 export class ExportError extends Error {
-  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING" | "EXPORT_TEST_ONLY", detail: string) {
+  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING" | "EXPORT_TEST_ONLY" | "EXPORT_SVELTIA_INVALID", detail: string) {
     super(`${code} ${detail}`);
     this.name = "ExportError";
   }
@@ -96,8 +98,9 @@ async function safeOut(outDir: string): Promise<string> {
  * refused outside vitest (EXPORT_TEST_ONLY), so a real export always follows the committed record.
  * Order (#390 review): the site, the fixture, the output folder's safety, then the design pictures, then writing.
  */
-export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string; designDir?: string; testOnlyDesignRecordDir?: string }): Promise<string[]> {
+export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string; designDir?: string; testOnlyDesignRecordDir?: string; sveltia?: SveltiaBackend }): Promise<string[]> {
   if (o.testOnlyDesignRecordDir !== undefined && process.env.VITEST !== "true") throw new ExportError("EXPORT_TEST_ONLY", "testOnlyDesignRecordDir");
+  if (o.sveltia) checkSveltiaBackend(o.sveltia);
   const site = SHOP_SITES.find((s) => s.id === (o.site ?? "auto"));
   if (!site) throw new ExportError("EXPORT_SITE_UNKNOWN", String(o.site));
   const fixtureName = o.fixture ?? (site.id === "auto" ? "works-10" : "items-10");
@@ -117,13 +120,13 @@ export async function exportDelivery(o: { outDir: string; site?: string; fixture
             throw new ExportError("EXPORT_DESIGN_MISSING", error instanceof Error ? error.message : "design pictures");
           })
       : site;
-    return await writeExport(out, site, fixture, staged.design?.dir ?? null);
+    return await writeExport(out, site, fixture, staged.design?.dir ?? null, o.sveltia);
   } finally {
     if (designScratch) await rm(designScratch, { recursive: true, force: true });
   }
 }
 
-async function writeExport(out: string, site: (typeof SHOP_SITES)[number], fixture: NonNullable<ReturnType<(typeof SHOP_SITES)[number]["fixtures"]>[string]>, stagedDesign: string | null): Promise<string[]> {
+async function writeExport(out: string, site: (typeof SHOP_SITES)[number], fixture: NonNullable<ReturnType<(typeof SHOP_SITES)[number]["fixtures"]>[string]>, stagedDesign: string | null, sveltia?: SveltiaBackend): Promise<string[]> {
   await mkdir(out, { recursive: true });
   // the sample content: written by the fixture writer into a scratch folder; only content/ and media/ are taken
   // (a fixture's private B records go next to its folder — they never enter the exported repository)
@@ -148,9 +151,34 @@ async function writeExport(out: string, site: (typeof SHOP_SITES)[number], fixtu
   await mkdir(join(out, "tests"), { recursive: true });
   for (const [from, to] of Object.entries(TEMPLATE_FILES)) await copyFile(join(TEMPLATE, from), join(out, to));
   await writeFile(join(out, ".pages.yml"), pagesYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) }));
-  await writeFile(join(out, "site.config.json"), `${JSON.stringify({ site: site.id }, null, 2)}\n`);
+  // Issue #380 PoC (opt-in): the Sveltia CMS admin page beside Pages CMS — admin/index.html (pinned script) and the
+  // generated admin/config.yml, and the backend in site.config.json (the build checks the config against it)
+  if (sveltia) {
+    await mkdir(join(out, "admin"), { recursive: true });
+    await writeFile(join(out, "admin", "index.html"), sveltiaAdminHtml(sveltia));
+    await writeFile(join(out, "admin", "config.yml"), sveltiaYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) }, sveltia));
+  }
+  await writeFile(join(out, "site.config.json"), `${JSON.stringify({ site: site.id, ...(sveltia ? { sveltia } : {}) }, null, 2)}\n`);
   await writeFile(join(out, ".node-version"), `${NODE_VERSION}\n`);
   return listFiles(out);
+}
+
+/**
+ * The Sveltia backend as the export accepts it: repo "owner/name"; branch a plain name; with Additions, an https: base URL
+ * (PR #396 review L3) and auth_type "additions".
+ */
+export function checkSveltiaBackend(b: SveltiaBackend): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\/[A-Za-z0-9._-]{1,100}$/.test(b.repo)) throw new ExportError("EXPORT_SVELTIA_INVALID", "repo");
+  if (b.branch !== undefined && !/^[A-Za-z0-9._/-]{1,100}$/.test(b.branch)) throw new ExportError("EXPORT_SVELTIA_INVALID", "branch");
+  if (b.base_url !== undefined || b.auth_type !== undefined) {
+    let u: URL | null = null;
+    try {
+      u = new URL(b.base_url ?? "");
+    } catch {
+      u = null;
+    }
+    if (!u || u.protocol !== "https:" || u.username || u.password || b.auth_type !== "additions") throw new ExportError("EXPORT_SVELTIA_INVALID", "base_url (https: Worker URL, with auth_type additions)");
+  }
 }
 
 /** Every file under <dir>, relative, sorted. */
@@ -176,7 +204,7 @@ if (require.main === module) {
     process.stdout.write('{"status":"refused","code":"ARGS_INVALID"}\n');
     process.exit(2);
   }
-  exportDelivery({ outDir, ...(arg("--site") ? { site: arg("--site")! } : {}), ...(arg("--fixture") ? { fixture: arg("--fixture")! } : {}), ...(arg("--design-dir") ? { designDir: arg("--design-dir")! } : {}) }).then(
+  exportDelivery({ outDir, ...(arg("--site") ? { site: arg("--site")! } : {}), ...(arg("--fixture") ? { fixture: arg("--fixture")! } : {}), ...(arg("--design-dir") ? { designDir: arg("--design-dir")! } : {}), ...(arg("--sveltia-repo") ? { sveltia: { repo: arg("--sveltia-repo")!, branch: "main", ...(arg("--sveltia-additions-url") ? { auth_type: "additions" as const, base_url: arg("--sveltia-additions-url")! } : {}) } } : {}) }).then(
     (files) => process.stdout.write(`${JSON.stringify({ status: "written", files: files.length })}\n`),
     (error: unknown) => {
       process.stdout.write(`${JSON.stringify({ status: "stopped", code: error instanceof Error ? error.message : "EXPORT_FAILED" })}\n`);

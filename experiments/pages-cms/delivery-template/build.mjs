@@ -1,7 +1,9 @@
 // The shop site's build (what Cloudflare Pages runs on every commit: `npm run build`, output dist/).
 //
-//   1. .pages.yml must be exactly what the site's content model generates (the customer edits content, never the CMS
-//      configuration); otherwise the build stops (PAGES_YML_CHANGED).
+//   1. The CMS configuration is fixed: .pages.yml (Pages CMS) and, when site.config.json has a `sveltia` entry,
+//      admin/config.yml (Sveltia CMS, Issue #380 PoC) must each be exactly what the site's content model generates
+//      (PAGES_YML_CHANGED / SVELTIA_CONFIG_CHANGED); at least one must exist (NO_CMS_CONFIG). The Sveltia admin page
+//      (admin/) is published at /admin/ only when it is configured.
 //   2. content/ and media/ are copied into a working folder (.build/); the repository's files are never changed.
 //   3. photo-prep.mjs fits the customer's own photos (not the delivered generated materials, not the shop-provided B
 //      photos — those keep their exact bytes) into the photo limits, upright, without metadata.
@@ -35,15 +37,16 @@ let unregister;
 async function siteModules(root) {
   unregister ??= register();
   const load = (name) => import(pathToFileURL(join(root, "site", name)).href);
-  const [build, shopSite, pagesConfig, contentModel, photos, provenance] = await Promise.all([
+  const [build, shopSite, pagesConfig, contentModel, photos, provenance, sveltiaConfig] = await Promise.all([
     load("build.ts"),
     load("shop-site.ts"),
     load("pages-config.ts"),
     load("content-model.ts"),
     load("photos.ts"),
     load("provenance.ts"),
+    load("sveltia-config.ts"),
   ]);
-  return { build, shopSite, pagesConfig, contentModel, photos, provenance };
+  return { build, shopSite, pagesConfig, contentModel, photos, provenance, sveltiaConfig };
 }
 
 const exists = (p) => stat(p).then(() => true, () => false);
@@ -57,10 +60,16 @@ export async function build({ root = HERE, today = tokyoToday() } = {}) {
   const config = JSON.parse(await readFile(join(root, "site.config.json"), "utf8"));
   const site = m.shopSite.SHOP_SITES.find((s) => s.id === config.site);
   if (!site) throw new TemplateBuildError("SITE_UNKNOWN", String(config.site));
-  // 1. the CMS configuration is fixed
-  const want = m.pagesConfig.pagesYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) });
-  const have = await readFile(join(root, ".pages.yml"), "utf8").catch(() => null);
-  if (have !== want) throw new TemplateBuildError("PAGES_YML_CHANGED", ".pages.yml");
+  // 1. the CMS configuration is fixed (each one that exists; at least one)
+  const schema = { extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) };
+  const pagesYml = await readFile(join(root, ".pages.yml"), "utf8").catch(() => null);
+  if (pagesYml !== null && pagesYml !== m.pagesConfig.pagesYaml(schema)) throw new TemplateBuildError("PAGES_YML_CHANGED", ".pages.yml");
+  const adminYml = await readFile(join(root, "admin", "config.yml"), "utf8").catch(() => null);
+  if (adminYml !== null && !config.sveltia) throw new TemplateBuildError("SVELTIA_CONFIG_CHANGED", "admin/config.yml without site.config.json sveltia");
+  if (config.sveltia && adminYml !== m.sveltiaConfig.sveltiaYaml(schema, config.sveltia)) throw new TemplateBuildError("SVELTIA_CONFIG_CHANGED", "admin/config.yml");
+  // the admin page too (the pinned script, its integrity and the CSP)
+  if (config.sveltia && (await readFile(join(root, "admin", "index.html"), "utf8").catch(() => null)) !== m.sveltiaConfig.sveltiaAdminHtml(config.sveltia)) throw new TemplateBuildError("SVELTIA_CONFIG_CHANGED", "admin/index.html");
+  if (pagesYml === null && adminYml === null) throw new TemplateBuildError("NO_CMS_CONFIG", ".pages.yml");
   // 2. the working copy
   const work = join(root, ".build");
   await rm(work, { recursive: true, force: true });
@@ -78,6 +87,11 @@ export async function build({ root = HERE, today = tokyoToday() } = {}) {
   // 4. the page, with every check
   const next = join(work, "dist");
   const result = await m.build.buildSite({ repo, outDir: next, today, site });
+  // the Sveltia admin page (its own page: it loads the pinned Sveltia script; the shop's page never links to it)
+  if (config.sveltia) {
+    await mkdir(join(next, "admin"), { recursive: true });
+    for (const f of ["index.html", "config.yml"]) await cp(join(root, "admin", f), join(next, "admin", f));
+  }
   // 5. swap in only now
   const dist = join(root, "dist");
   const old = join(work, "dist-old");
