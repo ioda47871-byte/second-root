@@ -18,7 +18,7 @@ import { writeFixture } from "./fixtures";
 import { DEFAULT_DESIGN_DIR, stageDesignPictures } from "./design-pictures";
 import { loadDesignMaterials } from "./photos";
 import { pagesYaml } from "./pages-config";
-import { sveltiaYaml, type SveltiaBackend } from "./sveltia-config";
+import { sveltiaAdminHtml, sveltiaYaml, type SveltiaBackend } from "./sveltia-config";
 import { SHOP_SITES } from "./shop-site";
 
 const HERE = __dirname;
@@ -73,7 +73,7 @@ export const TEMPLATE_FILES: Record<string, string> = {
 export const NODE_VERSION = "22.23.4";
 
 export class ExportError extends Error {
-  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING" | "EXPORT_TEST_ONLY", detail: string) {
+  constructor(readonly code: "EXPORT_OUT_UNSAFE" | "EXPORT_SITE_UNKNOWN" | "EXPORT_FIXTURE_UNKNOWN" | "EXPORT_DESIGN_MISSING" | "EXPORT_TEST_ONLY" | "EXPORT_SVELTIA_INVALID", detail: string) {
     super(`${code} ${detail}`);
     this.name = "ExportError";
   }
@@ -100,6 +100,7 @@ async function safeOut(outDir: string): Promise<string> {
  */
 export async function exportDelivery(o: { outDir: string; site?: string; fixture?: string; designDir?: string; testOnlyDesignRecordDir?: string; sveltia?: SveltiaBackend }): Promise<string[]> {
   if (o.testOnlyDesignRecordDir !== undefined && process.env.VITEST !== "true") throw new ExportError("EXPORT_TEST_ONLY", "testOnlyDesignRecordDir");
+  if (o.sveltia) checkSveltiaBackend(o.sveltia);
   const site = SHOP_SITES.find((s) => s.id === (o.site ?? "auto"));
   if (!site) throw new ExportError("EXPORT_SITE_UNKNOWN", String(o.site));
   const fixtureName = o.fixture ?? (site.id === "auto" ? "works-10" : "items-10");
@@ -154,12 +155,30 @@ async function writeExport(out: string, site: (typeof SHOP_SITES)[number], fixtu
   // generated admin/config.yml, and the backend in site.config.json (the build checks the config against it)
   if (sveltia) {
     await mkdir(join(out, "admin"), { recursive: true });
-    await copyFile(join(TEMPLATE, "admin", "index.html"), join(out, "admin", "index.html"));
+    await writeFile(join(out, "admin", "index.html"), sveltiaAdminHtml(sveltia));
     await writeFile(join(out, "admin", "config.yml"), sveltiaYaml({ extensions: site.profile.extensions, ...(site.profile.collections ? { collections: site.profile.collections } : {}) }, sveltia));
   }
   await writeFile(join(out, "site.config.json"), `${JSON.stringify({ site: site.id, ...(sveltia ? { sveltia } : {}) }, null, 2)}\n`);
   await writeFile(join(out, ".node-version"), `${NODE_VERSION}\n`);
   return listFiles(out);
+}
+
+/**
+ * The Sveltia backend as the export accepts it: repo "owner/name"; branch a plain name; with Additions, an https: base URL
+ * (PR #396 review L3) and auth_type "additions".
+ */
+export function checkSveltiaBackend(b: SveltiaBackend): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\/[A-Za-z0-9._-]{1,100}$/.test(b.repo)) throw new ExportError("EXPORT_SVELTIA_INVALID", "repo");
+  if (b.branch !== undefined && !/^[A-Za-z0-9._/-]{1,100}$/.test(b.branch)) throw new ExportError("EXPORT_SVELTIA_INVALID", "branch");
+  if (b.base_url !== undefined || b.auth_type !== undefined) {
+    let u: URL | null = null;
+    try {
+      u = new URL(b.base_url ?? "");
+    } catch {
+      u = null;
+    }
+    if (!u || u.protocol !== "https:" || u.username || u.password || b.auth_type !== "additions") throw new ExportError("EXPORT_SVELTIA_INVALID", "base_url (https: Worker URL, with auth_type additions)");
+  }
 }
 
 /** Every file under <dir>, relative, sorted. */

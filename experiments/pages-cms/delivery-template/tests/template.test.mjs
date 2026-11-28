@@ -147,6 +147,8 @@ test("reference and string lists (the bakery's page code): a category reference 
   await writeFixture(dir, q1Fixtures()["trade-extensions"]);
   const bakery = SHOP_SITES.find((s) => s.id === "bakery");
   await writeJson(join(dir, "site.config.json"), { site: "bakery" });
+  // (an opted-in repository's Sveltia admin page belongs to the other site: PR #396 review M1)
+  await rm(join(dir, "admin"), { recursive: true, force: true });
   await writeFile(join(dir, ".pages.yml"), pagesYaml({ extensions: bakery.profile.extensions }));
   await saveAllAsPagesCms(dir);
   const item = join(dir, "content", "menu", "item-1.json");
@@ -229,23 +231,28 @@ test("a HEIC renamed .jpg stops the build with the HEIC advice; protected bytes 
 });
 
 test("Sveltia CMS (optional, Issue #380 PoC): admin/config.yml must be the generated one and is published at /admin only when configured; at least one CMS config", async () => {
-  const { sveltiaYaml } = await site("sveltia-config.ts");
+  const { sveltiaYaml, sveltiaAdminHtml } = await site("sveltia-config.ts");
   const dir = await copyRepo();
-  const siteId = (await readJson(join(dir, "site.config.json"))).site;
+  // start without Sveltia whatever the repository was exported with (PR #396 review M1)
+  const cfg = await readJson(join(dir, "site.config.json"));
+  delete cfg.sveltia;
+  await writeJson(join(dir, "site.config.json"), cfg);
+  await rm(join(dir, "admin"), { recursive: true, force: true });
+  const siteId = cfg.site;
   const s = SHOP_SITES.find((x) => x.id === siteId);
   const schema = { extensions: s.profile.extensions, ...(s.profile.collections ? { collections: s.profile.collections } : {}) };
   const backend = { repo: "fictional-owner/shop-site", branch: "main" };
   await mkdir(join(dir, "admin"), { recursive: true });
-  await writeFile(join(dir, "admin", "index.html"), "<!doctype html><title>Sveltia CMS</title>\n");
+  await writeFile(join(dir, "admin", "index.html"), sveltiaAdminHtml(backend));
   // an admin config the site has not opted into is refused
   await writeFile(join(dir, "admin", "config.yml"), sveltiaYaml(schema, backend));
   assert.equal(await codeOf(build({ root: dir, today: TODAY })), "SVELTIA_CONFIG_CHANGED");
   // opted in: published at /admin; the shop page does not link to it
-  const cfg = await readJson(join(dir, "site.config.json"));
   await writeJson(join(dir, "site.config.json"), { ...cfg, sveltia: backend });
   await build({ root: dir, today: TODAY });
   assert.equal(await readFile(join(dir, "dist", "admin", "config.yml"), "utf8"), sveltiaYaml(schema, backend));
-  assert.ok((await readFile(join(dir, "dist", "admin", "index.html"), "utf8")).includes("Sveltia CMS"));
+  assert.equal(await readFile(join(dir, "dist", "admin", "index.html"), "utf8"), sveltiaAdminHtml(backend));
+  assert.match(sveltiaAdminHtml(backend), /integrity="sha384-[A-Za-z0-9+/=]+" crossorigin="anonymous"/);
   assert.doesNotMatch(await readFile(join(dir, "dist", "index.html"), "utf8"), /admin/);
   const good = await snapshot(dir);
   // an edited admin config is refused and the last good dist/ stays

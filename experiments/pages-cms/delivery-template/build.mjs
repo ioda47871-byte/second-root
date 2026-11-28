@@ -67,6 +67,8 @@ export async function build({ root = HERE, today = tokyoToday() } = {}) {
   const adminYml = await readFile(join(root, "admin", "config.yml"), "utf8").catch(() => null);
   if (adminYml !== null && !config.sveltia) throw new TemplateBuildError("SVELTIA_CONFIG_CHANGED", "admin/config.yml without site.config.json sveltia");
   if (config.sveltia && adminYml !== m.sveltiaConfig.sveltiaYaml(schema, config.sveltia)) throw new TemplateBuildError("SVELTIA_CONFIG_CHANGED", "admin/config.yml");
+  // the admin page too (the pinned script, its integrity and the CSP)
+  if (config.sveltia && (await readFile(join(root, "admin", "index.html"), "utf8").catch(() => null)) !== m.sveltiaConfig.sveltiaAdminHtml(config.sveltia)) throw new TemplateBuildError("SVELTIA_CONFIG_CHANGED", "admin/index.html");
   if (pagesYml === null && adminYml === null) throw new TemplateBuildError("NO_CMS_CONFIG", ".pages.yml");
   // 2. the working copy
   const work = join(root, ".build");

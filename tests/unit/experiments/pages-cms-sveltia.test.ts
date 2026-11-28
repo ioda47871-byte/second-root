@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildSite } from "@/experiments/pages-cms/build";
-import { exportDelivery } from "@/experiments/pages-cms/export-delivery";
+import { checkSveltiaBackend, exportDelivery } from "@/experiments/pages-cms/export-delivery";
 import { Q1_TODAY, writeFixture } from "@/experiments/pages-cms/fixtures";
 import { pagesConfig } from "@/experiments/pages-cms/pages-config";
 import { AUTO_SITE } from "@/experiments/pages-cms/shop-site";
-import { SVELTIA_TRANSFORM, SVELTIA_VERSION, sveltiaConfig, sveltiaYaml } from "@/experiments/pages-cms/sveltia-config";
+import { SVELTIA_SCRIPT, SVELTIA_TRANSFORM, SVELTIA_VERSION, sveltiaAdminHtml, sveltiaConfig, sveltiaCsp, sveltiaYaml } from "@/experiments/pages-cms/sveltia-config";
 import { autoSiteWithDesign, writeSyntheticDesign } from "./synthetic-design";
 
 // Issue #380 (2026-11-28): the Sveltia CMS PoC beside Pages CMS (hosted Pages CMS refuses phone photos over ~3.3 MB).
@@ -52,7 +52,8 @@ describe("admin/config.yml is generated from the same schema as .pages.yml", () 
     expect([role.widget, role.required, role.default, role.options!.map((o) => o.value)]).toEqual(["select", undefined, "other", ["other", "before", "after"]]);
     const image = photos.fields!.find((f) => f.name === "image")!;
     expect([image.widget, image.accept, image.choose_url]).toEqual(["image", ".jpg,.jpeg,.png,.webp,.heic,.heif", false]);
-    expect((s.collections.find((c) => c.name === "works") as { slug: string }).slug).toBe("{{uuid}}");
+    // PR #396 review L2: the file name is the id ({id}.json, as Pages CMS names it) — checked with Sveltia 5.0.3's test backend
+    expect((s.collections.find((c) => c.name === "works") as unknown as { slug: string }).slug).toBe("{{fields.id}}");
   });
 
   it("the in-browser image transformation, media folders, data output and backend", () => {
@@ -82,8 +83,13 @@ describe("the export: the Sveltia admin page only when asked for", () => {
     expect(readFileSync(join(out, "admin", "config.yml"), "utf8")).toBe(sveltiaYaml(schema, backend));
     expect(JSON.parse(readFileSync(join(out, "site.config.json"), "utf8"))).toEqual({ site: "auto", sveltia: backend });
     const html = readFileSync(join(out, "admin", "index.html"), "utf8");
+    expect(html).toBe(sveltiaAdminHtml(backend));
     expect([...html.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1])).toEqual([`https://unpkg.com/@sveltia/cms@${SVELTIA_VERSION}/dist/sveltia-cms.js`]);
     expect(html).not.toMatch(/type="module"/);
+    // PR #396 review L1: SRI of the exact 5.0.3 bytes and a CSP
+    expect(html).toContain(`integrity="${SVELTIA_SCRIPT.integrity}" crossorigin="anonymous"`);
+    expect(SVELTIA_SCRIPT.integrity).toBe("sha384-ClP/ghDk7neSgL1qoZLiFf9Bxy24cvfZCdBQXkRLIze2L9C/kU4cETbaYOlKj5O7");
+    expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="${sveltiaCsp(backend)}" />`);
     const without = await exportDelivery({ outDir: join(tmp(), "without"), ...design });
     expect(without.some((f) => f.startsWith("admin/"))).toBe(false);
   });
@@ -135,5 +141,29 @@ describe("the build accepts content exactly as Sveltia saves it", () => {
     writeFileSync(join(repo, "content", "shop.json"), JSON.stringify({ ...shop, hoursNote: "", specialClosures: [] }));
     const r = await buildSite({ repo, outDir: join(tmp(), "dist"), today: Q1_TODAY, site: AUTO });
     expect(r.html).toContain("Sveltia の試験");
+  });
+});
+
+describe("PR #396 review L1 / L3: the admin page's CSP, and the backend the export accepts", () => {
+  it("the CSP holds Sveltia's documented base directives, worker-src blob:, the GitHub API, and the Additions Worker (https + wss) only when configured", () => {
+    const csp = sveltiaCsp({ repo: "o/r" });
+    for (const d of ["style-src 'self' 'unsafe-inline'", "font-src 'self' https://cdn.jsdelivr.net", "img-src 'self' blob: data:", "media-src blob:", "frame-src blob:", "script-src 'self' https://unpkg.com", "manifest-src blob:", "worker-src blob:"]) expect(csp, d).toContain(d);
+    expect(csp).toMatch(/connect-src 'self' blob: data: https:\/\/unpkg\.com https:\/\/api\.github\.com https:\/\/www\.githubstatus\.com(;|$)/);
+    const withAdditions = sveltiaCsp({ repo: "o/r", auth_type: "additions", base_url: "https://auth.example.workers.dev/x" });
+    expect(withAdditions).toContain("https://auth.example.workers.dev wss://auth.example.workers.dev");
+  });
+
+  it("refuses an Additions URL that is not https:, a malformed repo or branch", () => {
+    expect(() => checkSveltiaBackend({ repo: "sr-cms-trial/sr-cms-trial-autocare", branch: "main" })).not.toThrow();
+    expect(() => checkSveltiaBackend({ repo: "o/r", auth_type: "additions", base_url: "https://auth.example.workers.dev" })).not.toThrow();
+    for (const bad of [
+      { repo: "o/r", auth_type: "additions" as const, base_url: "http://auth.example.workers.dev" },
+      { repo: "o/r", auth_type: "additions" as const, base_url: "javascript:alert(1)" },
+      { repo: "o/r", auth_type: "additions" as const, base_url: "https://u:p@auth.example.workers.dev" },
+      { repo: "o/r", base_url: "https://auth.example.workers.dev" },
+      { repo: "not a repo" },
+      { repo: "o/r", branch: "main; rm" },
+    ])
+      expect(() => checkSveltiaBackend(bad), JSON.stringify(bad)).toThrow(/EXPORT_SVELTIA_INVALID/);
   });
 });
