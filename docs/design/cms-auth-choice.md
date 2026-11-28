@@ -31,9 +31,9 @@
 | token を手で発行しない | ○ | ○（Authenticator が OAuth で発行） |
 | 月額 0 円 | ○ Workers Free・SQLite の DO は Free で可（§6） | ○ Workers Free（§6） |
 | 商用で使える | ○ MIT（運営者の利用料なし）。GitHub・Cloudflare の規約の扱いは §7 | ○ MIT。同上 |
-| 顧客の名義で運用できる | △ 顧客の Cloudflare と GitHub（App の持ち主）に作る。編集者は GitHub 不要だが、**店の持ち主は GitHub と Cloudflare のアカウントを持つ必要がある** | ○ 顧客の Organization・顧客の Cloudflare・編集者それぞれの GitHub アカウント |
+| 顧客の名義で運用できる | ○ 顧客の Cloudflare と GitHub（App の持ち主）に作る。店の持ち主は GitHub と Cloudflare のアカウントが要る。編集者は GitHub 不要 | ○ 顧客の Organization・顧客の Cloudflare。店の持ち主に加えて、**編集者それぞれにも GitHub アカウントが要る** |
 | Second Root の保守が少ない | △ Dependabot の PR のマージ、利用者の管理、`ADMIN_SECRET`。見積もり 1 店 年 3〜20 時間（評価書 §6） | ○ Worker は小さい（「just a small, short-lived script」）。App の client secret の管理 |
-| 安全な認証と権限の制御 | △ token 1 時間・1 repo・役割（admin/editor/viewer）。**2FA 無し** | ○（GitHub App の場合）token 8 時間・App を入れた repo だけ・本人の 2FA。役割は GitHub の repo 権限（Free の Organization は固定の役割だけ）。× OAuth App の場合（`repo` scope で全 repo） |
+| 安全な認証と権限の制御 | △ token 1 時間・1 repo・役割（admin/editor/viewer）。**2FA 無し** | ○（GitHub App の場合）token 8 時間・App を入れた repo だけ・本人の 2FA（GitHub の現時点の基準）。役割は GitHub の repo 権限（Free の Organization は固定の役割だけ）。× OAuth App の場合（`repo` scope で全 repo） |
 | パスワードを忘れたときに簡単に戻せる | △ 管理者が仮パスワードを発行（メールなし）。admin が忘れたら `ADMIN_SECRET` でウィザード | ○ パスワードはメールで自分で再設定。× ただし **2FA の手段を全て失うと、GitHub Support でも戻せず永久に失う**ことがある |
 
 **読み**: 「スマートフォンだけで簡単」と「token を作らない」を同時に、顧客に GitHub の知識なしで満たすのは案 1 だけ。安全（2FA）と自己復旧は案 2 が上。どちらも全条件を満たすわけではない。オーナーの条件の中で「簡単さ」が最優先と読み、案 1 を推奨とする。「2FA 必須」を譲れない条件にするなら案 2（GitHub App 版）になる。
@@ -156,7 +156,7 @@
 
 - 案 2 の OAuth は **ポップアップ**: Authenticator のコードは `window.opener?.postMessage(...)`（コメント「who opened this popup」、src/index.js）。Sveltia の troubleshooting も COOP が「known to break the OAuth flow with a popup window」と書く（https://sveltiacms.app/en/docs/troubleshooting）。リダイレクトの方式は **記載なし**。
 - 既知の問題: Issue #835「Gitlab signing stuck with Safari on iOS」。作者「I can confirm the issue with Safari on macOS, which is blocking the authentication popup window.」、commit「Pre-open auth popup for Safari compatibility」、「Fixed in v0.172.1」、報告者「I can confirm that the issue is fixed and I can login on iOS now.」（https://github.com/sveltia/sveltia-cms/issues/835 、2026-07-19 closed）。GitLab での報告だが、ポップアップの開き方は共通と読める（GitHub での iOS の確認は **未確認**）。
-- PR #700「fall back to redirect when OAuth popup is blocked on mobile」は不採用（「no one has reported the issue.」、https://github.com/sveltia/sveltia-cms/pull/700 、2026-03-28 closed）。→ ポップアップが塞がれた時の逃げ道は無い。
+- PR #700（ポップアップが塞がれたときに転送へ切り替える案）は PKCE の流れ（Gitea/Forgejo と `auth_type: pkce`）が対象で、「changes the authentication flow」「no one has reported the issue.」として不採用（https://github.com/sveltia/sveltia-cms/pull/700 、2026-03-28 closed）。→ GitHub の OAuth の流れには、転送に切り替える方法は文書に無い（未確認）。
 - MDN: 「Popup windows must be opened in direct response to user input」、塞がれると `null`（https://developer.mozilla.org/en-US/docs/Web/API/Window/open）。iOS Safari での新しいタブとしての開き方・`window.opener` の扱いは **記載なし**。
 - **Brave（iOS）のポップアップの既定**: **未確認**（一次の資料を取得していない）。
 - 案 2 ではさらに、ポップアップの中で **github.com へのサインイン（パスワード + 2FA）** が要る。ブラウザが github.com のセッションを持っていなければ毎回（8 時間の token と refresh で頻度は下がる）。
